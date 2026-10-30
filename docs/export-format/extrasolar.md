@@ -411,7 +411,7 @@ The mass ratio of the barycentre comes from the first of: the two masses of a pa
 
 A pair with no node on the sky has the node of its planets: one angle per system, from a hash of the ID of its root (Planets, the `assumed` field), named `node` in `assumed`. A circumbinary planet with no node of its own takes its pair's node. So the pair and its planet are in one plane.
 
-ORB6 and the MSC can give either node (`node_ascending` false). An orbit of the pair whose ω is fixed by its velocities or by an eclipse settles it: when its ω and the visual orbit's are more than 90° apart, `node` and `arg_periastron` turn by 180°, and `node_ascending` is then true.
+ORB6 and the MSC can give either node (`node_ascending` false). An orbit of the pair whose ω is fixed by its velocities or by an eclipse settles it: when its ω and the visual orbit's are more than 90° apart, `node` and `arg_periastron` turn by 180°, and `node_ascending` is then true. An assumed ω, of either orbit, settles nothing.
 
 A citation:
 

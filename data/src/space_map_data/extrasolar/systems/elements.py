@@ -93,7 +93,7 @@ class Elements(NamedTuple):
     node_ascending: bool
     arg_periastron: float | None
     # ω tells which side of the sky plane is near: it comes from velocities,
-    # an eclipse or an identified node.
+    # an eclipse or an identified node. An assumed ω is never fixed.
     omega_fixed: bool
     epoch: float | None
     mean_anomaly: float | None
@@ -211,6 +211,8 @@ def catalogue_elements(row: dict) -> Elements | None:
         if node is None:
             omega = _turn(omega)
         fixed = node is None or ascending
+    # An ω that `_circular` fills is no evidence of the near side.
+    fixed = fixed and omega is not None
     e, omega, assumed = _circular(row["eccentricity"], omega)
     epoch, anomaly, phase = _epoch(row, omega, e)
     return Elements(
@@ -225,7 +227,7 @@ def catalogue_elements(row: dict) -> Elements | None:
         node=None if node is None else node % 360.0,
         node_ascending=ascending and node is not None,
         arg_periastron=omega,
-        omega_fixed=fixed and omega is not None,
+        omega_fixed=fixed,
         epoch=epoch,
         mean_anomaly=anomaly,
         phase=phase,

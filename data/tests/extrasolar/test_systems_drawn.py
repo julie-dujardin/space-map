@@ -17,12 +17,14 @@ from space_map_data.extrasolar.systems.assemble import Systems
 from space_map_data.extrasolar.systems.ingest import _node_names, held_names
 from space_map_data.extrasolar.systems.nodes import GAIA_ORBITS
 from space_map_data.extrasolar.systems.prepare import Inputs
+from tests.download.orbit_catalogue_files import MSC_LINES
 from tests.extrasolar.systems_fakes import (
     ALPHA_CEN_DISTANCE,
     KEPLER_16,
     KEPLER_16_GAIA,
     FakeResolver,
     catalogue_orbits,
+    msc_orbit_rows,
     msc_pair,
 )
 
@@ -200,6 +202,45 @@ class TestPairs:
         assert {"source": "msc", "reference": "VB6_Pbx2016 RHD_1AB Gr.2"} in row[
             "references"
         ]
+
+    def test_an_assumed_omega_settles_no_node(self, tmp_path, orb6_only):
+        """A circular orbit of α Cen AB with no ω, made up from its SB9 row,
+        beside its ORB6 orbit, whose node can be either node."""
+        circular = msc_orbit_rows(
+            tmp_path,
+            "14396-6050|A,B     |  29188.0996|35319.1992| 0.000|  0.0000|  0.00|"
+            "  0.00|  0.00|  4.61|  5.45|  -22.44|B|d|SB9_815 2002A&A...386..280P   ",
+        )
+        found = drawn.draw(
+            alpha_cen(),
+            Inputs(catalogue_orbits=pa.concat_tables([circular, orb6_only])),
+            FakeResolver({}, []),
+        )
+        (row,) = found.orbits.to_pylist()
+        assert row["node_source"] == orbits.ORB6
+        assert row["node"] == pytest.approx(205.073) and not row["node_ascending"]
+        assert "nodes turned by an orbit with a fixed ω" not in found.counts
+
+    def test_a_node_with_an_assumed_omega_stays_either_node(self, tmp_path):
+        """α Cen AB's visual orbit, made circular with no ω, beside its SB9
+        orbits, whose ω is fixed."""
+        sb9 = [
+            line
+            for line in MSC_LINES
+            if line.startswith("14396-6050|A,B") and "SB9" in line
+        ]
+        table = msc_orbit_rows(
+            tmp_path,
+            "14396-6050|A,B     |     79.9100| 1955.6600| 0.000| 17.6600|204.75|"
+            "  0.00| 79.32|  0.00|  0.00|    0.00| |y|VB6_Pbx2016 RHD_1AB Gr.2      ",
+            *sb9,
+        )
+        found = drawn.draw(
+            alpha_cen(), Inputs(catalogue_orbits=table), FakeResolver({}, [])
+        )
+        (row,) = found.orbits.to_pylist()
+        assert row["node"] == 204.75 and not row["node_ascending"]
+        assert "nodes turned by an orbit with a fixed ω" not in found.counts
 
     def test_a_pair_by_its_letters(self, alpha_cen_orbits):
         """Members with no WDS or MSC id, named "Rigil Kentaurus B" and

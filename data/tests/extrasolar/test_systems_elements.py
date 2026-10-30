@@ -22,6 +22,7 @@ from tests.extrasolar.systems_fakes import (
 # Neither has an angular a.
 MSC_ECLIPSING = "00042-5055|Ab,Ac   |      0.5703|58354.2542| 0.001|  0.0000|  0.00|140.00| 87.96|135.10|172.85|    0.00| |d|2024A&A...686A..27R           "
 MSC_VB6 = "16555-0820|Ba,Bb   |      0.0081| 1998.2874| 0.021|  0.0000|  0.00|150.00|164.18|  0.00|  0.00|    0.00| |y|VB6_Sgr2000 Gl_644Ba,B Gr.8   "
+RR_CAE = "gaia/dr3/4788741548375134336"
 
 
 def _angle(a: float, b: float) -> float:
@@ -125,6 +126,15 @@ class TestConventions:
     def test_a_copy_of_orb6_with_no_a_is_a_visual_orbit(self, tmp_path):
         (item,) = _elements(msc_orbit_rows(tmp_path, MSC_VB6))
         assert item.arg_periastron == 150.0 and not item.omega_fixed
+
+    def test_an_assumed_omega_is_not_fixed(self):
+        """RR Cae: Maxted et al. 2007 give e = 0 and no ω."""
+        literature, _ = orbits.read_literature()
+        row = next(r for r in literature.to_pylist() if r["system"] == RR_CAE)
+        item = elements.catalogue_elements(row)
+        assert item is not None and "arg_periastron" in item.assumed
+        assert item.arg_periastron == elements.CIRCULAR_OMEGA
+        assert not item.omega_fixed
 
     def test_a_secondary_omega_of_a_paper_stays(self):
         literature, _ = orbits.read_literature()

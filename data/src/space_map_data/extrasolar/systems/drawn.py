@@ -29,9 +29,10 @@ Each element comes from the first orbit that has it: papers, the MSC, ORB6,
 SBX, OEC, then Gaia DR3, and inside a source the orbit with the most
 elements first. A measured e or ω goes before an assumed one. A node that
 may be either node is settled by an orbit whose ω is fixed: when the two ω
-are more than 90° apart, Ω and ω turn by 180°. The mass ratio comes from
-the papers' masses, then the K1 and K2 of the MSC and SBX, then the Gaia DR3
-masses, then OEC's, then the MSC's two masses of the pair (sys.tsv).
+are more than 90° apart, Ω and ω turn by 180°. An assumed ω, on either side,
+settles nothing. The mass ratio comes from the papers' masses, then the K1
+and K2 of the MSC and SBX, then the Gaia DR3 masses, then OEC's, then the
+MSC's two masses of the pair (sys.tsv).
 
 An orbit is drawn when it has P, a, i and, unless it is circular, ω. a in
 arcsec takes the node's distance, else Kepler's third law gives it from the
@@ -625,7 +626,9 @@ class Drawer:
         node = chosen.get("node")
         ascending = node is not None and node.node_ascending
         fixed = next((i for i in items if i.omega_fixed), None)
-        own = None if node is None else node.arg_periastron
+        own = None
+        if node is not None and "arg_periastron" not in node.assumed:
+            own = node.arg_periastron
         if node is not None and not ascending and fixed and own is not None:
             assert fixed.arg_periastron is not None and values["node"] is not None
             # The node's own ω goes with it: far from the fixed ω, both turn.
