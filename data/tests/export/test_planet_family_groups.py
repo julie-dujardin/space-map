@@ -433,6 +433,15 @@ class TestBundles:
             "collect_group_images",
             lambda slug: exoplanet_images if slug == "cat-planets:exoplanets" else None,
         )
+        # Earth's own pictures, one of them on the Exoplanets shelf already.
+        blue_marble = {"file": "Blue_Marble.jpg", "label": "s", "ext": "webp"}
+        earth_images = {"naif-399": [exoplanet_images[0], blue_marble]}
+        monkeypatch.setattr(
+            bundles, "collect_object_images", lambda oid: earth_images.get(oid)
+        )
+        monkeypatch.setattr(
+            bundles, "object_image_count", lambda oid: len(earth_images.get(oid, ()))
+        )
         monkeypatch.setattr(
             bundles,
             "load_wikipedia_summaries_for_qid",
@@ -500,7 +509,9 @@ class TestBundles:
         assert planets["tab_galleries"] == [
             {"key": "exoplanets", "images": exoplanet_images}
         ]
-        assert all(g["key"] != "exoplanets" for g in planets["galleries"])
+        assert planets["galleries"] == [
+            {"key": "naif-399", "subject": "naif-399", "images": [blue_marble]}
+        ]
         assert (planets["solar_member_count"], planets["exoplanet_count"]) == (1, 6)
         assert planets["moon_total"] == 3
         assert "parent_families" not in planets
