@@ -1,13 +1,11 @@
-"""Per-probe orchestrator: kernel → segments → samples → keyframes → files.
+"""Kernels to keyframes: spin spans, adaptive samples, SLERP keyframes.
 
-Furnishing SPICE is left to the caller, so it can batch multiple probes
-against the same generic kernels without re-furnishing. The mission is first
-partitioned into rate-stable spin spans (`segments.py`): a non-spinner is one
-raw span; a spinner (Juno) is one span per phase with its own baseline, so
-the adaptive sampler always keyframes a slow residual.
-
-Output: `chunks/<chunk_idx>.bin.gz` under `out_dir/`, plus a dict for the
-probe's `__global__` bundle under `"attitude"` (see `manifest_entry`).
+The caller furnishes SPICE. The export keyframes one 7-day shard at a time
+with `extract_shard`. `extract_attitude` keyframes a whole probe in one call
+and writes its chunks; the benchmark script uses it. A non-spinner is one raw
+span. A spinner (Juno) has one span per spin phase, each with its own
+baseline, so the adaptive sampler keyframes a slow residual (`segments.py`).
+`manifest_entry` builds the dict for the probe's `__global__` bundle.
 """
 
 import logging
@@ -36,11 +34,10 @@ ALIAS_ANGLE_RAD = math.radians(90.0)
 # lists are ~200 B/sample, so an unbounded window (some CKs cover decades in
 # one interval) at worst-case refinement density would eat GBs.
 TILE_S = 4 * 86400.0
-# Some CKs claim implausibly wide interval coverage (HUYGENS reports one
-# 45-year window for ~4 h of real descent data), and every in-gap sample
-# costs a thrown SpiceyError ~30x a valid lookup. Windows longer than the
-# threshold are probed at step resolution and shrunk to the runs that
-# actually resolve.
+# Some CKs claim far more coverage than they hold (HUYGENS claims 45 years for
+# about 4 h of data). Each sample in such a gap costs a thrown SpiceyError,
+# about 30x a valid lookup. So a window longer than VALIDATE_SPAN_S is probed
+# every VALIDATE_STEP_S and shrunk to the runs that resolve.
 VALIDATE_SPAN_S = 10 * 86400.0
 VALIDATE_STEP_S = 3600.0
 
@@ -79,8 +76,7 @@ def extract_attitude(
     of `ck_paths`, partitioned into spin spans, then sampled adaptively and
     keyframed span-by-span to bound memory over decades.
 
-    No coverage for `bus_instr_id` returns an empty result (n_keyframes=0) —
-    the caller caches it like any other empty extraction.
+    No coverage returns an empty result (n_keyframes=0).
     """
     windows = ck_windows(ck_paths, bus_instr_id)
     if not windows:
@@ -98,7 +94,15 @@ def extract_attitude(
             for instr in actual:
                 windows += ck_windows(ck_paths, instr)
             windows.sort()
-    windows = _validate_windows(frame_name, windows)
+    windows, claimed, kept = _validate_windows(frame_name, windows)
+    if claimed:
+        logger.warning(
+            "attitude: %s — CK windows claim %.1f d but only %.1f d resolve; "
+            "shrunk to the valid runs",
+            frame_name,
+            claimed / 86400.0,
+            kept / 86400.0,
+        )
     if not windows:
         logger.info("attitude: no CK coverage for instrument %d", bus_instr_id)
         return ExtractionResult(0, write_chunks(out_dir, []), [], 0.0, 0.0)
@@ -154,16 +158,33 @@ def _resolves(frame_name: str, et: float) -> bool:
 
 
 def _validate_windows(
-    frame_name: str, windows: list[tuple[float, float]]
-) -> list[tuple[float, float]]:
-    """Shrink windows longer than `VALIDATE_SPAN_S` to their resolvable runs."""
+    frame_name: str,
+    windows: list[tuple[float, float]],
+    lo: float = -math.inf,
+    hi: float = math.inf,
+) -> tuple[list[tuple[float, float]], float, float]:
+    """Clip `windows` to `[lo, hi]` and shrink each window longer than
+    `VALIDATE_SPAN_S` to its resolvable runs.
+
+    The length test uses the whole window, so a shard of a long window is
+    still probed. Only the probe grid near `[lo, hi]` is sampled, and the
+    result in `[lo, hi]` is the same as for the whole window. Returns
+    `(windows, claimed_s, kept_s)`, where the two totals cover only the
+    windows that lost coverage.
+    """
     out: list[tuple[float, float]] = []
+    claimed_total = 0.0
+    kept_total = 0.0
     for start, end in windows:
         if end - start <= VALIDATE_SPAN_S:
-            out.append((start, end))
+            if max(start, lo) <= min(end, hi):
+                out.append((max(start, lo), min(end, hi)))
             continue
-        ets = np.linspace(start, end, int((end - start) / VALIDATE_STEP_S) + 2)
-        kept = 0.0
+        ets = _probe_grid(start, end)
+        # Two steps of margin keep the run edges outside [lo, hi] as they are.
+        margin = 2.0 * VALIDATE_STEP_S
+        ets = ets[(ets >= lo - margin) & (ets <= hi + margin)]
+        runs: list[tuple[float, float]] = []
         run_start: float | None = None
         prev = start
         for et in ets:
@@ -172,21 +193,96 @@ def _validate_windows(
                     run_start = max(start, float(et) - VALIDATE_STEP_S)
                 prev = float(et)
             elif run_start is not None:
-                out.append((run_start, min(end, prev + VALIDATE_STEP_S)))
-                kept += out[-1][1] - out[-1][0]
+                runs.append((run_start, min(end, prev + VALIDATE_STEP_S)))
                 run_start = None
         if run_start is not None:
-            out.append((run_start, end))
-            kept += end - run_start
-        if kept < (end - start) - VALIDATE_STEP_S:
-            logger.warning(
-                "attitude: %s — CK window claims %.1f d but only %.1f d resolve; "
-                "shrunk to the valid runs",
-                frame_name,
-                (end - start) / 86400.0,
-                kept / 86400.0,
-            )
-    return out
+            runs.append((run_start, end))
+        clipped = [(max(a, lo), min(b, hi)) for a, b in runs if max(a, lo) < min(b, hi)]
+        out += clipped
+        claimed = max(0.0, min(end, hi) - max(start, lo))
+        kept = sum(b - a for a, b in clipped)
+        if kept < claimed - VALIDATE_STEP_S:
+            claimed_total += claimed
+            kept_total += kept
+    out.sort()
+    return out, claimed_total, kept_total
+
+
+def _probe_grid(start: float, end: float) -> np.ndarray:
+    return np.linspace(start, end, int((end - start) / VALIDATE_STEP_S) + 2)
+
+
+def scan_window_edge(
+    frame_name: str, start: float, end: float, *, forward: bool
+) -> float | None:
+    """First (`forward`) or last edge of the resolvable runs of one long
+    window, on the `_validate_windows` grid. None when nothing resolves."""
+    ets = _probe_grid(start, end)
+    order = range(len(ets)) if forward else range(len(ets) - 1, -1, -1)
+    for i in order:
+        et = float(ets[i])
+        if not _resolves(frame_name, et):
+            continue
+        if forward:
+            return max(start, et - VALIDATE_STEP_S)
+        return end if i == len(ets) - 1 else min(end, et + VALIDATE_STEP_S)
+    return None
+
+
+@dataclass(frozen=True)
+class ShardKeyframes:
+    """Keyframes of one shard. `seg` is the spin span index of each one."""
+
+    ets: np.ndarray
+    quats: np.ndarray
+    seg: np.ndarray
+    n_gaps: int
+    claimed_s: float
+    kept_s: float
+
+
+def extract_shard(
+    frame_name: str,
+    ck_paths: list[str],
+    instruments: list[int],
+    lo: float,
+    hi: float,
+    spans: list[tuple[int, SpinSegment]],
+    *,
+    eps_deg: float = DEFAULT_EPS_DEG,
+) -> ShardKeyframes:
+    """Keyframe the shard `[lo, hi]` of one probe.
+
+    The caller furnishes the base kernels and at least `ck_paths`, the CKs
+    that cover the shard. `instruments` is the bus instrument, or the
+    instruments the mission's CKs carry when the bus has no coverage.
+    `spans` holds `(span index, span clipped to the shard)` pairs; a
+    non-spinner gives one raw span.
+    """
+    windows: list[tuple[float, float]] = []
+    for instr in instruments:
+        windows += ck_windows(ck_paths, instr)
+    windows.sort()
+    windows, claimed, kept = _validate_windows(frame_name, windows, lo, hi)
+    eps_rad = math.radians(eps_deg)
+    ets_parts: list[np.ndarray] = [np.empty(0)]
+    quat_parts: list[np.ndarray] = [np.empty((0, 4))]
+    seg_parts: list[np.ndarray] = [np.empty(0, dtype=np.int16)]
+    n_gaps = 0
+    for index, seg in spans:
+        ets, quats, _, gaps = _keyframe_segment(frame_name, seg, windows, eps_rad)
+        n_gaps += gaps
+        ets_parts.append(ets)
+        quat_parts.append(quats)
+        seg_parts.append(np.full(len(ets), index, dtype=np.int16))
+    return ShardKeyframes(
+        ets=np.concatenate(ets_parts),
+        quats=np.concatenate(quat_parts),
+        seg=np.concatenate(seg_parts),
+        n_gaps=n_gaps,
+        claimed_s=claimed,
+        kept_s=kept,
+    )
 
 
 def _keyframe_segment(

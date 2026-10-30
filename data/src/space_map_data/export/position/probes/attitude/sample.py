@@ -5,6 +5,7 @@ Kept thin: we own the time-grid generation and continuous-sign canonicalisation
 extraction and baseline fits can treat the stream as smooth.
 """
 
+import functools
 import logging
 
 import numpy as np
@@ -15,22 +16,31 @@ logger = logging.getLogger(__name__)
 # Overflow raises SPICE(CELLTOOSMALL) and loses the file's coverage; busiest
 # reconstructed CKs (Cassini/MRO) run to a few thousand spans.
 _COVER_CELL_SIZE = 1_000_000
+_IDS_CELL_SIZE = 10_000
+
+
+# One cell of each kind per process. spiceypy cells are about 8 MB and Python
+# frees them late, so a new cell per call holds GBs over thousands of CKs.
+@functools.cache
+def _cover_cell():
+    return spiceypy.support_types.SPICEDOUBLE_CELL(_COVER_CELL_SIZE)
+
+
+@functools.cache
+def _ids_cell():
+    return spiceypy.support_types.SPICEINT_CELL(_IDS_CELL_SIZE)
 
 
 def ck_windows(ck_paths: list[str], instr_id: int) -> list[tuple[float, float]]:
-    """Gap-free (start_et, end_et) coverage spans for `instr_id`, TDB, sorted
-    and merged where they overlap.
+    """Coverage intervals of `instr_id` in `ck_paths`, TDB, sorted and merged
+    where they overlap.
 
-    One entry per real interval, not the file's outer envelope — an
-    envelope's holes cost a thrown `SpiceyError` per in-gap sample
-    downstream, millions for a sparse CK.
-
-    The coverage cell is allocated once and reset per file: spiceypy cells
-    are ~8 MB and not promptly freed, so a fresh cell per CK accumulated
-    tens of GB on kernel-heavy missions (LUCY ships 2 500 daily CKs).
+    Each entry is one real interval, not the outer envelope of a file. Each
+    sample in a gap of an envelope costs a thrown `SpiceyError`, and a sparse
+    CK has millions of such samples.
     """
     windows: list[tuple[float, float]] = []
-    cover = spiceypy.support_types.SPICEDOUBLE_CELL(_COVER_CELL_SIZE)
+    cover = _cover_cell()
     for path in ck_paths:
         spiceypy.scard(0, cover)
         try:
@@ -53,13 +63,9 @@ def ck_windows(ck_paths: list[str], instr_id: int) -> list[tuple[float, float]]:
 
 
 def ck_instrument_ids(ck_paths: list[str]) -> set[int]:
-    """Union of CK instrument IDs present across `ck_paths`.
-
-    The cell is allocated once and reset per file (same leak-avoidance as
-    `ck_windows`).
-    """
+    """Union of CK instrument IDs present across `ck_paths`."""
     ids: set[int] = set()
-    cell = spiceypy.support_types.SPICEINT_CELL(10_000)
+    cell = _ids_cell()
     for path in ck_paths:
         spiceypy.scard(0, cell)
         try:
@@ -69,6 +75,37 @@ def ck_instrument_ids(ck_paths: list[str]) -> set[int]:
             continue
         ids |= {int(cell[i]) for i in range(spiceypy.card(cell))}
     return ids
+
+
+def ck_segment_coverage(path: str) -> dict[int, list[tuple[float, float]]]:
+    """SEGMENT-level TDB coverage of one CK, per instrument it carries.
+
+    Needs the LSK, the FK and the mission SCLK furnished. An instrument with
+    no SCLK loaded is left out, because SPICE cannot read its data either.
+    Raises `SpiceyError` on an unreadable file.
+    """
+    ids = _ids_cell()
+    cover = _cover_cell()
+    spiceypy.scard(0, ids)
+    spiceypy.ckobj(path, ids)
+    out: dict[int, list[tuple[float, float]]] = {}
+    for i in range(spiceypy.card(ids)):
+        instr = int(ids[i])
+        spiceypy.scard(0, cover)
+        try:
+            spiceypy.ckcov(path, instr, False, "SEGMENT", 0.0, "TDB", cover)
+        except spiceypy.exceptions.SpiceyError as exc:
+            if exc.short != "SPICE(KERNELVARNOTFOUND)":
+                raise
+            logger.warning("attitude: no SCLK for instrument %d in %s", instr, path)
+            continue
+        out[instr] = [
+            (float(a), float(b))
+            for a, b in (
+                spiceypy.wnfetd(cover, j) for j in range(spiceypy.wncard(cover))
+            )
+        ]
+    return out
 
 
 def sample_truth(frame: str, ets: np.ndarray) -> np.ndarray:

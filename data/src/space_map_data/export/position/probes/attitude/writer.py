@@ -132,7 +132,9 @@ def _write_one_chunk(
         raw.extend(pack_keyframe(dt, idx_three, a, b, c))
         prev_et = et
 
-    payload = gzip.compress(bytes(raw), compresslevel=6)
+    # A fixed header time keeps an unchanged chunk byte-identical, so an
+    # upload does not send it again.
+    payload = gzip.compress(bytes(raw), compresslevel=6, mtime=0)
     name = f"{chunk_idx}.bin.gz"
     dest = out_dir / name
     tmp = dest.with_suffix(dest.suffix + ".part")

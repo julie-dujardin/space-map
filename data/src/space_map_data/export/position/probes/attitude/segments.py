@@ -65,9 +65,44 @@ def plan_segments(
     phase for a spinner, each with a `SpinBaseline` fit from a short dense
     window at its start.
     """
-    ets, omegas = _spin_timeline(frame, t0, t1)
+    ets = spin_timeline_ets(t0, t1)
+    omegas = spin_omegas(frame, ets)
+    return segments_from_timeline(
+        frame, t0, t1, ets, omegas, alias_angle=alias_angle, seed_dt=seed_dt
+    )
+
+
+def spin_timeline_ets(t0: float, t1: float) -> np.ndarray:
+    """The epochs of the spin-rate timeline over `[t0, t1]`."""
+    return np.linspace(t0, max(t0, t1 - OMEGA_DDT), SEG_MAX_PROBES)
+
+
+def spin_omegas(frame: str, ets: np.ndarray) -> list[np.ndarray | None]:
+    """Local angular-velocity vector at each epoch (None in a CK gap)."""
+    return [_omega(frame, float(e)) for e in ets]
+
+
+def is_spinner(
+    omegas: list[np.ndarray | None], *, alias_angle: float, seed_dt: float
+) -> bool:
+    """True when the median spin turns the craft past `alias_angle` between
+    seed samples."""
     speeds = [float(np.linalg.norm(o)) for o in omegas if o is not None]
-    if not speeds or np.median(speeds) * seed_dt <= alias_angle:
+    return bool(speeds) and float(np.median(speeds)) * seed_dt > alias_angle
+
+
+def segments_from_timeline(
+    frame: str,
+    t0: float,
+    t1: float,
+    ets: np.ndarray,
+    omegas: list[np.ndarray | None],
+    *,
+    alias_angle: float,
+    seed_dt: float,
+) -> list[SpinSegment]:
+    """`plan_segments` after the timeline: cut at phase changes, fit each span."""
+    if not is_spinner(omegas, alias_angle=alias_angle, seed_dt=seed_dt):
         return [SpinSegment(t0, t1, None)]
 
     cuts = [t0, *_phase_boundaries(frame, ets, omegas), t1]
@@ -88,14 +123,6 @@ def plan_segments(
             ),
         )
     return segments
-
-
-def _spin_timeline(
-    frame: str, t0: float, t1: float
-) -> tuple[np.ndarray, list[np.ndarray | None]]:
-    """Local angular-velocity vector at each grid point (None in a CK gap)."""
-    ets = np.linspace(t0, max(t0, t1 - OMEGA_DDT), SEG_MAX_PROBES)
-    return ets, [_omega(frame, float(e)) for e in ets]
 
 
 def _omega(frame: str, et: float, ddt: float = OMEGA_DDT) -> np.ndarray | None:

@@ -178,6 +178,217 @@ def test_baseline_residual_is_identity_for_pure_spin() -> None:
         assert angle_between(r, _IDENTITY) < 1e-3
 
 
+D = 86400.0
+
+
+class TestShardPlanning:
+    """Shard grid, CK lists per shard, span edges and the fallback instruments."""
+
+    def test_shards_overlapping_uses_open_overlap(self) -> None:
+        from space_map_data.export.position.probes.attitude.shards import (
+            SHARD_S,
+            shards_overlapping,
+        )
+
+        assert list(shards_overlapping(0.0, SHARD_S)) == [0]
+        assert list(shards_overlapping(SHARD_S, SHARD_S)) == []
+        assert list(shards_overlapping(-1.0, 1.0)) == [-1, 0]
+        assert list(shards_overlapping(3 * SHARD_S, 2 * SHARD_S)) == []
+
+    def test_plan_shards_lists_covering_cks_in_index_order(self) -> None:
+        from space_map_data.export.position.probes.attitude.shards import (
+            SHARD_S,
+            plan_shards,
+        )
+
+        # Weekly CKs offset from the grid, plus a CK for another instrument
+        # that the frame can chain through.
+        coverage = {
+            "b.bc": {-74000: [(3 * D, 10 * D)]},
+            "a.bc": {-74000: [(10 * D, 17 * D)]},
+            "chain.bc": {-74999: [(0.0, 30 * D)]},
+        }
+        names = ["b.bc", "a.bc", "chain.bc"]
+        plan = plan_shards(coverage, names, [-74000], (3 * D, 17 * D))
+        assert plan == {
+            0: ["b.bc", "chain.bc"],
+            1: ["b.bc", "a.bc", "chain.bc"],
+            2: ["a.bc", "chain.bc"],
+        }
+        # The span bounds the shards, so a long claim does not add empty ones.
+        plan = plan_shards(coverage, names, [-74999], (0.0, SHARD_S))
+        assert list(plan) == [0]
+
+    def test_probe_instruments_falls_back_to_carried_ids(self) -> None:
+        from space_map_data.export.position.probes.attitude.shards import (
+            probe_instruments,
+        )
+
+        assert probe_instruments({"x": {-91000: [(0.0, 1.0)]}}, -91000) == [-91000]
+        coverage = {"x": {-91002: [(0.0, 1.0)]}, "y": {-91001: [(0.0, 1.0)]}}
+        assert probe_instruments(coverage, -91000) == [-91002, -91001]
+
+    def test_span_edges_scans_only_long_windows(self) -> None:
+        from space_map_data.export.position.probes.attitude.shards import (
+            span_edges,
+        )
+
+        calls: list[tuple[float, float, bool]] = []
+
+        def scan(start: float, end: float, forward: bool) -> float | None:
+            calls.append((start, end, forward))
+            # Only the first 4 h of a long claim resolve, like HUYGENS.
+            return start if forward else start + 4 * 3600.0
+
+        windows = [(0.0, 7 * D), (8 * D, 16_000 * D)]
+        assert span_edges(windows, scan) == (0.0, 8 * D + 4 * 3600.0)
+        assert calls == [(8 * D, 16_000 * D, False)]
+        assert span_edges([], scan) is None
+
+    def test_span_edges_skips_a_claim_that_never_resolves(self) -> None:
+        from space_map_data.export.position.probes.attitude.shards import (
+            span_edges,
+        )
+
+        windows = [(0.0, 7 * D), (5 * D, 16_000 * D)]
+        assert span_edges(windows, lambda a, b, fwd: None) == (0.0, 7 * D)
+
+
+class TestValidateWindows:
+    """The guard for CKs that claim more coverage than they hold."""
+
+    def test_shard_of_a_long_claim_is_probed(self, monkeypatch) -> None:
+        from space_map_data.export.position.probes.attitude import extractor
+        from space_map_data.export.position.probes.attitude.shards import (
+            shard_bounds,
+        )
+
+        # A 45-year claim where only 4 h resolve, as for HUYGENS.
+        claim = (0.0, 45 * 365 * D)
+        real = (100 * D, 100 * D + 4 * 3600.0)
+        probes: list[float] = []
+
+        def resolves(frame: str, et: float) -> bool:
+            probes.append(et)
+            return real[0] <= et <= real[1]
+
+        monkeypatch.setattr(extractor, "_resolves", resolves)
+        whole, claimed, kept = extractor._validate_windows("F", [claim])
+        assert claimed == claim[1] and kept < D
+        for k in (13, 14, 15, 200):
+            lo, hi = shard_bounds(k)
+            probes.clear()
+            out, _, _ = extractor._validate_windows("F", [claim], lo, hi)
+            clipped = [
+                (max(a, lo), min(b, hi)) for a, b in whole if max(a, lo) < min(b, hi)
+            ]
+            assert out == clipped
+            # Only the grid near the shard is probed.
+            assert probes and len(probes) < 200
+
+    def test_short_window_is_clipped_only(self) -> None:
+        from space_map_data.export.position.probes.attitude import extractor
+
+        out, claimed, _ = extractor._validate_windows("F", [(0.0, 9 * D)], 2 * D, 5 * D)
+        assert out == [(2 * D, 5 * D)]
+        assert claimed == 0.0
+
+
+class TestShardSignature:
+    """A shard signature changes only with the inputs of that shard."""
+
+    @staticmethod
+    def _sig(stamps: dict, cks: list[str], spans=None, kernels="k1") -> str:
+        from space_map_data.export.position.probes.attitude.shards import (
+            shard_signature,
+        )
+
+        probe = {"version": 4, "frame": "F", "bus": -74000, "kernels": kernels}
+        return shard_signature(probe, [[n, stamps[n]] for n in cks], spans)
+
+    def test_changed_ck_changes_only_its_shards(self) -> None:
+        old = {"a": {"digest": "1"}, "b": {"digest": "2"}}
+        new = {"a": {"digest": "1"}, "b": {"digest": "3"}}
+        assert self._sig(old, ["a"]) == self._sig(new, ["a"])
+        assert self._sig(old, ["a", "b"]) != self._sig(new, ["a", "b"])
+        # Load order sets SPICE priority, so it is part of the signature.
+        assert self._sig(old, ["a", "b"]) != self._sig(old, ["b", "a"])
+        assert self._sig(old, ["a"]) != self._sig(old, ["a"], kernels="k2")
+
+    def test_spinner_signature_uses_spans_clipped_to_the_shard(self) -> None:
+        from space_map_data.export.position.probes.attitude.baseline import (
+            SpinBaseline,
+        )
+        from space_map_data.export.position.probes.attitude.segments import (
+            SpinSegment,
+        )
+        from space_map_data.export.position.probes.attitude.shards import (
+            SHARD_S,
+            shard_spans,
+        )
+
+        b = SpinBaseline(np.array([0.0, 0.0, 1.0]), 0.2, np.array([1.0, 0, 0, 0]), 0.0)
+        before = [SpinSegment(0.0, 9.5 * SHARD_S, b)]
+        grown = [SpinSegment(0.0, 11 * SHARD_S, b)]
+        stamps = {"a": {"digest": "1"}}
+        # A span that grows changes only the shard where it used to end.
+        assert self._sig(stamps, ["a"], shard_spans(3, before)) == self._sig(
+            stamps, ["a"], shard_spans(3, grown)
+        )
+        assert self._sig(stamps, ["a"], shard_spans(9, before)) != self._sig(
+            stamps, ["a"], shard_spans(9, grown)
+        )
+        two = [
+            SpinSegment(0.0, 9.5 * SHARD_S, b),
+            SpinSegment(9.5 * SHARD_S, 11 * SHARD_S, b),
+        ]
+        spans = shard_spans(9, two)
+        assert [(i, s.start_et, s.end_et) for i, s in spans] == [
+            (0, 9 * SHARD_S, 9.5 * SHARD_S),
+            (1, 9.5 * SHARD_S, 10 * SHARD_S),
+        ]
+
+
+class TestJoinShards:
+    """Joining shard keyframes into one stream per spin span."""
+
+    def test_boundary_duplicate_is_dropped(self) -> None:
+        from space_map_data.export.position.probes.attitude.shards import (
+            join_shards,
+        )
+
+        q = np.tile([1.0, 0.0, 0.0, 0.0], (3, 1))
+        a = (np.array([0.0, 5.0, 10.0]), q, np.zeros(3, dtype=np.int16))
+        b = (np.array([10.0, 15.0, 20.0]), q, np.zeros(3, dtype=np.int16))
+        [(ets, quats)] = join_shards([a, b], 1)
+        assert ets.tolist() == [0.0, 5.0, 10.0, 15.0, 20.0]
+        assert quats.shape == (5, 4)
+
+    def test_streams_split_by_span_and_rise_strictly(self) -> None:
+        from space_map_data.export.position.probes.attitude.shards import (
+            join_shards,
+        )
+
+        q = np.tile([1.0, 0.0, 0.0, 0.0], (4, 1))
+        # The span boundary at 10 is sampled in both spans.
+        a = (np.array([0.0, 10.0, 10.0, 12.0]), q, np.array([0, 0, 1, 1], np.int16))
+        b = (np.array([12.0, 11.0, 14.0, 16.0]), q, np.array([1, 1, 1, 1], np.int16))
+        (e0, _), (e1, _), (e2, _) = join_shards([a, b], 3)
+        assert e0.tolist() == [0.0, 10.0]
+        assert e1.tolist() == [10.0, 12.0, 14.0, 16.0]
+        assert e2.size == 0
+
+    def test_split_runs_cuts_gaps_and_cost(self) -> None:
+        from space_map_data.export.position.probes.attitude.shards import (
+            split_runs,
+        )
+
+        ks = [1, 2, 3, 4, 7, 8]
+        assert split_runs(ks, lambda k: 1.0, 10.0) == [[1, 2, 3, 4], [7, 8]]
+        assert split_runs(ks, lambda k: 1.0, 2.0) == [[1, 2], [3, 4], [7, 8]]
+        assert split_runs([5], lambda k: 9.0, 2.0) == [[5]]
+
+
 class TestAttitudeCache:
     """Per-probe incremental cache: an unchanged probe skips re-extraction and
     re-injects its manifest; a kernel change re-extracts."""
