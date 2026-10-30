@@ -10,7 +10,8 @@ orbit.
 A pair is a node of two members. Its orbit is that of its second member
 about its first (`elements`). The orbit sources reach a pair so:
 - msc, orb6: the WDS id and the secondary's letters, which a member holds
-  as its WDS or MSC id `<WDS id> <letters>`; else a pair whose members have
+  as its WDS or MSC id `<WDS id> <letters>` (an ORB6 orbit with no
+  components is of A and B); else a pair whose members have
   the letters of the two sides, found by the primary's id or by the node's
   own WDS or MSC id;
 - sbx: the same with its WDS alias and its component letters, else its
@@ -378,14 +379,15 @@ class Drawer:
                 for i in row["ids"] or []
             ]
             wds = [text for pair, text in ids if pair == WDS_ID]
-            letters = row["secondary"] if source in (MSC, ORB6, SBX) else None
+            primary, letters = row["primary"], row["secondary"]
+            if source == ORB6 and not row["pair"]:
+                # As in the WDS, no components name the only pair, A and B.
+                primary, letters = "A", "B"
+            if source not in (MSC, ORB6, SBX):
+                letters = None
             if letters and wds and self._on_component(item, f"{wds[0]} {letters}"):
                 continue
-            if (
-                letters
-                and wds
-                and self._on_letters(item, wds[0], row["primary"], letters)
-            ):
+            if letters and wds and self._on_letters(item, wds[0], primary, letters):
                 continue
             if source == SBX:
                 wanted += [(at, pair, text) for pair, text in ids if pair in SBX_KEYS]

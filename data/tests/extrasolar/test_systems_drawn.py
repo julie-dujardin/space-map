@@ -5,6 +5,7 @@ from collections import Counter
 
 import numpy as np
 import pyarrow as pa
+import pyarrow.compute as pc
 import pytest
 
 from space_map_data.extrasolar import frame
@@ -176,6 +177,20 @@ class TestPairs:
         assert found.counts["orb6: orbits on a pair by its letters"] == 1
         # B is the first member, so the orbit is A's about B.
         assert row["arg_periastron"] == pytest.approx((232.30 + 180) % 360)
+
+    def test_an_orb6_orbit_with_no_components(self, alpha_cen_orbits):
+        """ORB6 gives no components for the only pair of a system: A and B."""
+        orb6_rows = alpha_cen_orbits.filter(
+            pc.equal(alpha_cen_orbits["source"], orbits.ORB6)
+        ).to_pylist()
+        row = next(r for r in orb6_rows if r["pair"] == "AB")
+        row |= {"pair": None, "primary": None, "secondary": None}
+        table = pa.Table.from_pylist([row], schema=orbits.ORBITS)
+        found = drawn.draw(
+            alpha_cen(), Inputs(catalogue_orbits=table), FakeResolver({}, [])
+        )
+        assert found.counts["orb6: orbits on a pair"] == 1
+        assert found.orbits.num_rows == 1
 
     def test_members_in_the_other_order(self, alpha_cen_orbits):
         """B first: the orbit turns round, A about B."""
