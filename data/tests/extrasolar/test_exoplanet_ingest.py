@@ -127,6 +127,7 @@ class TestExtension:
 
 DELTA_A, DELTA_B = at(240, 45), at(250, 45)
 ZETA = at(300, 135)
+PULSAR = at(420, 60)
 
 
 BETA = at(60, 90)
@@ -313,7 +314,14 @@ def gaia_pass(*more: dict) -> pa.Table:
 
 
 def ingest(
-    root, backup, inputs, complete=True, systems=None, stars=None, simbad_rows=None
+    root,
+    backup,
+    inputs,
+    complete=True,
+    systems=None,
+    stars=None,
+    simbad_rows=None,
+    oids=None,
 ):
     with IngestRun.start(root, backup) as run:
         reader = gaia.GaiaReader(
@@ -324,7 +332,9 @@ def ingest(
         run.add(GAIA_DR3_NAMED, [read.gaia_rows], complete)
         if simbad_rows is not None:
             run.add(SIMBAD, [simbad_rows], complete)
-        prepared = exoplanets.prepare(read, run, {}, inputs)
+            if oids is None:
+                oids = set(simbad_rows["catalogue_id"].to_pylist())
+        prepared = exoplanets.prepare(read, run, {}, inputs, simbad_rows=oids or ())
         exoplanets.add_passes(run, prepared, complete)
         run.extend(exoplanets.PlanetsExtension(prepared, systems))
         return run.commit(), prepared
@@ -655,6 +665,269 @@ class TestHostsFromPapers:
         assert [p["host"] for p in planets if p["designation"] == "NLTT 31450 b"] == [
             point
         ]
+
+
+class TestHostsBySimbad:
+    """A host with no Gaia DR3 id or HIP number claims its SIMBAD point."""
+
+    PULSAR = 777
+
+    def simbad_rows(self, tmp_path, *more):
+        directory = write_simbad(
+            tmp_path / "simbad-stars",
+            [
+                simbad_star(
+                    self.PULSAR,
+                    *PULSAR,
+                    "PSR B1257+12",
+                    otype="Psr",
+                    plx_value=1.41,
+                    plx_err=0.08,
+                    pmra=46.44,
+                    pmdec=-84.87,
+                ),
+                *more,
+            ],
+        )
+        stars = SimbadList.read(directory)
+        return simbad.engine_rows(stars, stars.handed(), set(), {}, {})[0]
+
+    def files(self):
+        ra, dec = offset(*PULSAR, 7, 40)
+        files = downloads()
+        files.archive.append(
+            archive_planet(
+                "3.8",
+                "PSR B1257+12 b",
+                "PSR B1257+12",
+                "2.8",
+                ra,
+                dec,
+                discoverymethod="Pulsar Timing",
+                pl_orbper="25",
+                sy_dist="600",
+            )
+        )
+        files.eu.append(
+            eu_planet(
+                "PSR B1257+12 b",
+                "PSR B1257+12",
+                ra,
+                dec,
+                orbital_period="25",
+                star_distance="710",
+            )
+        )
+        files.simbad_names += [
+            (
+                "exoplanet_archive",
+                "stellarhosts",
+                "star",
+                "PSR B1257+12",
+                "PSR B1257+12",
+                "printed",
+                str(self.PULSAR),
+            ),
+            (
+                "exoplanet_eu",
+                "catalog",
+                "star",
+                "PSR B1257+12",
+                "PSR B1257+12",
+                "printed",
+                str(self.PULSAR),
+            ),
+        ]
+        files.simbad_basic[str(self.PULSAR)] = ("PSR B1257+12", "Psr")
+        return files
+
+    def double(self, root, backup, tmp_path):
+        """A first ingest in which the host and SIMBAD hold one point each."""
+        inputs = self.files().write(tmp_path / "one")
+        ingest(
+            root,
+            backup,
+            inputs,
+            simbad_rows=self.simbad_rows(tmp_path / "one"),
+            oids=set(),
+        )
+        registry = Registry(root)
+        host = int(registry.lookup(ARCHIVE, "pscomppars", ["2.8"])[0])
+        point = int(registry.lookup("simbad", "oid", [str(self.PULSAR)])[0])
+        assert host and point and host != point
+        return host, point
+
+    def merge(self, root, backup, tmp_path, name):
+        return ingest(
+            root,
+            backup,
+            self.files().write(tmp_path / name),
+            simbad_rows=self.simbad_rows(tmp_path / name),
+        )
+
+    def test_a_new_host_makes_no_second_star(self, root, backup, tmp_path):
+        result, prepared = self.merge(root, backup, tmp_path, "one")
+        registry = Registry(root)
+        point = int(registry.lookup("simbad", "oid", [str(self.PULSAR)])[0])
+        assert int(registry.lookup(ARCHIVE, "pscomppars", ["2.8"])[0]) == point
+        assert int(registry.lookup(EU, "catalog", ["PSR B1257+12"])[0]) == point
+        counts = result.entry["counts"]
+        assert (counts["merged"], counts["conflicts"]) == (0, 0)
+        assert prepared.by_simbad == [f"PSR B1257+12: simbad/oid/{self.PULSAR}"]
+        assert "claim their SIMBAD object: 1" in result.report
+
+    def test_a_double_merges(self, root, backup, tmp_path):
+        host, point = self.double(root, backup, tmp_path)
+        result, _ = self.merge(root, backup, tmp_path, "two")
+        counts = result.entry["counts"]
+        assert (counts["merged"], counts["conflicts"]) == (1, 0)
+        survivor, alias = sorted((host, point))
+        registry = Registry(root)
+        assert registry.aliases()[alias] == survivor
+        [merge] = registry.merges(registry.last_ingest).to_pylist()
+        assert (merge["survivor"], merge["loser"]) == (survivor, alias)
+        assert f"simbad/oid/{self.PULSAR}" in merge["evidence"]
+        assert str(alias) in result.report
+
+    def test_the_planet_goes_to_the_survivor(self, root, backup, tmp_path):
+        host, point = self.double(root, backup, tmp_path)
+        self.merge(root, backup, tmp_path, "two")
+        rows = table_rows(root, "planets").to_pylist()
+        hosts_ = [p["host"] for p in rows if p["designation"] == "PSR B1257+12 b"]
+        assert hosts_ == [min(host, point)]
+
+    def test_a_merged_star_keeps_simbads_astrometry(self, root, backup, tmp_path):
+        host, point = self.double(root, backup, tmp_path)
+        before = table_rows(root, "point-source").to_pylist()
+        assert next(r for r in before if r["id"] == host)["ra"] != PULSAR[0]
+        self.merge(root, backup, tmp_path, "two")
+        rows = table_rows(root, "point-source").to_pylist()
+        [row] = [r for r in rows if r["id"] in (host, point)]
+        assert row["id"] == min(host, point)
+        assert row["astrometry_source"] == "simbad"
+        assert row["parallax"] == pytest.approx(1.41)
+        assert row["ra"] == pytest.approx(PULSAR[0])
+        # The catalogue's star stays, with its distance.
+        assert row["host_star_source"] == ARCHIVE
+        assert row["host_distance"] == 600
+
+    def test_a_second_ingest_stays_stable(self, root, backup, tmp_path):
+        host, point = self.double(root, backup, tmp_path)
+        self.merge(root, backup, tmp_path, "two")
+        before = table_rows(root, "planets").to_pylist()
+        result, _ = self.merge(root, backup, tmp_path, "three")
+        counts = result.entry["counts"]
+        assert (counts["minted"], counts["merged"]) == (0, 0)
+        assert counts["conflicts"] == 0
+        assert result.entry["extensions"]["planets"]["moved"] == 0
+        registry = Registry(root)
+        survivor = min(host, point)
+        assert int(registry.lookup(ARCHIVE, "pscomppars", ["2.8"])[0]) == survivor
+        assert int(registry.lookup("simbad", "oid", [str(self.PULSAR)])[0]) == survivor
+        planets = table_rows(root, "planets").to_pylist()
+        assert [(p["host"], p["number"]) for p in planets] == [
+            (p["host"], p["number"]) for p in before
+        ]
+
+    def test_an_object_on_two_stars_is_not_merged(self, root, backup, tmp_path):
+        files = self.files()
+        ra, dec = offset(*PULSAR, 90, 40)
+        files.eu = [
+            *files.eu,
+            eu_planet("HD 9 A b", "HD 9 A", ra, dec, orbital_period="9"),
+            eu_planet("HD 9 B b", "HD 9 B", ra, dec, orbital_period="19"),
+        ]
+        oid = "888"
+        files.simbad_names += [
+            ("exoplanet_eu", "catalog", "star", name, name, "printed", oid)
+            for name in ("HD 9 A", "HD 9 B")
+        ]
+        files.simbad_basic[oid] = ("HD 9", "PM*")
+        rows = self.simbad_rows(tmp_path / "one", simbad_star(888, ra, dec, "HD 9"))
+        result, prepared = ingest(
+            root, backup, files.write(tmp_path / "one"), simbad_rows=rows
+        )
+        assert result.entry["counts"]["merged"] == 0
+        assert len(prepared.by_simbad) == 1
+        registry = Registry(root)
+        point = int(registry.lookup("simbad", "oid", [oid])[0])
+        stars = registry.lookup(EU, "catalog", ["HD 9 A", "HD 9 B"])
+        assert point not in {int(found) for found in stars}
+
+
+class TestStarsFromPapers:
+    """A catalogue star with a key and position from `planet_hosts`."""
+
+    def test_a_row_with_the_wrong_sign_reaches_its_star(self, root, backup, tmp_path):
+        files = downloads()
+        # exoplanet.eu gives the declination with the wrong sign.
+        files.eu.append(
+            eu_planet(
+                "2MASS J1315-2649 b",
+                "2MASS J1315-2649",
+                198.87858,
+                26.83106,
+                orbital_period="19162.5",
+                star_distance="19",
+            )
+        )
+        dr3 = 6186534394250282752
+        stars = gaia_pass(gaia_star(dr3, 198.87515, -26.83235, 20.3))
+        result, _ = ingest(root, backup, files.write(tmp_path / "one"), stars=stars)
+        assert result.entry["counts"]["conflicts"] == 0
+        registry = Registry(root)
+        point = int(registry.lookup("gaia", "dr3", [str(dr3)])[0])
+        assert int(registry.lookup(EU, "catalog", ["2MASS J1315-2649"])[0]) == point
+        rows = table_rows(root, "point-source").to_pylist()
+        row = next(r for r in rows if r["id"] == point)
+        assert row["astrometry_source"] == GAIA_DR3.name
+        assert row["host_distance"] == 19
+        assert not [r for r in rows if r["dec"] and abs(r["dec"] - 26.83) < 0.01]
+        again, _ = ingest(root, backup, files.write(tmp_path / "two"), stars=stars)
+        counts = again.entry["counts"]
+        assert (counts["minted"], counts["merged"], counts["conflicts"]) == (0, 0, 0)
+        assert (
+            int(Registry(root).lookup(EU, "catalog", ["2MASS J1315-2649"])[0]) == point
+        )
+
+    def test_a_row_with_no_object_claims_its_key(self, root, backup, tmp_path):
+        directory = write_simbad(
+            tmp_path / "simbad-stars",
+            [simbad_star(9910123, 169.885597, -11.629638, "TWA 42", otype="BD*")],
+        )
+        found = SimbadList.read(directory)
+        rows = simbad.engine_rows(found, found.handed(), set(), {}, {})[0]
+        files = downloads()
+        files.oec.append(
+            "<system><name>2MASS J1119-1137</name>"
+            "<star><name>2MASS J1119-1137</name>"
+            "<planet><name>2MASS J1119-1137 b</name><period>32850</period>"
+            "<list>Confirmed planets</list></planet></star>"
+            f"<rightascension>{_sexagesimal(169.88558 / 15)}</rightascension>"
+            f"<declination>{_sexagesimal(-11.62964, sign=True)}</declination>"
+            "</system>"
+        )
+        # The row names no star: its paper's join gives it OEC's.
+        files.eu.append(
+            eu_planet(
+                "2MASS J1119-1137 b",
+                "",
+                169.88558,
+                -11.62964,
+                orbital_period="32850",
+                mass="3.7",
+            )
+        )
+        result, _ = ingest(
+            root, backup, files.write(tmp_path / "one"), simbad_rows=rows
+        )
+        assert result.entry["counts"]["conflicts"] == 0
+        registry = Registry(root)
+        point = int(registry.lookup("simbad", "oid", ["9910123"])[0])
+        found_id = registry.lookup(OEC, "systems", ["2MASS J1119-1137"])[0]
+        assert int(found_id) == point
+        planets = table_rows(root, "planets").to_pylist()
+        assert [p["host"] for p in planets if "J1119" in p["designation"]] == [point]
 
 
 class TestWgsnStarNames:

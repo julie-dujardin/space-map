@@ -24,20 +24,27 @@ first by name.
 
 Each catalogue gives one engine row per identity that hosts a planet. Every
 row of an identity claims the same id: its Gaia DR3 id, else its HIP number,
-else the row of the first catalogue. The first catalogue's row of an identity
-without either id matches by position, or mints a literature star.
+else its SIMBAD object, else the row of the first catalogue. The first
+catalogue's row of an identity with none of these matches by position, or
+mints a literature star.
+
+A host claims its SIMBAD object only when that object has a row in the SIMBAD
+pass and no other identity holds it. Two components of one star can share an
+object, as `HD 41004 A` and `B` do.
 
 A star of `planet_hosts` joins by the Gaia DR3 id or SIMBAD object of its key.
 Its rows claim the key and carry no astrometry: they rank above SIMBAD's, and
-a catalogue's position of the star is the primary's. It has no values, so it
-gives a row only when no catalogue lists the star.
+a catalogue's position of the star is the primary's. A star that the table
+adds has no values, so it gives a row only when no catalogue lists the star.
+The rows of a host that claims its SIMBAD object carry no astrometry too, so
+the star keeps SIMBAD's.
 """
 
 import csv
 import logging
 import re
 from collections import Counter, defaultdict
-from collections.abc import Iterable
+from collections.abc import Container, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -68,6 +75,7 @@ logger = logging.getLogger(__name__)
 NEIGHBOURHOOD = gaia_provider.OUT_DIR / "dr2_neighbourhood.csv"
 GAIA_DR3 = ("gaia", "dr3")
 HIP = ("hip", "2007")
+SIMBAD_OID = ("simbad", "oid")
 # The kind of a row that may match by position, and of one that never does.
 STAR_KIND = "star"
 UNMATCHED_KIND = "planet host"
@@ -575,7 +583,7 @@ def host_rows(
                 "class": classes.get(identity.index, "star"),
             }
         )
-        if identity.listed:
+        if identity.listed or (claim and claim[:2] == SIMBAD_OID):
             rows[-1].update(dict.fromkeys(ASTROMETRY_FIELDS))
     return pa.Table.from_pylist(rows, schema=HOST_ROW_SCHEMA)
 
@@ -619,6 +627,33 @@ def _claim(identity: Identity, star: Star) -> tuple[str, str, str] | None:
         return None
     source = BY_NAME[first.catalogue]
     return (source.catalogue, source.release, first.key)
+
+
+def simbad_claims(
+    stars: Stars, host_identities: list[Identity], rows: Container[str]
+) -> dict[int, tuple[str, str, str]]:
+    """The SIMBAD claim of each host with no Gaia DR3 id or HIP number.
+
+    `rows` holds the objects with a row in the SIMBAD pass.
+    """
+    holders = Counter(identity.oid for identity in stars.identities)
+    found = {}
+    for identity in host_identities:
+        oid = identity.oid
+        if not oid or oid not in rows:
+            continue
+        if identity.gaia_dr3 or identity.hip or identity.listed:
+            continue
+        if holders[oid] > 1:
+            logger.warning(
+                "%s: SIMBAD %s is on %d stars, so no claim",
+                identity.name,
+                oid,
+                holders[oid],
+            )
+            continue
+        found[identity.index] = (*SIMBAD_OID, oid)
+    return found
 
 
 HOST_ROW_SCHEMA = pa.schema(

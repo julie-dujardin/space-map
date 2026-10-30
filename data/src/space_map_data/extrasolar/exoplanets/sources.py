@@ -1,8 +1,8 @@
 """The exoplanet catalogues as ingest sources of host stars.
 
 The names and the (catalogue, release) keys are permanent registry keys. A
-host row of the first catalogue that has no Gaia DR3 id or HIP number matches
-a registry star by position and G magnitude, as the IAU names do.
+host row of the first catalogue that claims no id matches a registry star by
+position and G magnitude, as the IAU names do.
 """
 
 from space_map_data.extrasolar.engine import Source

@@ -18,7 +18,7 @@ import math
 import re
 import xml.etree.ElementTree as ET
 from collections.abc import Iterable, Iterator
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from space_map_data.constants.stars import planet_hosts
@@ -215,9 +215,27 @@ def apply_papers(
     catalogue: Catalogue,
     hosts: dict[tuple[str, str], Host] = planet_hosts.HOSTS,
     joins: dict[tuple[str, str], Join] = planet_hosts.JOINS,
+    stars: dict[tuple[str, str], Host] = planet_hosts.STARS,
 ) -> Catalogue:
     """The catalogue with the corrections of `planet_hosts`."""
     found = set()
+    for row, entry in stars.items():
+        if row[0] != catalogue.name:
+            continue
+        if row[1] not in catalogue.stars:
+            logger.warning("planet_hosts names no star: %s %s", *row)
+            continue
+        listed = _listed_star(catalogue.name, entry.star)
+        catalogue.stars[row[1]] = replace(
+            catalogue.stars[row[1]],
+            ra=listed.ra,
+            dec=listed.dec,
+            # The table gives J2016.0, so the position takes no proper motion.
+            epoch=None,
+            gaia_dr3=listed.gaia_dr3,
+            oid=listed.oid,
+            listed=listed.listed,
+        )
     for planet in catalogue.planets:
         row = (catalogue.name, planet.name)
         if row in joins:

@@ -19,7 +19,7 @@ number: its Gaia row would make a second star.
 import logging
 import re
 from collections import Counter, defaultdict
-from collections.abc import Iterable
+from collections.abc import Container, Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
@@ -139,6 +139,8 @@ class Prepared:
     unread: list[int]
     # The Wikidata items of planets, which link to them at the commit.
     items: list[wikidata_provider.ExoplanetItem]
+    # Hosts that claim their SIMBAD object.
+    by_simbad: list[str]
 
     def batches(self, source: str) -> list[pa.Table]:
         return [self.host_rows[source]]
@@ -321,13 +323,15 @@ def prepare(
     hip_names: dict[int, str],
     inputs: Inputs = DEFAULT_INPUTS,
     wgsn: Iterable[names.WgsnName] = (),
+    simbad_rows: Container[str] = (),
 ) -> Prepared:
     """Join the stars and planets, and build the host rows.
 
     It comes after the star passes: `run` gives the stars that a host without
     ids may be a twin of. `hip_names` gives the Hipparcos name of each HIP
     number. `wgsn` gives the names of the IAU WGSN pass: a host row leaves out
-    a name that this pass claims on its star.
+    a name that this pass claims on its star. `simbad_rows` holds the objects
+    of the SIMBAD pass, which a host without ids can claim.
     """
     cats, hub = read.catalogues, read.hub
     stars = read.stars
@@ -377,6 +381,13 @@ def prepare(
             by_hip.append(f"{identity.name}: HIP {identity.hip}")
     for member, twin in search.claims.items():
         claims[stars.of[member]] = twin.claim
+    by_simbad = []
+    found = hosts.simbad_claims(stars, host_identities, simbad_rows)
+    for index, claim in found.items():
+        # A twin is a star of Gaia or Hipparcos, which rank above SIMBAD.
+        if index not in claims:
+            claims[index] = claim
+            by_simbad.append(f"{stars.identities[index].name}: {'/'.join(claim)}")
     long_names = {
         i.index: hip_names[i.hip] for i in host_identities if i.hip in hip_names
     }
@@ -405,12 +416,13 @@ def prepare(
         logger.warning("exoplanets: no Wikidata items at %s", inputs.wikidata)
     logger.info(
         "exoplanets: %d planets around %d stars, %d Gaia rows for unpositionable"
-        " hosts, %d hosts by their HIP number, %d twins and %d joins of %d stars"
-        " without ids",
+        " hosts, %d hosts by their HIP number, %d by their SIMBAD object, %d twins"
+        " and %d joins of %d stars without ids",
         len(records),
         len(host_list),
         read.gaia_rows.num_rows,
         len(by_hip),
+        len(by_simbad),
         len(search.claims),
         len(search.joined),
         len(search.targets),
@@ -433,6 +445,7 @@ def prepare(
         by_hip,
         unread,
         items,
+        by_simbad,
     )
 
 
@@ -924,6 +937,11 @@ class PlanetsExtension:
             "hosts that claim their HIP number, since their DR3 source is"
             " unpositionable",
             prepared.by_hip,
+            limit=None,
+        )
+        lines += _listed(
+            "hosts without a Gaia DR3 id or HIP number that claim their SIMBAD object",
+            prepared.by_simbad,
             limit=None,
         )
         lines += _listed(

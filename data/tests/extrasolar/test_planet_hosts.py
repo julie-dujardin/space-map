@@ -9,6 +9,7 @@ from space_map_data.constants.stars.planet_hosts import (
     HOSTS,
     JOINS,
     REFERENCES,
+    STARS,
     Host,
     HostStar,
     Join,
@@ -50,18 +51,22 @@ class TestTable:
     """The entries are ones that the code can follow."""
 
     def test_references(self):
-        for entry in (*HOSTS.values(), *JOINS.values()):
+        for entry in (*HOSTS.values(), *JOINS.values(), *STARS.values()):
             assert entry.reference in REFERENCES
 
     def test_rows_name_a_catalogue(self):
-        for found, _ in (*HOSTS, *JOINS):
+        for found, _ in (*HOSTS, *JOINS, *STARS):
             assert found in CATALOGUES
         for join in JOINS.values():
             assert join.row[0] in CATALOGUES
 
     def test_keys_give_a_gaia_id_or_a_simbad_object(self):
-        for entry in HOSTS.values():
+        for entry in (*HOSTS.values(), *STARS.values()):
             assert entry.star.key[:2] in (("gaia", "dr3"), ("simbad", "oid"))
+
+    def test_a_star_entry_keeps_the_name_of_its_row(self):
+        for (_, name), entry in STARS.items():
+            assert entry.star.name == name
 
     def test_a_join_names_an_earlier_row_unless_it_has_no_star(self):
         later = {
@@ -76,9 +81,9 @@ class TestTable:
 class TestApplyPapers:
     """A paper moves a row to its star, or names the row it joins."""
 
-    def cited(self, *rows, stars=("S",), hosts_=None, joins=None):
+    def cited(self, *rows, stars=("S",), hosts_=None, joins=None, stars_=None):
         found = catalogue(EU, [star(EU, name) for name in stars], list(rows))
-        return apply_papers(found, hosts_ or {}, joins or {})
+        return apply_papers(found, hosts_ or {}, joins or {}, stars_ or {})
 
     def test_a_listed_row_moves_to_its_star(self):
         values = {"mass": Measure(30.0), "star_mass": Measure(0.5)}
@@ -128,7 +133,26 @@ class TestApplyPapers:
     def test_an_entry_of_another_catalogue_is_silent(self, caplog):
         with caplog.at_level(logging.WARNING):
             self.cited(hosts_={(OEC, "Gone b"): host(GAIA_STAR)})
+            self.cited(stars_={(OEC, "Gone"): host(GAIA_STAR)})
         assert caplog.text == ""
+
+    def test_a_star_row_takes_the_key_and_position(self):
+        found = self.cited(
+            planet(EU, "S b", "S"), stars_={(EU, "S"): host(GAIA_STAR)}
+        ).stars["S"]
+        assert (found.ra, found.dec, found.epoch) == (10.0, 20.0, None)
+        assert (found.gaia_dr3, found.listed) == (77, GAIA_STAR.key)
+        assert found.name == "S"
+
+    def test_a_star_row_keeps_its_planets_and_letters(self):
+        found = self.cited(planet(EU, "S b", "S"), stars_={(EU, "S"): host(GAIA_STAR)})
+        assert (found.planets[0].star, found.planets[0].letter) == ("S", "b")
+        assert found.planets[0].listed is False
+
+    def test_a_star_entry_with_no_row_is_loud(self, caplog):
+        with caplog.at_level(logging.WARNING):
+            self.cited(stars_={(EU, "Gone"): host(GAIA_STAR)})
+        assert "planet_hosts names no star" in caplog.text
 
 
 class TestReaders:
@@ -203,7 +227,7 @@ class TestStars:
 
     def test_a_gaia_key_joins_the_star_of_its_id(self):
         eu = catalogue(EU, [star(EU, "S")], [planet(EU, "S Bb", "S")])
-        apply_papers(eu, {(EU, "S Bb"): host(GAIA_STAR)}, {})
+        apply_papers(eu, {(EU, "S Bb"): host(GAIA_STAR)}, {}, {})
         archive = catalogue(ARCHIVE, [star(ARCHIVE, "2.1", "P", gaia_dr3=77)], [])
         stars = hosts.build_stars([archive, eu], hub(), {})
         found = identity(stars, EU, "T A")
@@ -284,6 +308,87 @@ class TestHostRows:
             self.rows(self.found(self.oec()), OEC)[0],
         ):
             assert all(row[name] is None for name in hosts.ASTROMETRY_FIELDS)
+
+
+class TestSimbadClaims:
+    """A host with no Gaia DR3 id or HIP number claims a SIMBAD object that
+    has a row and that no other identity holds."""
+
+    def stars(self, *rows, **fields):
+        found = hub(**fields)
+        return hosts.build_stars([catalogue(EU, list(rows), [])], found, {})
+
+    def claims(self, stars, rows=("7",)):
+        return hosts.simbad_claims(stars, stars.identities, rows)
+
+    def test_a_host_without_ids_claims_its_object(self):
+        stars = self.stars(star(EU, "PSR", oid="7"))
+        assert self.claims(stars) == {0: ("simbad", "oid", "7")}
+
+    def test_an_object_with_no_row_gives_no_claim(self):
+        assert self.claims(self.stars(star(EU, "PSR", oid="7")), ()) == {}
+
+    def test_a_host_with_no_object_gives_no_claim(self):
+        assert self.claims(self.stars(star(EU, "PSR"))) == {}
+
+    @pytest.mark.parametrize("ids", [{"gaia_dr3": 5}, {"hip": 5}])
+    def test_a_host_with_another_id_claims_that(self, ids):
+        assert self.claims(self.stars(star(EU, "PSR", oid="7", **ids))) == {}
+
+    def test_an_object_on_two_identities_gives_no_claim(self, caplog):
+        stars = self.stars(star(EU, "HD 1 A", oid="7"), star(EU, "HD 1 B", oid="7"))
+        assert len(stars.identities) == 2
+        with caplog.at_level(logging.WARNING):
+            assert self.claims(stars) == {}
+        assert "SIMBAD 7 is on 2 stars" in caplog.text
+
+    def test_a_star_outside_the_hosts_still_holds_its_object(self):
+        stars = self.stars(star(EU, "HD 1 A", oid="7"), star(EU, "HD 1 B", oid="7"))
+        assert hosts.simbad_claims(stars, stars.identities[:1], ("7",)) == {}
+
+    def test_a_listed_star_claims_its_key_only(self):
+        eu = catalogue(EU, [star(EU, "S")], [planet(EU, "S Bb", "S")])
+        apply_papers(eu, {(EU, "S Bb"): host(SIMBAD_STAR)}, {}, {})
+        found = hosts.build_stars([eu], hub(), {})
+        assert hosts.simbad_claims(found, found.identities, ("88",)) == {}
+
+
+class TestSimbadRows:
+    """A host that claims its SIMBAD object leaves its astrometry to SIMBAD."""
+
+    def rows(self, claim):
+        values = {
+            "parallax": Measure(4.4),
+            "pmra": Measure(1.0),
+            "pmdec": Measure(2.0),
+            "distance": Measure(230.0),
+        }
+        stars = hosts.build_stars(
+            [catalogue(EU, [star(EU, "PSR", values=values, oid="7")], [])], hub(), {}
+        )
+        claims = {0: claim} if claim else {}
+        return hosts.host_rows(
+            EU, stars.identities, {}, {}, {}, set(), claims, {}
+        ).to_pylist()[0]
+
+    def test_the_row_has_no_astrometry(self):
+        row = self.rows(("simbad", "oid", "7"))
+        assert row["claims"] == [
+            {"catalogue": "simbad", "release": "oid", "catalogue_id": "7"}
+        ]
+        assert all(row[name] is None for name in hosts.ASTROMETRY_FIELDS)
+
+    def test_the_row_keeps_its_place_in_the_match_and_its_distance(self):
+        row = self.rows(("simbad", "oid", "7"))
+        assert row["match_ra"] is not None
+        assert row["host_distance"] == 230.0
+
+    def test_another_claim_keeps_the_astrometry(self):
+        row = self.rows(("hip", "2007", "5"))
+        assert row["parallax"] == pytest.approx(4.4)
+
+    def test_no_claim_keeps_the_astrometry(self):
+        assert self.rows(None)["parallax"] == pytest.approx(4.4)
 
 
 class TestJoin:

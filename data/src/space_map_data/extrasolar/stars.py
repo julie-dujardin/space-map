@@ -257,7 +257,12 @@ def ingest(
         run.add(IAU_WGSN, [name_rows], complete)
         # The hosts without ids look for twins among the stars of these passes.
         planets = exoplanets.prepare(
-            read, run, hip_names, exoplanet_inputs, names.claimed(name_rows, iau_rows)
+            read,
+            run,
+            hip_names,
+            exoplanet_inputs,
+            names.claimed(name_rows, iau_rows),
+            set(simbad_rows["catalogue_id"].to_pylist()),
         )
         planets.host_rows = {
             name: _keep(rows, ranges) for name, rows in planets.host_rows.items()

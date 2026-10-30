@@ -10,6 +10,9 @@ claims the key of the star, so that the star keeps its one point.
 JOINS makes one planet of two rows that no score can join. The named row
 comes from an earlier catalogue. A row with no star names the row that gives
 it one, which can come later.
+
+STARS gives a star row of a catalogue, keyed by (catalogue, star key), the key
+and position of its star. The row then claims that key.
 """
 
 from typing import NamedTuple
@@ -60,6 +63,12 @@ REFERENCES: dict[str, Reference] = {
         " Spanning the Stellar to Planetary Mass Regimes (ApJ 811, L30)",
         "https://doi.org/10.1088/2041-8205/811/2/L30",
     ),
+    "burgasser_2011": Reference(
+        "Burgasser et al. 2011",
+        "The Hyperactive L Dwarf 2MASS J13153094−2649513: Continued Emission and a"
+        " Brown Dwarf Companion (ApJ 739, 49)",
+        "https://doi.org/10.1088/0004-637X/739/1/49",
+    ),
     "chung_2019": Reference(
         "Chung et al. 2019",
         "Spitzer Microlensing of MOA-2016-BLG-231L: A Counter-rotating Brown"
@@ -77,6 +86,12 @@ REFERENCES: dict[str, Reference] = {
         "New Evidence for a Substellar Luminosity Problem: Dynamical Mass for"
         " the Brown Dwarf Binary Gl 417BC (ApJ 790, 133)",
         "https://doi.org/10.1088/0004-637X/790/2/133",
+    ),
+    "guerrero_2021": Reference(
+        "Guerrero et al. 2021",
+        "The TESS Objects of Interest Catalog from the TESS Prime Mission"
+        " (ApJS 254, 39)",
+        "https://doi.org/10.3847/1538-4365/abefe1",
     ),
     "hoy_2026": Reference(
         "Hoy et al. 2026",
@@ -142,4 +157,32 @@ JOINS: dict[tuple[str, str], Join] = {
     # 3.6 AU, 90 yr and 3.7 MJ, and 0.88 AU and 9 MJ, and name no star.
     (EU, "2MASS J1119-1137 b"): Join((OEC, "2MASS J1119-1137 b"), "best_2017"),
     (EU, "MOA-2016-BLG-231 b"): Join((OEC, "MOA-2016-BLG-231 b"), "chung_2019"),
+}
+
+STARS: dict[tuple[str, str], Host] = {
+    # SIMBAD's TWA 42 is the 2MASS J11193254−1137466 of the title. The short
+    # name of the row resolves to no object.
+    (OEC, "2MASS J1119-1137"): Host(
+        HostStar(
+            ("simbad", "oid", "9910123"), "2MASS J1119-1137", 169.88492, -11.63007
+        ),
+        "best_2017",
+    ),
+    # The row has the declination with the wrong sign.
+    (EU, "2MASS J1315-2649"): Host(
+        HostStar(
+            ("gaia", "dr3", "6186534394250282752"),
+            "2MASS J1315-2649",
+            198.87515,
+            -26.83235,
+        ),
+        "burgasser_2011",
+    ),
+    # The row is 115° from TIC 304339227, the star of the TOI table.
+    (EU, "TOI-4629"): Host(
+        HostStar(
+            ("gaia", "dr3", "6432805482548304384"), "TOI-4629", 275.94309, -68.34495
+        ),
+        "guerrero_2021",
+    ),
 }
