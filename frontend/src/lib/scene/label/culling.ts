@@ -18,6 +18,8 @@ const _tmpProj = new Vector3();
 /** Body-label vertical extent in px (text height + line-height + shadow).
  *  Used as the `h` field of every body-label accepted rect. */
 const LH = 22;
+/** The largest dimmed halo: a minor body's, at scale 0.5. */
+const DIMMED_HALO_RADIUS_PX = HALO_RADIUS_PX * 0.5;
 
 /**
  * A body large enough to hide labels behind it, tested via its tangent cone —
@@ -321,6 +323,18 @@ export const acceptedBodyLabelRects = {
 	}
 };
 
+const _dimmedHalos: AcceptedRect[] = [];
+let _dimmedHalosActive = 0;
+
+/** The visible halos left out of {@link acceptedBodyLabelRects}, at their
+ *  dimmed size. Filled only for a caller that asks for them. */
+export const dimmedHaloRects = {
+	rects: _dimmedHalos as readonly AcceptedRect[],
+	get count(): number {
+		return _dimmedHalosActive;
+	}
+};
+
 function makeCandidate(): Candidate {
 	return {
 		bodyId: '',
@@ -510,15 +524,27 @@ export function refreshVisibleBodyLabelRects(
 	screenWidth: number,
 	screenHeight: number,
 	camera: PerspectiveCamera,
-	focusTruePos: [number, number, number]
+	focusTruePos: [number, number, number],
+	withDimmedHalos = false
 ): void {
 	_acceptedActive = seedAccepted();
+	_dimmedHalosActive = 0;
 	for (const bo of bodyObjects.values()) {
 		if (!bo.label?.visible) continue;
 		// `labelMaximized === false` only after the body cull explicitly dimmed
 		// the label; undefined (never culled) is treated as maximized so freshly
 		// appeared labels still cull features behind them.
-		if (bo.labelMaximized === false) continue;
+		if (bo.labelMaximized === false) {
+			if (!withDimmedHalos || bo.haloShare === 0) continue;
+			if (!labelScreenRect(bo, camera, focusTruePos, screenWidth, screenHeight, _projRect))
+				continue;
+			const halo = poolSlot(_dimmedHalos, _dimmedHalosActive++, makeRect);
+			halo.left = _projRect.x - DIMMED_HALO_RADIUS_PX;
+			halo.right = _projRect.x + DIMMED_HALO_RADIUS_PX;
+			halo.y = _projRect.y;
+			halo.h = 2 * DIMMED_HALO_RADIUS_PX;
+			continue;
+		}
 		if (!labelScreenRect(bo, camera, focusTruePos, screenWidth, screenHeight, _projRect)) continue;
 		copyRect(poolSlot(_accepted, _acceptedActive++, makeRect), _projRect);
 	}

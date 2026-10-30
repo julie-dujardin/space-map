@@ -1,3 +1,4 @@
+import { sceneSettings } from '$lib/scene/settings.svelte';
 import { Quaternion, Vector3 } from 'three';
 import type { PerspectiveCamera, PointsMaterial, ShaderMaterial, WebGLRenderer } from 'three';
 import type { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
@@ -595,7 +596,14 @@ export function updateBodyVisibility(
 	// nomenclature cull below sees fresh body rects, not the 0–2-frame-stale
 	// snapshot from the throttled body cull above. Without this, feature
 	// labels flicker briefly at the transition as a body label slides over.
-	refreshVisibleBodyLabelRects(bodyObjects, screenW, screenH, camera, focusTruePos);
+	refreshVisibleBodyLabelRects(
+		bodyObjects,
+		screenW,
+		screenH,
+		camera,
+		focusTruePos,
+		sceneSettings().showConstellations
+	);
 
 	// Feature-label collision cull runs every frame for the focused body only
 	// (small N — visible labels per body, after size band, typically < 200).

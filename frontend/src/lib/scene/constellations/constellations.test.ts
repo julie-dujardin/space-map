@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { SkyCultureFile } from '$lib/fetch/extrasolar/skycultures';
-import { constellationShape } from './constellations';
+import { constellationShape, cullLabels, type LabelBox } from './constellations';
 
 const FILE: SkyCultureFile = {
 	token: '0',
@@ -66,5 +66,48 @@ describe('constellationShape', () => {
 		const [{ anchor }] = constellationShape(FILE, 'en').labels;
 		expect(anchor[0]).toBeCloseTo(anchor[1]);
 		expect(Math.hypot(...anchor)).toBeCloseTo(15);
+	});
+});
+
+function box(left: number, top: number, inView = true): LabelBox {
+	return { left, right: left + 50, top, bottom: top + 14, inView, shown: false };
+}
+
+describe('cullLabels', () => {
+	it('keeps the first of two boxes that meet', () => {
+		const boxes = [box(0, 0), box(40, 5)];
+		cullLabels(boxes, []);
+		expect(boxes.map((b) => b.shown)).toEqual([true, false]);
+	});
+
+	it('keeps boxes that only touch', () => {
+		const boxes = [box(0, 0), box(50, 0), box(0, 14)];
+		cullLabels(boxes, []);
+		expect(boxes.map((b) => b.shown)).toEqual([true, true, true]);
+	});
+
+	it('does not let a hidden box hide another', () => {
+		const boxes = [box(0, 0), box(40, 0), box(80, 0)];
+		cullLabels(boxes, []);
+		expect(boxes.map((b) => b.shown)).toEqual([true, false, true]);
+	});
+
+	it('does not let a box out of view hide another', () => {
+		const boxes = [box(0, 0, false), box(0, 0)];
+		cullLabels(boxes, []);
+		expect(boxes.map((b) => b.shown)).toEqual([false, true]);
+	});
+
+	it('hides a box that meets a body label or halo', () => {
+		const boxes = [box(0, 0), box(200, 0)];
+		const rects = [{ left: 30, right: 90, y: 7, h: 22 }];
+		cullLabels(boxes, [{ rects, count: 1 }]);
+		expect(boxes.map((b) => b.shown)).toEqual([false, true]);
+	});
+
+	it('reads only the counted rects of a pool', () => {
+		const boxes = [box(0, 0)];
+		cullLabels(boxes, [{ rects: [{ left: 0, right: 50, y: 7, h: 22 }], count: 0 }]);
+		expect(boxes[0].shown).toBe(true);
 	});
 });

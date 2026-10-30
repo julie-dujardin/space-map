@@ -25,6 +25,11 @@ import {
 	type SkyCultureFile
 } from '$lib/fetch/extrasolar/skycultures';
 import { getLocale } from '$lib/host';
+import {
+	acceptedBodyLabelRects,
+	dimmedHaloRects,
+	type AcceptedRect
+} from '$lib/scene/label/culling';
 import { RetryBackoff } from '$lib/fetch/retry-backoff';
 import { clampToFarGlsl } from '$lib/scene/setup/depth-mode';
 import { sceneSettings } from '$lib/scene/settings.svelte';
@@ -42,6 +47,9 @@ const LINE_COLOUR = new Color(0.16, 0.24, 0.38);
 const REBASE_PC = 1e-3;
 /** Longest fade step: an idle map's first frame must not skip the fade. */
 const MAX_STEP_MS = 50;
+/** The text box of a 12px label. */
+const LABEL_HALF_HEIGHT_PX = 7;
+const UNMEASURED_LABEL_PX = 60;
 /** Under this share, a label is not worth a DOM element on screen. */
 const LABEL_MIN_SHARE = 0.02;
 
@@ -53,6 +61,18 @@ export interface ConstellationLabel {
 	name: string;
 	/** pc, in the frame of the render tree. */
 	anchor: Vec3;
+	/** Lines of the figure: where two labels meet, the larger figure keeps its name. */
+	weight: number;
+}
+
+/** A label's place on screen. `shown` is the answer of {@link cullLabels}. */
+export interface LabelBox {
+	left: number;
+	right: number;
+	top: number;
+	bottom: number;
+	inView: boolean;
+	shown: boolean;
 }
 
 export interface ConstellationShape {
@@ -116,9 +136,47 @@ export function constellationShape(file: SkyCultureFile, locale: string): Conste
 			}
 		}
 		if (lines.length === 0) continue;
-		labels.push({ name: labelOf(figure, locale), anchor: anchorOf(largestPart(lines)) });
+		labels.push({
+			name: labelOf(figure, locale),
+			anchor: anchorOf(largestPart(lines)),
+			weight: lines.length
+		});
 	}
+	labels.sort((a, b) => b.weight - a.weight);
 	return { positions: new Float64Array(points), labels };
+}
+
+function boxesMeet(a: LabelBox, b: LabelBox): boolean {
+	return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+}
+
+function meetsBodyRect(box: LabelBox, rect: AcceptedRect): boolean {
+	return (
+		box.left < rect.right &&
+		box.right > rect.left &&
+		box.top < rect.y + rect.h / 2 &&
+		box.bottom > rect.y - rect.h / 2
+	);
+}
+
+/** Set `shown` on boxes given most important first: a box goes when it meets a
+ *  body's rect or a box kept before it. */
+export function cullLabels(
+	boxes: readonly LabelBox[],
+	bodies: readonly { rects: readonly AcceptedRect[]; count: number }[]
+): void {
+	for (let i = 0; i < boxes.length; i++) {
+		const box = boxes[i];
+		box.shown = box.inView;
+		for (const { rects, count } of bodies) {
+			for (let j = 0; box.shown && j < count; j++) {
+				if (meetsBodyRect(box, rects[j])) box.shown = false;
+			}
+		}
+		for (let j = 0; box.shown && j < i; j++) {
+			if (boxes[j].shown && boxesMeet(box, boxes[j])) box.shown = false;
+		}
+	}
 }
 
 function lineMaterial(): ShaderMaterial {
@@ -166,7 +224,8 @@ export class ConstellationSystem {
 	private positions: Float64Array = new Float64Array(0);
 	private readonly origin: Vec3 = [Infinity, 0, 0];
 	private readonly direction = new Vector3();
-	private labels: { object: CSS2DObject; anchor: Vec3 }[] = [];
+	private labels: { object: CSS2DObject; anchor: Vec3; width: number; box: LabelBox }[] = [];
+	private boxes: LabelBox[] = [];
 	private readonly forward = new Vector3();
 	private readonly retry: RetryBackoff<string>;
 	private credits: readonly ExtrasolarCredit[] = [];
@@ -219,8 +278,11 @@ export class ConstellationSystem {
 			this.geometry.setAttribute('position', attribute.setUsage(DynamicDrawUsage));
 			this.labels = shape.labels.map(({ name, anchor }) => ({
 				object: makeLabel(name, this.mapLayer),
-				anchor
+				anchor,
+				width: 0,
+				box: { left: 0, right: 0, top: 0, bottom: 0, inView: false, shown: false }
 			}));
+			this.boxes = this.labels.map((label) => label.box);
 			for (const { object } of this.labels) this.names.add(object);
 			this.credits = culture.credits;
 			this.invalidate();
@@ -248,7 +310,13 @@ export class ConstellationSystem {
 
 	/** Per drawn frame. `focus` is the floating origin (scene units from the
 	 *  barycentre); `gain` dims the lines with the sky. */
-	update(camera: PerspectiveCamera, focus: Vec3, gain: number, nowMs: number): void {
+	update(
+		camera: PerspectiveCamera,
+		focus: Vec3,
+		gain: number,
+		nowMs: number,
+		viewportH: number
+	): void {
 		const dtMs = this.lastFrameMs ? Math.min(nowMs - this.lastFrameMs, MAX_STEP_MS) : 0;
 		this.lastFrameMs = nowMs;
 		const wanted = this.wanted();
@@ -287,11 +355,29 @@ export class ConstellationSystem {
 		// Inside the depth range, or the label pass drops them.
 		const reach = Math.sqrt(camera.near * camera.far);
 		camera.getWorldDirection(this.forward);
-		for (const { object, anchor } of this.labels) {
+		const screenW = viewportH * camera.aspect;
+		for (const label of this.labels) {
+			const { object, anchor, box } = label;
 			treeToScene(anchor[0] - cx, anchor[1] - cy, anchor[2] - cz, this.direction).normalize();
 			object.position.copy(camera.position).addScaledVector(this.direction, reach);
 			// Forward depth loses the sign of a far point behind the camera.
-			object.visible = this.direction.dot(this.forward) > 0;
+			box.inView = this.direction.dot(this.forward) > 0;
+			if (!box.inView) continue;
+			// An element measures 0 until the label pass first lays it out.
+			label.width ||= object.element.offsetWidth;
+			const halfWidth = (label.width || UNMEASURED_LABEL_PX) / 2;
+			this.direction.copy(object.position).project(camera);
+			const x = (this.direction.x * 0.5 + 0.5) * screenW;
+			const y = (-this.direction.y * 0.5 + 0.5) * viewportH;
+			box.left = x - halfWidth;
+			box.right = x + halfWidth;
+			box.top = y - LABEL_HALF_HEIGHT_PX;
+			box.bottom = y + LABEL_HALF_HEIGHT_PX;
+		}
+		cullLabels(this.boxes, [acceptedBodyLabelRects, dimmedHaloRects]);
+		for (const { object, box, width } of this.labels) {
+			// Laid out once whatever it meets, or a hidden label is never measured.
+			object.visible = box.shown || (box.inView && width === 0);
 		}
 	}
 

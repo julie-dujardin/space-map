@@ -1426,7 +1426,8 @@ export class SceneRenderer {
 			this.camera,
 			this.focus.focusTruePos,
 			atmoState.skyboxIntensity,
-			nowMs
+			nowMs,
+			this.viewportH
 		);
 		this.updateSky(atmoState.skyboxIntensity);
 		if (sunBo?.starPoint) {
