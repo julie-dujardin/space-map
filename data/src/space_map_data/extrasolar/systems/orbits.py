@@ -3,7 +3,8 @@
 ORBITS has one row per orbit of one pair, as a source gives it. A pair can
 have several rows in one source, and the sources overlap: the MSC repeats
 ORB6 orbits ("VB6" in its note), SB9 orbits and Gaia DR3 ones. COMPONENTS
-has one row per star of a pair, with the values that a source gives for it.
+has one row per star of a pair, with the values that a source gives for it:
+the stars of the papers and of OEC, and the two masses of each MSC pair.
 
 The values keep the source's numbers in fixed units: P in d, times as full
 JD in the source's time scale, a in arcsec (`semi_major_axis`) or AU
@@ -15,7 +16,7 @@ orbit elements.
 
 How a row reaches our objects:
 - msc: its WDS id, and the MSC id `<WDS id> <secondary>` of the member whose
-  orbit it is, as in the MSC tree source.
+  orbit it is, as in the MSC tree source. Its masses reach the pair so too.
 - orb6: its WDS id with `designation` (the discoverer code) and `pair`, as
   in the WDS, and its HIP and HD numbers.
 - sbx: the HIP, HD, HR, Gaia DR3 and WDS ids of its alias table, and its
@@ -46,6 +47,7 @@ from space_map_data.extrasolar.exoplanets.catalogues import (
     sexagesimal,
 )
 from space_map_data.extrasolar.systems.msc import PERIOD_UNITS as MSC_PERIOD_DAYS
+from space_map_data.extrasolar.systems.msc import refuted
 from space_map_data.extrasolar.systems.nodes import (
     ASTROMETRIC_ORBIT,
     GAIA_DR3,
@@ -153,6 +155,8 @@ COMPONENTS = pa.schema(
         # The component letter or, for OEC, the star's first name.
         pa.field("label", pa.string()),
         *_measured(("mass", "radius", "teff", "metallicity")),
+        # How the source found the mass: the MSC's mass code.
+        pa.field("mass_method", pa.string()),
         pa.field("spectral_type", pa.string()),
         pa.field("reference", pa.string()),
     ]
@@ -288,6 +292,42 @@ def msc_orbits(directory: Path = msc.OUT_DIR) -> pa.Table:
     table = out.table()
     logger.info("MSC: %d orbits; %s", table.num_rows, dict(counts))
     return table
+
+
+def msc_masses(pairs: list[dict]) -> pa.Table:
+    """The two masses of each pair of the MSC's sys.tsv, as COMPONENTS, the
+    primary first.
+
+    A pair has rows only when both masses are known: a zero is unknown
+    (Readme note 4). A refuted or optical pair has none. `mass_method` is the
+    MSC's code: r published, v, k or a estimated from the absolute V or K
+    magnitude or the spectral type, s the sum of a subsystem, q from the
+    primary's mass and the mass ratio, m the minimum mass of the secondary
+    of an SB1.
+    """
+    out = _Rows(COMPONENTS, MSC)
+    for at, row in enumerate(pairs):
+        wds_id, primary, secondary = row["WDS"], row["Primary"], row["Secondary"]
+        masses = _known(row["Mass1"]), _known(row["Mass2"])
+        if not (primary and secondary and all(masses)) or refuted(row):
+            continue
+        ids = [(*WDS_ID, wds_id), (*MSC_ID, f"{wds_id} {secondary}")]
+        for label, mass, code in (
+            (primary, masses[0], row["MCode1"]),
+            (secondary, masses[1], row["MCode2"]),
+        ):
+            out.add(
+                ids,
+                system=wds_id,
+                pair=f"{primary},{secondary}",
+                primary=primary,
+                secondary=secondary,
+                row=at,
+                label=label,
+                **_value("mass", mass),
+                mass_method=(code or "").strip() or None,
+            )
+    return out.table()
 
 
 def _orb6_epoch(value: float | None, unit: str | None) -> tuple[float | None, float]:
@@ -665,4 +705,5 @@ def read_orbits() -> tuple[pa.Table, pa.Table]:
     orbits = pa.concat_tables(
         [literature, msc_orbits(), orb6_orbits(), sbx_orbits(), oec]
     )
-    return orbits, pa.concat_tables([literature_stars, oec_stars])
+    masses = msc_masses(msc.read_table(msc.SYS_FILE).to_pylist())
+    return orbits, pa.concat_tables([literature_stars, oec_stars, masses])

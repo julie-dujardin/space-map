@@ -21,6 +21,7 @@ from tests.extrasolar.systems_fakes import (
     KEPLER_16_GAIA,
     FakeResolver,
     catalogue_orbits,
+    msc_pair,
 )
 
 
@@ -116,9 +117,37 @@ def kepler_16() -> Systems:
     )
 
 
+def msc_masses(*rows: tuple[str, str, float, str, float, str]) -> pa.Table:
+    """COMPONENTS of α Cen's pairs in the MSC's sys.tsv."""
+    return orbits.msc_masses(
+        [
+            msc_pair(
+                "14396-6050",
+                primary,
+                secondary,
+                "*",
+                Mass1=m1,
+                MCode1=c1,
+                Mass2=m2,
+                MCode2=c2,
+            )
+            for primary, secondary, m1, c1, m2, c2 in rows
+        ]
+    )
+
+
+ALPHA_CEN_MASSES = ("A", "B", 1.10, "v", 0.88, "v")
+
+
 @pytest.fixture
 def alpha_cen_orbits(tmp_path) -> pa.Table:
     return catalogue_orbits(tmp_path)
+
+
+@pytest.fixture
+def orb6_only(alpha_cen_orbits) -> pa.Table:
+    """α Cen AB's ORB6 orbit, which gives no mass ratio."""
+    return alpha_cen_orbits.filter(pc.equal(alpha_cen_orbits["source"], orbits.ORB6))
 
 
 class TestPairs:
@@ -283,6 +312,74 @@ class TestPairs:
         # With no masses Gaia gives no a.
         assert found.orbits.num_rows == 0
         assert found.counts["pairs with orbits and no semi-major axis"] == 1
+
+
+class TestMassRatio:
+    """The MSC's masses of a pair give its mass ratio when no other source
+    does."""
+
+    def test_the_msc_masses_last(self, orb6_only):
+        stars = msc_masses(ALPHA_CEN_MASSES)
+        found = drawn.draw(
+            alpha_cen(),
+            Inputs(catalogue_orbits=orb6_only, catalogue_stars=stars),
+            FakeResolver({}, []),
+        )
+        (row,) = found.orbits.to_pylist()
+        assert row["barycentre"] == pytest.approx(0.88 / (1.10 + 0.88))
+        assert row["mass_ratio_source"] == "msc"
+        assert found.counts["msc: masses on a pair"] == 1
+        assert found.counts["pairs drawn, mass ratio from msc masses"] == 1
+        assert found.counts["pairs drawn, MSC mass codes v/v"] == 1
+
+    def test_members_in_the_other_order(self, orb6_only):
+        stars = msc_masses(ALPHA_CEN_MASSES)
+        found = drawn.draw(
+            alpha_cen("B", "A"),
+            Inputs(catalogue_orbits=orb6_only, catalogue_stars=stars),
+            FakeResolver({}, []),
+        )
+        (row,) = found.orbits.to_pylist()
+        assert row["barycentre"] == pytest.approx(1.10 / (1.10 + 0.88))
+
+    def test_the_k1_and_k2_of_the_msc_come_first(self, alpha_cen_orbits):
+        stars = msc_masses(ALPHA_CEN_MASSES)
+        found = drawn.draw(
+            alpha_cen(),
+            Inputs(catalogue_orbits=alpha_cen_orbits, catalogue_stars=stars),
+            FakeResolver({}, []),
+        )
+        (row,) = found.orbits.to_pylist()
+        assert row["barycentre"] == pytest.approx(4.61 / (4.61 + 5.45))
+        assert found.counts["pairs drawn, mass ratio from msc velocities"] == 1
+
+    def test_the_msc_masses_give_no_semi_major_axis(self, orb6_only):
+        """Kepler's third law takes the masses of the papers, Gaia and OEC."""
+        no_axis = orb6_only.set_column(
+            orb6_only.schema.get_field_index("semi_major_axis"),
+            "semi_major_axis",
+            pa.nulls(orb6_only.num_rows, pa.float64()),
+        )
+        found = drawn.draw(
+            alpha_cen(),
+            Inputs(
+                catalogue_orbits=no_axis, catalogue_stars=msc_masses(ALPHA_CEN_MASSES)
+            ),
+            FakeResolver({}, []),
+        )
+        assert found.orbits.num_rows == 0
+        assert found.counts["pairs with orbits and no semi-major axis"] == 1
+
+    def test_masses_of_no_pair(self, orb6_only):
+        stars = msc_masses(("Ba", "Bb", 0.5, "v", 0.4, "v"))
+        found = drawn.draw(
+            alpha_cen(),
+            Inputs(catalogue_orbits=orb6_only, catalogue_stars=stars),
+            FakeResolver({}, []),
+        )
+        (row,) = found.orbits.to_pylist()
+        assert row["barycentre"] is None
+        assert found.counts["msc: masses of pairs in no tree"] == 1
 
 
 class TestHeldStars:

@@ -22,12 +22,70 @@ from tests.download.orbit_catalogue_files import (
     SBX_ORBITS,
     SBX_SYSTEMS,
 )
+from tests.extrasolar.systems_fakes import msc_pair
 
 YEAR, BESSELIAN = orbits.JULIAN_YEAR, orbits.TROPICAL_YEAR
 
 
 def ids(row: dict) -> set[tuple[str, str, str]]:
     return {(i["catalogue"], i["release"], i["catalogue_id"]) for i in row["ids"]}
+
+
+class TestMSCMasses:
+    """The two masses of each pair of the MSC's sys.tsv."""
+
+    def test_alpha_cen(self):
+        rows = orbits.msc_masses(
+            [
+                msc_pair(
+                    "14396-6050",
+                    "AB",
+                    "C",
+                    "*",
+                    Mass1=1.98,
+                    MCode1="s",
+                    Mass2=0.12,
+                    MCode2="v",
+                ),
+                msc_pair(
+                    "14396-6050",
+                    "A",
+                    "B",
+                    "AB",
+                    Mass1=1.10,
+                    MCode1="v",
+                    Mass2=0.88,
+                    MCode2="v",
+                ),
+            ]
+        ).to_pylist()
+        assert [(r["row"], r["label"], r["mass"], r["mass_method"]) for r in rows] == [
+            (0, "AB", 1.98, "s"),
+            (0, "C", 0.12, "v"),
+            (1, "A", 1.10, "v"),
+            (1, "B", 0.88, "v"),
+        ]
+        assert {r["source"] for r in rows} == {orbits.MSC}
+        assert (rows[0]["primary"], rows[0]["secondary"]) == ("AB", "C")
+        assert ids(rows[2]) == {
+            ("wds", "id", "14396-6050"),
+            ("msc", "id", "14396-6050 B"),
+        }
+
+    def test_a_pair_with_an_unknown_mass_or_refuted_has_none(self):
+        masses = {"Mass1": 1.0, "MCode1": "v", "Mass2": 0.5, "MCode2": "m"}
+        rows = orbits.msc_masses(
+            [
+                msc_pair("1", "A", "B", "*", **(masses | {"Mass2": 0.0})),
+                msc_pair("2", "A", "B", "X", **masses),
+                msc_pair("3", "A", "B", "*", **(masses | {"Type": "X"})),
+                msc_pair("4", "A", "B", "*", **(masses | {"MCode1": " "})),
+            ]
+        ).to_pylist()
+        assert [(r["system"], r["mass_method"]) for r in rows] == [
+            ("4", None),
+            ("4", "m"),
+        ]
 
 
 class TestMSC:

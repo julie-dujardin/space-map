@@ -98,6 +98,11 @@ def _optical(text: str | None) -> bool:
     return OPTICAL in (text or "")
 
 
+def refuted(row: dict) -> bool:
+    """Whether a pair of sys.tsv is refuted or optical, so no system holds it."""
+    return row["Parent"] == msc.REFUTED_PARENT or _optical(row["Type"])
+
+
 def _positive(value: float | None) -> float | int | None:
     """None for the zero that stands for "unknown"."""
     return value if value else None
@@ -128,7 +133,7 @@ def refuted_pairs(directory: Path = msc.OUT_DIR) -> frozenset[tuple[str, str, st
     return frozenset(
         (row["WDS"], row["Primary"], row["Secondary"])
         for row in msc.read_table(msc.SYS_FILE, directory).to_pylist()
-        if row["Parent"] == msc.REFUTED_PARENT or _optical(row["Type"])
+        if refuted(row)
     )
 
 

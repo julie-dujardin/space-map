@@ -27,11 +27,12 @@ elements first. A measured e or ω goes before an assumed one. A node that
 may be either node is settled by an orbit whose ω is fixed: when the two ω
 are more than 90° apart, Ω and ω turn by 180°. The mass ratio comes from
 the papers' masses, then the K1 and K2 of the MSC and SBX, then the Gaia DR3
-masses, then OEC's.
+masses, then OEC's, then the MSC's two masses of the pair (sys.tsv).
 
 An orbit is drawn when it has P, a, i and, unless it is circular, ω. a in
 arcsec takes the node's distance, else Kepler's third law gives it from the
-masses. A circular orbit with no ω takes CIRCULAR_OMEGA, and an orbit with
+total mass of the papers, Gaia DR3 or OEC; the MSC's masses give only the
+barycentre. A circular orbit with no ω takes CIRCULAR_OMEGA, and an orbit with
 no epoch has its periastron at J2000, each named in `assumed`. With no Ω the
 node is assumed at the commit, as the planets' node (`assumed_node`).
 """
@@ -80,9 +81,18 @@ logger = logging.getLogger(__name__)
 
 # Papers first, Gaia DR3 last.
 DRAW_SOURCES = (*ORBIT_SOURCES, GAIA_ORBITS)
-MASS_RATIO_SOURCES = (LITERATURE, MSC, SBX, GAIA_ORBITS, OEC)
-# The sources whose K1 and K2 give the mass ratio.
-VELOCITY_SOURCES = frozenset({MSC, SBX})
+# What gives a pair's mass ratio, first to last: two masses of a source, or
+# the K1 and K2 of its orbits.
+MASSES, VELOCITIES = "masses", "velocities"
+MASS_RATIO_SOURCES = (
+    (LITERATURE, MASSES),
+    (MSC, VELOCITIES),
+    (SBX, VELOCITIES),
+    (GAIA_ORBITS, MASSES),
+    (OEC, MASSES),
+    (MSC, MASSES),
+)
+TOTAL_MASS_SOURCES = (LITERATURE, GAIA_ORBITS, OEC)
 BARYCENTRE, PRIMARY = "barycentre", "primary"
 ASSUMED_PHASE = "assumed"
 ELEMENTS = (
@@ -155,6 +165,9 @@ class _Pair:
     # (first, second), each with the keys of STAR_VALUES and `label`.
     stars: dict[str, tuple[dict, dict]] = field(default_factory=dict)
     reference: str | None = None
+    # The MSC's two masses of the pair, first member first, and their codes.
+    msc_masses: tuple[float, float] | None = None
+    msc_codes: str | None = None
 
 
 def _angle(a: float, b: float) -> float:
@@ -295,27 +308,19 @@ class Drawer:
         self.pairs[number].orbits.append(item.flipped() if flipped else item)
         self.counts[f"{item.source}: orbits on a pair"] += 1
 
-    def _on_component(self, item: Elements, text: str) -> bool:
-        """Put the orbit on the pair whose member has the id `text`. False
-        when no member has it."""
+    def _by_component(self, text: str) -> tuple[int, int] | None:
+        """The node of the member that has the id `text`, and its row."""
         row = self.by_component.get(text)
-        if row is None:
-            return False
-        number = int(self.member_node[row])
-        pair = self.pairs.get(number)
-        if pair is None:
-            self.counts[f"{item.source}: orbits of a node that is no pair"] += 1
-        else:
-            self._add(number, item, row == pair.first)
-        return True
+        return None if row is None else (int(self.member_node[row]), row)
 
-    def _on_letters(
-        self, item: Elements, wds: str, primary: str | None, secondary: str
-    ) -> bool:
-        """Put the orbit on a pair whose members have the letters of its two
-        sides, reached by the primary's id or by the node's own id."""
+    def _by_letters(
+        self, wds: str, primary: str | None, secondary: str
+    ) -> tuple[int, bool] | None:
+        """A pair whose members have the letters of the two sides, reached by
+        the primary's id or by the node's own id, and whether its first
+        member is the secondary."""
         if not primary:
-            return False
+            return None
         numbers = []
         row = self.by_component.get(f"{wds} {primary}")
         if row is not None:
@@ -329,10 +334,34 @@ class Drawer:
                 continue
             found = (self._letters(pair.first), self._letters(pair.second))
             if found in ((primary, secondary), (secondary, primary)):
-                self._add(number, item, found[0] == secondary)
-                self.counts[f"{item.source}: orbits on a pair by its letters"] += 1
-                return True
-        return False
+                return number, found[0] == secondary
+        return None
+
+    def _on_component(self, item: Elements, text: str) -> bool:
+        """Put the orbit on the pair whose member has the id `text`. False
+        when no member has it."""
+        hit = self._by_component(text)
+        if hit is None:
+            return False
+        number, row = hit
+        pair = self.pairs.get(number)
+        if pair is None:
+            self.counts[f"{item.source}: orbits of a node that is no pair"] += 1
+        else:
+            self._add(number, item, row == pair.first)
+        return True
+
+    def _on_letters(
+        self, item: Elements, wds: str, primary: str | None, secondary: str
+    ) -> bool:
+        """Put the orbit on a pair whose members have the letters of its two
+        sides."""
+        found = self._by_letters(wds, primary, secondary)
+        if found is None:
+            return False
+        self._add(found[0], item, found[1])
+        self.counts[f"{item.source}: orbits on a pair by its letters"] += 1
+        return True
 
     def _points(
         self, wanted: list[tuple[int, tuple[str, str], str]]
@@ -442,6 +471,42 @@ class Drawer:
         pair.stars[OEC] = (stars[1], stars[0]) if flipped else stars
         return True
 
+    def match_msc_masses(self) -> None:
+        """Put the MSC's two masses of each pair on the pair, as its orbits
+        reach it."""
+        table = self.inputs.catalogue_stars
+        if table is None:
+            return
+        by_row: dict[int, list[dict]] = defaultdict(list)
+        for star in table.filter(pc.equal(table["source"], MSC)).to_pylist():
+            by_row[star["row"]].append(star)
+        for first, second in by_row.values():
+            wds, primary, secondary = (
+                first["system"],
+                first["primary"],
+                first["secondary"],
+            )
+            hit = self._by_component(f"{wds} {secondary}")
+            if hit is not None:
+                number, row = hit
+                pair = self.pairs.get(number)
+                if pair is None:
+                    self.counts["msc: masses of a node that is no pair"] += 1
+                    continue
+                flipped = row == pair.first
+            elif (found := self._by_letters(wds, primary, secondary)) is not None:
+                number, flipped = found
+            else:
+                self.counts["msc: masses of pairs in no tree"] += 1
+                continue
+            pair = self.pairs[number]
+            if pair.msc_masses is not None:
+                continue
+            stars = (second, first) if flipped else (first, second)
+            pair.msc_masses = (stars[0]["mass"], stars[1]["mass"])
+            pair.msc_codes = "/".join(s["mass_method"] or "-" for s in stars)
+            self.counts["msc: masses on a pair"] += 1
+
     def match_gaia(self) -> None:
         table = self.inputs.orbit_elements
         keys = self.systems.orbit_keys
@@ -508,7 +573,7 @@ class Drawer:
                 values["semi_major_axis"] = a
                 chosen["semi_major_axis"] = item
                 break
-        ratio, ratio_source, total, total_source = self._masses(pair, items)
+        ratio, ratio_from, total, total_source = self._masses(pair, items)
         computed = []
         if values["semi_major_axis"] is None and total and values["period"]:
             years = values["period"] / JULIAN_YEAR
@@ -554,6 +619,10 @@ class Drawer:
             if source in used and used[source].reference
         ]
         self.counts[f"pairs drawn, period from {chosen['period'].source}"] += 1
+        if ratio_from is not None:
+            self.counts[f"pairs drawn, mass ratio from {' '.join(ratio_from)}"] += 1
+            if ratio_from == (MSC, MASSES):
+                self.counts[f"pairs drawn, MSC mass codes {pair.msc_codes}"] += 1
         return {
             "number": number,
             "ra": float(self.ra[at]),
@@ -564,44 +633,59 @@ class Drawer:
             "mean_anomaly": anomaly,
             "phase": phase,
             "barycentre": ratio,
-            "mass_ratio_source": ratio_source,
+            "mass_ratio_source": None if ratio_from is None else ratio_from[0],
             **sources,
             "assumed": sorted(assumed),
             "computed": computed,
             "references": references,
         }
 
+    def _two_masses(
+        self, pair: _Pair, items: list[Elements], source: str
+    ) -> tuple[float, float] | None:
+        """The masses of the pair's two stars that `source` gives, first
+        member first."""
+        found: tuple | None = None
+        if source == GAIA_ORBITS:
+            hit = next(
+                (i for i in items if i.source == source and i.mass1 and i.mass2),
+                None,
+            )
+            found = None if hit is None else (hit.mass1, hit.mass2)
+        elif source == MSC:
+            found = pair.msc_masses
+        elif source in pair.stars:
+            found = tuple(star.get("mass") for star in pair.stars[source])
+        if found is None:
+            return None
+        m1, m2 = found
+        return (m1, m2) if m1 and m2 and m1 > 0 and m2 > 0 else None
+
     def _masses(
         self, pair: _Pair, items: list[Elements]
-    ) -> tuple[float | None, str | None, float | None, str | None]:
-        """The barycentre's share of the separation with its source, and the
-        total mass with its source."""
-        ratio = source = total = total_source = None
-        for name in MASS_RATIO_SOURCES:
-            m1 = m2 = None
-            if name in VELOCITY_SOURCES:
+    ) -> tuple[float | None, tuple[str, str] | None, float | None, str | None]:
+        """The barycentre's share of the separation and what gave it (an
+        item of MASS_RATIO_SOURCES), and the total mass with its source."""
+        ratio = ratio_from = None
+        for name, kind in MASS_RATIO_SOURCES:
+            if kind == VELOCITIES:
                 k = next(
                     ((i.k1, i.k2) for i in items if i.source == name and i.k1 and i.k2),
                     None,
                 )
-                if k is not None and k[0] and k[1] and ratio is None:
-                    ratio, source = k[0] / (k[0] + k[1]), name
-                continue
-            if name == GAIA_ORBITS:
-                hit = next(
-                    (i for i in items if i.source == name and i.mass1 and i.mass2),
-                    None,
-                )
-                if hit is not None:
-                    m1, m2 = hit.mass1, hit.mass2
-            elif name in pair.stars:
-                m1, m2 = (star.get("mass") for star in pair.stars[name])
-            if m1 and m2 and m1 > 0 and m2 > 0:
-                if ratio is None:
-                    ratio, source = m2 / (m1 + m2), name
-                if total is None:
-                    total, total_source = m1 + m2, name
-        return ratio, source, total, total_source
+                share = None if k is None else k[0] / (k[0] + k[1])
+            else:
+                masses = self._two_masses(pair, items, name)
+                share = None if masses is None else masses[1] / sum(masses)
+            if share is not None:
+                ratio, ratio_from = share, (name, kind)
+                break
+        total = total_source = None
+        for name in TOTAL_MASS_SOURCES:
+            if (masses := self._two_masses(pair, items, name)) is not None:
+                total, total_source = sum(masses), name
+                break
+        return ratio, ratio_from, total, total_source
 
     # Held stars
 
@@ -701,6 +785,7 @@ def draw(systems: Systems, inputs: Inputs, resolver: Resolver) -> Drawn:
     drawer = Drawer(systems, inputs, resolver)
     drawer.counts["pairs"] = len(drawer.pairs)
     drawer.match_catalogues()
+    drawer.match_msc_masses()
     drawer.match_gaia()
     rows = []
     for number, pair in sorted(drawer.pairs.items()):
