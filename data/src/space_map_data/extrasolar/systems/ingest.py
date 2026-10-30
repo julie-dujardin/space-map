@@ -19,10 +19,11 @@
    of its node. It claims its node's anchor and its tag in the node.
 3. `SystemsExtension` sets the links between IDs at the commit, when every
    ID is minted: `parent`, `root`, `primary`, `members` and `tree` of
-   System, and `system` of Metadata. It sets `orbit` on the pairs, with the
-   assumed node of the planets where an orbit has none, and `star` on the
-   held stars. It gives the planets extension the host of a circumbinary
-   planet, the root of each host and the node of each drawn pair.
+   System, and `system` of Metadata. It sets `distance` on every System
+   row, `orbit` on the pairs, with the assumed node of the planets where an
+   orbit has none, and `star` on the held stars. It gives the planets
+   extension the host of a circumbinary planet, the root of each host and
+   the node of each drawn pair.
 """
 
 import json
@@ -1495,6 +1496,7 @@ def _system_patch(nodes: pa.Table, members: pa.Table) -> pa.Table:
             "parent": pa.array(parent, pa.int64(), mask=parent == 0),
             "root": pa.array(roots, pa.int64(), mask=roots == 0),
             "primary": pa.array(primary, pa.int64(), mask=primary == 0),
+            "distance": nodes["distance"].combine_chunks().cast(pa.float64()),
             "members": member_lists,
             "tree": trees,
         }

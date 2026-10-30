@@ -29,13 +29,21 @@ import pyarrow as pa
 import pyarrow.compute as pc
 
 from space_map_data.constants.stars.families import FAMILIES, ROOT_FAMILY
-from space_map_data.export.extrasolar import container, render
+from space_map_data.export.extrasolar import citations, container, render
 from space_map_data.export.extrasolar.container import Column, Written
 from space_map_data.extrasolar import families
 from space_map_data.extrasolar.ids import CELL_LEVEL, CELL_MASK
 from space_map_data.extrasolar.registry import ALIAS, LIVE, RETIRED, Registry
 from space_map_data.extrasolar.sky import REGION_LEVEL, REGION_SHIFT, region_of
-from space_map_data.extrasolar.tables import METADATA, POINT_SOURCE, TABLES, TableDef
+from space_map_data.extrasolar.tables import (
+    METADATA,
+    POINT_SOURCE,
+    REFERENCE,
+    SYSTEM_ORBIT,
+    SYSTEM_STAR,
+    TABLES,
+    TableDef,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +88,22 @@ DICTIONARY = frozenset(
         "members.source",
         "members.known.item",
         "tree.class",
+        "orbit.phase",
+        "orbit.centre",
+        "orbit.assumed.item",
+        "orbit.computed.item",
+        *(
+            f"{name}.{f.name}"
+            for name, kind in (("orbit", SYSTEM_ORBIT), ("star", SYSTEM_STAR))
+            for f in kind
+            if f.name.endswith("_source")
+        ),
+        *(
+            f"{name}.references.{f.name}"
+            for name in ("orbit", "star")
+            for f in citations.CITATION
+            if f.name != "reference"
+        ),
     }
 )
 # Columns that the export computes, after the columns of the table.
@@ -104,13 +128,50 @@ def dictionary_columns(table: TableDef) -> frozenset[str]:
     return DICTIONARY | {group.source_column for group in table.groups}
 
 
-# Struct columns that the container format has no type for. They stay in the
-# registry tables and are not in the tiles.
-NOT_IN_TILES = frozenset({"orbit", "star"})
+def _served_type(kind: pa.DataType) -> pa.DataType:
+    """A type with each REFERENCE as a CITATION."""
+    if kind == REFERENCE:
+        return citations.CITATION
+    if pa.types.is_struct(kind):
+        return pa.struct([f.with_type(_served_type(f.type)) for f in kind])
+    if pa.types.is_list(kind):
+        return pa.list_(_served_type(kind.value_type))
+    return kind
+
+
+def served_field(field_: pa.Field) -> pa.Field:
+    """A column as the tiles serve it. The container has no struct type, so a
+    struct column is a list of at most one item."""
+    kind = _served_type(field_.type)
+    return field_.with_type(pa.list_(kind) if pa.types.is_struct(kind) else kind)
+
+
+def _served_value(value, kind: pa.DataType):
+    """A value of type `kind` as `_served_type` gives its type."""
+    if value is None:
+        return None
+    if kind == REFERENCE:
+        return citations.cite(value)
+    if pa.types.is_struct(kind):
+        return {f.name: _served_value(value[f.name], f.type) for f in kind}
+    if pa.types.is_list(kind):
+        return [_served_value(item, kind.value_type) for item in value]
+    return value
+
+
+def served_values(field_: pa.Field, values: pa.Array | pa.ChunkedArray) -> pa.Array:
+    """The values of a table column as `served_field` gives its type."""
+    served = served_field(field_)
+    if served.type == field_.type:
+        return values.cast(field_.type)
+    rows = [_served_value(value, field_.type) for value in values.to_pylist()]
+    if pa.types.is_struct(field_.type):
+        rows = [None if row is None else [row] for row in rows]
+    return pa.array(rows, served.type)
 
 
 def tile_schema(table: TableDef) -> pa.Schema:
-    schema = pa.schema([f for f in table.schema if f.name not in NOT_IN_TILES])
+    schema = pa.schema([served_field(f) for f in table.schema])
     for computed in COMPUTED.get(table.slug, ()):
         schema = schema.append(computed)
     return schema
@@ -435,11 +496,16 @@ def check_previous(
 
 def tile_payload(table: TableDef, level: int, pixel: int, rows: pa.Table) -> bytes:
     kinds = dict(column_types(table))
+    stored = {f.name: f for f in table.schema}
     columns = [
         column
         for field_ in tile_schema(table)
         for column in container.columns_of(
-            field_, rows[field_.name].cast(field_.type), kinds
+            field_,
+            served_values(stored[field_.name], rows[field_.name])
+            if field_.name in stored
+            else rows[field_.name].cast(field_.type),
+            kinds,
         )
     ]
     info = TILE_INFO.pack(pixel, level, table.number or 0)

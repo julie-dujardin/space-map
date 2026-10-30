@@ -27,7 +27,13 @@ from space_map_data.export.objects.writer import hash_bucket
 from space_map_data.export.wikidata import StarEntity, WikidataEntityCache
 from space_map_data.extrasolar.registry import Registry, RegistryBusy
 from space_map_data.extrasolar.tables import CROSS_ID
-from tests.extrasolar.export_registry import planet, star, write_registry
+from tests.extrasolar.export_registry import (
+    Held,
+    Node,
+    planet,
+    star,
+    write_registry,
+)
 
 ETA_CAR = ("gaia", "dr3", "5350358584482202880")
 SMITH_2006 = {
@@ -512,6 +518,14 @@ class TestReadStarObjects:
             StarObject(7, "η Car", None, ETA_CAR),
             StarObject(8, "Vega", "Q9", ETA_CAR),
         ]
+
+    def test_a_held_star_with_an_item_is_a_star(self, tmp_path):
+        """A held star has an entry as a star has: by its Wikidata item."""
+        held = {"A": Held("Kepler-16 A", qid="Q5"), "B": Held("Kepler-16 B")}
+        systems = [Node((("held", None, "A"), ("held", None, "B")), 0, held=held)]
+        built = write_registry(tmp_path / "reg", [star(10.0, 20.0)], systems=systems)
+        stars, _ = read_extrasolar_objects(built.root)
+        assert stars == [StarObject(built.held[0, "A"], "Kepler-16 A", "Q5")]
 
 
 class TestReadPlanetObjects:

@@ -8,15 +8,23 @@ import pyarrow as pa
 import pytest
 
 from space_map_data.download.providers.stars import el_badry, msc, wds
-from space_map_data.export.extrasolar import build, render, skycultures, tiles
+from space_map_data.export.extrasolar import (
+    build,
+    citations,
+    render,
+    skycultures,
+    tiles,
+)
 from space_map_data.export.extrasolar.build import ExportRefused, export_extrasolar
 from space_map_data.export.extrasolar.reader import ExportReader, NodeInfo
 from space_map_data.export.extrasolar.systems import Refs, check_metadata
-from space_map_data.extrasolar.ids import cell_of
+from space_map_data.extrasolar.ids import cell_of, table_of
 from space_map_data.extrasolar.registry import Registry
 from space_map_data.extrasolar.sky import region_of
-from space_map_data.extrasolar.tables import METADATA, SYSTEM, TABLES
+from space_map_data.extrasolar.systems import drawn
+from space_map_data.extrasolar.tables import METADATA, SYSTEM, SYSTEM_TABLE, TABLES
 from tests.extrasolar.export_registry import (
+    Held,
     Node,
     planet,
     random_stars,
@@ -41,13 +49,16 @@ def out(tmp_path):
     return tmp_path / "space-map-extrasolar"
 
 
-# Node indexes of SYSTEMS.
-AB, ALPHA_CEN, POINT, PAIR = range(4)
+# Node indexes of SYSTEMS, then of Kepler-16.
+AB, ALPHA_CEN, POINT, PAIR, KEPLER = range(5)
+# The star index of Kepler-16, after the stars in no system.
+KEPLER_STAR = 36
 
 
 def _stars() -> list[dict]:
     """α Cen A, B and C (C has no 5σ parallax and its system's distance), a
-    point that holds two stars, a resolved pair, and stars in no system."""
+    point that holds two stars, a resolved pair, stars in no system, and
+    Kepler-16, a point that holds its pair."""
     proxima = star(217.43, -62.68, 768.0, 11.1, snr=3, distance=1.3)
     proxima |= {"distance_method": "system", "distance_source": "star-systems"}
     return [
@@ -58,6 +69,7 @@ def _stars() -> list[dict]:
         star(120.0, -30.0, 5.0, 9.0),
         star(120.001, -30.0, 5.0, 9.5),
         *random_stars(30, seed=31),
+        star(289.0757, 51.7575, 13.3, 11.7, name="Kepler-16"),
     ]
 
 
@@ -74,20 +86,92 @@ SYSTEMS = [
 ]
 
 
+# Doyle et al. 2011, with the node of the Gaia DR3 orbit, as `drawn` gives it.
+KEPLER_PAIR = {
+    "ra": 289.0757,
+    "dec": 51.7575,
+    "period": 41.07922,
+    "semi_major_axis": 0.22431,
+    "semi_major_axis_arcsec": None,
+    "eccentricity": 0.15944,
+    "inclination": 90.3401,
+    "node_ascending": True,
+    "arg_periastron": 263.464,
+    "epoch": 2455212.12316,
+    "mean_anomaly": 188.888,
+    "phase": "osculating",
+    "barycentre": 0.227,
+    "mass_ratio_source": "literature",
+    "period_source": "literature",
+    "semi_major_axis_source": "literature",
+    "eccentricity_source": "literature",
+    "inclination_source": "literature",
+    "node_source": "gaia-dr3-orbits",
+    "arg_periastron_source": "literature",
+    "epoch_source": "literature",
+    "assumed": [],
+    "computed": [],
+    "references": [
+        {"source": "literature", "reference": "doyle_2011"},
+        {"source": "gaia-dr3-orbits", "reference": "4338096422163308546"},
+    ],
+}
+DOYLE = [{"source": "literature", "reference": "doyle_2011"}]
+KEPLER_16 = Node(
+    (("held", None, "A"), ("held", None, "B")),
+    point=KEPLER_STAR,
+    orbit=drawn.scene(KEPLER_PAIR, 8.199),
+    held={
+        "A": Held(
+            "Kepler-16 A",
+            {
+                "mass": 0.6897,
+                "mass_source": "literature",
+                "radius": 0.6489,
+                "radius_source": "literature",
+                "teff": 4450.0,
+                "teff_source": "literature",
+                "spectral_type": "K",
+                "spectral_type_source": "open-exoplanet-catalogue",
+                "references": DOYLE,
+            },
+        ),
+        "B": Held(
+            "Kepler-16 B",
+            {
+                "mass": 0.20255,
+                "mass_source": "literature",
+                "radius": 0.22623,
+                "radius_source": "literature",
+                "spectral_type": "M",
+                "spectral_type_source": "open-exoplanet-catalogue",
+                "references": DOYLE,
+            },
+        ),
+    },
+)
+
+
 def _registry(path, systems=SYSTEMS, **kwargs):
     return write_registry(path, _stars(), systems=systems, **kwargs)
 
 
+def _served(table: pa.Table) -> dict[int, dict]:
+    """System rows as the tiles serve them, by ID."""
+    served = pa.table(
+        {f.name: tiles.served_values(f, table[f.name]) for f in SYSTEM.schema}
+    )
+    return {row["id"]: row for row in served.to_pylist()}
+
+
 def _registry_rows(root) -> dict[int, dict]:
-    """The System rows of the registry, with the columns that the tiles hold."""
+    """The System rows of the registry, as the tiles serve them."""
     with Registry(root).reader() as registry:
         parts = [
             registry.read_table(SYSTEM.slug, region)
             for region in registry.table_regions(SYSTEM.slug)
         ]
-    rows = pa.concat_tables([part for part in parts if part is not None])
-    rows = rows.drop_columns([c for c in rows.column_names if c in tiles.NOT_IN_TILES])
-    return {row["id"]: row for row in rows.to_pylist()}
+    return _served(pa.concat_tables([part for part in parts if part is not None]))
 
 
 def _place(ra: float, dec: float, parallax: float) -> list:
@@ -190,6 +274,96 @@ class TestSystemTiles:
         for node_id, row in _registry_rows(root).items():
             found = reader.lookup(str(node_id))
             assert found is not None and found.rows["system"] == row
+
+
+class TestPairOrbitsAndHeldStars:
+    """Kepler-16: a point that holds its pair, two held stars and the orbit
+    of B about A."""
+
+    @pytest.fixture
+    def exported(self, tmp_path, out):
+        planets = [planet(KEPLER_STAR, 1, binary_type="P-type")]
+        built = _registry(
+            tmp_path / "reg", systems=[*SYSTEMS, KEPLER_16], planets=planets
+        )
+        report = export_extrasolar(built.root, out, workers=1)
+        return built, ExportReader(out / "v1" / "x"), report
+
+    def test_the_columns(self, exported):
+        _, reader, report = exported
+        entry = reader.metadata["tables"]["system"]
+        types = {c["name"]: c["type"] for c in entry["columns"]}
+        assert types["distance"] == "float64"
+        assert types["orbit"] == types["star"] == "list"
+        assert types["orbit.a"] == types["orbit.period"] == "float64"
+        assert types["orbit.node_ascending"] == "bool"
+        assert types["orbit.phase"] == types["orbit.period_source"] == "dict"
+        assert types["orbit.assumed"] == types["orbit.references"] == "list"
+        assert types["orbit.assumed.item"] == "dict"
+        assert types["star.mass"] == "float32"
+        assert types["star.mass_source"] == types["star.references.short"] == "dict"
+        assert types["star.references.reference"] == "string"
+        names = [c["name"] for c in entry["columns"]]
+        at = names.index("orbit")
+        assert names[at + 1] == "orbit.a"
+        assert names.index("orbit.references.url") < names.index("star")
+        assert report["systems"]["held stars"] == 2
+        assert report["systems"]["nodes"] == 7
+
+    def test_the_orbit_of_the_pair(self, exported):
+        built, reader, _ = exported
+        point = reader.lookup(str(built.nodes[KEPLER]))
+        assert point is not None and set(point.rows) == {"point-source", "system"}
+        row = point.rows["system"]
+        assert row == _registry_rows(built.root)[built.nodes[KEPLER]]
+        (orbit,) = row["orbit"]
+        assert orbit["period"] == 41.07922 and orbit["node"] == 8.199
+        assert orbit["n"] == pytest.approx(360 / 41.07922)
+        assert orbit["barycentre"] == 0.227 and orbit["centre"] == "barycentre"
+        assert orbit["node_source"] == "gaia-dr3-orbits"
+        doyle, gaia = orbit["references"]
+        assert doyle == {
+            "source": "literature",
+            "reference": "doyle_2011",
+            "short": "Doyle et al. 2011",
+            "title": "Kepler-16: A Transiting Circumbinary Planet (Science 333, 1602)",
+            "url": "https://doi.org/10.1126/science.1210923",
+        }
+        assert gaia["reference"] == "4338096422163308546"
+        assert gaia["short"] == citations.GAIA_ORBITS_PAPER.short
+        assert row["star"] is None
+        assert row["distance"] == pytest.approx(1000 / 13.3)
+        assert [m["kind"] for m in row["members"]] == ["held star", "held star"]
+
+    def test_a_held_star_is_found_with_its_rows(self, exported):
+        built, reader, _ = exported
+        point = built.nodes[KEPLER]
+        held_a = built.held[KEPLER, "A"]
+        assert table_of(held_a) == SYSTEM_TABLE
+        found = reader.lookup(str(held_a))
+        assert found is not None and set(found.rows) == {"system"}
+        meta = found.metadata
+        assert meta["name"] == "Kepler-16 A" and meta["class"] == "star"
+        assert meta["system"] == point and meta["mask"] >> 3 & 1
+        row = found.rows["system"]
+        assert (row["parent"], row["root"], row["depth"]) == (point, point, 1)
+        assert (row["ra"], row["dec"]) == (289.0757, 51.7575)
+        assert row["distance"] == pytest.approx(1000 / 13.3)
+        assert row["orbit"] is None and row["members"] == []
+        (values,) = row["star"]
+        assert values["mass"] == pytest.approx(0.6897)
+        assert values["spectral_type_source"] == "open-exoplanet-catalogue"
+        (cited,) = values["references"]
+        assert cited["short"] == "Doyle et al. 2011"
+        held_b = reader.lookup(str(built.held[KEPLER, "B"]))
+        assert held_b is not None and held_b.metadata["name"] == "Kepler-16 B"
+        assert held_b.rows["system"]["star"][0]["teff"] is None
+        tree = reader.lookup(str(point)).rows["system"]["tree"]
+        assert [(n["id"], n["class"], n["label"]) for n in tree] == [
+            (point, "binary star", "AB"),
+            (held_a, "star", "A"),
+            (built.held[KEPLER, "B"], "star", "B"),
+        ]
 
 
 class TestTiers:

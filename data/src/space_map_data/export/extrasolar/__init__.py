@@ -3,6 +3,7 @@ served files under `space-map-extrasolar/v1/x/`.
 
 - `container`: the binary format of every file, with its token.
 - `tiles`: record tiles, the split tables and the checks on the rows.
+- `citations`: the works that the orbits and held stars of System cite.
 - `systems`: the checks of the star systems, their trees and Metadata links.
 - `render`: the Milky Way render tree.
 - `skycultures`: the sky cultures, one file per culture.

@@ -160,17 +160,30 @@ def planet(
 
 
 @dataclass(frozen=True)
+class Held:
+    """A held star: its name, its System `star` value and its Wikidata item."""
+
+    name: str | None = None
+    star: Mapping[str, Any] | None = None
+    qid: str | None = None
+
+
+@dataclass(frozen=True)
 class Node:
     """A node of a star system. A member is ("star", star index, letter),
-    ("system", node index, letter) or ("entry", None, letter). A point node
-    holds the star `point`, whose ID it keeps, and its members are entries.
-    A resolved node gets an ID of table 3 in the cell of its primary star."""
+    ("system", node index, letter), ("held", None, letter) or ("entry",
+    None, letter). A point node holds the star `point`, whose ID it keeps,
+    and its members are entries or held stars. A resolved node and a held
+    star get an ID of table 3 in the cell of the node's primary star. `held`
+    gives a held star by its letter, `orbit` the System `orbit` value."""
 
     members: tuple[tuple[str, int | None, str], ...]
     point: int | None = None
     label: str = "AB"
     name: str | None = None
     qid: str | None = None
+    orbit: Mapping[str, Any] | None = None
+    held: Mapping[str, Held] = field(default_factory=dict)
 
 
 @dataclass
@@ -181,6 +194,8 @@ class Built:
     retired: list[int] = field(default_factory=list)
     # The ID of each node of `systems`.
     nodes: list[int] = field(default_factory=list)
+    # The ID of each held star, by node index and letter.
+    held: dict[tuple[int, str], int] = field(default_factory=dict)
 
 
 def _primary(nodes: Sequence[Node], at: int) -> int:
@@ -193,11 +208,17 @@ def _primary(nodes: Sequence[Node], at: int) -> int:
     return index if kind == "star" else _primary(nodes, index)
 
 
+def _distance(star: dict) -> float:
+    return star.get("distance") or 1000 / star["parallax"]
+
+
 def _system_rows(
     nodes: Sequence[Node], stars: list[dict], minted: list[int]
-) -> tuple[list[int], list[dict], dict[int, dict]]:
-    """The ID and System row of each node, and the Metadata values of the IDs
-    that the trees hold: `system`, and for a node its class and mask bit."""
+) -> tuple[list[int], list[dict], dict[int, dict], dict[tuple[int, str], int]]:
+    """The ID and System row of each node, then the rows of the held stars,
+    the Metadata values of the IDs that the trees hold (`system`, and for a
+    node or a held star its class and mask bit) and the ID of each held
+    star."""
     serials: dict[int, int] = defaultdict(int)
     node_ids = []
     for at, node in enumerate(nodes):
@@ -208,6 +229,14 @@ def _system_rows(
         cell = _cell(primary["ra"], primary["dec"])
         node_ids.append(ids.encode(serials[cell], SYSTEM_TABLE, cell))
         serials[cell] += 1
+    held_ids: dict[tuple[int, str], int] = {}
+    for at, node in enumerate(nodes):
+        primary = stars[_primary(nodes, at)]
+        cell = _cell(primary["ra"], primary["dec"])
+        for kind, _, letter in node.members:
+            if kind == "held":
+                held_ids[at, letter] = ids.encode(serials[cell], SYSTEM_TABLE, cell)
+                serials[cell] += 1
     parent: dict[int, int] = {}
     for at, node in enumerate(nodes):
         for kind, index, _ in node.members:
@@ -241,12 +270,14 @@ def _system_rows(
             elif kind == "system":
                 assert index is not None
                 member = node_ids[index]
+            elif kind == "held":
+                member = held_ids[at, letter]
             else:
                 member = None
             members.append(
                 {
                     "id": member,
-                    "kind": kind,
+                    "kind": "held star" if kind == "held" else kind,
                     "letter": letter,
                     "source": "msc",
                     "separation": 2.5,
@@ -273,11 +304,34 @@ def _system_rows(
                 "parent": node_ids[parent[at]] if at in parent else None,
                 "root": top,
                 "primary": minted[_primary(nodes, at)],
+                "distance": _distance(primary),
                 "members": members,
+                "orbit": node.orbit,
+            }
+        )
+    for (at, letter), held_id in held_ids.items():
+        node_row = rows[at]
+        meta[held_id] = {"system": node_row["root"], "class": "star"}
+        rows.append(
+            {
+                "id": held_id,
+                "point": False,
+                "depth": node_row["depth"] + 1,
+                "stars": 1,
+                "ra": node_row["ra"],
+                "dec": node_row["dec"],
+                "label": letter,
+                "sources": ["msc"],
+                "tree_source": "star-systems",
+                "parent": node_row["id"],
+                "root": node_row["root"],
+                "distance": node_row["distance"],
+                "members": [],
+                "star": nodes[at].held.get(letter, Held()).star,
             }
         )
     for at, row in enumerate(rows):
-        if at in parent:
+        if at in parent or at >= len(nodes):
             row["tree"] = None
             continue
         row["tree"] = sorted(
@@ -295,7 +349,7 @@ def _system_rows(
             ),
             key=lambda entry: entry["id"],
         )
-    return node_ids, rows, meta
+    return node_ids, rows, meta, held_ids
 
 
 def _cell(ra: float, dec: float) -> int:
@@ -335,7 +389,7 @@ def write_registry(
         minted.append(ids.encode(serials[cell], 1, cell))
         serials[cell] += 1
 
-    node_ids, system_rows, system_meta = _system_rows(systems, stars, minted)
+    node_ids, system_rows, system_meta, held_ids = _system_rows(systems, stars, minted)
     records = []
     for index, id_ in enumerate(minted):
         if index not in missing:
@@ -458,6 +512,33 @@ def write_registry(
                 "system": system_meta[row["id"]]["system"],
             }
         )
+    for (at, letter), held_id in held_ids.items():
+        held = systems[at].held.get(letter, Held())
+        meta_rows.append(
+            {
+                "id": held_id,
+                "name": held.name,
+                "name_source": "star-systems",
+                "class": "star",
+                "class_source": "star-systems",
+                "cross_ids": [
+                    {
+                        "catalogue": "star-system",
+                        "release": "member",
+                        "catalogue_id": f"S{at} {letter}",
+                    }
+                ]
+                + (
+                    [{"catalogue": "wikidata", "release": "qid", "catalogue_id": qid}]
+                    if (qid := held.qid)
+                    else []
+                ),
+                "mask": 1 << SYSTEM_TABLE,
+                "object": held.qid is not None,
+                "alias_target": None,
+                "system": system_meta[held_id]["system"],
+            }
+        )
     for loser, target in alias_map.items():
         meta_rows.append(
             {"id": loser, "mask": 0, "alias_target": target}
@@ -561,7 +642,9 @@ def write_registry(
     }
     (root / "registry").mkdir(parents=True, exist_ok=True)
     (root / "registry" / "manifest.json").write_text(json.dumps(manifest))
-    return Built(root, minted, alias_map, [minted[i] for i in retired], node_ids)
+    return Built(
+        root, minted, alias_map, [minted[i] for i in retired], node_ids, held_ids
+    )
 
 
 def random_stars(count: int, seed: int = 1, around: tuple[float, float] | None = None):

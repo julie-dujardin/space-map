@@ -48,6 +48,7 @@ from space_map_data.download.providers.stars import el_badry, msc, orb6, sbx, wd
 from space_map_data.download.providers.stars.iau_names import PAGE_URL as IAU_URL
 from space_map_data.export.extrasolar import (
     census,
+    citations,
     container,
     planets,
     render,
@@ -125,8 +126,8 @@ CREDITS = (
     },
     {
         "name": "Gaia DR3 binary orbits and masses",
-        "organisation": "Gaia Collaboration, Arenou et al. 2023",
-        "source": "https://ui.adsabs.harvard.edu/abs/2023A&A...674A..34G",
+        "organisation": citations.GAIA_ORBITS_PAPER.short,
+        "source": citations.GAIA_ORBITS_PAPER.url,
         "license": "CC BY-NC 3.0 IGO",
         "citation": "Gaia Collaboration, Arenou et al. 2023, A&A 674, A34",
     },

@@ -894,9 +894,12 @@ SYSTEM_NODE = pa.struct(
 # source that shows that a point holds several stars, `sources` the trees
 # that list the node, first in source order. The links to other IDs come once
 # every ID is minted: `parent` (null at the root), `root`, `primary`,
-# `members` and, in the root's row, `tree`, every node of the system. A node
-# of two members has the `orbit` of its second member about its first when
-# one can be drawn (`systems.drawn`). A held star has its values in `star`.
+# `members` and, in the root's row, `tree`, every node of the system.
+# `distance` is the distance of the primary point in pc, else the system
+# distance that it takes. A held star has the values of its node. With `ra`
+# and `dec` it places a row that has no Point source row. A node of two
+# members has the `orbit` of its second member about its first when one can
+# be drawn (`systems.drawn`). A held star has its values in `star`.
 SYSTEM = TableDef(
     number=SYSTEM_TABLE,
     slug="system",
@@ -916,6 +919,7 @@ SYSTEM = TableDef(
     ),
     computed=(
         *_fields(pa.int64(), "parent", "root", "primary"),
+        pa.field("distance", pa.float64()),
         pa.field("members", pa.list_(SYSTEM_MEMBER)),
         pa.field("tree", pa.list_(SYSTEM_NODE)),
         pa.field("orbit", SYSTEM_ORBIT),

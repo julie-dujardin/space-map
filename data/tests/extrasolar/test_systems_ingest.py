@@ -346,6 +346,7 @@ class TestSystemsIngest:
             assert row["stars"] == 1 and not row["point"]
             assert row["depth"] == system[p1]["depth"] + 1
             assert row["label"] == member["letter"] and row["members"] == []
+            assert row["distance"] == system[p1]["distance"] > 0
             # Their letters make them held stars; the MSC gives no values.
             assert row["star"]["mass"] is None and row["star"]["references"] == []
         root = system[system[p1]["root"]]

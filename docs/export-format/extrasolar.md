@@ -325,9 +325,14 @@ A member leaves its node when its parallax and its primary's clearly disagree: b
 | `tree_source` | dict | `star-systems` |
 | `parent` | id | the node that lists this one; null at the root |
 | `root` | id | the root of the system, its own ID at the root |
-| `primary` | id | the primary point of the node |
-| `members` | list | the direct members, in member order: item columns `members.<field>` (below) |
+| `primary` | id | the primary point of the node; null for a held star |
+| `distance` | float64 | the distance of the primary point (pc), else the system distance that it takes; a held star has its node's. With `ra` and `dec` it places a row that has no Point source row: a resolved system or a held star. Null when no star of the node has a distance |
+| `members` | list | the direct members, in member order: item columns `members.<field>` (below); empty for a held star |
 | `tree` | list | in the root's row, every node of the system, sorted by ID; null in every other row: item columns `tree.<field>` (below) |
+| `orbit` | list | on a pair, a node of two members, whose orbit can be drawn: one item, the orbit of the second member about the first (item columns `orbit.<field>`, below); null on every other row |
+| `star` | list | on a held star: one item, its values (item columns `star.<field>`, below); null on every other row |
+
+The container has no struct type, so `orbit` and `star` are lists of at most one item: row `i` has a value when `offsets[i + 1] > offsets[i]`, and the value is item `offsets[i]` of the item columns.
 
 A member:
 
@@ -350,7 +355,74 @@ A member:
 | `known` | list | how the member is known: `visual`, `visual orbit`, `common proper motion`, `common parallax`, `spectroscopic`, `spectroscopic orbit`, `eclipsing`, `astrometric`, `astrometric orbit`, `occultation`, `catalogue` (item column `members.known.item`, dict) |
 | `ids` | cross_ids | the catalogue ids of an entry |
 
-A node of the tree has `id`, `parent` (null at the root), `point`, `stars` and `label` as its own row has them, and `class`, its Metadata class.
+A node of the tree has `id`, `parent` (null at the root), `point`, `stars` and `label` as its own row has them, and `class`, its Metadata class (`star` for a held star).
+
+#### Held stars
+
+A held star has a Metadata row with its name, the class `star` and the `system` of its root, and a System row, its home: no Point source row. Its page places it at its System row's `ra`, `dec` and `distance`, those of its node. Its names, in this order:
+
+- the name that SIMBAD or a planet catalogue gives it, unless that is the name of its pair or of its root;
+- its root's name and its letter, when a source gives the letter: the letters of the WDS and the MSC name the components of the whole system ("Castor Ba"). A root that takes its primary's name drops the primary's component letter first ("HQ Tau Aa", not "HQ Tau A Aa");
+- else its pair's name and A or B ("Kepler-16 A", "HIP 14164 B"): A is the heavier star of the pair, B the other. With no masses, or equal ones, A is the first member. When the other member has the letter A or B, it takes the letter that is left.
+
+`star` holds its values. Each comes from the first source that has it: a paper (`literature`), OEC (`open-exoplanet-catalogue`), the tree source of the member, then the masses of its Gaia DR3 orbit (`gaia-dr3-orbits`).
+
+| Field | Type | |
+|---|---|---|
+| `mass` | float32 | solar masses |
+| `radius` | float32 | nominal solar radii |
+| `teff` | float32 | K |
+| `spectral_type` | string | |
+| `mass_source`, `radius_source`, `teff_source`, `spectral_type_source` | dict | the source of each value |
+| `references` | list | the works of the values from a paper: item columns `star.references.<field>` (a citation, below) |
+
+#### Pair orbits
+
+`orbit` is the orbit of a pair's second member about its first, ready to draw. Each element comes from the first orbit that has it: a paper, the MSC, ORB6, SBX, OEC, then Gaia DR3; within one source, the orbit with the most elements first. A measured `e` or `ω` comes before an assumed one. An orbit is drawn when it has `period`, a semi-major axis, `inclination` and, unless it is circular, `arg_periastron`. An angular semi-major axis takes `distance`; with none, Kepler's third law gives it from the total mass of a paper, of Gaia DR3 or of OEC (`computed`). The scene's elements (`a` to `phase`) are on the ecliptic and the mean equinox of J2000, as the planets' elements (Planets, "Elements"); the sky's elements are on the plane of the sky.
+
+| Field | Type | |
+|---|---|---|
+| `a` | float64 | semi-major axis of the relative orbit (AU) |
+| `e` | float64 | eccentricity |
+| `i`, `om`, `w` | float64 | inclination, longitude of the ascending node, and argument of periastron of the second member, on the ecliptic of J2000 (deg) |
+| `ma` | float64 | mean anomaly at `epoch` (deg) |
+| `n` | float64 | mean motion (deg/day) |
+| `epoch` | float64 | JD of `ma`, in the time scale of its source |
+| `phase` | dict | what fixes `ma`: `periastron`, `eclipse` (the second member in front of the first at the primary eclipse), `osculating` (the epoch of a photometric-dynamical fit), or `assumed` (no epoch: periastron at J2000) |
+| `period` | float64 | days |
+| `semi_major_axis` | float64 | AU, as `a` |
+| `semi_major_axis_arcsec` | float64 | the angular semi-major axis that gave `semi_major_axis` with `distance` (arcsec); null when a source gives AU or Kepler's third law gives it |
+| `eccentricity` | float64 | as `e` |
+| `inclination` | float64 | to the plane of the sky (deg); under 90 the second member turns from north to east |
+| `node` | float64 | the position angle of the node, from north through east (deg) |
+| `node_ascending` | bool | true when `node` is the ascending node, where the second member moves away from us; false when it can be either node |
+| `arg_periastron` | float64 | of the second member, from `node` (deg) |
+| `periastron_time` | float64 | JD of a periastron |
+| `barycentre` | float64 | the place of the barycentre on the line from the first member to the second, as a share of their separation: m2 / (m1 + m2). 0 with no mass ratio |
+| `centre` | dict | `barycentre`; `primary` when no source gives a mass ratio: the first member stays at the centre, and the second moves on the relative orbit |
+| `mass_ratio_source` | dict | the source of `barycentre` |
+| `period_source`, `semi_major_axis_source`, `eccentricity_source`, `inclination_source`, `node_source`, `arg_periastron_source`, `epoch_source` | dict | the source of each element: `literature`, `msc`, `orb6`, `sbx`, `open-exoplanet-catalogue` or `gaia-dr3-orbits`. When Kepler's third law gives the semi-major axis, the source of the masses |
+| `assumed` | list | the elements that a rule fills (item column `orbit.assumed.item`, dict): `eccentricity` (0), `arg_periastron` (90° on a circular orbit), `epoch` (J2000, `phase` `assumed`), `node` (below) |
+| `computed` | list | the elements that other values give: `semi_major_axis` by Kepler's third law (item column `orbit.computed.item`, dict) |
+| `references` | list | the works of the elements, one per source, in source order: item columns `orbit.references.<field>` (a citation, below) |
+
+The mass ratio of the barycentre comes from the first of: the two masses of a paper, the K1 and K2 of an MSC or an SBX orbit, the two masses of Gaia DR3 (`binary_masses`), the two masses of OEC, then the two masses of the pair in the MSC (`sys.tsv`, `msc`). An MSC mass with the code `m` is the minimum mass of the secondary of a single-lined orbit, so it gives no ratio.
+
+A pair with no node on the sky has the node of its planets: one angle per system, from a hash of the ID of its root (Planets, the `assumed` field), named `node` in `assumed`. A circumbinary planet with no node of its own takes its pair's node. So the pair and its planet are in one plane.
+
+ORB6 and the MSC can give either node (`node_ascending` false). An orbit of the pair whose ω is fixed by its velocities or by an eclipse settles it: when its ω and the visual orbit's are more than 90° apart, `node` and `arg_periastron` turn by 180°, and `node_ascending` is then true.
+
+A citation:
+
+| Field | Type | |
+|---|---|---|
+| `source` | dict | the source of the elements or values that it cites |
+| `reference` | string | the source's key of the work: a paper key of the constants (`literature`), the note of the orbit (`msc`: "SB9_2192 2002AJ....124.1144L", "NSS SB1"), a WDS reference code (`orb6`: "Msn2023"), a bibcode (`sbx`), or a solution id (`gaia-dr3-orbits`) |
+| `short` | dict | the authors and the year ("Doyle et al. 2011"); null when the export does not know the work |
+| `title` | dict | the title, with the journal |
+| `url` | dict | a DOI or an ADS page |
+
+A page shows `short` and `title`, else `reference`, and links them to `url`. A paper key has its work from the constants (`constants/stars/binaries.py`, `literature.py`). A Gaia DR3 orbit, and an MSC note of one (`NSS …`, `DR3 …`), cites Gaia Collaboration, Arenou et al. 2023. A bibcode, also one inside an MSC note, links to its ADS page with no `short` or `title`. An ORB6 code has no citation yet: its work is in the WDS reference file, which the export does not read.
 
 A client reads a system from the root's row: the tree gives every node and its parent, and the row of each node gives its members. From any star or node, Metadata `system` names the root. The row of a point in Point source keeps the fits that assume one star (FLAME, GSP-Phot). Its System row (bit 3 of `mask`) says that they do not hold, and so does its class `binary star` or `multiple star`. A resolved system keeps its ID from one ingest to the next by the catalogue ids in its Metadata `cross_ids`, under the rule of every ID. A point keeps its own ID.
 
@@ -367,7 +439,7 @@ For a URL `/x/{id}/{name}` or a click:
 7. A row with an `alias_target`: go on with that ID (redirect to its URL). The target is live, so there is at most one redirect.
 8. Find the ID in the home tile. For each other bit `n` set in `mask`, fetch the tile of the same cell from table `n` in parallel and find the ID there.
 
-Most objects have rows only in their home table, so a lookup is one round trip after the split tables. A point of a star system also has a System row (bit 3 of its mask), and a resolved system has its home in table 3 and no other row.
+Most objects have rows only in their home table, so a lookup is one round trip after the split tables. A point of a star system also has a System row (bit 3 of its mask). A resolved system and a held star have their home in table 3 and no other row: their System row gives their place (`ra`, `dec`, `distance`), and a held star's values are in `star`.
 
 ## Milky Way render tree (`mw`)
 
@@ -794,7 +866,7 @@ The export of 2026-10-26 (a new registry, 180,980,643 IDs) adds both FLAME group
 
 Binary orbit tiles (`max_rows` 300), an estimate from the tile writer and the split rule over the 394,046 orbits of the positionable stars: 3,045 tiles, 118 MB, median 34 kB and 112 rows, p90 64 kB, max 111 kB.
 
-System tiles (`max_rows` 1,500), an estimate from the tile writer and the split rule over the 1,697,320 nodes of a dry run of the tree builder on registry ingest 1 (1,678,427 systems, 3,396,784 members): 2,385 tiles, 138 MB, median 51 kB and 624 rows, p90 94 kB, max 124 kB, about 82 B per row.
+System tiles (`max_rows` 1,500), an estimate from the tile writer and the split rule over the 1,697,320 nodes of a dry run of the tree builder on registry ingest 1 (1,678,427 systems, 3,396,784 members): 2,385 tiles, 138 MB, median 51 kB and 624 rows, p90 94 kB, max 124 kB, about 82 B per row. That estimate is from before the held stars and the `distance`, `orbit` and `star` columns.
 
 The sky cultures of registry ingest 4 (Stellarium at `0d956aa`, Bucur at `711e069`): 101 culture files (64 from Stellarium, 37 from Bucur) and the international names, 1.76 MB together. The median culture file is 3.7 kB; the largest are `chinese` (166 kB, 312 figures, 3,079 members) and `modern_chinese` (141 kB). 4,820 of the 4,864 stars of all cultures have a position.
 

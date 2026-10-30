@@ -1,5 +1,7 @@
 # System files
 
+These are the files of the solar system's planetary systems. The star systems, with their held stars and the orbits of their pairs, are the System table of the extrasolar export: see [extrasolar.md](extrasolar.md), "System (table 3)".
+
 ## Systems global (`systems/global.json`)
 
 A single tiny top-level file fetched once at app start, paired with the per-system files below. Holds context-independent lookups the frontend needs regardless of which system the user is viewing.
