@@ -52,7 +52,7 @@ interface NotableEntry {
   id?: string;                      // full Object.id; route /<type>/<id> (e.g. spkid-2000004, naif-502). Absent on group entries
   group?: string;                   // group slug; route /g/<slug> instead of an object (featured constellations in notable_satellites)
   feature_id?: number;              // IAU feature id (feature_type groups); `id` holds the host body — route /<type>/<id>/f/<feature_id>. Label/description overrides key on "<id>:<feature_id>"
-  diameter_km?: number;             // equivalent-sphere diameter (members) / mean PCK-radii diameter (moons)
+  diameter_km?: number;             // equivalent-sphere diameter (members) / mean PCK-radii diameter (moons) / equatorial diameter of a measured radius (exoplanets, 4 significant digits)
   mass_kg?: number;                 // body mass from PCK GM (major bodies only — e.g. category planet/moon members)
   radii?: { a: number; b: number; c: number }; // triaxial PCK radii km, body-fixed X/Y/Z (equatorial a, polar c); major bodies, Ceres/Pluto + PCK moons
   radius_km?: number;               // scalar render radius (Wikidata P2120); lineup size fallback when no radii/diameter (most TNO dwarfs)
@@ -62,7 +62,7 @@ interface NotableEntry {
   color?: string;                   // #rrggbb surface colour, as on the object: a measured hue at a luminance of the V-band geometric albedo (objects.md, "Surface colour"). Absent → frontend generic tint
   geometric_albedo?: number;        // V-band geometric albedo, as on the object: planets and moons, and small bodies whose hex cannot hold it; can be above 1
   lunar_weight_scale?: number;      // factor on the lunar weight of the ground, as on the object
-  first_obs?: string;               // discovery proxy — YYYY-MM-DD or YYYY (members only; moons omit it). On a `probes` entry it is the probe's launch date
+  first_obs?: string;               // discovery proxy — YYYY-MM-DD or YYYY (members only; moons omit it). On a `probes` entry it is the probe's launch date; on an exoplanet, its discovery year (YYYY)
   visits?: {                        // `probes` entries only: the members this probe reached, latest arrival first, uncapped
     id: string;                     // member Object.id; per-language label overrides in LocalizedGroupData.body_names
     name: string;                   // English Object.name
@@ -425,9 +425,10 @@ interface GlobalGroupData {
   // So a family with fewer than 20 published stars lists them all. A star
   // with an entry takes its Wikidata entity and pictures from that entry; a
   // star without one has the `name` of its Metadata row, no thumbnail and no
-  // localized name. `galleries` has a shelf for each listed star that has
-  // pictures. `child_groups` (localized) lists the families it contains that
-  // have stars, most stars first. `star-classification` (stellar
+  // localized name. A star entry has no `diameter_km` and no `first_obs`; the
+  // Sun has its lineup fields. `galleries` has a shelf for each listed star
+  // that has pictures. `child_groups` (localized) lists the families it
+  // contains that have stars, most stars first. `star-classification` (stellar
   // classification) is the root: every family without another parent is
   // below it, so it counts every star with a family, and it lists no stars.
   parent_families?: string[];       // the star- or planet- pages of the families that contain this one; the breadcrumb takes the first; absent on star-classification; `cat-planets` on a planet family without a parent family
@@ -454,7 +455,9 @@ interface GlobalGroupData {
   // of its page: the `name` of its planet record, and in
   // `notable_member_names` the localized names of its object entry, not its
   // Wikidata labels; it takes its Wikidata entity and pictures from that
-  // entry, and without one it has no thumbnail. A Solar System planet (`id` =
+  // entry, and without one it has no thumbnail. It has `diameter_km` when its
+  // radius is measured (no estimate, no limit, no assumed value) and
+  // `first_obs` when it has a discovery year. A Solar System planet (`id` =
   // `naif-<n>99`) is the entry of the `cat-planets` lineup, with its
   // Wikidata labels. `galleries` has a shelf for each listed planet that has
   // pictures. `child_groups` (localized) lists the families it contains that

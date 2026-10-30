@@ -13,7 +13,8 @@ served exoplanets of the IAU class ``planet``, and it has the stats and the
 plot of all of them.
 
 A list puts the planets with a Wikipedia article first, most sitelinks
-first, then the other planets, nearest host first.
+first, then the other planets, nearest host first. An exoplanet entry has the
+diameter of its measured radius and the year of its discovery.
 """
 
 import gzip
@@ -31,6 +32,7 @@ from space_map_data.constants.planets.families import (
     EARTH_RADII_PER_JUPITER,
     FAMILIES,
     FAMILY_SLUG_PREFIX,
+    JUPITER_RADIUS_CM,
     PARENTS,
 )
 from space_map_data.export.extrasolar.build import served
@@ -75,8 +77,10 @@ PAGES = FamilyPages(
 PLOT_FILE = "__planet_plot__.json.gz"
 # How the plot knows a value.
 MEASURED, MINIMUM, ESTIMATED = 0, 1, 2
-# Significant digits of a plotted value.
+# Significant digits of a plotted value and of a listed diameter.
 PLOT_DIGITS = 4
+# The planet records give radii in Jupiter radii.
+JUPITER_DIAMETER_KM = 2 * JUPITER_RADIUS_CM / 1e5
 
 
 def served_planet_families_stamp(extrasolar_dir: Path = EXTRASOLAR_DIR) -> dict | None:
@@ -144,6 +148,10 @@ class _Planet:
     body: NotableObject | None = None
     # The kind of a measured mass: true or minimum.
     mass_kind: str | None = None
+    # The diameter of a measured radius, else None.
+    diameter_km: float | None = None
+    # The discovery year, as YYYY.
+    first_obs: str | None = None
 
 
 def build_planet_family_groups(
@@ -224,6 +232,8 @@ def _planet(
     body: NotableObject | None = None,
 ) -> _Planet:
     mass = _plotted(record, "mass", EARTH_MASSES_PER_JUPITER)
+    diameter, how = _plotted(record, "radius", JUPITER_DIAMETER_KM)
+    year = record["values"].get("discovery_year")
     return _Planet(
         object_id=object_id,
         name=name,
@@ -237,6 +247,8 @@ def _planet(
         entry=entry,
         body=body,
         mass_kind={MEASURED: TRUE_MASS, MINIMUM: MINIMUM_MASS}.get(mass[1]),
+        diameter_km=_round(diameter) if how == MEASURED else None,
+        first_obs=None if year is None else str(year),
     )
 
 
@@ -326,8 +338,8 @@ def _member(
         object_id=planet.object_id,
         wikidata_qid=planet.qid,
         fallback_name=planet.name,
-        diameter_km=None,
-        first_obs=None,
+        diameter_km=planet.diameter_km,
+        first_obs=planet.first_obs,
         extrasolar=True,
         page_names=(
             planet_page_names(

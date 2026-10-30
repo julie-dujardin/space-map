@@ -309,6 +309,26 @@ class TestPlanetsPage:
             "naif-599",
         ]
 
+    def test_an_exoplanet_entry_has_its_diameter_and_year(self, page):
+        """The diameter of a measured radius and the discovery year. A Solar
+        System planet keeps its lineup entry."""
+        ids, groups = page
+        members = groups.planets.notable_members
+        assert {m.object_id: (m.diameter_km, m.first_obs) for m in members} == {
+            "naif-399": (None, None),
+            "naif-599": (None, None),
+            _id(ids[0], 1): (214500.0, "2000"),
+            _id(ids[0], 2): (286000.0, "2000"),
+            _id(ids[0], 3): (None, "2000"),
+            _id(ids[0], 4): (None, "2000"),
+        }
+        entries = notable_entries(members, _entities(SITELINKS))
+        assert (entries[2]["diameter_km"], entries[2]["first_obs"]) == (
+            214500.0,
+            "2000",
+        )
+        assert "diameter_km" not in entries[4]
+
     def test_largest_and_most_massive(self, page):
         """The largest measured radius of a planet with a measured true mass;
         a minimum mass counts for the most massive and says so."""
@@ -343,6 +363,38 @@ class TestPlanetsPage:
         planet_family.write_planet_plot(tmp_path, groups.planets.plot)
         found = _read_bundle(tmp_path / "groups" / "__planet_plot__.json.gz")
         assert found == groups.planets.plot
+
+
+class TestListEntry:
+    """An exoplanet entry takes a measured radius only."""
+
+    @staticmethod
+    def _record(**values) -> dict:
+        return {
+            "families": [],
+            "families_estimated": [],
+            "values": {"radius": 1.5, "discovery_year": 1995} | values,
+            "assumed": [],
+            "estimated": [],
+            "limits": [],
+        }
+
+    @pytest.mark.parametrize(
+        ("flags", "diameter"),
+        [
+            ({}, 214500.0),
+            ({"estimated": ["radius"]}, None),
+            ({"limits": ["radius<"]}, None),
+            ({"assumed": ["radius"]}, None),
+        ],
+    )
+    def test_diameter(self, flags, diameter):
+        found = planet_family._planet(self._record() | flags, "x-1-b-1", "b", 1.0)
+        assert (found.diameter_km, found.first_obs) == (diameter, "1995")
+
+    def test_no_discovery_year(self):
+        record = self._record(discovery_year=None)
+        assert planet_family._planet(record, "x-1-b-1", "b", 1.0).first_obs is None
 
 
 class TestBundles:
