@@ -513,7 +513,7 @@ interface ObjectImage {
 
 // One pooled shelf in the Images tab, beside the object's own `images`
 interface ImageGallery {
-  key: "features" | "moons";  // URL token (`&gal=`); collections also key by member Object.id
+  key: "features" | "moons";  // URL token (`&gal=`); collections also key by member Object.id, and a group's `tab_galleries` by tab ("exoplanets")
   subject?: string;           // set when the whole shelf is about one object (collections) — pooled shelves put it per-image instead
   name?: string;              // the subject's base-language name; collections only, where the shelf subject is usually not a notable member
   images: ObjectImage[];

@@ -9,7 +9,8 @@ pageimage-frequency > globalusage, see :mod:`space_map_data.utils.image_scoring`
 Cached at ``OBJECT_IMAGES_PATH`` (keyed by ``Object.id``, drives
 ``image_available``), ``STAR_IMAGES_PATH`` (by the QID of each extrasolar
 star and planet with an object entry), ``FEATURE_IMAGES_PATH`` (by ``Feature.feature_id``),
-``GROUP_IMAGES_PATH`` (by ``Group.slug``), and ``RING_IMAGES_PATH`` (by the
+``GROUP_IMAGES_PATH`` (by ``Group.slug``, and ``<slug>:<tab>`` for a category
+tab on another item), and ``RING_IMAGES_PATH`` (by the
 ringed body's ``Object.id`` — pictures of the ring system, not the planet).
 Exports read these caches instead of re-walking sources.
 """
@@ -27,10 +28,12 @@ from tqdm import tqdm
 
 from space_map_data.constants.atmosphere.wikidata import ATMOSPHERE_PAGES
 from space_map_data.constants.categories import (
+    CATEGORY_TAB_PAGES,
     DEBRIS_SLUG,
     PROBES_SLUG,
     RING_SYSTEMS_SLUG,
     SATELLITES_SLUG,
+    category_tab_key,
 )
 from space_map_data.constants.countries import COUNTRY_SLUG_PREFIX
 from space_map_data.constants.interior.wikidata import INTERIOR_PAGES
@@ -161,6 +164,11 @@ def ingest() -> None:
     ]
     missions = build_probe_missions()
     groups += [(m.slug, m.mission_qid) for m in missions]
+    groups += [
+        (category_tab_key(slug, tab), qid)
+        for slug, tabs in CATEGORY_TAB_PAGES.items()
+        for tab, qid in tabs.items()
+    ]
     craft_groups = {
         g.slug
         for g in GROUPS

@@ -427,7 +427,12 @@ class TestBundles:
             "planet-hot-jupiter",
         )
         monkeypatch.setattr(bundles, "GROUPS", tuple(GROUP_BY_SLUG[s] for s in slugs))
-        monkeypatch.setattr(bundles, "collect_group_images", lambda slug: None)
+        exoplanet_images = [{"file": "Exoplanet.jpg", "label": "s", "ext": "webp"}]
+        monkeypatch.setattr(
+            bundles,
+            "collect_group_images",
+            lambda slug: exoplanet_images if slug == "cat-planets:exoplanets" else None,
+        )
         monkeypatch.setattr(
             bundles,
             "load_wikipedia_summaries_for_qid",
@@ -492,6 +497,10 @@ class TestBundles:
         assert [m["id"] for m in planets["solar_members"]] == ["naif-399"]
         assert planets["solar_members"][0]["mass_kg"] == 1.0
         assert planets["exoplanets_qid"] == "Q44559"
+        assert planets["tab_galleries"] == [
+            {"key": "exoplanets", "images": exoplanet_images}
+        ]
+        assert all(g["key"] != "exoplanets" for g in planets["galleries"])
         assert (planets["solar_member_count"], planets["exoplanet_count"]) == (1, 6)
         assert planets["moon_total"] == 3
         assert "parent_families" not in planets

@@ -18,6 +18,7 @@ from space_map_data.constants.categories import (
     CATEGORY_TAB_PAGES,
     DEBRIS_SLUG,
     SATELLITES_SLUG,
+    category_tab_key,
 )
 from space_map_data.constants.earth_sats.constellations import (
     CONSTELLATION_BY_SLUG,
@@ -1040,6 +1041,11 @@ def write_group_bundles(
         tab_texts = {
             tab: _tab_text(qid, wikidata_entities) for tab, qid in tabs.items()
         }
+        tab_images = {
+            tab: found
+            for tab in tabs
+            if (found := collect_group_images(category_tab_key(group.slug, tab)))
+        }
         probes = (extra_probes or {}).get(group.slug)
         probe_entries = (
             notable_entries(probes, wikidata_entities, craft_models=craft_models)
@@ -1061,12 +1067,22 @@ def write_group_bundles(
                     if m.extrasolar
                 },
             }
+        # A tab on another item has a shelf of its pictures, which the tab
+        # shows as its hero. It stays out of `galleries`: deployed clients
+        # title a shelf they do not know by its key.
+        own = {entry["file"] for entry in images or ()}
+        tab_shelves = {
+            tab: kept
+            for tab, found in tab_images.items()
+            if (kept := [entry for entry in found if entry["file"] not in own])
+        }
+        shown = [*(images or ()), *(e for kept in tab_shelves.values() for e in kept)]
         galleries = _member_galleries(
-            members, images, member_ids.get(group.slug), subjects
+            members, shown, member_ids.get(group.slug), subjects
         )
         picture_files = [
             entry["file"]
-            for entries in (images or (), *(g["images"] for g in galleries or ()))
+            for entries in (shown, *(g["images"] for g in galleries or ()))
             for entry in entries
         ]
         global_by_slug[group.slug] = _build_global(
@@ -1096,6 +1112,10 @@ def write_group_bundles(
             global_by_slug[group.slug][name] = entries
         for tab, qid in tabs.items():
             global_by_slug[group.slug][f"{tab}_qid"] = qid
+        if tab_shelves:
+            global_by_slug[group.slug]["tab_galleries"] = [
+                {"key": tab, "images": kept} for tab, kept in tab_shelves.items()
+            ]
         child_slugs = (child_slugs_by_group or {}).get(group.slug)
         child_counts = (child_counts_by_group or {}).get(group.slug)
         display_name = (extra_group_names or {}).get(group.slug)

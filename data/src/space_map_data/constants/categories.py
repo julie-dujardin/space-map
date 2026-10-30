@@ -117,9 +117,14 @@ CATEGORIES: tuple[CategorySpec, ...] = (
 
 CATEGORY_BY_SLUG: dict[str, CategorySpec] = {c.slug: c for c in CATEGORIES}
 
-# The tabs of a category page that show the text of another item, by page and
-# tab. The downloads fetch these items as topic pages.
+# The tabs of a category page that show the text and the pictures of another
+# item, by page and tab. The downloads fetch these items as topic pages.
 CATEGORY_TAB_PAGES: dict[str, dict[str, str]] = {
     # "exoplanet": all 12 locales.
     PLANETS_SLUG: {"exoplanets": "Q44559"},
 }
+
+
+def category_tab_key(slug: str, tab: str) -> str:
+    """The key of a category tab's pictures in the group image selection."""
+    return f"{slug}:{tab}"

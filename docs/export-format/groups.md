@@ -575,6 +575,7 @@ interface GlobalGroupData {
   dissolved?: string;               // Wikidata P576 — programme dissolution (ISO date)
   images?: ObjectImage[];           // Same pipeline / layout as GlobalObjectData.images
   galleries?: ImageGallery[];       // one shelf per member, keyed by its Object.id
+  tab_galleries?: ImageGallery[];   // one shelf per tab on another item, keyed by the tab (`exoplanets`: the pictures of `exoplanets_qid`); the tab shows it as its hero. The member shelves leave out its files
 }
 ```
 
