@@ -227,7 +227,8 @@ describe.skipIf(!HAS_EXPORT)("a star's panel rows from its records", () => {
 			'Gaia DR3',
 			'HIP',
 			'IAU name',
-			'PASTEL'
+			'PASTEL',
+			'GCVS'
 		]);
 		expect(rows.position.Parallax).toBe('768.067 ± 0.050 mas');
 		expect(rows.position['Right ascension']).toMatch(/^14ʰ 29ᵐ 34\.\d+ˢ ± 0\.024 mas$/);

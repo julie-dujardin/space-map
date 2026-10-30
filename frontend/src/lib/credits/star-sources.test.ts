@@ -233,12 +233,14 @@ describe.skipIf(!HAS_EXPORT)('star credits from the real export', () => {
 			'Extended Hipparcos Compilation, XHIP (V/137D)',
 			'IAU Catalog of Star Names'
 		]);
-		// The panel shows the values of Proxima's exoplanet catalogue.
+		// The panel shows Proxima's GCVS name (V645 Cen) and the values of its
+		// exoplanet catalogue.
 		expect(await labels(27424668)).toEqual([
 			'Gaia Data Release 3',
 			'Astrometric fidelity of Gaia EDR3',
 			'The PASTEL catalogue, 2020 version (B/pastel)',
 			'SIMBAD astronomical database',
+			'General Catalogue of Variable Stars, GCVS 5.1',
 			'The Hipparcos and Tycho Catalogues (I/239)',
 			'NASA Exoplanet Archive, Planetary Systems Composite Parameters',
 			'IAU Catalog of Star Names'
