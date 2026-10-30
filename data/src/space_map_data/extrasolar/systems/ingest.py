@@ -62,7 +62,13 @@ from space_map_data.extrasolar.sources.simbad import SIMBAD, SimbadList
 from space_map_data.extrasolar.systems import assemble
 from space_map_data.extrasolar.systems.assemble import ENTRY, HELD, Systems
 from space_map_data.extrasolar.systems.build import build
-from space_map_data.extrasolar.systems.drawn import Drawn, assumed_node, draw, scene
+from space_map_data.extrasolar.systems.drawn import (
+    NAME_LETTER,
+    Drawn,
+    assumed_node,
+    draw,
+    scene,
+)
 from space_map_data.extrasolar.systems.elements import GAIA_ELEMENTS
 from space_map_data.extrasolar.systems.msc import read_msc, refuted_pairs
 from space_map_data.extrasolar.systems.nodes import (
@@ -521,11 +527,23 @@ class Plan:
     held_labels: pa.Array = field(default_factory=lambda: pa.array([], pa.string()))
 
 
+def _without_letter(name: str) -> str:
+    """The name with no component letter at its end: "HD 284149 A" and
+    "HD 20837A" give "HD 284149" and "HD 20837". A letter with a number, as
+    in "[GEO97] W7" and "Oph S1", is part of the designation, so it stays."""
+    found = NAME_LETTER.search(name)
+    if found is None or found["letter"][-1].isdigit():
+        return name
+    return name[: found.start()]
+
+
 def _node_names(systems: Systems) -> dict[int, str]:
     """The best name of each resolved node.
 
     A node with no name of its own, only a WDS designation or none, takes the
     name of its primary member: a point's name, or the name of an inner node.
+    A root is the whole system, not its primary, so it takes that name with no
+    component letter at its end.
     """
     names = systems.names
     order = pa.array(np.lexsort((names["rank"].to_numpy(), names["node"].to_numpy())))
@@ -556,7 +574,9 @@ def _node_names(systems: Systems) -> dict[int, str]:
     nodes = systems.nodes
     resolved = nodes.filter(pc.equal(nodes["key"], 0))
     order = np.argsort(-resolved["depth"].to_numpy(), kind="stable")
-    for number in resolved["node"].to_numpy()[order].tolist():
+    numbers = resolved["node"].to_numpy()
+    roots = set(numbers[numbers == resolved["root"].to_numpy()].tolist())
+    for number in numbers[order].tolist():
         if number in best or number not in primary:
             continue
         kind, key, member = primary[number]
@@ -565,6 +585,8 @@ def _node_names(systems: Systems) -> dict[int, str]:
             name = point_names.get(key)
         elif kind == assemble.SYSTEM:
             name = best.get(member)
+        if name and number in roots:
+            name = _without_letter(name)
         name = name or found.get(number, (None, None))[1]
         if name:
             best[number] = name
@@ -1030,7 +1052,10 @@ def held_names(
     primary. Else it is "<root name> <letter>": the letters of the WDS and the
     MSC name the components of the whole system. A letter of its pair (A, B)
     takes the pair's name. `names` are those of the resolved nodes
-    (`_node_names`); a point has the name of its object.
+    (`_node_names`); a point has the name of its object. A point that is a
+    root can have the name of its primary ("HQ Tau A"), but its stars are
+    components of the whole system, so they take that name with no
+    component letter at its end ("HQ Tau Aa").
     """
     nodes = systems.nodes
     order = np.argsort(nodes["node"].to_numpy(), kind="stable")
@@ -1048,6 +1073,12 @@ def held_names(
             found = point_names.get(key) if key else None
         return found
 
+    def system_name(root: int) -> str | None:
+        if root in names:
+            return names[root]
+        found = node_name(root)
+        return None if found is None else _without_letter(found)
+
     found: list[str | None] = []
     for number, letter, by_pair, own in zip(
         held["number"].to_pylist(),
@@ -1055,12 +1086,15 @@ def held_names(
         held["pair_letter"].to_pylist(),
         held["own_name"].to_pylist(),
     ):
-        pair = node_name(number)
-        root = node_name(int(roots[np.searchsorted(numbers, number)]))
+        root_number = int(roots[np.searchsorted(numbers, number)])
+        pair, root = node_name(number), node_name(root_number)
         if own and own not in (pair, root):
             found.append(own)
             counts["held stars named by their source"] += 1
             continue
+        root = system_name(root_number)
+        if number == root_number:
+            pair = root
         prefix = (pair or root) if by_pair else (root or pair)
         if prefix and letter:
             found.append(f"{prefix} {letter}")

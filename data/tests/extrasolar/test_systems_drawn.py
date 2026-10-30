@@ -14,7 +14,7 @@ from space_map_data.extrasolar.exoplanets.catalogues import OEC
 from space_map_data.extrasolar.exoplanets.table import default_node
 from space_map_data.extrasolar.systems import assemble, drawn, elements, orbits
 from space_map_data.extrasolar.systems.assemble import Systems
-from space_map_data.extrasolar.systems.ingest import held_names
+from space_map_data.extrasolar.systems.ingest import _node_names, held_names
 from space_map_data.extrasolar.systems.nodes import GAIA_ORBITS
 from space_map_data.extrasolar.systems.prepare import Inputs
 from tests.extrasolar.systems_fakes import (
@@ -32,6 +32,7 @@ def _systems(
     members: list[dict],
     orbit_keys: tuple[int, ...] = (),
     points: Iterable[dict] = (),
+    names: Iterable[dict] = (),
 ) -> Systems:
     empty = [
         schema.empty_table()
@@ -40,8 +41,6 @@ def _systems(
             assemble.DISTANCES,
             assemble.HOSTS,
             assemble.OVERLAPS,
-            assemble.NAMES,
-            assemble.EVENTS,
         )
     ]
     return Systems(
@@ -49,6 +48,8 @@ def _systems(
         pa.Table.from_pylist(members, schema=assemble.MEMBERS),
         pa.Table.from_pylist(list(points), schema=assemble.POINTS),
         *empty,
+        pa.Table.from_pylist(list(names), schema=assemble.NAMES),
+        assemble.EVENTS.empty_table(),
         Counter(),
         np.array(orbit_keys, np.int64),
     )
@@ -611,4 +612,114 @@ class TestHeldNames:
             "held stars named by their pair and A or B": 2,
             "held stars named by their source": 2,
             "held stars with no name": 1,
+        }
+
+    def test_a_point_root_named_for_its_primary(self):
+        """A point that is a root has the name of its primary; its stars
+        take the name with no component letter."""
+        held_columns = ("number", "letter", "pair_letter", "own_name")
+        systems = _systems(
+            [
+                {"node": 1, "key": 10, "point": True, "root": 1},
+                {"node": 2, "key": 20, "point": True, "root": 2},
+                {"node": 3, "key": 30, "point": True, "root": 3},
+                {"node": 4, "key": 40, "point": True, "root": 4},
+                # A resolved root whose inner point is named for A.
+                {"node": 5, "key": 0, "root": 5},
+                {"node": 6, "key": 50, "point": True, "root": 5},
+            ],
+            [],
+            points=[
+                {"key": 10, "name": "HQ Tau A"},
+                {"key": 20, "name": "HD 27160A"},
+                {"key": 30, "name": "DMPP-3 A"},
+                {"key": 40, "name": "Gaia DR3 123"},
+                {"key": 50, "name": "HD 98 A"},
+            ],
+        )
+        rows = [
+            (1, "Aa", False, None),
+            (1, "Ab", False, None),
+            # SIMBAD names the point and its first star alike.
+            (2, "A", False, "HD 27160A"),
+            (2, "B", False, "HD 27160B"),
+            (3, "A", True, None),
+            (3, "B", True, None),
+            (4, "A", True, None),
+            (6, "A", True, None),
+        ]
+        held = pa.Table.from_pylist(
+            [dict(zip(held_columns, row)) for row in rows],
+            schema=pa.schema([drawn.HELD_STARS.field(name) for name in held_columns]),
+        )
+        assert held_names(systems, held, {5: "HD 98"}, Counter()) == [
+            "HQ Tau Aa",
+            "HQ Tau Ab",
+            "HD 27160 A",
+            "HD 27160B",
+            "DMPP-3 A",
+            "DMPP-3 B",
+            "Gaia DR3 123 A",
+            # An inner point is a component: its pair keeps the letter.
+            "HD 98 A A",
+        ]
+
+
+class TestRootNames:
+    """A root with no name of its own takes its primary's name with no
+    component letter, as it is the whole system."""
+
+    def test_names(self):
+        def star(node: int, key: int) -> dict:
+            return {"node": node, "kind": assemble.STAR, "key": key}
+
+        def inner(node: int, member: int, key: int = 0) -> dict:
+            return {"node": node, "kind": assemble.SYSTEM, "key": key, "member": member}
+
+        systems = _systems(
+            [
+                # HD 284149: its primary is the point of A, which holds Aa, Ab.
+                {"node": 1, "key": 0, "root": 1, "depth": 0},
+                {"node": 2, "key": 10, "point": True, "root": 1, "depth": 1},
+                # A root whose inner pair takes the name of its point.
+                {"node": 3, "key": 0, "root": 3, "depth": 0},
+                {"node": 4, "key": 0, "parent": 3, "root": 3, "depth": 1},
+                # A root named by SIMBAD keeps its letter.
+                {"node": 5, "key": 0, "root": 5, "depth": 0},
+                # A letter that is part of no component name stays.
+                {"node": 6, "key": 0, "root": 6, "depth": 0},
+                # A letter with a number is a designation.
+                {"node": 7, "key": 0, "root": 7, "depth": 0},
+            ],
+            [
+                inner(1, 2, 10),
+                {"node": 1, "kind": assemble.ENTRY, "letter": "B"},
+                inner(3, 4),
+                star(3, 40),
+                star(4, 20),
+                star(4, 30),
+                star(5, 50),
+                star(6, 60),
+                star(6, 70),
+                star(7, 80),
+            ],
+            points=[
+                {"key": 10, "name": "HD 284149 A"},
+                {"key": 20, "name": "HD 20837A"},
+                {"key": 50, "name": "tet01 Ori D1"},
+                {"key": 60, "name": "eps CrB"},
+                {"key": 80, "name": "[GEO97] W7"},
+            ],
+            names=[
+                {"node": 1, "rank": 1, "source": "wds", "name": "WDS J04066+2018"},
+                {"node": 5, "rank": 1, "source": "simbad", "name": "Theta1 Orionis D"},
+            ],
+        )
+        assert _node_names(systems) == {
+            1: "HD 284149",
+            3: "HD 20837",
+            4: "HD 20837A",
+            5: "Theta1 Orionis D",
+            6: "eps CrB",
+            7: "[GEO97] W7",
         }
