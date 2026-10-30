@@ -109,9 +109,13 @@ class GroupExtraStats:
 
     # Star families: the stars that a catalogued classification puts in the
     # family, and the others that an estimate puts there. member_count is
-    # their sum, as no star is in both.
+    # their sum, as no star is in both. Stars category: the stars with a
+    # family; its member_count is every star.
     published_star_count: int | None = None
     estimated_star_count: int | None = None
+    # Stars category: the star with an entry and the largest radius, as
+    # {primary_type, primary_id, name, radius_sun}.
+    largest_star: dict | None = None
     # Planet families: the planets that measured values put in the family,
     # and the others that need an estimate. member_count is their sum.
     # Planets category: the planets with a published family, and the others

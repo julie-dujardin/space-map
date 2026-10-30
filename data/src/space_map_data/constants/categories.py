@@ -28,6 +28,7 @@ class CategorySpec:
 
 SOLAR_SYSTEM_SLUG = f"{CATEGORY_SLUG_PREFIX}solar-system"
 SATELLITE_SYSTEMS_SLUG = f"{CATEGORY_SLUG_PREFIX}satellite-systems"
+STARS_SLUG = f"{CATEGORY_SLUG_PREFIX}stars"
 PLANETS_SLUG = f"{CATEGORY_SLUG_PREFIX}planets"
 DWARF_PLANETS_SLUG = f"{CATEGORY_SLUG_PREFIX}dwarf-planets"
 MOONS_SLUG = f"{CATEGORY_SLUG_PREFIX}moons"
@@ -58,6 +59,7 @@ CATEGORIES: tuple[CategorySpec, ...] = (
     # coverage (four locales have the article, six a label), but the
     # well-covered item describes the wrong system.
     CategorySpec(SATELLITE_SYSTEMS_SLUG, "Satellite Systems", "Q25346003"),
+    CategorySpec(STARS_SLUG, "Stars", "Q523"),
     CategorySpec(PLANETS_SLUG, "Planets", "Q634"),
     CategorySpec(DWARF_PLANETS_SLUG, "Dwarf Planets", "Q2199"),  # "dwarf planet"
     CategorySpec(MOONS_SLUG, "Moons", "Q2537"),  # "natural satellite"

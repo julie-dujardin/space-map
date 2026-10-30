@@ -14,7 +14,8 @@ of them wins and the stage families of the other are dropped.
 A family states the spectral letter of a star, its stage, both or neither. A
 published family or MK value stops each estimate of what it states.
 
-Every family is below one root family, stellar classification.
+Every family is below one root family, stellar classification. It has no page:
+the Stars category is above the families.
 
 See docs/stellar-qids.md for the QID research.
 """
@@ -80,8 +81,11 @@ FAMILIES: tuple[str, ...] = tuple(STAR_FAMILY_PAGES)
 FAMILY_SLUG_PREFIX = "star-"
 # The Sun is in none of the catalogues that the rules read.
 SUN_SPECTRAL_TYPE = "G2V"
+# Absent from Gaia too. Casagrande & VandenBerg 2018, MNRAS 479, L102.
+SUN_BP_RP = 0.818
+SUN_ABSOLUTE_G = 4.67
 # The root of the family tree, stellar classification: a star with a family
-# is in it.
+# is in it, so the Stars category counts its classified stars here.
 ROOT_FAMILY = "classification"
 
 LETTER, STAGE = 1, 2

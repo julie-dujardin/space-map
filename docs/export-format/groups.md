@@ -429,12 +429,21 @@ interface GlobalGroupData {
   // localized name. A star entry has no `diameter_km` and no `first_obs`; the
   // Sun has its lineup fields. `galleries` has a shelf for each listed star
   // that has pictures. `child_groups` (localized) lists the families it
-  // contains that have stars, most stars first. `star-classification` (stellar
-  // classification) is the root: every family without another parent is
-  // below it, so it counts every star with a family, and it lists no stars.
-  parent_families?: string[];       // the star- or planet- pages of the families that contain this one; the breadcrumb takes the first; absent on star-classification; `cat-planets` on a planet family without a parent family
+  // contains that have stars, most stars first. The root family
+  // `classification` has no page: `cat-stars` is above every family without
+  // another parent. Its member_count is every star (`objects.star.count` of
+  // metadata.json) and the Sun, and its `published_star_count` and
+  // `estimated_star_count` are the root family's, the classified stars.
+  // `notable_members` are the 20 best-known stars with a published family.
+  // `groups/__star_plot__.json.gz` is its diagram: `bp_rp` and `abs_g`
+  // (absolute G from the parallax, extinction not removed) and `stage` (an
+  // index into `stages`, null without one of them) of the stars of 60 random
+  // Point source tiles, and `named`: {id, bp_rp, abs_g} of the Sun and of the
+  // listed stars with Gaia colours.
+  parent_families?: string[];       // the star- or planet- pages of the families that contain this one; the breadcrumb takes the first; `cat-stars` on a star family without a parent family; `cat-planets` on a planet family without a parent family
   published_star_count?: number;    // stars that a catalogued classification puts in the family
   estimated_star_count?: number;    // the other stars, which only an estimate (Gaia DR3 or a SIMBAD candidate type) puts there
+  largest_star?: { primary_type: "object"; primary_id: string; name: string; radius_sun: number }; // cat-stars only: the star with an entry and the largest radius (`radius_flame`, else `radius_flame_spec`, else `radius_gspphot`) with both bounds within 10%
 
   // Planet families (planet-<family>, one per family of the planet records'
   // `families` lists) only. The exoplanet counts are the `families` entry of

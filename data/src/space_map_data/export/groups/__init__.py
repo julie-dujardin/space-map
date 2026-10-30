@@ -15,6 +15,7 @@ from space_map_data.constants.categories import (
     PROBES_SLUG,
     SATELLITES_SLUG,
     SOLAR_SYSTEM_SLUG,
+    STARS_SLUG,
 )
 from space_map_data.constants.earth_sats.constellations import (
     CONSTELLATION_BY_SLUG,
@@ -71,7 +72,10 @@ from space_map_data.export.groups.solar_system_map import (
     build_solar_system_map,
     write_solar_system_map,
 )
-from space_map_data.export.groups.star_family import build_star_family_groups
+from space_map_data.export.groups.star_family import (
+    build_star_family_groups,
+    write_star_plot,
+)
 from space_map_data.export.groups.stats import GroupExtraStats
 from space_map_data.export.names import Names, ObjectNames, entity_names
 from space_map_data.export.notable import (
@@ -573,6 +577,7 @@ def run_groups_tier(
         extra_chart_names.setdefault(slug, {}).update(target_names)
     if planets_page is not None:
         extra_chart_names.setdefault(PLANETS_SLUG, {}).update(planets_page.card_names)
+    extra_chart_names.setdefault(STARS_SLUG, {}).update(star_families.card_names)
 
     write_earth_membership(out_dir, build.membership)
     write_orbit_samples(out_dir, small_body_stats.orbit_samples)
@@ -582,6 +587,8 @@ def run_groups_tier(
     write_moon_discovery(out_dir, moon_discovery)
     if planets_page is not None:
         write_planet_plot(out_dir, planets_page.plot)
+    if star_families.plot is not None:
+        write_star_plot(out_dir, star_families.plot)
 
     return write_group_bundles(
         out_dir,

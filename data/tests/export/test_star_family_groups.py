@@ -9,6 +9,7 @@ import pytest
 from space_map_data.constants.stars.families import (
     FAMILIES,
     FAMILY_SLUG_PREFIX,
+    ROOT_FAMILY,
     STAR_FAMILY_PAGES,
 )
 from space_map_data.export.extrasolar.build import FAMILIES_FILE, export_extrasolar
@@ -60,6 +61,9 @@ class TestRegistry:
 
     def test_every_family_has_a_page(self):
         for family, qids in STAR_FAMILY_PAGES.items():
+            if family == ROOT_FAMILY:
+                assert f"{FAMILY_SLUG_PREFIX}{family}" not in GROUP_BY_SLUG
+                continue
             group = GROUP_BY_SLUG[f"{FAMILY_SLUG_PREFIX}{family}"]
             assert group.type is GroupType.STAR_FAMILY
             assert group.applies_to is GroupCategory.STAR
@@ -73,8 +77,7 @@ class TestRegistry:
             "star-horizontal-branch",
             "star-variable-star",
         ]
-        assert star_family.PAGES.parent_slugs("star-dwarf") == ["star-classification"]
-        assert star_family.PAGES.parent_slugs("star-classification") == []
+        assert star_family.PAGES.parent_slugs("star-dwarf") == ["cat-stars"]
 
 
 class TestBuild:
@@ -105,11 +108,59 @@ class TestBuild:
         assert groups.member_counts["star-main-sequence"] == 4
         stats = groups.extra_stats["star-main-sequence"]
         assert (stats.published_star_count, stats.estimated_star_count) == (3, 1)
-        assert set(groups.member_counts) == {f"star-{f}" for f in FAMILIES}
+        assert set(groups.member_counts) == {
+            "cat-stars",
+            *(f"star-{f}" for f in FAMILIES if f != ROOT_FAMILY),
+        }
         assert groups.children["star-main-sequence"] == ["star-k-type-main-sequence"]
         assert groups.children["star-dwarf"] == ["star-main-sequence"]
-        assert groups.member_counts["star-classification"] == 4
-        assert groups.children["star-classification"] == ["star-dwarf"]
+        assert groups.children["cat-stars"] == ["star-dwarf"]
+
+    def test_the_stars_page_counts_every_star(self, served, session):
+        _, out = served
+        metadata = json.loads((out / "v1" / "x" / "metadata.json").read_text())
+        metadata["objects"]["star"]["count"] = 6
+        (out / "v1" / "x" / "metadata.json").write_text(json.dumps(metadata))
+        groups = star_family.build_star_family_groups(
+            [], ObjectNames(_entities({}), session), out
+        )
+        assert groups.member_counts["cat-stars"] == 6
+        stats = groups.extra_stats["cat-stars"]
+        assert (stats.published_star_count, stats.estimated_star_count) == (3, 1)
+
+    @pytest.mark.parametrize(
+        ("row", "radius"),
+        [
+            ({"radius_flame": 2.0, "low": 1.9, "up": 2.1, "gsp": 900.0}, 2.0),
+            ({"radius_flame": 2.0, "low": 1.0, "up": 2.1, "gsp": 900.0}, None),
+            ({"radius_flame": None, "low": None, "up": None, "gsp": 900.0}, 900.0),
+        ],
+    )
+    def test_a_card_shows_a_precise_radius(self, row, radius):
+        columns = dict.fromkeys(
+            f"{c}{end}"
+            for c in star_family.RADIUS_COLUMNS
+            for end in ("", "_lower", "_upper")
+        )
+        columns |= {
+            "radius_flame": row["radius_flame"],
+            "radius_flame_lower": row["low"],
+            "radius_flame_upper": row["up"],
+            "radius_gspphot": row["gsp"],
+            "radius_gspphot_lower": row["gsp"] and row["gsp"] * 0.95,
+            "radius_gspphot_upper": row["gsp"] and row["gsp"] * 1.05,
+        }
+        assert star_family._radius(columns) == radius
+
+    def test_the_plot_samples_the_stars(self, served, session):
+        _, out = served
+        plot = star_family.build_star_family_groups(
+            [], ObjectNames(_entities({}), session), out
+        ).plot
+        assert plot is not None
+        assert len(plot["bp_rp"]) == len(plot["abs_g"]) == len(plot["stage"])
+        assert plot["named"][0]["id"] == "naif-10"
+        assert plot["stages"][plot["stage"][0]] == "main-sequence"
 
     def test_stars_with_an_article_by_sitelinks(self, served, session):
         ids, out = served
@@ -134,7 +185,8 @@ class TestBuild:
         assert [m.sitelinks_count for m in members] == [40, 5, None]
         assert all(m.extrasolar for m in members)
         assert groups.notable_members["star-dwarf"] == members
-        assert "star-classification" not in groups.notable_members
+        # No brightest stars here: the list is the stars with an article.
+        assert groups.notable_members["cat-stars"] == members[:2]
         assert "star-g-type-main-sequence" not in groups.notable_members
 
         entries = notable_entries(members)
@@ -160,11 +212,12 @@ class TestBuild:
         assert "naif-10" not in {
             m.object_id for m in groups.notable_members["star-k-type-main-sequence"]
         }
-        assert "star-classification" not in groups.notable_members
+        assert groups.notable_members["cat-stars"][0] == g_type[0]
         assert groups.member_counts["star-g-type-main-sequence"] == 1
         assert groups.extra_stats["star-g-type-main-sequence"].published_star_count == 1
         assert groups.member_counts["star-main-sequence"] == 5
-        assert groups.member_counts["star-classification"] == 5
+        assert groups.member_counts["cat-stars"] == 5
+        assert groups.extra_stats["cat-stars"].published_star_count == 4
 
     def test_the_brightest_stars_fill_the_list(self, served, session):
         ids, out = served

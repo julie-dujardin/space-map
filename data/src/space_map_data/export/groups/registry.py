@@ -42,6 +42,7 @@ from space_map_data.constants.planets import families as planet_families
 from space_map_data.constants.small_bodies import ORBIT_CLASS_QIDS
 from space_map_data.constants.stars.families import (
     FAMILY_SLUG_PREFIX,
+    ROOT_FAMILY,
     STAR_FAMILY_PAGES,
 )
 from space_map_data.models.object.sbdb import OrbitClass
@@ -258,6 +259,7 @@ def _build_groups() -> tuple[Group, ...]:
             wikidata_qid=qids[0],
         )
         for family, qids in STAR_FAMILY_PAGES.items()
+        if family != ROOT_FAMILY
     )
     planet_family_groups = tuple(
         Group(
