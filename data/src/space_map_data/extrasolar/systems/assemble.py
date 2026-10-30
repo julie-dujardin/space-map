@@ -8,8 +8,11 @@ position is that of its primary member, the first in the order of its first
 source, down to a point.
 
 The decisions for the ingest:
-- an entry, of a node or inside a point, that is another point of its
-  system leaves, so each star is listed once;
+- an entry that is a star of its system already leaves, so each star is
+  listed once: an entry, of a node or inside a point, that is another point,
+  or an entry of a node with the WDS component id of an entry inside a
+  point, as the WDS and the MSC can give one star inside the point and
+  beside it. A node left with one member is that member;
 - a composite spectral type of a point that holds one star moves to its
   system, and the point takes its own type from the trees, else none;
 - a point of a resolved system with a position and no distance takes the
@@ -40,6 +43,7 @@ from space_map_data.extrasolar.systems.nodes import (
     GAIA_DR3,
     GAIA_ORBITS,
     INTERIOR_SOURCES,
+    MSC_ID,
     PARALLAX,
     PLANETS,
     PROPER_MOTION,
@@ -533,6 +537,12 @@ class Assembler:
             )
         for root in roots:
             self._order(root, listed)
+            # A root of one member, once entries leave, is that member.
+            while len(root.members) == 1 and root.members[0][2] is not None:
+                root = root.members[0][2]
+            if len(root.members) == 1:
+                self.counts["systems that are one point once entries leave"] += 1
+                continue
             self._emit(root, 0, 0, 0)
 
     def _order(self, node: _Node, listed: dict[int, set[int]]) -> None:
@@ -548,10 +558,10 @@ class Assembler:
         def add_key(key: int, value: int) -> None:
             child = child_of(key)
             if child is not None and len(child.members) == 1:
-                # A node that holds one point is that point.
+                # A node that holds one member is that member.
                 if key not in covered:
-                    _, point, _, own, _ = child.members[0]
-                    members.append((POINT, point, None, own, None))
+                    kind, point, inner, own, _ = child.members[0]
+                    members.append((kind, point, inner, own, None))
                 covered.update(child.keys)
             elif child is not None:
                 if not any(m[2] is child for m in members):
@@ -608,24 +618,62 @@ class Assembler:
         members: list[tuple[str, int, _Node | None, int, str | None]],
         listed: dict[int, set[int]],
     ) -> list[tuple[str, int, _Node | None, int, str | None]]:
-        """Leave out the entries that are a point of the system. A point that
+        """Leave out the entries that are a star of the system already: a
+        point of the system, or a star inside a point that has the same WDS
+        component id ("03257+0551 A" of the WDS and of the MSC). A point that
         the entry's source lists is another star."""
         top = node
         while top.parent is not None:
             top = top.parent
+        inside = self._inside(top.keys)
         primary = _first_point(members)
-        if not primary:
-            return members
         kept = []
         for member in members:
-            source = self.value(member[3], "source") if member[0] == ENTRY else None
-            if source is not None:
+            if member[0] != ENTRY:
+                kept.append(member)
+                continue
+            point = next(
+                (inside[t] for t in sorted(self._components(member[3])) if t in inside),
+                0,
+            )
+            if point:
+                self._log_inside(member[3], point)
+                continue
+            source = self.value(member[3], "source")
+            if primary and source is not None:
                 own = listed[INTERIOR_SOURCES.index(source)]
                 others = sorted(top.keys - own - {primary})
                 if self._is_point(member[3], primary, others):
                     continue
             kept.append(member)
         return kept
+
+    def _components(self, ref: int) -> set[str]:
+        """The WDS and MSC component ids of a member."""
+        return {
+            item["catalogue_id"]
+            for item in self.value(ref, "ids") or []
+            if (item["catalogue"], item["release"]) in (WDS_ID, MSC_ID)
+        }
+
+    def _inside(self, keys: frozenset[int]) -> dict[str, int]:
+        """The point of each component id of an entry inside one of these
+        points."""
+        found: dict[str, int] = {}
+        for key in sorted(keys):
+            item = self.chosen.get(key)
+            if isinstance(item, Interior):
+                for ref, _ in item.entries:
+                    for text in self._components(ref):
+                        found.setdefault(text, key)
+        return found
+
+    def _log_inside(self, ref: int, point: int) -> None:
+        self.counts["entries that a point of the system holds"] += 1
+        text = " ".join(
+            str(self.value(ref, name)) for name in ("source", "system", "label")
+        )
+        self.events.append(("entry is in a point", "assemble", f"{text} is in {point}"))
 
     def _is_point(self, ref: int, primary: int, others: list[int]) -> bool:
         """Whether the entry `ref`, measured from `primary`, is one of

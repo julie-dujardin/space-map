@@ -1811,6 +1811,66 @@ class TestComponentOnItsPairsPoint:
         assert letters == {("star", 140): "A", ("entry", 0): "B"}
 
 
+class TestOneStarOfTwoSources:
+    """The WDS puts B inside the point of A, and the MSC puts it beside the
+    point. Both give it the WDS component id 03513+2621 B, so the system
+    lists it once."""
+
+    W = "03513+2621"
+
+    def systems(self, letter: str = "B", with_c: bool = True) -> Systems:
+        w = self.W
+        c = offset(57.8, 26.35, 30.0, 45.0)
+        resolver = FakeResolver(
+            {
+                ("hip", "2007", "1"): 700,
+                ("gaia", "dr3", "11"): 700,
+                ("hip", "2007", "2"): 701,
+            },
+            [
+                fact(700, 57.8, 26.35, 9.0, parallax=10.0),
+                fact(701, *c, 10.0, parallax=10.0),
+            ],
+        )
+        comp = [msc_comp(w, "A", HIP=1), msc_comp(w, letter, Vmag=11.0)]
+        pairs = [msc_pair(w, "A", letter, "*", Sep=2.0, Sunit='"')]
+        if with_c:
+            comp.append(msc_comp(w, "C", HIP=2))
+            pairs = [
+                msc_pair(w, "AB", "C", "*", Sep=30.0, Sunit='"'),
+                msc_pair(w, "A", letter, "AB", Sep=2.0, Sunit='"'),
+            ]
+        catalogue = wds_catalogue(
+            {w: [wds_pair("A", "B", 0.2, notes="V", mag1=9.0, mag2=11.0)]},
+            {(w, "A"): wds_component(11, 57.8, 26.35)},
+        )
+        inputs = Inputs(msc=msc_nodes(comp, pairs, []), wds=catalogue)
+        return build(inputs, resolver)
+
+    def test_the_entry_beside_the_point_leaves(self):
+        systems = self.systems()
+        assert shape(systems, 701) == ("multiple star", 3, [701, ("point", 700, 2)])
+        assert systems.counts["entries that a point of the system holds"] == 1
+        events = systems.events.filter(
+            pc.equal(systems.events["kind"], "entry is in a point")
+        )
+        assert events["text"].to_pylist() == [f"msc {self.W} B is in 700"]
+
+    def test_a_root_left_with_one_point_is_that_point(self):
+        systems = self.systems(with_c=False)
+        assert shape(systems, 700) == ("point", 700, 2)
+        assert systems.counts["systems that are one point once entries leave"] == 1
+
+    def test_another_letter_is_another_star(self):
+        systems = self.systems("D")
+        assert shape(systems, 701) == (
+            "multiple star",
+            4,
+            [701, ("multiple star", 3, [("point", 700, 2), "entry"])],
+        )
+        assert "entries that a point of the system holds" not in systems.counts
+
+
 class TestEntryIsAPoint:
     """An entry and a point of one system at the same separation from the
     same primary are one star: the entry leaves."""
