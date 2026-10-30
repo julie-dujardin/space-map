@@ -44,6 +44,7 @@ from space_map_data.extrasolar.tables import (
     merge_by_source_order,
 )
 from tests.download.orbit_catalogue_files import MSC_LINES, MSC_ORB_README
+from tests.extrasolar import conftest
 from tests.extrasolar.conftest import offset
 from tests.extrasolar.systems_fakes import (
     FakeResolver,
@@ -1021,6 +1022,60 @@ class TestWikidataItems:
         )
         assert f"  {wikidata.TO_ROOT}: 1\n    Q904 MSC 00400+1000" in report
         assert f"  {wikidata.OUTRANKED}: 1\n    Q901 Rigil Kentaurus" in report
+
+
+class TestWikidataClaims:
+    """A claim reaches the object of its newest link in the row's region and
+    its neighbours, as the engine finds it."""
+
+    def test_a_link_of_the_run_wins_over_an_older_link_in_a_later_region(
+        self, root, backup
+    ):
+        """HIP 7 took star 1 in the first ingest, filed in the later region.
+        The run links it to star 2, filed in the earlier region of the row."""
+        ends = conftest.straddle(100)
+        regions = {
+            end: sky.region_of(int(sky.cells(np.array(end[:1]), np.array(end[1:]))[0]))
+            for end in ends
+        }
+        row, old = sorted(ends, key=regions.__getitem__)
+        new = offset(*row, 1.0, 90)
+        gaia = conftest.gaia_rows(
+            [
+                {"id": 1, "ra": old[0], "dec": old[1], "mag": 5.0},
+                {"id": 2, "ra": new[0], "dec": new[1], "mag": 5.0},
+            ]
+        )
+        hip = conftest.hip_rows([{"id": 7, "ra": row[0], "dec": row[1], "mag": 5.0}])
+        tables = ((conftest.POINT,), conftest.META)
+        with IngestRun.start(root, backup, *tables) as run:
+            run.add(conftest.GAIA, [gaia])
+            run.add(conftest.HIP, [hip])
+            run.commit()
+        first, second = (conftest.id_of(root, conftest.GAIA, n) for n in (1, 2))
+        assert conftest.id_of(root, conftest.HIP, 7) == first
+
+        notes = Source("notes", "notes", "x", home=1, permanent=False)
+        found = ("hip", "2007", "7")
+        rows = conftest.name_rows(
+            [
+                {
+                    "id": "n",
+                    "ra": row[0],
+                    "dec": row[1],
+                    "claims": [conftest.claim(*found)],
+                }
+            ]
+        )
+        with IngestRun.start(root, backup, *tables) as run:
+            run.add(conftest.GAIA, [gaia])
+            exclude = pa.array([[first]], pa.list_(pa.int64()))
+            run.add(conftest.HIP, [hip.append_column("match_exclude", exclude)])
+            keys = wikidata._keys(run, rows, [found])
+            run.add(notes, [rows])
+            run.commit()
+        assert keys == {found: second}
+        assert conftest.id_of(root, notes, "n") == second
 
 
 # Gaia DR3 points: ra, dec, G, parallax, fidelity. The first three hold two

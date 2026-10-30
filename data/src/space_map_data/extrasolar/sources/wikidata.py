@@ -36,6 +36,8 @@ from space_map_data.download.providers.stars.wikidata_stars import (
 )
 from space_map_data.extrasolar import sky
 from space_map_data.extrasolar.engine import IngestRun, Source
+from space_map_data.extrasolar.ids import cell_of
+from space_map_data.extrasolar.registry import RETIRED
 from space_map_data.extrasolar.sources.hipparcos import GAIA_DR3, HD
 from space_map_data.extrasolar.sources.names import HIP
 from space_map_data.extrasolar.sources.simbad import SimbadList
@@ -339,29 +341,90 @@ def _claim(
     return None
 
 
-def _keys(
-    run: IngestRun, rows: pa.Table, claims: list[tuple[str, str, str]]
-) -> dict[tuple[str, str, str], int]:
-    """The object that each claim reaches in the run, from the regions of the
-    rows and their neighbours, as the engine looks."""
+Claim = tuple[str, str, str]
+
+
+def _keys(run: IngestRun, rows: pa.Table, claims: list[Claim]) -> dict[Claim, int]:
+    """The object that each claim reaches in the run.
+
+    As in the engine, the newest link in the row's region and its neighbours
+    holds. Of two links of one ingest, the link in the later region of that
+    list holds.
+    """
     cells = sky.cells(rows["match_ra"].to_numpy(), rows["match_dec"].to_numpy())
-    regions = {
-        near
-        for region in np.unique(sky.region_of(cells)).tolist()
-        for near in (region, *sky.neighbour_regions(region))
-    }
+    homes = sky.region_of(cells).tolist()
+    hoods = {home: [home, *sky.neighbour_regions(home)] for home in set(homes)}
     wanted = set(claims)
     ids = pa.array(sorted({claim[2] for claim in claims}), pa.string())
-    found: dict[tuple[str, str, str], int] = {}
-    for region in sorted(regions):
+    # Region → claim → the key of its last link there, and its count of links.
+    last: dict[int, dict[Claim, tuple[int, int]]] = {}
+    for region in sorted({near for hood in hoods.values() for near in hood}):
         links = run.links(region, CLAIMS)
         links = links.filter(pc.is_in(links["catalogue_id"], value_set=ids))
-        # The latest link of an id holds.
-        for *claim, key in zip(
+        found: dict[Claim, tuple[int, int]] = {}
+        for catalogue, release, catalogue_id, key in zip(
             *(links[name].to_pylist() for name in (*CROSS_ID.names, "key"))
         ):
-            if tuple(claim) in wanted:
-                found[(claim[0], claim[1], claim[2])] = key
+            claim = (catalogue, release, catalogue_id)
+            if claim in wanted:
+                found[claim] = (key, found.get(claim, (0, 0))[1] + 1)
+        last[region] = found
+    keys: dict[Claim, int] = {}
+    split: dict[Claim, list[int]] = {}
+    for claim, home in zip(claims, homes):
+        held = [near for near in hoods[home] if claim in last[near]]
+        if len({last[near][claim][0] for near in held}) > 1:
+            split[claim] = held
+        elif held:
+            keys[claim] = last[held[0]][claim][0]
+    ingests = _ingests(run, split, last)
+    for claim, held in split.items():
+        at = max(range(len(held)), key=lambda at: (ingests[held[at], claim], at))
+        keys[claim] = last[held[at]][claim][0]
+    return keys
+
+
+def _ingests(
+    run: IngestRun,
+    split: dict[Claim, list[int]],
+    last: dict[int, dict[Claim, tuple[int, int]]],
+) -> dict[tuple[int, Claim], int]:
+    """The ingest of the last link of each claim in each of its regions. A
+    link of a pass of the run has the run's ingest.
+
+    `run.links` gives the registry links of a region first, then the links of
+    the passes. So when a region has more links of a claim than live registry
+    links, its last link is of a pass.
+    """
+    by_region: dict[int, set[Claim]] = defaultdict(set)
+    for claim, held in split.items():
+        for region in held:
+            by_region[region].add(claim)
+    registry = run.registry
+    found: dict[tuple[int, Claim], int] = {}
+    for region, wanted in sorted(by_region.items()):
+        ids = pa.array(sorted({claim[2] for claim in wanted}), pa.string())
+        xids = registry.read_xids(
+            region, [*CROSS_ID.names, "id", "ingest"], rebuild=True
+        )
+        xids = xids.filter(pc.is_in(xids["catalogue_id"], value_set=ids))
+        # As in `run.links`, a retired ID holds no link.
+        ends = registry.live_end(xids["id"].to_numpy())
+        states = registry.id_states(np.unique(sky.region_of(cell_of(ends))).tolist())
+        live = ~states.has_status(ends, RETIRED)
+        counts: Counter = Counter()
+        newest: dict[Claim, int] = {}
+        for catalogue, release, catalogue_id, ingest, alive in zip(
+            *(xids[name].to_pylist() for name in (*CROSS_ID.names, "ingest")),
+            live.tolist(),
+        ):
+            claim = (catalogue, release, catalogue_id)
+            if alive and claim in wanted:
+                counts[claim] += 1
+                newest[claim] = ingest
+        for claim in wanted:
+            from_pass = last[region][claim][1] > counts[claim]
+            found[region, claim] = run.ingest if from_pass else newest[claim]
     return found
 
 
