@@ -7,7 +7,9 @@ import pytest
 from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import Session
 
+from space_map_data.export.names import ObjectNames
 from space_map_data.export.position.elements.celestrak_source import CelesTrakElements
+from space_map_data.export.wikidata import WikidataEntity, WikidataEntityCache
 from space_map_data.models.object import (
     ElementsScale,
     Horizons,
@@ -119,3 +121,29 @@ def engine() -> Iterator[Engine]:
 def session(engine: Engine) -> Iterator[Session]:
     with Session(engine) as sess:
         yield sess
+
+
+class EntityStub(WikidataEntityCache):
+    """An entity cache that holds the given entities and reads nothing from
+    disk. Each kind of lookup finds the same entities."""
+
+    def __init__(self, entities: dict[str, WikidataEntity] | None = None) -> None:
+        self.entities = entities or {}
+
+    def get_entity(self, qid: str | None) -> WikidataEntity | None:
+        return self.entities.get(qid) if qid else None
+
+    get_referenced = get_feature_entity = get_listed_star = get_entity
+
+
+def labelled(labels: dict[str, str]) -> WikidataEntity:
+    """An entity with only ``labels``."""
+    return WikidataEntity(
+        labels=labels, descriptions={}, aliases={}, claims={}, sitelinks={}
+    )
+
+
+@pytest.fixture
+def object_names(session: Session) -> ObjectNames:
+    """Names from the test database, with no Wikidata entities."""
+    return ObjectNames(EntityStub(), session)

@@ -6,7 +6,7 @@ name, one description and one photograph between them, which is how a sample
 capsule ends up presented as the spacecraft that dropped it.
 """
 
-from space_map_data.export.objects.wikidata_claims import resolve_wikidata_qid
+from space_map_data.export.names import resolve_wikidata_qid
 from space_map_data.models.object import ObjectType, OrbitalSource, Satcat
 from tests.conftest import make_object
 

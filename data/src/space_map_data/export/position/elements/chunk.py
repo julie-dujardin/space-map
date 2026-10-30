@@ -3,10 +3,8 @@
 import logging
 from pathlib import Path
 
-from space_map_data.export.objects.wikidata_claims import (
-    radius_km_from_claims,
-    resolve_wikidata_qid,
-)
+from space_map_data.export.names import resolve_wikidata_qid
+from space_map_data.export.objects.wikidata_claims import radius_km_from_claims
 from space_map_data.export.position.elements import sidecar
 from space_map_data.export.position.elements.writer import (
     write_elements,

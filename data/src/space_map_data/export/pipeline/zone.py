@@ -8,8 +8,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from space_map_data.export.earth_sat_filter import is_docked
+from space_map_data.export.names import resolve_wikidata_qid
 from space_map_data.export.objects.moon_sources import MoonSourceBlocks
-from space_map_data.export.objects.wikidata_claims import resolve_wikidata_qid
 from space_map_data.export.objects.writer import (
     ChunkObjectData,
     build_chunk_object_data,

@@ -40,11 +40,9 @@ from space_map_data.export.wikidata import (
     active_statements,
     entity_label,
 )
-from space_map_data.utils.paths import PROJECT_ROOT, SOURCES_METADATA_DIR
+from space_map_data.utils.paths import MESSAGES_DIR, SOURCES_METADATA_DIR
 
 logger = logging.getLogger(__name__)
-
-MESSAGES_DIR = PROJECT_ROOT / "frontend" / "messages"
 
 # All prefixes managed by this module. Generated values only fill gaps:
 # existing translations always win, and keys no longer generated for the

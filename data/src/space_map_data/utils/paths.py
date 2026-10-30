@@ -4,6 +4,8 @@ DATA_DIR = Path(__file__).resolve().parents[3]
 CONFIG_FILE = DATA_DIR / "config.toml"
 
 PROJECT_ROOT = DATA_DIR.parent
+# The app's message catalogues, one JSON file per language.
+MESSAGES_DIR = PROJECT_ROOT / "frontend" / "messages"
 
 DOWNLOAD_DIR = PROJECT_ROOT.parent / "space-map-downloads"
 

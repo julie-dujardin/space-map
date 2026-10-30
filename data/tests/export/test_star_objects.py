@@ -409,6 +409,7 @@ class TestReadStarObjects:
             [
                 ("id", pa.int64()),
                 ("name", pa.string()),
+                ("name_source", pa.string()),
                 ("class", pa.string()),
                 ("cross_ids", pa.list_(CROSS_ID)),
                 ("object", pa.bool_()),
@@ -423,21 +424,31 @@ class TestReadStarObjects:
     def test_a_node_of_a_star_system_takes_its_class_as_its_type(self, tmp_path):
         path = tmp_path / "part.parquet"
         rows = [
-            {"id": id_, "name": name, "class": cls, "object": True, "cross_ids": [item]}
-            for id_, name, cls, item in (
-                (5, "Capella", "binary star", self._item("Q1")),
-                (6, "Alpha Centauri", "multiple star", self._item("Q2")),
-                (7, "Vega", "star", self._item("Q3")),
-                (8, "Sirius B", "white dwarf", self._item("Q4")),
+            {
+                "id": id_,
+                "name": name,
+                "name_source": source,
+                "class": cls,
+                "object": True,
+                "cross_ids": [item],
+            }
+            for id_, name, source, cls, item in (
+                (5, "Capella", "iau-wgsn", "binary star", self._item("Q1")),
+                (6, "Alpha Centauri", "wikidata", "multiple star", self._item("Q2")),
+                (7, "Vega", "iau-wgsn", "star", self._item("Q3")),
+                (8, "Sirius B", "simbad", "white dwarf", self._item("Q4")),
             )
         ]
         pq.write_table(pa.Table.from_pylist(rows), path)
-        assert [star.object_type for star in _read_part(path)] == [
+        found = _read_part(path)
+        assert [star.object_type for star in found] == [
             "binary_star",
             "multiple_star",
             "star",
             "star",
         ]
+        # The IAU name is kept in every language.
+        assert [star.iau_named for star in found] == [True, False, True, False]
 
     @staticmethod
     def _item(qid: str) -> dict:
@@ -461,6 +472,7 @@ class TestReadStarObjects:
             [
                 ("id", pa.int64()),
                 ("name", pa.string()),
+                ("name_source", pa.string()),
                 ("class", pa.string()),
                 ("cross_ids", pa.list_(CROSS_ID)),
                 ("object", pa.bool_()),

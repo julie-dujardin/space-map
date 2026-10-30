@@ -30,6 +30,7 @@ from space_map_data.export.ephemeris import (
     ephemeris_archive_for,
 )
 from space_map_data.export.images import collect_object_images
+from space_map_data.export.names import resolve_wikidata_qid
 from space_map_data.export.objects.activity import activity_block
 from space_map_data.export.objects.atmosphere import atmosphere_block
 from space_map_data.export.objects.celestrak import (
@@ -71,7 +72,6 @@ from space_map_data.export.objects.wikidata_claims import (
     extract_claims,
     resolve_entity_ref,
     resolve_unit,
-    resolve_wikidata_qid,
 )
 from space_map_data.export.objects.wikipedia import (
     WikipediaSummary,

@@ -58,6 +58,7 @@ from space_map_data.extrasolar.exoplanets.table import IAU_NAMES
 from space_map_data.extrasolar.exoplanets.wikidata import planet_qid
 from space_map_data.extrasolar.registry import NoRegistry, Registry
 from space_map_data.extrasolar.sources.literature import LITERATURE, key_of
+from space_map_data.extrasolar.sources.names import IAU_WGSN
 from space_map_data.extrasolar.sources.wikidata import WIKIDATA, usable_name
 from space_map_data.extrasolar.systems.assemble import BINARY, MULTIPLE
 from space_map_data.extrasolar.tables import METADATA
@@ -112,6 +113,12 @@ class StarObject:
     literature: StarKey | None = None
     # The entry's type: a star, or the class of a node of a star system.
     object_type: str = TYPE
+    # True when its name is the IAU proper name.
+    iau_named: bool = False
+
+    @property
+    def obj_id(self) -> str:
+        return f"{PREFIX}{self.id}"
 
 
 @dataclass(frozen=True)
@@ -125,10 +132,18 @@ class PlanetObject:
     designations: tuple[str, ...] = ()
     letter: str | None = None
     iau_named: bool = False
+    # The Metadata name of its host in the served files, which names the
+    # host's page when the host has no entry, and whether it is an IAU name.
+    host_name: str | None = None
+    host_iau_named: bool = False
 
     @property
     def obj_id(self) -> str:
         return f"{PREFIX}{self.host}-b-{self.number}"
+
+    @property
+    def host_id(self) -> str:
+        return f"{PREFIX}{self.host}"
 
 
 class _Page(NamedTuple):
@@ -152,13 +167,14 @@ class _Read(NamedTuple):
 def _read_part(path: Path) -> list[StarObject]:
     rows = pq.read_table(
         path,
-        columns=["id", "name", "class", "cross_ids"],
+        columns=["id", "name", "name_source", "class", "cross_ids"],
         filters=[("object", "=", True)],
     )
     out = []
-    for id_, name, cls, cross_ids in zip(
+    for id_, name, name_source, cls, cross_ids in zip(
         rows["id"].to_pylist(),
         rows["name"].to_pylist(),
+        rows["name_source"].to_pylist(),
         rows["class"].to_pylist(),
         rows["cross_ids"].to_pylist(),
     ):
@@ -178,6 +194,7 @@ def _read_part(path: Path) -> list[StarObject]:
                 qids[0] if qids else None,
                 key_of(keys[0]) if keys else None,
                 SYSTEM_TYPES.get(cls, TYPE),
+                name_source == IAU_WGSN.name,
             )
         )
     return out

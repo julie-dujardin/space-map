@@ -1,4 +1,4 @@
-"""Wikidata entity loading, types, and name resolution."""
+"""Wikidata entity loading, types and labels."""
 
 import logging
 import re
@@ -10,7 +10,6 @@ from typing import NamedTuple, TypedDict
 
 import orjson
 
-from space_map_data.models.object import Object
 from space_map_data.utils.mirror import local
 from space_map_data.utils.paths import SOURCES_METADATA_DIR
 
@@ -220,16 +219,6 @@ def entity_label(wd: WikidataEntity | None, lang: str) -> str | None:
         return None
     labels = wd["labels"]
     return labels.get(lang) or labels.get("mul") or labels.get("en")
-
-
-def resolve_name(
-    obj: Object,
-    lang: str,
-    wd: WikidataEntity | None,
-) -> str | None:
-    """Resolve the best available name for an object in a given language."""
-    # TODO: save an export of where/how many fallbacks to english were done
-    return entity_label(wd, lang) or obj.name
 
 
 def _extract_lang_values(data: dict, *, labels: bool = False) -> dict[str, str]:

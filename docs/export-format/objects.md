@@ -525,6 +525,57 @@ interface QuantityWithUnit { value: number; unit: string; }
 interface CurrencyQuantity { value: number; currency: string; }
 ```
 
+### Names
+
+`export/names.py` holds one rule for each kind of object. The object's page
+(`name` here and in the localized bundles) and every list, stat card, chart
+and map that names the object take its names from that rule. The global
+`name` is the English one.
+
+- A catalogue object takes the labels of its Wikidata item, else its
+  catalogue name. Its item is its own, else the item of its SATCAT row for an
+  Earth satellite that is not a probe. A probe that the registry files under
+  its mission takes the item of the craft (`constants/object_names.py`:
+  NAIF -76 is "Curiosity"). A moon with no IAU name has its designation in the
+  IAU form ("S/2019 S 37") in every language, not a Wikidata label: such a
+  label is a description ("Moon of 38628 Huya") or a designation that can
+  disagree with the DB. A moon with an IAU name takes no label that is a
+  designation ("S/2009 (317) 1" for Olympias). An object with no name at all
+  has its id.
+- A planetary system barycenter (`naif-1` … `naif-9`) is the page of the whole
+  system: "<planet> system" in each language, from the app's message
+  `planetary_system_title` (`planetary_system_title_earth_moon` for `naif-3`).
+- A hand-authored object takes the labels of its item, else its entry name.
+- A star takes the name of its Metadata row (the registry's pick: the IAU
+  name, else the Wikidata label, see [extrasolar.md](extrasolar.md)). Another
+  language takes the item's label where it is a name, not a catalogue
+  number ("HR 753"), and differs from the English label; the label loses its
+  disambiguator ("カペラ (恒星)" is "カペラ"). A star with an IAU name keeps it
+  in every language, except in ja, zh, ru, ar and he for a label in the
+  script of that language ("りゅう座シグマ星" for Alsafi). Such a label can
+  hold Latin letters ("きりん座BE星"), but no letter of a third script ("りゅう
+  座σ星"). In en, de, es, fr, it, pl and pt, a label that the IAU name
+  replaces is an alias in that language ("Beteigeuze" in de).
+- A planet with an IAU name (NameExoWorlds) keeps it in every language.
+  Another planet takes the name of its host's page in each language and its
+  letter ("Proxima Centauri b"), also when the host has an IAU name ("Titawin
+  e"). The host's page is its entry, else its Metadata name in the served
+  extrasolar export. The planet's catalogue name is an alias in each language
+  whose name is not that designation spelled another way. A planet with no
+  letter keeps its catalogue name. The rule names every planet, with an entry
+  or without one: the system files of the extrasolar export carry the same
+  names ([extrasolar.md](extrasolar.md)).
+- A surface feature takes the IAU name in en, de, es, fr, it, pl and pt, in
+  the IAU's spelling with diacritics. In ja, zh, ru, ar and he it takes its
+  Wikidata label where it is in the script of that language, Latin letters
+  included ("メスティングA"), else the IAU name. In the languages of the Latin
+  alphabet, a label that the IAU name replaces is an alias
+  ([nomenclature.md](nomenclature.md)).
+
+A label and a name compare without case and without a trailing
+disambiguator in parentheses ("Tycho (Mondkrater)" is "Tycho"). An alias
+never repeats the name of the page in its language.
+
 ### Surface colour
 
 `color` (top level for moons, `sbdb.color` for small bodies) is a hue at a

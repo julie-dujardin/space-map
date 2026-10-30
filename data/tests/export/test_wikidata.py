@@ -1,14 +1,11 @@
-"""Tests for space_map_data.export.wikidata (entity parsing and name resolution)."""
+"""Tests for space_map_data.export.wikidata (entity parsing)."""
 
 from space_map_data.export.wikidata import (
-    WikidataEntity,
     _extract_lang_aliases,
     _extract_lang_values,
     _extract_sitelinks,
     _parse_entity,
-    resolve_name,
 )
-from tests.conftest import make_object
 
 
 class TestExtractLangValues:
@@ -115,34 +112,3 @@ class TestParseEntity:
         assert result["descriptions"] == {"en": "third planet"}
         assert result["aliases"] == {"en": ["Terra"]}
         assert result["sitelinks"] == {"en": "Earth"}
-
-
-class TestResolveName:
-    """resolve_name"""
-
-    def _wd(self, labels: dict[str, str]) -> WikidataEntity:
-        return WikidataEntity(
-            labels=labels,
-            descriptions={},
-            aliases={},
-            claims={},
-            sitelinks={},
-        )
-
-    def test_uses_target_lang(self):
-        obj = make_object(name="Earth")
-        wd = self._wd({"de": "Erde", "en": "Earth"})
-        assert resolve_name(obj, "de", wd) == "Erde"
-
-    def test_falls_back_to_english(self):
-        obj = make_object(name="Earth")
-        wd = self._wd({"en": "Earth"})
-        assert resolve_name(obj, "ja", wd) == "Earth"
-
-    def test_falls_back_to_obj_name(self):
-        obj = make_object(name="Earth")
-        assert resolve_name(obj, "en", None) == "Earth"
-
-    def test_no_entity_no_name(self):
-        obj = make_object(name=None)
-        assert resolve_name(obj, "en", None) is None
