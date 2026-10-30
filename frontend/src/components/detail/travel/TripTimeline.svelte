@@ -132,5 +132,6 @@
 	playing={player.playing}
 	playLabel={m.travel_timeline_play()}
 	onTogglePlay={() => player.toggle()}
-	onStep={(delta) => pick(stepEntryIndex(entries, clock.jd, delta))}
+	onStep={(delta) => pick(stepEntryIndex(entries, clock.askedJd, delta))}
+	formatClock={(jd) => formatTripDate(jd, entries[0].startJd)}
 />

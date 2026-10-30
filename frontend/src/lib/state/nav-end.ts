@@ -7,7 +7,13 @@
  * re-exports what is here.
  */
 
-import { extrasolarIdOf, planetOfObjectId } from '$lib/fetch/extrasolar/ids';
+import { SUN_ID } from '$lib/constants';
+import {
+	extrasolarIdOf,
+	extrasolarObjectId,
+	isExtrasolarObjectId,
+	planetOfObjectId
+} from '$lib/fetch/extrasolar/ids';
 import { isIdNumber, type NavPlace } from './view';
 
 /** Path segment for an end of a trip that has not been chosen. The two ends are
@@ -30,6 +36,17 @@ export function isBodyId(value: string): boolean {
  *  a star system (`x-<id>`), or a planet (`x-<host>-b-<n>`). */
 export function isExtrasolarEndId(value: string): boolean {
 	return extrasolarIdOf(value) !== null || planetOfObjectId(value) !== null;
+}
+
+/**
+ * The system an end is in, as the scene id of its star: the Sun for a body of
+ * the solar system, the host for a planet of another star, and the star itself
+ * for a star or a star system. Two stars of one star system are two systems.
+ */
+export function systemOf(objectId: string): string {
+	if (!isExtrasolarObjectId(objectId)) return SUN_ID;
+	const planet = planetOfObjectId(objectId);
+	return planet ? extrasolarObjectId(planet.host) : objectId;
 }
 
 /** Separator between a body id and the IAU feature refining it, mirroring the

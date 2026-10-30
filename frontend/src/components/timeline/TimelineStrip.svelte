@@ -56,6 +56,9 @@
 		/** Drawn straight onto a surface the host provides, at any width: no card
 		 *  of its own, and the notes above the cards rather than beside them. */
 		bare?: boolean;
+		/** How the date the clock is on reads. A calendar date unless the host
+		 *  says otherwise. */
+		formatClock?: (jd: number) => string;
 	}
 
 	let {
@@ -74,6 +77,7 @@
 		closeLabel,
 		aside,
 		bare = false,
+		formatClock = formatJulianDate,
 		positionClass = 'fixed bottom-[calc(var(--safe-bottom)_+_4.75rem)] end-[calc(var(--safe-end)_+_4.5rem)] start-[calc(var(--safe-start)_+_var(--detail-panel)_+_1rem)]'
 	}: Props = $props();
 
@@ -82,9 +86,9 @@
 	let spanDays = $derived(endJd - startJd);
 	let activeIndex = $derived.by(() => {
 		const named = activeId === undefined ? -1 : items.findIndex((item) => item.id === activeId);
-		return named >= 0 ? named : entryIndexAt(items, clock.jd);
+		return named >= 0 ? named : entryIndexAt(items, clock.askedJd);
 	});
-	let clockLabel = $derived(formatJulianDate(clock.jd));
+	let clockLabel = $derived(formatClock(clock.askedJd));
 	let ticks = $derived(spanDays > 0 ? axisTicks(startJd, endJd, 7) : []);
 
 	const phases = $derived(items.filter((item) => item.isPhase));
@@ -113,7 +117,7 @@
 		return Math.min(1, Math.max(0, (jd - startJd) / spanDays));
 	}
 
-	let clockFraction = $derived(fraction(clock.jd));
+	let clockFraction = $derived(fraction(clock.askedJd));
 
 	let trackEl: HTMLButtonElement | undefined = $state();
 	let cardsEl: HTMLOListElement | undefined = $state();

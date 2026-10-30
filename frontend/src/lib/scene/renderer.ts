@@ -160,6 +160,7 @@ import {
 	stepFocusAnimation
 } from './animation/focus';
 import { FocusController } from './focus/controller';
+import { openArea, tripVantage, type ScreenInsets, type TripVantage } from './focus/trip-view';
 import { ProbeCoverageWatch } from './probe-coverage-watch';
 import { OutOfRangeNotifier } from './out-of-range-notice';
 import { ExtensionRegistry } from './extensions/registry';
@@ -844,7 +845,7 @@ export class SceneRenderer {
 			return;
 		}
 		this.travelPath.setVisible(true);
-		this.travelPath.setClock(this.sceneJd);
+		this.travelPath.setClock(this.craftJd);
 		// Planet-frame ends hang off the live body, which may not be streamed in.
 		this.travelPath.reposition(center, this.focus.focusTruePos, (id) => this.where(id));
 		this.travelPath.updateCameraOffset(this.camera.position);
@@ -1035,6 +1036,36 @@ export class SceneRenderer {
 		return this.focus.focusDurationMs;
 	}
 
+	/** Where the camera goes to show a trip between two systems whole, as an
+	 *  offset from the target. `insets` is what the page covers of the map.
+	 *  Null when an end has no place. */
+	tripVantage(originId: string, targetId: string, insets: ScreenInsets): TripVantage | null {
+		const origin = this.where(originId);
+		const target = this.where(targetId);
+		if (!origin || !target) return null;
+		const { clientWidth, clientHeight } = this.renderer.domElement;
+		const { up } = this.camera;
+		return tripVantage(target, origin, this.focusController.cameraTruePos(), {
+			fovDeg: this.camera.fov,
+			aspect: this.camera.aspect,
+			up: [up.x, up.y, up.z],
+			open: openArea(insets, clientWidth || 1, clientHeight || 1)
+		});
+	}
+
+	/** The camera at `offset` from the body `id`, in the degrees that a move to
+	 *  the body reads. Null when the body has no place. */
+	viewFrom(
+		id: string,
+		offset: Vec3
+	): { latitude: number; longitude: number; distance: number } | null {
+		const body = this.ctx.getBody(id);
+		const at = body && this.whereBody(body);
+		if (!body || !at) return null;
+		const camera: Vec3 = [at[0] + offset[0], at[1] + offset[1], at[2] + offset[2]];
+		return cartesianToSpherical(camera, at, this.focusController.focusedBodyQuat(body));
+	}
+
 	/** Place of the body `id` at the scene date. Null when it has none. */
 	private where(id: string): Vec3 | null {
 		return this.placer.at(id, this.sceneJd);
@@ -1126,7 +1157,7 @@ export class SceneRenderer {
 		const renderedDtMs = this.lastRenderedFrame === this.frameIndex - 1 ? frameDtMs : 0;
 		this.lastRenderedFrame = this.frameIndex;
 		this.lastRenderMs = nowMs;
-		this.lastRenderedJd = this.clock.jd;
+		this.lastRenderedJd = this.clock.askedJd;
 		this.lastRenderedFocusKey = this.focusKey();
 		this.lastRenderedCamPos.copy(this.camera.position);
 		this.lastRenderedCamQuat.copy(this.camera.quaternion);
@@ -1372,7 +1403,9 @@ export class SceneRenderer {
 		// The view cone the stars are culled to is this frame's.
 		this.camera.updateMatrixWorld();
 		const focusedStar = this.focusController.current;
-		this.starfield.setExactStars(this.exoplanetSystems.exactStars(focusedStar));
+		this.starfield.setExactStars(
+			this.exoplanetSystems.exactStars(focusedStar, this.travelPath.endIds)
+		);
 		this.starfield.update(
 			this.camera,
 			this.focus.focusTruePos,
@@ -2193,7 +2226,7 @@ export class SceneRenderer {
 			return true;
 		const cameraMoved = this.cameraMovedFrom(this.lastRenderedCamPos, this.lastRenderedCamQuat);
 		if (cameraMoved || this.frameIndex < this.wakeUntilFrame || this.haloDebug.active) return true;
-		if (this.clock.jd === this.lastRenderedJd) return false;
+		if (this.clock.askedJd === this.lastRenderedJd) return false;
 		return (
 			Math.abs(this.clock.timeScale) > 1 ||
 			nowMs - this.lastRenderMs >= SceneRenderer.REALTIME_FRAME_MS
@@ -2458,6 +2491,12 @@ export class SceneRenderer {
 	/** The date the scene shows: behind the clock while the date is held. */
 	private get sceneJd(): number {
 		return this.dateHeld() ? this.lastUpdatedJd : this.clock.jd;
+	}
+
+	/** The date the trip's craft is drawn at. Past the range of `Date` the scene
+	 *  stops, and the craft goes on to the date asked for. */
+	private get craftJd(): number {
+		return this.dateHeld() ? this.lastUpdatedJd : this.clock.askedJd;
 	}
 
 	private applyJdUpdate(allowOorRefocus = false): void {

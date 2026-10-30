@@ -38,7 +38,7 @@ import { equatorialTiltDeg } from './body';
 import { endTurn } from './passage-node';
 import { elementsToState } from './state';
 import { relativeState, solveRadialArc } from './system-transfer';
-import { cross, dot, norm, sub } from './vec3';
+import { cross, dot, norm, sub, type Vec3 } from './vec3';
 
 export type LegKind =
 	| 'ascent'
@@ -134,6 +134,10 @@ export interface InterstellarCrossing {
 	cruiseKms: number;
 	/** Lorentz factor at that speed. */
 	gamma: number;
+	/** Position of the origin's star, km, ecliptic J2000 from the solar-system barycentre. */
+	originKm: Vec3;
+	/** Position of the target's star, km, in the same frame. */
+	targetKm: Vec3;
 }
 
 export interface Route {

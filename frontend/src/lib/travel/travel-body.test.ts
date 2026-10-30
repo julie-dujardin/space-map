@@ -8,12 +8,12 @@ import { AU_KM } from '$lib/math/units';
 import {
 	heliocentricAncestor,
 	lookupIn,
-	systemOf,
 	toTravelBody,
 	transferCenterId,
 	transferPlan,
 	wellsAbove
 } from './travel-body';
+import { systemOf } from '$lib/state/nav-end';
 
 /** Minimal body row; only the fields the adapter reads are meaningful. */
 function body(id: string, parentId: string, over: Partial<BodyData> = {}): BodyData {
@@ -511,9 +511,22 @@ describe('a trip to another star', () => {
 		expect(transferPlan(proxima, proxima, look)).toEqual(inside);
 	});
 
-	it('measures an interstellar trip about the barycentre', () => {
-		const plan = transferPlan(earth, tauCeti, look);
-		expect(transferCenterId(plan, earth, tauCeti, look)).toBe('naif-0');
+	it('measures a trip to or from the solar system about the barycentre', () => {
+		expect(transferCenterId(transferPlan(earth, tauCeti, look), earth, tauCeti, look)).toBe(
+			'naif-0'
+		);
+		expect(transferCenterId(transferPlan(proximaB, earth, look), proximaB, earth, look)).toBe(
+			'naif-0'
+		);
+	});
+
+	it('measures a trip between two other stars about the star it leaves', () => {
+		expect(transferCenterId(transferPlan(tauCeti, proximaB, look), tauCeti, proximaB, look)).toBe(
+			'x-21238067'
+		);
+		expect(transferCenterId(transferPlan(proximaB, tauCeti, look), proximaB, tauCeti, look)).toBe(
+			'x-27424668'
+		);
 	});
 });
 

@@ -15,7 +15,7 @@
 	import { resolve } from '$app/paths';
 	import * as m from '$lib/paraglide/messages.js';
 	import type { BodyData } from '$lib/types/objects';
-	import { DRAWER_TOP_GAP_PX, trackSheetCover } from '$lib/drawer';
+	import { DRAWER_TOP_GAP_PX, TRIP_SHEET_MID, trackSheetCover } from '$lib/drawer';
 	import type { MapCover } from '$lib/state/map-cover.svelte';
 	import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 	import type { AppState } from '$lib/state/app-state.svelte';
@@ -587,7 +587,6 @@
 	// header), mid, full. Unlike the detail sheet this opens at the top — a trip
 	// is what the page is for — but still has to drag down, or the map it plans
 	// a route across is unreachable.
-	const MID_SNAP = 0.4;
 
 	let innerH = $state(typeof window === 'undefined' ? 800 : window.innerHeight);
 	let headerEl = $state<HTMLDivElement | null>(null);
@@ -597,7 +596,7 @@
 	let headerHeightPx = $state(HEADER_GUESS_PX);
 	let collapsedSnap = $derived(`${headerHeightPx}px`);
 	let topSnap = $derived(`${Math.max(1, innerH - DRAWER_TOP_GAP_PX)}px`);
-	let snapPoints = $derived([collapsedSnap, MID_SNAP, topSnap]);
+	let snapPoints = $derived([collapsedSnap, TRIP_SHEET_MID, topSnap]);
 	let activeSnapPoint = $state<number | string | null>(`${HEADER_GUESS_PX}px`);
 	let isAtTop = $derived(activeSnapPoint === topSnap);
 

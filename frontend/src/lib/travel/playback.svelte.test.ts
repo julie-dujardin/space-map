@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { TripPlayback } from './playback.svelte';
-import type { SimClock } from '$lib/scene/state/clock.svelte';
+import { SimClock } from '$lib/scene/state/clock.svelte';
+import { LAST_DATE_JD } from '$lib/time/jd';
 import type { LegKind } from '$lib/math/travel';
 import type { TimelineEntry } from './timeline';
 
@@ -29,18 +30,18 @@ const ENTRIES: TimelineEntry[] = [
 	entry('capture', BASE + CRUISE_DAYS, BASE + CRUISE_DAYS)
 ];
 
-/** Only the three calls playback makes; the rest of SimClock is not its business. */
+/** Only what playback reads and calls; the rest of SimClock is not its business. */
 function fakeClock() {
 	return {
 		jd: BASE - 50,
-		paused: 0,
-		setJD(jd: number) {
-			this.jd = jd;
+		get askedJd() {
+			return this.jd;
 		},
+		paused: 0,
 		sweepTo(jd: number) {
 			this.jd = jd;
 		},
-		pause() {
+		hold() {
 			this.paused++;
 		}
 	};
@@ -195,6 +196,75 @@ describe('TripPlayback', () => {
 			flyer.start();
 			expect(clock.jd).toBe(BASE);
 			expect(flyer.playing).toBe(true);
+		});
+	});
+
+	describe('on the real clock', () => {
+		let real: SimClock;
+		let flyer: TripPlayback<TimelineEntry>;
+
+		beforeEach(() => {
+			vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+			real = new SimClock(BASE - 50);
+			flyer = new TripPlayback({ clock: real, entries: () => ENTRIES, focus: () => {} });
+		});
+
+		afterEach(() => {
+			flyer.dispose();
+			vi.useRealTimers();
+		});
+
+		it('leaves the settled date alone, so a trip that leaves later keeps its dates', () => {
+			flyer.start();
+			vi.advanceTimersByTime(1000);
+			run(1000);
+			vi.advanceTimersByTime(1000);
+			expect(real.jd).toBe(BASE);
+			expect(real.playing).toBe(false);
+			// The planner plans a trip that leaves "now" from this date.
+			expect(real.settledJd).toBe(BASE - 50);
+			run(30_000);
+			vi.advanceTimersByTime(1000);
+			expect(flyer.playing).toBe(false);
+			expect(real.jd).toBe(BASE + CRUISE_DAYS);
+			expect(real.settledJd).toBe(BASE - 50);
+		});
+	});
+
+	describe('with a trip that arrives after the last date a Date holds', () => {
+		const ARRIVAL = LAST_DATE_JD + 2e8;
+		const LONG: TimelineEntry[] = [
+			entry('injection', BASE, BASE),
+			entry('cruise', BASE, ARRIVAL),
+			entry('capture', ARRIVAL, ARRIVAL)
+		];
+		let real: SimClock;
+		let longer: TripPlayback<TimelineEntry>;
+
+		beforeEach(() => {
+			real = new SimClock(BASE);
+			longer = new TripPlayback({ clock: real, entries: () => LONG, focus: () => {} });
+		});
+
+		afterEach(() => {
+			longer.dispose();
+		});
+
+		it('flies the craft to the arrival while the clock stops at the last date', () => {
+			longer.start();
+			run(30_000);
+			expect(longer.playing).toBe(false);
+			expect(real.askedJd).toBe(ARRIVAL);
+			expect(real.jd).toBe(LAST_DATE_JD);
+			expect(Number.isFinite(real.date.getTime())).toBe(true);
+		});
+
+		it('starts again from the top once the trip is over', () => {
+			longer.start();
+			run(30_000);
+			longer.start();
+			expect(real.askedJd).toBe(BASE);
+			expect(real.jd).toBe(BASE);
 		});
 	});
 });

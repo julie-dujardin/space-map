@@ -44,10 +44,10 @@
 		type TravelBody
 	} from '$lib/math/travel';
 	import type { OrbitPreview } from '$lib/scene/objects/travel/orbit-preview';
+	import { systemOf } from '$lib/state/nav-end';
 	import {
 		aeroPressurePa,
 		lookupIn,
-		systemOf,
 		toTravelBody,
 		transferCenterId,
 		transferFrame,
@@ -972,8 +972,11 @@
 		pathFrame: TrajectoryFrame = 'interplanetary'
 	): TrajectoryPath | null {
 		if (!pathOrigin || !pathTarget) return null;
+		const leaving = ends.origin.extrasolar?.star;
 		return buildTrajectoryPath(pathOrigin, pathTarget, route, {
 			centerId: center,
+			// A trip between two other stars is drawn about the star it leaves.
+			centerKm: leaving?.id === center ? leaving.positionKm : undefined,
 			centralMu: frame.centralMu,
 			systemPrimary: frame.systemPrimary,
 			orbitChange: frame.orbitChange,

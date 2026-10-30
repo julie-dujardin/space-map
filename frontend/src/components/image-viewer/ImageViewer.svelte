@@ -12,6 +12,7 @@
 	} from '$lib/fetch/objects/images';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import type { ShelfLink } from '$lib/fetch/objects/galleries';
+	import { detailPanelPx } from '$lib/drawer';
 	import ImageViewerCaption, { type Attribution } from './ImageViewerCaption.svelte';
 
 	interface Props {
@@ -25,13 +26,6 @@
 	let { images, alt, subjectLink }: Props = $props();
 
 	const appState = getContext<AppState>('appState');
-
-	/** Read rather than repeated: the sidebar's width is `--detail-panel`, and
-	 *  PhotoSwipe needs it as a number. */
-	function panelWidth(): number {
-		const value = getComputedStyle(document.documentElement).getPropertyValue('--detail-panel');
-		return parseFloat(value) || 0;
-	}
 
 	// Plain `let` (not $state) so the lifecycle effect tracks only
 	// `imageIndex`, not our own ref mutations.
@@ -93,7 +87,7 @@
 				// oversize past the visible viewer area.
 				getViewportSizeFn: () => ({
 					x: window.matchMedia('(min-width: 768px)').matches
-						? Math.max(0, window.innerWidth - panelWidth())
+						? Math.max(0, window.innerWidth - detailPanelPx())
 						: window.innerWidth,
 					y: window.innerHeight
 				})

@@ -64,10 +64,10 @@ export class TripPlayback<T extends TimelineSpan> {
 	}
 
 	/** Put the clock on `entries[index]` and look at where it happens. */
-	go(index: number): void {
+	private go(index: number): void {
 		const entry = this.host.entries()[index];
 		if (!entry) return;
-		this.host.clock.setJD(entry.startJd);
+		this.host.clock.sweepTo(entry.startJd);
 		this.host.focus(entry);
 	}
 
@@ -83,12 +83,16 @@ export class TripPlayback<T extends TimelineSpan> {
 		// Resume from where the clock is, unless the trip is already over — then
 		// the button means "watch it again". Over means past the last entry's
 		// whole span: inside the final phase there is still a leg to fly.
+		// The date asked for, which runs on to an arrival the clock cannot hold.
+		const jd = this.host.clock.askedJd;
 		const last = entries[entries.length - 1];
-		const at = entryIndexAt(entries, this.host.clock.jd);
-		const over = at >= entries.length - 1 && !(this.host.clock.jd < last.endJd);
+		const at = entryIndexAt(entries, jd);
+		const over = at >= entries.length - 1 && !(jd < last.endJd);
 		const from = over ? 0 : at;
+		// Held, not paused, and swept, not set: a trip that leaves "now" is planned
+		// from the date the clock settles on, and its run must not move that date.
+		this.host.clock.hold();
 		this.go(from);
-		this.host.clock.pause();
 		this.playing = true;
 		this.beginLeg(from + 1);
 		this.frame = requestAnimationFrame(this.tick);

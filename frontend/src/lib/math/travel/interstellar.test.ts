@@ -7,6 +7,7 @@ import {
 	buildInterstellarTorchRoute,
 	crossingElapsed,
 	crossingIntegral,
+	crossingStretches,
 	crossingSweep,
 	fastestCrossingEndJd,
 	interstellarDrive,
@@ -885,5 +886,51 @@ describe('crossingIntegral', () => {
 
 	it('says nothing about a route inside the solar system', () => {
 		expect(crossingIntegral({ ...routes[0], interstellar: undefined }, SHIP_TIME)).toBeNull();
+	});
+});
+
+describe('crossingStretches', () => {
+	const torch = (coastFraction: number, arrivalMode: 'rendezvous' | 'flyby') =>
+		buildInterstellarTorchRoute(FROM_EARTH, starAt(4.24), J2000, G0_M_S2, {
+			departureMode: 'orbit',
+			arrivalMode,
+			coastFraction
+		})!;
+
+	it('follows the legs of the crossing, end to end along the line', () => {
+		for (const [route, kinds] of [
+			[torch(0, 'rendezvous'), ['boost', 'brake']],
+			[torch(0.25, 'rendezvous'), ['boost', 'cruise', 'brake']],
+			[torch(0, 'flyby'), ['boost']],
+			[torch(0.25, 'flyby'), ['boost', 'cruise']]
+		] as const) {
+			const stretches = crossingStretches(route)!;
+			expect(stretches.map((s) => s.kind)).toEqual(kinds);
+			expect(stretches[0].fromKm).toBe(0);
+			expect(stretches.at(-1)!.toKm).toBe(route.interstellar!.distanceKm);
+			for (let i = 1; i < stretches.length; i++) {
+				expect(stretches[i].fromKm).toBe(stretches[i - 1].toKm);
+			}
+			// Each stretch ends where the kernel says its leg ends.
+			let days = 0;
+			for (const stretch of stretches) {
+				days += route.legs.find((l) => l.kind === stretch.kind)!.days;
+				expect(crossingElapsed(route, stretch.toKm)!.days / days).toBeCloseTo(1, 9);
+			}
+		}
+	});
+
+	it('is one cruise on a coast, and nothing on a route in one system', () => {
+		const coast = buildInterstellarCruiseRoute(
+			FROM_EARTH,
+			starAt(4.24),
+			J2000,
+			{ kind: 'budget', dvKms: 41 },
+			{ departureMode: 'orbit', arrivalMode: 'flyby' }
+		) as Route;
+		expect(crossingStretches(coast)).toEqual([
+			{ kind: 'cruise', fromKm: 0, toKm: coast.interstellar!.distanceKm }
+		]);
+		expect(crossingStretches({ ...coast, interstellar: undefined })).toBeNull();
 	});
 });

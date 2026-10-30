@@ -87,17 +87,21 @@ export class ExoplanetSystems {
 		this.syncBodies(frame.focused);
 	}
 
-	/** The stars to draw at their exact place: the focused one, then the
-	 *  hosts of the drawn systems, nearest first. */
-	exactStars(focused: PositionedBody | undefined): StarAnchor[] {
+	/** The stars to draw at their exact place, in this order: the star of the
+	 *  focused body, the stars of the trip ends `endIds`, and the hosts of the
+	 *  drawn systems, nearest first. A trip line ends on the stars of its ends.
+	 *  The ends are looked up on each call, because an end can stream in late. */
+	exactStars(focused: PositionedBody | undefined, endIds: readonly string[] = []): StarAnchor[] {
 		const out: StarAnchor[] = [];
 		const add = (star: StarAnchor | undefined) => {
 			if (star && out.length < EXACT_STARS && !out.some((s) => s.id === star.id)) out.push(star);
 		};
-		if (focused && isExtrasolar(focused)) add(focused.extrasolar);
-		if (focused && isExoplanet(focused)) {
-			add(this.ctx.getBody(focused.data.parentId)?.extrasolar);
-		}
+		const addStarOf = (body: PositionedBody | undefined) => {
+			if (body && isExtrasolar(body)) add(body.extrasolar);
+			if (body && isExoplanet(body)) add(this.ctx.getBody(body.data.parentId)?.extrasolar);
+		};
+		addStarOf(focused);
+		for (const id of endIds) addStarOf(this.ctx.getBody(id));
 		for (const host of this.drawn) add(this.ctx.getBody(extrasolarObjectId(host))?.extrasolar);
 		return out;
 	}

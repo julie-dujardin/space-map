@@ -9,11 +9,17 @@ import { craftPositionAt } from './path-sample';
 import { buildRoute } from './route';
 import { buildAssistRoute } from './assist';
 import { buildConstantThrustRoute } from './brachistochrone';
+import {
+	buildInterstellarCruiseRoute,
+	buildInterstellarTorchRoute,
+	crossingElapsed,
+	type SystemEnd
+} from './interstellar';
 import { elementsToState } from './state';
 import { hohmannTransferDays, nextTransferWindows } from './windows';
-import { GM_SUN_KM3_S2 } from './constants';
+import { G0_M_S2, GM_SUN_KM3_S2 } from './constants';
 import * as travelConstants from './constants';
-import { AU_KM } from '$lib/math/units';
+import { AU_KM, LIGHT_YEAR_KM } from '$lib/math/units';
 import { sphereOfInfluenceKm } from './body';
 import { aeroPassRadiusKm, parkingOrbit, parkingRadiusKm } from './maneuvers';
 import { add, cross, dot, norm, normalize, sub, type Vec3 } from './vec3';
@@ -1253,5 +1259,142 @@ describe('aero-assisted arrivals', () => {
 		const end = path.endOrbits.find((e) => e.at === 'arrival')!;
 		// The passage ends at the priced periapsis, like any engine capture.
 		expect(end.jds[end.jds.length - 1]).toBeCloseTo(end.periJd, 6);
+	});
+});
+
+describe('a crossing between two systems', () => {
+	const SSB = 'naif-0';
+
+	/** A star at `km` from the barycentre, met as the end itself. */
+	function star(id: string, km: Vec3): SystemEnd {
+		return {
+			body: {
+				id,
+				mu: GM_SUN_KM3_S2,
+				muEstimated: true,
+				radiusKm: 700_000,
+				elements: { a: 0, e: 0, i: 0, om: 0, w: 0, ma: 0, n: 0, epoch: J2000 }
+			},
+			starKm: km,
+			starMu: GM_SUN_KM3_S2,
+			atStar: true
+		};
+	}
+
+	const HOME: SystemEnd = { body: EARTH, starKm: [0, 0, 0], starMu: GM_SUN_KM3_S2, atStar: false };
+	const TAU_CETI = star('x-21238067', [7 * LIGHT_YEAR_KM, -9 * LIGHT_YEAR_KM, 3.6 * LIGHT_YEAR_KM]);
+	const PROXIMA = star('x-27424668', [
+		-1.5 * LIGHT_YEAR_KM,
+		3.9 * LIGHT_YEAR_KM,
+		-0.6 * LIGHT_YEAR_KM
+	]);
+
+	function torch(coastFraction: number, arrivalMode: 'rendezvous' | 'flyby' = 'rendezvous') {
+		return buildInterstellarTorchRoute(HOME, TAU_CETI, J2000, 1.5 * G0_M_S2, {
+			departureMode: 'orbit',
+			arrivalMode,
+			coastFraction
+		})!;
+	}
+
+	/** Where the craft is along the line, as a share of the whole crossing. */
+	function share(path: NonNullable<ReturnType<typeof buildTrajectoryPath>>, jd: number): number {
+		const start = path.arcs[0].points[0];
+		const end = path.meeting.r;
+		const at = craftPositionAt(path, jd)!.r;
+		return dot(sub(at, start), sub(end, start)) / dot(sub(end, start), sub(end, start));
+	}
+
+	it('runs straight from star to star, ends exactly on the two places', () => {
+		const route = torch(0);
+		const path = buildTrajectoryPath(EARTH, TAU_CETI.body, route, { centerId: SSB })!;
+		expect(path.arcs[0].points[0]).toEqual([0, 0, 0]);
+		expect(path.arcs.at(-1)!.points.at(-1)).toEqual(TAU_CETI.starKm);
+		expect(path.meeting.r).toEqual(TAU_CETI.starKm);
+		expect(path.stops.map((stop) => stop.bodyId)).toEqual([EARTH.id, TAU_CETI.body.id]);
+		expect(path.endOrbits).toEqual([]);
+		// Every sample is on the line between the two stars.
+		const axis = normalize(TAU_CETI.starKm);
+		for (const arc of path.arcs) {
+			for (const point of arc.points) {
+				expect(norm(cross(point, axis)) / LIGHT_YEAR_KM).toBeLessThan(1e-9);
+			}
+		}
+	});
+
+	it('marks the boost and the brake of a stop, and flips half way', () => {
+		const route = torch(0);
+		const path = buildTrajectoryPath(EARTH, TAU_CETI.body, route, { centerId: SSB })!;
+		expect(path.arcs.map((arc) => arc.kind)).toEqual(['boost', 'brake']);
+		const [boost, brake] = path.arcs;
+		expect(boost.points.at(-1)).toEqual(brake.points[0]);
+		expect(norm(boost.points.at(-1)!) / norm(TAU_CETI.starKm)).toBeCloseTo(0.5, 9);
+		// The arcs end on the dates of their legs, which the timeline reads.
+		const boostLeg = route.legs.find((leg) => leg.kind === 'boost')!;
+		expect(boost.startJd).toBe(route.departJd);
+		expect(boost.endJd).toBe(route.departJd + boostLeg.days);
+		expect(brake.endJd).toBe(route.arriveJd);
+		expect(share(path, boost.endJd)).toBeCloseTo(0.5, 6);
+	});
+
+	it('marks the coast between the burns', () => {
+		const path = buildTrajectoryPath(EARTH, TAU_CETI.body, torch(0.25), { centerId: SSB })!;
+		expect(path.arcs.map((arc) => arc.kind)).toEqual(['boost', 'cruise', 'brake']);
+	});
+
+	it('never brakes on a flyby', () => {
+		const flat = buildTrajectoryPath(EARTH, TAU_CETI.body, torch(0, 'flyby'), {
+			centerId: SSB
+		})!;
+		expect(flat.arcs.map((arc) => arc.kind)).toEqual(['boost']);
+		const coasting = buildTrajectoryPath(EARTH, TAU_CETI.body, torch(0.25, 'flyby'), {
+			centerId: SSB
+		})!;
+		expect(coasting.arcs.map((arc) => arc.kind)).toEqual(['boost', 'cruise']);
+	});
+
+	it('dates the line by the relativistic motion along it', () => {
+		const route = torch(0.25);
+		const path = buildTrajectoryPath(EARTH, TAU_CETI.body, route, { centerId: SSB })!;
+		for (const arc of path.arcs) {
+			for (let i = 1; i < arc.jds.length; i++) expect(arc.jds[i]).toBeGreaterThan(arc.jds[i - 1]);
+		}
+		const totalKm = route.interstellar!.distanceKm;
+		for (const part of [0.01, 0.1, 0.3, 0.5, 0.8, 0.97]) {
+			const jd = route.departJd + crossingElapsed(route, part * totalKm)!.days;
+			expect(share(path, jd)).toBeCloseTo(part, 3);
+		}
+		expect(craftPositionAt(path, route.departJd - 1)).toBeNull();
+		expect(craftPositionAt(path, route.arriveJd + 1)).toBeNull();
+	});
+
+	it('draws a coast as one cruise at an even pace', () => {
+		const route = buildInterstellarCruiseRoute(
+			HOME,
+			TAU_CETI,
+			J2000,
+			{ kind: 'budget', dvKms: 41 },
+			{ departureMode: 'orbit', arrivalMode: 'flyby' }
+		);
+		if (typeof route !== 'object' || route === null) throw new Error('no coast');
+		const path = buildTrajectoryPath(EARTH, TAU_CETI.body, route, { centerId: SSB })!;
+		expect(path.arcs.map((arc) => arc.kind)).toEqual(['cruise']);
+		expect(path.arcs[0].endJd).toBe(route.arriveJd);
+		const middle = (route.departJd + route.arriveJd) / 2;
+		expect(share(path, middle)).toBeCloseTo(0.5, 9);
+	});
+
+	it('measures a trip between two other stars from the star it leaves', () => {
+		const route = buildInterstellarTorchRoute(PROXIMA, TAU_CETI, J2000, G0_M_S2, {
+			departureMode: 'orbit',
+			arrivalMode: 'rendezvous'
+		})!;
+		const path = buildTrajectoryPath(PROXIMA.body, TAU_CETI.body, route, {
+			centerId: PROXIMA.body.id,
+			centerKm: PROXIMA.starKm
+		})!;
+		expect(path.centerId).toBe(PROXIMA.body.id);
+		expect(path.arcs[0].points[0]).toEqual([0, 0, 0]);
+		expect(relative(path.meeting.r, sub(TAU_CETI.starKm, PROXIMA.starKm))).toBeLessThan(1e-15);
 	});
 });

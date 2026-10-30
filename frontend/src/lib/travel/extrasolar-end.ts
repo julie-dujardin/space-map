@@ -41,7 +41,8 @@ import type {
 	PositionedBody,
 	StarAnchor
 } from '$lib/types/objects';
-import { hillRadiusAboutKm, systemOf } from './travel-body';
+import { systemOf } from '$lib/state/nav-end';
+import { hillRadiusAboutKm } from './travel-body';
 
 /** How a mass or a radius is known. `minimum` is the mass times the sine of the
  *  orbit's inclination. `estimated` is the estimate of a catalogue. `forecast`

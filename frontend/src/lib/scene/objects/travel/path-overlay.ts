@@ -28,7 +28,12 @@ import {
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { attachCanvasForwarders } from '$lib/scene/label/forward';
 import { onTapNotDrag } from '$lib/scene/objects/tap-not-drag';
-import { isScreenOccluded, reserveLabelRects, type AcceptedRect } from '$lib/scene/label/culling';
+import {
+	acceptedBodyLabelRects,
+	isScreenOccluded,
+	reserveLabelRects,
+	type AcceptedRect
+} from '$lib/scene/label/culling';
 import { liveScreenOccluders } from '$lib/scene/visibility/update';
 import { ndcZVisible } from '$lib/scene/setup/depth-mode';
 import { HALO_RADIUS_PX } from '$lib/scene/types';
@@ -49,6 +54,7 @@ import type { Vec3 } from '$lib/scene/animation/math';
 // flying and reads warm to say so. Shared with the timeline under the map.
 import { ARC_COLORS } from '$lib/travel/arc-colors';
 import { HAZARD_COLORS } from '$lib/travel/hazard-colors';
+import { systemOf } from '$lib/state/nav-end';
 // Type only: `hazards.ts` reaches the trajectory kernel, and this module is held
 // by the renderer from the first frame.
 import type { HazardSeverity, LabelledHazard } from '$lib/travel/hazards';
@@ -99,6 +105,19 @@ const CRAFT_COLOR = '#ffffff';
 /** Drawn after trails so the plan sits on top of the orbits it crosses. */
 const PATH_RENDER_ORDER = 4;
 
+/** Between two systems every trajectory on offer runs along one line, so the
+ *  alternatives draw under the plan there. */
+const CROSSING_OPTION_RENDER_ORDER = PATH_RENDER_ORDER - 0.5;
+
+/** The lit line draws over every other line, the plan included: the pointer is
+ *  on it. */
+const LIT_RENDER_ORDER = PATH_RENDER_ORDER + 0.5;
+
+/** Each alternative draws one step under the one listed before it. At one
+ *  render order three.js draws the nearest piece last, so where lines overlap
+ *  the colour would change with the view. */
+const OPTION_ORDER_STEP = 0.01;
+
 /**
  * A surface end's ground stretch dips inside an atmosphere, whose shell
  * writes depth from outside — at the plan's own render order the shell would
@@ -127,6 +146,8 @@ const SEVERITY_ORDER: HazardSeverity[] = ['notice', 'caution', 'severe'];
 
 /** The warning marker's screen size, between a burn dot and the meeting ring. */
 const HAZARD_MARKER_SIZE = 0.03;
+/** The gap between a marker and its chip, px: the chip's margin in hazards.css. */
+const HAZARD_CHIP_GAP_PX = 16;
 
 /** How much of a crossing is given up to the fade at an end it cannot follow.
  *  Long enough to read as the line letting go rather than as it being cut. */
@@ -219,6 +240,7 @@ interface DrawnArc {
 	color: string;
 	brightness: number;
 	width: number;
+	renderOrder: number;
 	/** Scene units, relative to whatever `anchorId` names. */
 	local: Float64Array;
 	/** Scratch the rebase writes into before the fat geometry is expanded. */
@@ -270,6 +292,11 @@ interface DrawnLabel {
 	/** A step of the trip: ranked under the end labels for screen space, and
 	 *  hidden outright — dot and all — behind a body. */
 	step?: boolean;
+	/** A hazard's chip: ranked under the steps, and hidden when it loses. */
+	hazard?: boolean;
+	/** A chip's severity, 0 for the worst. Chips on one point (the gas and the
+	 *  dust both peak at top speed) leave the text to the worst. */
+	severityRank?: number;
 	/** The step's own dot, shown and hidden with the label. */
 	sprite?: Sprite;
 }
@@ -344,6 +371,27 @@ function makePathLabel(
 	return object;
 }
 
+/** Where a label stands for screen space: ends first, then steps, then chips. */
+function rank(label: DrawnLabel): number {
+	return label.hazard ? 2 : label.step ? 1 : 0;
+}
+
+/** Whether a label box overlaps one of the first `count` of `rects`. */
+function overlapsAny(
+	rects: readonly AcceptedRect[],
+	count: number,
+	left: number,
+	right: number,
+	y: number,
+	height: number
+): boolean {
+	for (let i = 0; i < count; i++) {
+		const a = rects[i];
+		if (left < a.right && right > a.left && Math.abs(y - a.y) < (height + a.h) / 2) return true;
+	}
+	return false;
+}
+
 /** `at` relative to the basis the scene is drawn from. Null with no place. */
 function toOffset(at: Vec3 | null, basis: Vec3): Vec3 | null {
 	return at && [at[0] - basis[0], at[1] - basis[1], at[2] - basis[2]];
@@ -369,13 +417,23 @@ export class TravelPathOverlay {
 	 *  alternatives' when none has been chosen. They always agree: the centre falls
 	 *  out of the pair of ends, which every trajectory on offer shares. */
 	private center: string | null = null;
+	/** The bodies the drawn trip leaves from and goes to. */
+	private ends: readonly string[] = [];
+	/** The drawn trip goes from one star system to another. */
+	private crossing = false;
 	private layer: number | null = null;
 	private readonly offset = new Vector3();
 	private readonly projected = new Vector3();
 	/** Pooled screen rects handed to the label cull; never reallocated. */
 	private readonly rects: AcceptedRect[] = [];
 	/** Scratch for settling the labels against each other, nearest first. */
-	private readonly order: { label: DrawnLabel; left: number; y: number; distance: number }[] = [];
+	private readonly order: {
+		label: DrawnLabel;
+		left: number;
+		right: number;
+		y: number;
+		distance: number;
+	}[] = [];
 	/** Which trajectory the reader is pointing at, from either end of the link —
 	 *  a label out here or its mark on the launch-window field. */
 	private hovered: string | null = null;
@@ -397,6 +455,11 @@ export class TravelPathOverlay {
 
 	get isEmpty(): boolean {
 		return this.center === null;
+	}
+
+	/** The bodies the drawn trip leaves from and goes to; empty when nothing is drawn. */
+	get endIds(): readonly string[] {
+		return this.ends;
 	}
 
 	/** The chosen trajectory, for reading the trip off — null while only
@@ -431,19 +494,28 @@ export class TravelPathOverlay {
 		this.clear();
 		this.path = plan?.path ?? null;
 		this.center = plan?.path.centerId ?? options[0]?.path.centerId ?? null;
+		const stops = (plan?.path ?? options[0]?.path)?.stops ?? [];
+		this.ends = stops
+			.filter((stop) => stop.kind === 'departure' || stop.kind === 'arrival')
+			.map((stop) => stop.bodyId);
+		const [from, to] = this.ends;
+		this.crossing = from !== undefined && to !== undefined && systemOf(from) !== systemOf(to);
 
 		// Behind the plan, so a chosen trajectory running alongside one it beat is
 		// the line drawn on top.
 		const chosen = plan !== null;
-		for (const option of options) {
+		const optionOrder = this.crossing ? CROSSING_OPTION_RENDER_ORDER : PATH_RENDER_ORDER;
+		options.forEach((option, index) => {
 			this.addArcs(
 				option.path,
 				chosen ? FAINT_WIDTH : OPTION_WIDTH,
 				chosen ? FAINT_BRIGHTNESS : OPTION_BRIGHTNESS,
-				option.id
+				option.id,
+				false,
+				optionOrder - (index + 1) * OPTION_ORDER_STEP
 			);
 			this.addEndLabels(option, chosen);
-		}
+		});
 		if (plan) {
 			this.addPlan(plan, steps);
 			// After the plan, so its markers are already in the group and this only
@@ -459,12 +531,14 @@ export class TravelPathOverlay {
 	}
 
 	/**
-	 * Lay each hazard's stretch under the plan, and mark where it starts.
+	 * Lay each hazard's stretch under the plan, and mark it on the line.
 	 *
 	 * Hazards name dates, never places: the stretch is cut from the arcs by
-	 * date, and the marker placed from where the craft is on that date. Every
-	 * hazard is labelled, even mild ones — they start at different arc points
-	 * by construction, so crowding is a coincidence, not the rule.
+	 * date, and the marker placed from where the craft is on that date. Inside
+	 * one system the marker is where the hazard starts. Hazards start at
+	 * different points of the arc, so every chip keeps its text. Between two
+	 * systems all of them start at the departure: the marker is where the
+	 * hazard peaks, and a chip gives way to the labels it would cover.
 	 */
 	private addHazards(path: TrajectoryPath, hazards: readonly LabelledHazard[]): void {
 		const ordered = [...hazards].sort(
@@ -499,7 +573,7 @@ export class TravelPathOverlay {
 
 			// An arrival hazard can start where the arc ends, and one whose geometry
 			// was never rebuilt has nowhere to go at all: no point, no marker.
-			const at = craftPositionAt(path, hazard.startJd);
+			const at = craftPositionAt(path, this.crossing ? hazard.peakJd : hazard.startJd);
 			if (!at) continue;
 			const local = eclipticToScene(at.r) as Vec3;
 			const anchorId = at.centerId === path.centerId ? null : at.centerId;
@@ -516,9 +590,9 @@ export class TravelPathOverlay {
 			// end label is.
 			object.center.set(0, 0.5);
 			this.parentOf(anchorId).add(object);
-			// `faint` keeps it out of the end labels' cull, and a null owner out of
-			// the hover styling: a chip is neither a candidate for screen space nor
-			// part of the link with the launch-window field.
+			// A null owner keeps it out of the hover styling: a chip is not part of
+			// the link with the launch-window field. Inside one system `faint` also
+			// keeps it out of the cull.
 			this.labels.push({
 				object,
 				local,
@@ -527,7 +601,9 @@ export class TravelPathOverlay {
 				width: 0,
 				height: 0,
 				dimmed: false,
-				faint: true
+				faint: !this.crossing,
+				hazard: true,
+				severityRank: SEVERITY_ORDER.length - 1 - SEVERITY_ORDER.indexOf(hazard.severity)
 			});
 		}
 	}
@@ -702,6 +778,7 @@ export class TravelPathOverlay {
 				.set(arc.color)
 				.multiplyScalar(lit ? LINE_BRIGHTNESS : arc.brightness);
 			material.uniforms.uLineWidth.value = lit ? LINE_WIDTH : arc.width;
+			arc.line.renderOrder = lit ? LIT_RENDER_ORDER : arc.renderOrder;
 		}
 		for (const label of this.labels) {
 			if (label.owner === null) continue;
@@ -722,7 +799,8 @@ export class TravelPathOverlay {
 		width: number,
 		brightness: number,
 		owner: string | null = null,
-		patched = false
+		patched = false,
+		renderOrder = PATH_RENDER_ORDER
 	): void {
 		// Planet-frame, the crossing and the end it runs into are in different
 		// frames and no longer meet — the crossing is given up before the
@@ -736,7 +814,8 @@ export class TravelPathOverlay {
 				: { from: 0, to: arc.points.length };
 			this.addLine(arc.points.slice(from, to), ARC_COLORS[arc.kind], width, brightness, owner, {
 				fadeIn: index === 0 && ends('departure'),
-				fadeOut: index === path.arcs.length - 1 && ends('arrival')
+				fadeOut: index === path.arcs.length - 1 && ends('arrival'),
+				renderOrder
 			});
 		});
 	}
@@ -899,6 +978,7 @@ export class TravelPathOverlay {
 			color,
 			brightness,
 			width,
+			renderOrder: line.renderOrder,
 			local,
 			positions,
 			alphas,
@@ -1019,18 +1099,19 @@ export class TravelPathOverlay {
 	}
 
 	/**
-	 * Settle the end labels against each other and claim the screen space the
-	 * survivors take, so nothing else draws over them. Call once per frame,
-	 * before the culls run; with nothing drawn it releases its held space.
+	 * Settle the labels of the trip against each other, and claim the screen
+	 * space of the ones that keep their text, so that no other label draws
+	 * over them. Call once per frame, before the culls run. With nothing drawn
+	 * it gives its space back.
 	 *
-	 * These outrank every body/feature label (a trajectory being chosen is
-	 * what the map is for), but not each other — nearest to the camera wins,
-	 * the rest fall back to their ring like a body label falls back to its halo.
-	 * The plan's step labels sit between: under the end labels, over the
-	 * scene's own. A losing step falls back to its dot.
+	 * The trip is what the map is for, so its ends and steps outrank the labels
+	 * of bodies and features. End labels come first, then steps. Hazard chips
+	 * come last, and give way to the names of bodies too. In one rank the label
+	 * nearest to the camera wins. A losing end keeps its ring, a step its dot,
+	 * and a chip its marker.
 	 *
-	 * Projected here rather than measured off the DOM: `getBoundingClientRect`
-	 * on every label every frame forces layout.
+	 * Labels are projected here, not measured in the DOM: a
+	 * `getBoundingClientRect` per label per frame forces a layout.
 	 */
 	reserveLabelSpace(camera: PerspectiveCamera, screenWidth: number, screenHeight: number): void {
 		if (!this.group.visible || this.labels.length === 0) {
@@ -1067,33 +1148,39 @@ export class TravelPathOverlay {
 				this.setStepVisible(label, !occluded);
 				if (occluded) continue;
 			}
+			// An end or a step pulls its halo back over the point, so its box starts
+			// a halo radius to the left. A chip starts at its marker.
 			this.order.push({
 				label,
-				// Anchored on the point with the halo pulled back over it, so the box
-				// starts a halo radius to the left and runs right from there.
-				left: x - HALO_RADIUS_PX,
+				left: label.hazard ? x : x - HALO_RADIUS_PX,
+				right: label.hazard ? x + HAZARD_CHIP_GAP_PX + label.width : x + label.width,
 				y,
 				distance
 			});
 		}
-		// The end labels outrank the steps whatever the distances say; within a
-		// tier, nearest to the camera wins.
-		this.order.sort((a, b) => {
-			if (a.label.step !== b.label.step) return a.label.step ? 1 : -1;
-			return a.distance - b.distance;
-		});
+		this.order.sort(
+			(a, b) =>
+				rank(a.label) - rank(b.label) ||
+				(a.label.severityRank ?? 0) - (b.label.severityRank ?? 0) ||
+				a.distance - b.distance
+		);
 
+		// Ends and steps claim their space. Chips come after them in the order and
+		// claim none: a chip also gives way to the names of bodies.
+		let claimed = 0;
 		let count = 0;
-		for (const { label, left, y } of this.order) {
-			const right = left + HALO_RADIUS_PX + label.width;
-			let overlaps = false;
-			for (let i = 0; i < count; i++) {
-				const a = this.rects[i];
-				if (left < a.right && right > a.left && Math.abs(y - a.y) < (label.height + a.h) / 2) {
-					overlaps = true;
-					break;
-				}
-			}
+		for (const { label, left, right, y } of this.order) {
+			const overlaps =
+				overlapsAny(this.rects, count, left, right, y, label.height) ||
+				(label.hazard === true &&
+					overlapsAny(
+						acceptedBodyLabelRects.rects,
+						acceptedBodyLabelRects.count,
+						left,
+						right,
+						y,
+						label.height
+					));
 			this.setLabelDimmed(label, overlaps);
 			if (overlaps) continue;
 			let rect = this.rects[count];
@@ -1106,8 +1193,9 @@ export class TravelPathOverlay {
 			rect.y = y;
 			rect.h = label.height;
 			count++;
+			if (!label.hazard) claimed = count;
 		}
-		reserveLabelRects(this.rects, count);
+		reserveLabelRects(this.rects, claimed);
 	}
 
 	/** A step and its dot, in or out of sight together. Cheap enough to write
@@ -1122,7 +1210,8 @@ export class TravelPathOverlay {
 	private setLabelDimmed(label: DrawnLabel, dimmed: boolean): void {
 		if (label.dimmed === dimmed) return;
 		label.dimmed = dimmed;
-		label.object.element.classList.toggle('scene-path-label--dim', dimmed);
+		const name = label.hazard ? 'scene-hazard-label--dim' : 'scene-path-label--dim';
+		label.object.element.classList.toggle(name, dimmed);
 	}
 
 	/** The group for what hangs off `anchorId`: the overlay's own for the

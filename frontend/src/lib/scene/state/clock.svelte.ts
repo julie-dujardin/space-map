@@ -1,4 +1,4 @@
-import { dateToJD, jdToDate, MS_PER_DAY } from '$lib/time/jd';
+import { dateToJD, FIRST_DATE_JD, jdToDate, LAST_DATE_JD, MS_PER_DAY } from '$lib/time/jd';
 
 /** How long a scrub has to hold still to count as come to rest. */
 const SETTLE_MS = 400;
@@ -14,9 +14,16 @@ interface BoundaryStops {
 /**
  * Simulation clock. Advances Julian Date by real elapsed time × timeScale;
  * timeScale === 0 means paused. `play()` re-resumes the previous non-zero scale.
+ *
+ * The clock holds only dates that a `Date` holds. A seek past them stops it at
+ * the end of that range.
  */
 export class SimClock {
 	jd = $state(0);
+	/** @internal The date that the last seek asked for. It differs from `jd`
+	 *  only past the range of `Date`. A trip's craft and its timeline read it,
+	 *  so that a trip runs on to an arrival that the clock cannot hold. */
+	askedJd = $state(0);
 	timeScale = $state(1);
 	direction = $state<1 | -1>(1);
 	/** @internal Set by {@link setJD}; the renderer reads and clears it to tell a
@@ -43,8 +50,8 @@ export class SimClock {
 	private arrivals: { jumps: number; resolve: () => void }[] = [];
 
 	constructor(initialJd: number, live = false) {
-		this.jd = initialJd;
-		this.settledJd = initialJd;
+		this.move(initialJd);
+		this.settledJd = this.jd;
 		this.live = live;
 		this.lastRealMs = performance.now();
 	}
@@ -55,16 +62,18 @@ export class SimClock {
 		const dt = nowMs - this.lastRealMs;
 		this.lastRealMs = nowMs;
 		if (this.timeScale === 0) return;
-		const proposed = this.jd + (dt / MS_PER_DAY) * this.timeScale;
+		// From the date asked for: past the range of `Date`, `jd` is only its edge.
+		const from = this.askedJd;
+		const proposed = from + (dt / MS_PER_DAY) * this.timeScale;
 		const stops = this.stops;
 		if (stops !== null) {
 			if (
 				this.timeScale > 0 &&
 				stops.forwardJd !== null &&
 				proposed >= stops.forwardJd &&
-				this.jd < stops.forwardJd
+				from < stops.forwardJd
 			) {
-				this.jd = stops.forwardJd;
+				this.move(stops.forwardJd);
 				this.pause();
 				stops.onHit(stops.forwardJd);
 				return;
@@ -73,15 +82,34 @@ export class SimClock {
 				this.timeScale < 0 &&
 				stops.backwardJd !== null &&
 				proposed <= stops.backwardJd &&
-				this.jd > stops.backwardJd
+				from > stops.backwardJd
 			) {
-				this.jd = stops.backwardJd;
+				this.move(stops.backwardJd);
 				this.pause();
 				stops.onHit(stops.backwardJd);
 				return;
 			}
 		}
-		this.jd = proposed;
+		this.move(proposed);
+		if (this.askedJd === this.jd) return;
+		// Time does not run past the dates the clock can hold. A run that leaves
+		// the range stops at its edge. Past the range, a run goes on only back
+		// toward it. A step further out holds, and has no new date to settle on.
+		const inside = from >= FIRST_DATE_JD && from <= LAST_DATE_JD;
+		const further = from > LAST_DATE_JD ? proposed > from : proposed < from;
+		if (inside) {
+			this.move(this.jd);
+			this.pause();
+		} else if (further) {
+			this.move(from);
+			this.hold();
+		}
+	}
+
+	/** Put the clock on `jd`, or on the nearest date it can hold. */
+	private move(jd: number): void {
+		this.askedJd = jd;
+		this.jd = Math.min(Math.max(jd, FIRST_DATE_JD), LAST_DATE_JD);
 	}
 
 	/** @internal Arm or replace the boundary stops consulted by {@link tick};
@@ -111,7 +139,7 @@ export class SimClock {
 	/** @internal Seek without marking the move as a jump — for a dragged slider,
 	 *  which would otherwise fill the history with every frame of the drag. */
 	setJD(jd: number): void {
-		this.jd = jd;
+		this.move(jd);
 		this.seeked = true;
 		this.live = false;
 		this.lastRealMs = performance.now();
@@ -161,16 +189,24 @@ export class SimClock {
 	 *  Deliberately doesn't set {@link seeked} — that flag re-anchors the focus,
 	 *  and firing it every sweep frame would drag the camera off its target. */
 	sweepTo(jd: number): void {
-		this.jd = jd;
+		this.move(jd);
 		this.live = false;
 		this.lastRealMs = performance.now();
 	}
 
 	pause(): void {
+		this.hold();
+		this.settle();
+	}
+
+	/** @internal Pause, and leave the settled date where it is. For playback,
+	 *  which moves the clock to show a trip, not to plan one from. */
+	hold(): void {
 		if (this.timeScale !== 0) this.prevScale = this.timeScale;
 		this.timeScale = 0;
 		this.live = false;
-		this.settle();
+		if (this.settleTimer !== null) clearTimeout(this.settleTimer);
+		this.settleTimer = null;
 	}
 
 	play(): void {

@@ -327,7 +327,13 @@ export function buildInterstellarTorchRoute(
 			constantThrust: accelMs2,
 			peakSpeedKms: peakKms,
 			coastFraction: share,
-			interstellar: { distanceKm, cruiseKms: peakKms, gamma }
+			interstellar: {
+				distanceKm,
+				cruiseKms: peakKms,
+				gamma,
+				originKm: origin.starKm,
+				targetKm: target.starKm
+			}
 		},
 		legs
 	);
@@ -702,7 +708,13 @@ export function buildInterstellarCruiseRoute(
 			targetOrbit: options.targetOrbit,
 			aero,
 			entrySpeedKms: arrival.cost.entrySpeedKms,
-			interstellar: { distanceKm, cruiseKms, gamma }
+			interstellar: {
+				distanceKm,
+				cruiseKms,
+				gamma,
+				originKm: origin.starKm,
+				targetKm: target.starKm
+			}
 		},
 		legs
 	);
@@ -753,6 +765,42 @@ function heldArcOf(route: Route, totalKm: number): HeldArc | null {
 	const burns = route.legs.some((leg) => leg.kind === 'brake') ? 2 : 1;
 	const burnKm = Math.min(burnDistanceKm(phi, accelKmS2), totalKm / burns);
 	return { accelKmS2, phi, burns, burnKm, coastEndKm: totalKm - (burns - 1) * burnKm };
+}
+
+/** A stretch of a crossing between two systems. */
+export interface CrossingStretch {
+	kind: 'boost' | 'cruise' | 'brake';
+	/** Distance from the origin's star at which it starts, km. */
+	fromKm: number;
+	/** Distance from the origin's star at which it ends, km. */
+	toKm: number;
+}
+
+/**
+ * The stretches of a crossing between two systems, in flight order, one for
+ * each leg of the crossing. A coast is one stretch. A held drive has a boost, a
+ * cruise when it coasts, and a brake when it stops. Null on any other route.
+ */
+export function crossingStretches(route: Route): CrossingStretch[] | null {
+	const crossing = route.interstellar;
+	if (!crossing) return null;
+	const totalKm = crossing.distanceKm;
+	const held = heldArcOf(route, totalKm);
+	const stretches: CrossingStretch[] = [];
+	let at = 0;
+	for (const leg of route.legs) {
+		if (leg.kind !== 'boost' && leg.kind !== 'cruise' && leg.kind !== 'brake') continue;
+		const lengthKm = !held
+			? totalKm
+			: leg.kind === 'cruise'
+				? held.coastEndKm - held.burnKm
+				: held.burnKm;
+		stretches.push({ kind: leg.kind, fromKm: at, toKm: at + lengthKm });
+		at += lengthKm;
+	}
+	// The last stretch ends at the target's star, whatever the rounding.
+	if (stretches.length > 0) stretches[stretches.length - 1].toKm = totalKm;
+	return stretches;
 }
 
 /** Time from departure until the craft is `distanceKm` from the origin's star

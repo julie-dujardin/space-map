@@ -12,11 +12,6 @@
 
 import { Vector3 } from 'three';
 import { naifId } from '$lib/constants';
-import {
-	extrasolarObjectId,
-	isExtrasolarObjectId,
-	planetOfObjectId
-} from '$lib/fetch/extrasolar/ids';
 import type { BodyData } from '$lib/types/objects';
 import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
 import { getAtmosphereParams } from '$lib/fetch/atmospheres';
@@ -32,6 +27,7 @@ import {
 	type Well
 } from '$lib/math/travel';
 import { AU_KM } from '$lib/math/units';
+import { systemOf } from '$lib/state/nav-end';
 import type { Vec3 } from '$lib/math/travel/vec3';
 
 const DEG2RAD = Math.PI / 180;
@@ -346,8 +342,12 @@ export function transferCenterId(
 	lookup: BodyLookup
 ): string | null {
 	if (plan.kind === 'blocked') return null;
-	// The places of the stars are about the solar-system barycentre.
-	if (plan.kind === 'interstellar') return SSB_OBJECT_ID;
+	// The places of the stars are about the barycentre. A trip that never
+	// touches the solar system is drawn about the star it leaves.
+	if (plan.kind === 'interstellar') {
+		const solar = plan.originSystem === SUN_OBJECT_ID || plan.targetSystem === SUN_OBJECT_ID;
+		return solar ? SSB_OBJECT_ID : plan.originSystem;
+	}
 	// One end is the centre, and `relativeState` differences the other against
 	// it, so the positions come out about the body itself.
 	if (plan.kind === 'system') return plan.primary === 'origin' ? origin.id : target.id;
@@ -453,17 +453,6 @@ function reportUnwalkableChain(id: string): void {
 	if (reportedUnwalkable.has(id)) return;
 	reportedUnwalkable.add(id);
 	console.debug(`[travel] no heliocentric ancestor for ${id}`);
-}
-
-/**
- * The system an end is in, as the scene id of its star: the Sun for a body of
- * the solar system, the host for a planet of another star, and the star itself
- * for a star or a star system. Two stars of one star system are two systems.
- */
-export function systemOf(objectId: string): string {
-	if (!isExtrasolarObjectId(objectId)) return SUN_OBJECT_ID;
-	const planet = planetOfObjectId(objectId);
-	return planet ? extrasolarObjectId(planet.host) : objectId;
 }
 
 export function transferPlan(origin: BodyData, target: BodyData, lookup: BodyLookup): TransferPlan {

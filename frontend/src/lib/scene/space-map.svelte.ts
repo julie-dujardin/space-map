@@ -46,6 +46,7 @@ import { smallCircle, type LonLat } from '$lib/flatmap/geometry';
 import { loadProgress } from './state/load-progress.svelte';
 import type { Vec3 } from './animation/math';
 import type { OrbitPreview } from './objects/travel/orbit-preview';
+import type { ScreenInsets } from './focus/trip-view';
 import {
 	effectiveRadiusKm,
 	isSurfaceFeature,
@@ -1294,6 +1295,20 @@ export class SpaceMap {
 	 *  the Sun) above the ecliptic. */
 	snapToBodyFacing(id: string, towardId: string, elevationDeg: number, distance: number): void {
 		this.renderer?.snapToBodyFacing(id, towardId, elevationDeg, distance);
+	}
+
+	/**
+	 * @internal Where a move to the target of a trip between two systems takes
+	 * the camera, as the `view` of {@link goTo}. The camera goes out until both
+	 * ends are on screen, clear of `insets`, which the page covers. Null when
+	 * the camera can stay where it is, because it already shows the trip or
+	 * because an end has no place.
+	 */
+	tripView(originId: string, targetId: string, insets: ScreenInsets): GoToOptions['view'] | null {
+		const renderer = this.renderer;
+		const vantage = renderer?.tripVantage(originId, targetId, insets);
+		if (!renderer || !vantage || vantage.kept) return null;
+		return (body) => renderer.viewFrom(body.data.id, vantage.offset) ?? {};
 	}
 
 	/** @internal Focus a surface feature as a real orbitable body seated on its host.

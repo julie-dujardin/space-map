@@ -14,6 +14,7 @@ import { sphereOfInfluenceKm, type TravelBody } from './body';
 import { CAPTURE_APOAPSIS_RADII, GM_SUN_KM3_S2, SEC_PER_DAY } from './constants';
 import { solveFlyby } from './flyby';
 import { sampleHeldDrive, samplePoweredFlight, type HeldDriveSample } from './held-drive';
+import { crossingElapsed, crossingStretches } from './interstellar';
 import { solveLambert, transferArc } from './lambert';
 import { rebuildSpiral } from './low-thrust';
 import {
@@ -291,6 +292,9 @@ export interface PathOptions extends RouteOptions {
 	/** Which frame to draw the ends in. Defaults to `interplanetary`, which is the
 	 *  frame the crossing itself is in and the only one that joins onto it. */
 	frame?: TrajectoryFrame;
+	/** Where `centerId` is on a route between two systems, km, in the frame of
+	 *  the stars. The solar-system barycentre when absent. */
+	centerKm?: Vec3;
 	/**
 	 * Where a surface end touches its body: the site's position from the body's
 	 * centre, km, in the transfer frame's axes, at a given date. A function of
@@ -404,9 +408,14 @@ export function buildTrajectoryPath(
 	route: Route,
 	options: PathOptions
 ): TrajectoryPath | null {
+	const frame = options.frame ?? 'interplanetary';
+	// Between two systems the ends are stars, and no orbit at either end shows at that scale.
+	if (route.interstellar) {
+		const crossing = starCrossing(departure.id, target.id, route, options);
+		return crossing && { ...crossing, frame, endOrbits: [], soiKm: {} };
+	}
 	const path = buildCrossing(departure, target, route, options);
 	if (!path) return null;
-	const frame = options.frame ?? 'interplanetary';
 	const endOrbits = endOrbitPaths(departure, target, route, options, path);
 	const soiKm: Record<string, number> = {};
 	for (const body of [departure, target, ...(options.vias ?? [])]) {
@@ -446,8 +455,6 @@ function buildCrossing(
 		samples = DEFAULT_SAMPLES
 	} = options;
 
-	// The ends of a crossing between stars are not on orbits about one primary.
-	if (route.interstellar) return null;
 	if (orbitChange) return orbitChangePath(departure, route, centerId, samples);
 	if (route.lowThrust) {
 		// A spiral inside one system is thousands of revolutions deep, which is a
@@ -2793,6 +2800,79 @@ function straightCrossing(
 
 	return {
 		centerId,
+		arcs,
+		stops: [
+			{
+				kind: 'departure',
+				jd: route.departJd,
+				r: start,
+				bodyId: departureId,
+				dvKms: dvAt(route, 'departure')
+			},
+			{
+				kind: 'arrival',
+				jd: route.arriveJd,
+				r: end,
+				bodyId: targetId,
+				dvKms: dvAt(route, 'arrival')
+			}
+		],
+		meeting: { bodyId: targetId, jd: route.arriveJd, r: end }
+	};
+}
+
+/**
+ * A crossing between two star systems. It is the straight line from one star
+ * to the other. Each stretch takes its dates from the motion of the kernel
+ * along it, which is relativistic on a held drive. The arcs end on the dates of
+ * their legs, so that they agree with the timeline.
+ */
+function starCrossing(
+	departureId: string,
+	targetId: string,
+	route: Route,
+	options: PathOptions
+): PathGeometry | null {
+	const crossing = route.interstellar;
+	const stretches = crossingStretches(route);
+	if (!crossing || !stretches || !(crossing.distanceKm > 0)) return null;
+	// Star places are about the barycentre. A centre elsewhere is at `centerKm`.
+	const { centerKm } = options;
+	const start = centerKm ? sub(crossing.originKm, centerKm) : crossing.originKm;
+	const end = centerKm ? sub(crossing.targetKm, centerKm) : crossing.targetKm;
+	const span = sub(end, start);
+	const totalKm = crossing.distanceKm;
+	const at = (km: number): Vec3 =>
+		km <= 0 ? start : km >= totalKm ? end : add(start, scale(span, km / totalKm));
+
+	const spans: { startJd: number; endJd: number }[] = [];
+	let jd = route.departJd;
+	for (const leg of route.legs) {
+		if (leg.kind === 'boost' || leg.kind === 'cruise' || leg.kind === 'brake') {
+			spans.push({ startJd: jd, endJd: jd + leg.days });
+		}
+		jd += leg.days;
+	}
+	if (spans.length !== stretches.length) return null;
+	spans[spans.length - 1].endJd = route.arriveJd;
+
+	const elapsedDays = (km: number): number => crossingElapsed(route, km)?.days ?? 0;
+	// Samples are even along the line. A burn is slow at its start, so they are uneven in time.
+	const count = Math.max(2, Math.round((options.samples ?? DEFAULT_SAMPLES) / 2));
+	const arcs: PathArc[] = stretches.map((stretch, index) => {
+		const { startJd, endJd } = spans[index];
+		const points: Vec3[] = [];
+		const jds: number[] = [];
+		for (let i = 0; i < count; i++) {
+			const km = stretch.fromKm + ((stretch.toKm - stretch.fromKm) * i) / (count - 1);
+			points.push(at(km));
+			jds.push(i === 0 ? startJd : i === count - 1 ? endJd : route.departJd + elapsedDays(km));
+		}
+		return { kind: stretch.kind, points, jds, startJd, endJd };
+	});
+
+	return {
+		centerId: options.centerId,
 		arcs,
 		stops: [
 			{

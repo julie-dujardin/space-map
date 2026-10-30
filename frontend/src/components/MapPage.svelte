@@ -30,11 +30,13 @@
 	import { labelHazards } from '$lib/travel/hazard-labels';
 	import { formatTripDate } from '$lib/travel/format';
 	import type { Timeline, TimelineEntry, TimelineFocus } from '$lib/travel/timeline';
-	import { SHEET_COLLAPSED_PX } from '$lib/drawer';
+	import { SHEET_COLLAPSED_PX, TRIP_SHEET_MID, detailPanelPx } from '$lib/drawer';
 	import { prefetchObjectDetail } from '$lib/fetch/objects/object-data';
 	import { prefetchFeatureDetail } from '$lib/fetch/nomenclature/details';
 	import { prefetchGroupDetail } from '$lib/fetch/groups/details';
 	import { extrasolarAlias, fetchPageName, type PageSubject } from '$lib/state/page-name';
+	import { systemOf } from '$lib/state/nav-end';
+	import type { ScreenInsets } from '$lib/scene/focus/trip-view';
 	// Not lazy: the placeholder's whole job is to be on screen before the drawer
 	// chunk is.
 	import DrawerSkeleton from './detail/DrawerSkeleton.svelte';
@@ -630,6 +632,52 @@
 			.then((arrival) => reportFailed(arrival, id));
 	}
 
+	/** The origin of a trip between two systems; null for a trip inside one. */
+	function interstellarOrigin(from: string | null, to: string | null): string | null {
+		return from !== null && to !== null && systemOf(from) !== systemOf(to) ? from : null;
+	}
+
+	/** The trip timeline's band at the foot of a desktop map, rem: its lift off
+	 *  the edge and one row of cards. */
+	const TRIP_TIMELINE_REM = 17;
+
+	/** What the page covers of the map on a trip: the sidebar and the trip
+	 *  timeline on a desktop, the sheet at its middle stop on a phone. The
+	 *  timeline comes up only once a route is picked, so its band is kept clear
+	 *  from the start. */
+	function tripInsets(): ScreenInsets {
+		const style = getComputedStyle(document.documentElement);
+		const rem = parseFloat(style.fontSize) || 16;
+		if (isMobileViewport) {
+			return { top: 4 * rem, right: rem, bottom: TRIP_SHEET_MID * window.innerHeight, left: rem };
+		}
+		const panel = detailPanelPx(style);
+		const side = 4.5 * rem;
+		const rtl = style.direction === 'rtl';
+		return {
+			top: 4 * rem,
+			right: rtl ? panel : side,
+			bottom: TRIP_TIMELINE_REM * rem,
+			left: rtl ? side : panel
+		};
+	}
+
+	// The opening view frames a trip between two systems on the ends it reads
+	// once the renderer is up. The trip effect frames the ends after those.
+	let viewOpened = false;
+	/** The stream of the latest ends of the trip. */
+	let tripEnds: Promise<unknown> = Promise.resolve();
+
+	/** Wait till the latest ends of the trip are streamed in. The planner can
+	 *  move an end while an earlier one streams. */
+	async function latestTripEnds(): Promise<void> {
+		let ends: Promise<unknown>;
+		do {
+			ends = tripEnds;
+			await ends;
+		} while (ends !== tripEnds);
+	}
+
 	// A non-resident trip end (probe, small body) has no elements to transfer
 	// from: stream it in like focusObject would, then frame the destination.
 	// Covers swaps and origin changes, which bypass setFocus.
@@ -642,23 +690,41 @@
 		const ends = [navFrom, to].filter((id) => id !== null);
 		// Neither end chosen: nothing to stream, nothing to re-frame.
 		if (ends.length === 0) return;
+		// A trip between two systems frames both of its ends.
+		const origin = interstellarOrigin(navFrom, to);
+		const opening = !viewOpened;
+		// With nowhere to go yet, the departure is the subject.
+		const framed = to ?? ends[0];
+		const streamed = Promise.all(
+			ends.map((id) => {
+				// `goTo` streams in the end it goes to. A vantage on two systems needs
+				// both ends before that.
+				const leftToGoTo = id === framed && origin === null;
+				return leftToGoTo || ctx.getBody(id)
+					? Promise.resolve()
+					: ctx
+							.ensureBody(id, at)
+							.catch((e) => console.warn(`[map] trip end ${id} could not be streamed in:`, e));
+			})
+		);
+		tripEnds = streamed;
+		let cancelled = false;
 		void (async () => {
-			// With nowhere to go yet, the departure is the subject.
-			const framed = to ?? ends[0];
-			await Promise.all(
-				ends.map((id) =>
-					id === framed || ctx.getBody(id)
-						? Promise.resolve()
-						: ctx
-								.ensureBody(id, at)
-								.catch((e) => console.warn(`[map] trip end ${id} could not be streamed in:`, e))
-				)
-			);
-			if (untrack(() => cameraFocus?.data.id) === framed) return;
-			// Pan, don't fly: retargeting a trip is picking a place on a map, not
-			// visiting it. The trip owns the date, so the clock stays.
-			reportFailed(await map.goTo(framed, { clock: 'keep', camera: 'pan' }), framed);
+			await streamed;
+			// The opening view frames a trip between two systems.
+			const leftToOpening = origin !== null && opening;
+			if (cancelled || leftToOpening) return;
+			// The camera leaves the solar system only as far as a trip between two systems needs.
+			const view = origin === null ? null : map.tripView(origin, framed, tripInsets());
+			if (!view && untrack(() => cameraFocus?.data.id) === framed) return;
+			// Else the camera pans and keeps the vantage of the reader. The trip owns the date.
+			const camera = view ? { camera: 'fly' as const, view } : { camera: 'pan' as const };
+			reportFailed(await map.goTo(framed, { clock: 'keep', ...camera }), framed);
 		})();
+		// Older ends must not move the camera after newer ones.
+		return () => {
+			cancelled = true;
+		};
 	});
 
 	// Everything the panel displaces moves on this, the placeholder frame
@@ -824,12 +890,14 @@
 	});
 
 	onMount(() => {
-		void openInitialView().catch((e) => {
-			// Before the scene is up, a failure here is the page's: with no error
-			// to show, the loading bar would stay for good.
-			if (ctx.loading) ctx.fail(e);
-			else console.error('[map] the opening view failed:', e);
-		});
+		void openInitialView()
+			.catch((e) => {
+				// Before the scene is up, a failure here is the page's: with no error
+				// to show, the loading bar would stay for good.
+				if (ctx.loading) ctx.fail(e);
+				else console.error('[map] the opening view failed:', e);
+			})
+			.finally(() => (viewOpened = true));
 	});
 
 	async function openInitialView(): Promise<void> {
@@ -861,7 +929,22 @@
 			// camera on the feature seat. Skip host framing here, it runs after
 			// that effect and would clobber the feature focus.
 		} else if (placed) {
-			if (initialId === EARTH_ID && !appState.view.framed) {
+			const trip = isNav && !appState.view.framed;
+			// The vantage needs the place of both ends, and the planner can move an
+			// end while the page opens.
+			if (trip && interstellarOrigin(navFrom, navTo) !== null) await latestTripEnds();
+			const origin = trip ? interstellarOrigin(navFrom, navTo) : null;
+			const target = navTo ?? initialId;
+			// The trip effect frames the ends that move after this read.
+			viewOpened = true;
+			const tripView = origin === null ? null : map.tripView(origin, target, tripInsets());
+			if (tripView) {
+				// A trip between two systems opens with both of its ends on screen.
+				reportFailed(
+					await map.goTo(target, { clock: 'keep', camera: 'fly', view: tripView }),
+					target
+				);
+			} else if (initialId === EARTH_ID && !appState.view.framed) {
 				// Home view (`/` redirects here): Earth looking sunward, tilted above the ecliptic.
 				map.snapToBodyFacing(initialId, SUN_ID, DEFAULT_VIEW_ELEVATION_DEG, DEFAULT_VIEW.zoom);
 			} else if (isExtrasolarObjectId(initialId) && !appState.view.framed) {

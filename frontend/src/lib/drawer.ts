@@ -10,12 +10,22 @@ export const DRAWER_TOP_GAP_PX = 16;
  *  so the placeholder frame and the drawer it stands in for can't disagree. */
 export const DRAWER_MQ = '(max-width: 768px)';
 
+/** The width of the desktop sidebar, px. Read from `--detail-panel`, the one
+ *  place that sets it. */
+export function detailPanelPx(style = getComputedStyle(document.documentElement)): number {
+	return parseFloat(style.getPropertyValue('--detail-panel')) || 0;
+}
+
 /**
  * The collapsed sheet's height: header chrome only. Measured at runtime once
  * the sheet renders — this is what it opens on, and what the placeholder frame
  * reserves before it exists.
  */
 export const SHEET_COLLAPSED_PX = 68;
+
+/** The trip sheet's middle stop, as a share of the viewport height. Shared so
+ *  that the map frames a trip clear of it. */
+export const TRIP_SHEET_MID = 0.4;
 
 /** The mobile sheet's top snap point for a given viewport height. Shared so
  *  the drawer's resize re-pin and the sheet's snap list can't disagree. */

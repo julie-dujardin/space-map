@@ -1289,9 +1289,13 @@ export interface ShapeStyle {
 // @public
 export class SimClock {
 	constructor(initialJd: number, live?: boolean);
+	// @internal
+	askedJd: number;
 	get date(): Date;
 	// (undocumented)
 	direction: 1 | -1;
+	// @internal
+	hold(): void;
 	// (undocumented)
 	jd: number;
 	// @internal
@@ -1458,6 +1462,8 @@ export class SpaceMap {
 	tilesEnabled(): boolean;
 	// @internal
 	trackPathPoint(centerId: string, rKm: readonly [number, number, number]): void;
+	// @internal
+	tripView(originId: string, targetId: string, insets: ScreenInsets): GoToOptions['view'] | null;
 	// @internal
 	unmount(): void;
 	// @internal

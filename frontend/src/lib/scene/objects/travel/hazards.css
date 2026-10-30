@@ -21,3 +21,8 @@
 		0 0 4px #000,
 		0 0 4px #000;
 }
+
+/* A chip that gives way to a label that outranks it. Its marker stays. */
+.scene-hazard-label--dim {
+	visibility: hidden;
+}

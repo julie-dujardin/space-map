@@ -13,9 +13,9 @@
  */
 
 import { SUN_ID } from '$lib/constants';
+import { systemOf } from '$lib/state/nav-end';
 import { gasReading } from '$lib/travel/hazard-labels';
 import type { Hazard } from '$lib/travel/hazards';
-import { systemOf } from '$lib/travel/travel-body';
 import type { SourceCitation } from '$lib/travel/vehicles';
 
 /** The rate at 1 au. The rate past the heliopause is a multiple of it. */
