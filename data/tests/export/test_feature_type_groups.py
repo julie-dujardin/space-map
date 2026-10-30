@@ -1,7 +1,6 @@
 """Tests for the feature-type (``ft-``) group tier."""
 
 import datetime
-from unittest.mock import MagicMock
 
 import pytest
 from sqlalchemy.orm import Session
@@ -23,23 +22,27 @@ from space_map_data.export.groups.registry import (
     GroupCategory,
     GroupType,
 )
+from space_map_data.export.names import ObjectNames
 from space_map_data.export.notable import feature_member_key, notable_entries
+from space_map_data.export.wikidata import WikidataEntity
 from space_map_data.models.feature import Feature
 from space_map_data.models.object import Object, ObjectType
+from tests.conftest import EntityStub
 
 
-def _entities(sitelinks: dict[str, int] | None = None) -> MagicMock:
-    """Cache stub returning a sitelink count per feature QID."""
-    counts = sitelinks or {}
-
-    def get_feature_entity(qid: str | None):
-        if qid is None or qid not in counts:
-            return None
-        return {"sitelinks": {f"w{i}": "" for i in range(counts[qid])}}
-
-    cache = MagicMock()
-    cache.get_feature_entity.side_effect = get_feature_entity
-    return cache
+def _names(session: Session, sitelinks: dict[str, int] | None = None) -> ObjectNames:
+    """Names over an entity stub with a sitelink count per feature QID."""
+    entities = {
+        qid: WikidataEntity(
+            labels={},
+            descriptions={},
+            aliases={},
+            claims={},
+            sitelinks={f"w{i}": "" for i in range(n)},
+        )
+        for qid, n in (sitelinks or {}).items()
+    }
+    return ObjectNames(EntityStub(entities), session)
 
 
 def _body(session: Session, object_id: str, name: str, qid: str | None = None) -> None:
@@ -110,7 +113,7 @@ class TestBuildFeatureTypeGroups:
         _feature(session, 3, object_id="naif-499", approval_date=None)
         session.flush()
 
-        out = build_feature_type_groups(session, _entities())
+        out = build_feature_type_groups(session, _names(session))
         stats = out.stats["ft-crater"]
         assert stats.feature_count == 3
         assert out.member_counts["ft-crater"] == 3
@@ -132,14 +135,17 @@ class TestBuildFeatureTypeGroups:
         assert stats.first_approval == "1935-01-01"
         assert stats.last_approval == "1976-05-03"
         assert stats.approval_histogram == {1935: 1, 1976: 1}
-        assert stats.body_qids == {"naif-301": "Q405", "naif-499": "Q111"}
+        assert {k: v.name for k, v in stats.body_names.items()} == {
+            "naif-301": "Moon",
+            "naif-499": "Mars",
+        }
 
     def test_unused_type_still_gets_an_empty_page(self, session: Session):
         _body(session, "naif-301", "Moon")
         _feature(session, 1)
         session.flush()
 
-        out = build_feature_type_groups(session, _entities())
+        out = build_feature_type_groups(session, _names(session))
         assert out.stats["ft-vallis"].feature_count == 0
         assert out.member_counts["ft-vallis"] == 0
         assert "ft-vallis" not in out.notable_members
@@ -152,7 +158,7 @@ class TestBuildFeatureTypeGroups:
         _feature(session, 3, object_id=None)  # unmatched body → not exported
         session.flush()
 
-        out = build_feature_type_groups(session, _entities())
+        out = build_feature_type_groups(session, _names(session))
         assert out.stats["ft-crater"].feature_count == 1
 
     def test_largest_is_the_biggest_named_example(self, session: Session):
@@ -162,7 +168,7 @@ class TestBuildFeatureTypeGroups:
         _feature(session, 3, diameter=None)
         session.flush()
 
-        out = build_feature_type_groups(session, _entities())
+        out = build_feature_type_groups(session, _names(session))
         assert out.stats["ft-crater"].largest == {
             "name": "Copernicus",
             "primary_type": "naif",
@@ -179,7 +185,7 @@ class TestBuildFeatureTypeGroups:
                 _feature(session, i * 100 + j, object_id=f"naif-{i}")
         session.flush()
 
-        stats = build_feature_type_groups(session, _entities()).stats["ft-crater"]
+        stats = build_feature_type_groups(session, _names(session)).stats["ft-crater"]
         # The chart paginates, so the tail past the first page is kept too.
         assert len(stats.bodies) == 15
         assert stats.body_count == 15
@@ -194,9 +200,9 @@ class TestBuildFeatureTypeGroups:
         _feature(session, 3, name="Small anonymous", diameter=5.0)
         session.flush()
 
-        out = build_feature_type_groups(session, _entities({"Q1": 42}))
+        out = build_feature_type_groups(session, _names(session, {"Q1": 42}))
         members = out.notable_members["ft-crater"]
-        assert [m.fallback_name for m in members] == [
+        assert [m.names.name for m in members] == [
             "Tycho",
             "Big anonymous",
             "Small anonymous",
@@ -217,7 +223,7 @@ class TestMetaCategoryStats:
         _feature(session, 3, object_id="naif-499", feature_type_code="VA")
         session.flush()
 
-        stats = build_feature_type_groups(session, _entities()).stats[
+        stats = build_feature_type_groups(session, _names(session)).stats[
             SURFACE_FEATURES_SLUG
         ]
         assert stats.feature_count == 3
@@ -231,7 +237,7 @@ class TestMetaCategoryStats:
         _feature(session, 1)
         session.flush()
 
-        out = build_feature_type_groups(session, _entities())
+        out = build_feature_type_groups(session, _names(session))
         assert SURFACE_FEATURES_SLUG not in out.member_counts
         assert sum(out.member_counts.values()) == 1
 
@@ -243,7 +249,7 @@ class TestMetaCategoryStats:
         session.flush()
 
         families = (
-            build_feature_type_groups(session, _entities())
+            build_feature_type_groups(session, _names(session))
             .stats[SURFACE_FEATURES_SLUG]
             .families
         )
@@ -263,7 +269,7 @@ class TestMetaCategoryStats:
 
         families = {
             f["key"]: f
-            for f in build_feature_type_groups(session, _entities())
+            for f in build_feature_type_groups(session, _names(session))
             .stats[SURFACE_FEATURES_SLUG]
             .families
         }
@@ -279,7 +285,7 @@ class TestMetaCategoryStats:
         session.flush()
 
         families = (
-            build_feature_type_groups(session, _entities())
+            build_feature_type_groups(session, _names(session))
             .stats[SURFACE_FEATURES_SLUG]
             .families
         )
@@ -294,7 +300,7 @@ class TestMetaCategoryStats:
         session.flush()
 
         origins = (
-            build_feature_type_groups(session, _entities())
+            build_feature_type_groups(session, _names(session))
             .stats[SURFACE_FEATURES_SLUG]
             .naming_origins
         )
@@ -307,7 +313,7 @@ class TestMetaCategoryStats:
         session.flush()
 
         assert (
-            build_feature_type_groups(session, _entities())
+            build_feature_type_groups(session, _names(session))
             .stats["ft-crater"]
             .type_count
             == 0
@@ -326,10 +332,10 @@ class TestNotableFeatureEntries:
         _feature(session, 7, name="Tycho", diameter=85.29)
         session.flush()
 
-        members = build_feature_type_groups(session, _entities()).notable_members[
+        members = build_feature_type_groups(session, _names(session)).notable_members[
             "ft-crater"
         ]
-        entries = notable_entries(members, _entities())
+        entries = notable_entries(members)
         assert entries == [
             {
                 "name": "Tycho",

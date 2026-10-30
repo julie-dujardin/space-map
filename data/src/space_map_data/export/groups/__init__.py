@@ -1,15 +1,12 @@
 """Group export: per-group bundles + membership index for /g/<slug> pages."""
 
-import csv
-import io
 import logging
-from collections import defaultdict
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import orjson
 from sqlalchemy.engine import Engine
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from space_map_data.constants.categories import (
     COMETS_SLUG,
@@ -19,16 +16,12 @@ from space_map_data.constants.categories import (
     SATELLITES_SLUG,
     SOLAR_SYSTEM_SLUG,
 )
-from space_map_data.constants.comet_fragments import family_group_slug
 from space_map_data.constants.earth_sats.constellations import (
     CONSTELLATION_BY_SLUG,
     CONSTELLATION_SLUG_PREFIX,
     ConstellationSpec,
 )
-from space_map_data.export.groups.bundles import (
-    GallerySubject,
-    write_group_bundles,
-)
+from space_map_data.export.groups.bundles import write_group_bundles
 from space_map_data.export.groups.categories import (
     build_category_data,
     star_member,
@@ -80,6 +73,7 @@ from space_map_data.export.groups.solar_system_map import (
 )
 from space_map_data.export.groups.star_family import build_star_family_groups
 from space_map_data.export.groups.stats import GroupExtraStats
+from space_map_data.export.names import Names, ObjectNames, entity_names
 from space_map_data.export.notable import (
     NotableObject,
     craft_model_slugs,
@@ -90,15 +84,16 @@ from space_map_data.export.notable import (
 from space_map_data.export.objects.fragments import build_comet_families
 from space_map_data.export.objects.missions import build_probe_missions
 from space_map_data.export.objects.stars import (
+    PlanetObject,
     StarObject,
     available_extrasolar_objects,
 )
 from space_map_data.export.quantities import UnitConverter
 from space_map_data.export.solar_planets import solar_planet_records
-from space_map_data.export.wikidata import WikidataEntityCache, entity_label
+from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.models.object.main import Object
 from space_map_data.models.object.sbdb import SBDB
-from space_map_data.utils.paths import EXPORT_DIR, SOURCES_METADATA_DIR
+from space_map_data.utils.paths import EXPORT_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -111,7 +106,8 @@ class SplitCometGroups:
     member_counts: dict[str, int] = field(default_factory=dict)
     notable_members: dict[str, list[NotableObject]] = field(default_factory=dict)
     member_ids: dict[str, list[str]] = field(default_factory=dict)
-    names: dict[str, str] = field(default_factory=dict)
+    # The names of each page, as the fragments name their comet.
+    names: dict[str, Names] = field(default_factory=dict)
     extra_stats: dict[str, GroupExtraStats] = field(default_factory=dict)
 
 
@@ -123,10 +119,12 @@ class MissionGroups:
     member_counts: dict[str, int] = field(default_factory=dict)
     notable_members: dict[str, list[NotableObject]] = field(default_factory=dict)
     primary_ids: dict[str, str] = field(default_factory=dict)
+    # The names of each page, as its probes name their mission.
+    names: dict[str, Names] = field(default_factory=dict)
     extra_stats: dict[str, GroupExtraStats] = field(default_factory=dict)
 
 
-def _mission_groups() -> MissionGroups:
+def _mission_groups(names: ObjectNames) -> MissionGroups:
     """One group page per probe mission, built from the probe registry.
 
     The mission's Wikidata QID (set on the primary as ``primary_qid``) drives
@@ -134,7 +132,7 @@ def _mission_groups() -> MissionGroups:
     ``primary_ids`` map gives each page a focus redirect to its primary probe.
     """
     out = MissionGroups()
-    for mission in build_probe_missions():
+    for mission in build_probe_missions(names):
         members = [mission.primary, *mission.members]
         out.groups.append(
             Group(
@@ -147,6 +145,7 @@ def _mission_groups() -> MissionGroups:
         out.member_counts[mission.slug] = len(members)
         out.notable_members[mission.slug] = members
         out.primary_ids[mission.slug] = mission.primary_object_id
+        out.names[mission.slug] = mission.names
         out.extra_stats[mission.slug] = GroupExtraStats(
             launch_year=mission.launch_year, mission_status=mission.status
         )
@@ -206,7 +205,7 @@ def _earth_zone_notable_members(
                 NotableObject(
                     object_id="",
                     wikidata_qid=spec.wikidata_qid,
-                    fallback_name=_constellation_fallback_name(spec),
+                    names=entity_names(wd, _constellation_fallback_name(spec)),
                     diameter_km=None,
                     first_obs=None,
                     group_slug=const_slug,
@@ -240,29 +239,6 @@ def _earth_category_notable(
     return sorted(
         best.values(), key=lambda m: (-(m.sitelinks_count or 0), m.object_id)
     )[:NOTABLE_MEMBER_COUNT]
-
-
-# Wikidata properties whose match CSVs key on a comet's designation.
-_DESIGNATION_MATCH_PIDS = ("P5736", "P490")
-
-
-def _designation_qids() -> dict[str, list[str]]:
-    """``{comet designation: [qid]}`` from the P5736/P490 Wikidata match CSVs.
-
-    Mirrors the ingest reader, but keyed on the full designation (``C/1860 D1``)
-    so a parentless family — which matches no object — can still be linked to
-    its Wikidata item when an editor sets the designation property there.
-    """
-    matches_dir = SOURCES_METADATA_DIR / "wikidata" / "ids" / "matches"
-    out: dict[str, set[str]] = defaultdict(set)
-    for pid in _DESIGNATION_MATCH_PIDS:
-        path = matches_dir / f"{pid}.csv"
-        if not path.exists():
-            continue
-        for row in csv.reader(io.StringIO(path.read_text())):
-            if row and len(row) > 1 and row[1]:
-                out[row[0]].update(row[1].split())
-    return {designation: sorted(qids) for designation, qids in out.items()}
 
 
 def _split_comet_orbits(
@@ -306,20 +282,15 @@ def _split_comet_orbits(
     return out
 
 
-def _split_comet_groups(
-    session: Session, wikidata_entities: WikidataEntityCache
-) -> SplitCometGroups:
+def _split_comet_groups(session: Session, names: ObjectNames) -> SplitCometGroups:
     """One group page per parentless split-comet family (no intact body).
 
     Families with an intact parent get their fragment list on that body's
     object page instead. Members are restricted to exported fragments, so a
     family whose pieces are all unexported (Shoemaker-Levy 9 — all D-prefix)
-    yields no page. A family's Wikidata QID comes from its fragments' own links
-    where possible, else a direct designation lookup (catches comets an editor
-    linked by designation but that no fragment matched).
+    yields no page.
     """
-    families = build_comet_families(session, wikidata_entities)
-    designation_qids = _designation_qids()
+    families = build_comet_families(session, names)
     exported = {
         object_id
         for (object_id,) in session.query(SBDB.object_id)
@@ -330,7 +301,6 @@ def _split_comet_groups(
     out = SplitCometGroups()
     skipped: list[str] = []
     member_ids: dict[str, list[str]] = {}
-    by_designation = 0
     for family in families.values():
         if family.parent_object_id is not None:
             continue
@@ -338,63 +308,46 @@ def _split_comet_groups(
         if not members:
             skipped.append(family.parent_pdes)
             continue
-        qid = family.parent_qid
-        name = family.parent_name
-        if qid is None:
-            candidates = designation_qids.get(family.designation, [])
-            if len(candidates) == 1:
-                qid = candidates[0]
-                wd = wikidata_entities.get_entity(qid)
-                name = entity_label(wd, "en") or name
-                by_designation += 1
-        slug = family_group_slug(family.parent_pdes)
+        slug = family.page_id
         out.groups.append(
             Group(
                 slug=slug,
                 type=GroupType.SPLIT_COMET,
                 applies_to=GroupCategory.SMALL_BODY,
-                wikidata_qid=qid,
+                wikidata_qid=family.parent_qid,
             )
         )
         out.member_counts[slug] = len(members)
         out.notable_members[slug] = members
-        out.names[slug] = name
+        out.names[slug] = family.names
         member_ids[slug] = [f.object_id for f in members]
     out.member_ids = member_ids
     out.extra_stats = _split_comet_orbits(session, member_ids)
     enriched = sum(1 for g in out.groups if g.wikidata_qid)
     logger.info(
-        "Split-comet group pages: %d parentless families (%d with a Wikidata QID, "
-        "%d of those via designation lookup), %d skipped (no exported fragments): %s",
+        "Split-comet group pages: %d parentless families (%d with a Wikidata QID),"
+        " %d skipped (no exported fragments): %s",
         len(out.groups),
         enriched,
-        by_designation,
         len(skipped),
         ", ".join(skipped) if skipped else "[]",
     )
     return out
 
 
-def _gallery_subjects(
-    session: Session,
-    wikidata_entities: WikidataEntityCache,
-) -> dict[str, GallerySubject]:
+def _gallery_subjects(session: Session, names: ObjectNames) -> dict[str, Names]:
     """Name every object that has a picture — the pool member shelves draw from.
 
     Naming the whole pool up front costs one query; the alternative is looking
     up each shelf's subject as it is built, once per collection it appears in.
     """
     rows = (
-        session.query(Object.id, Object.name, Object.wikidata_qid)
+        session.query(Object)
+        .options(joinedload(Object.satcat))
         .filter(Object.image_available.is_(True))
         .all()
     )
-    out: dict[str, GallerySubject] = {}
-    for object_id, name, qid in rows:
-        entity = wikidata_entities.get_entity(qid) if qid else None
-        label = entity["labels"].get("en") if entity else None
-        out[object_id] = GallerySubject(label or name, qid)
-    return out
+    return {obj.id: names.of(obj) for obj in rows}
 
 
 def run_groups_tier(
@@ -406,6 +359,7 @@ def run_groups_tier(
     displacement_metadata: dict[str, dict] | None = None,
     model_metadata: dict[str, dict] | None = None,
     star_objects: list[StarObject] | None = None,
+    planet_objects: list[PlanetObject] | None = None,
 ) -> dict[str, int]:
     """Build + write the groups tier; returns bucket counts for metadata.json.
 
@@ -413,6 +367,8 @@ def run_groups_tier(
     mass + triaxial radii for the planets/moons-page charts. ``model_metadata``
     arrives raw because the two meshes it yields are read differently: a body's
     shape model keys off the bundle, a spacecraft's off ``Object.model_name``.
+    ``star_objects`` and ``planet_objects`` are the entries of the served stars
+    and planets, which the lists name as their pages do.
     """
     from space_map_data.export.systems import (
         load_nut_prec,
@@ -437,15 +393,18 @@ def run_groups_tier(
     planet_elements = load_planet_elements(DOWNLOAD_DIR)
     model_slugs = shape_model_slugs(model_metadata or {})
     with Session(engine) as session:
+        names = ObjectNames(
+            wikidata_entities, session, star_objects or (), planet_objects or ()
+        )
         craft_models = craft_model_slugs(session, model_metadata or {})
-        gallery_subjects = _gallery_subjects(session, wikidata_entities)
+        gallery_subjects = _gallery_subjects(session, names)
         build = build_earth_groups_data(session)
         small_body_stats = build_small_body_group_stats(
-            session, radii, units, wikidata_entities, poles
+            session, names, radii, units, poles
         )
-        earth_orbit_stats = build_earth_orbit_classes(session)
-        feature_types = build_feature_type_groups(session, wikidata_entities)
-        sun = star_member(session, radii, gms, poles)
+        earth_orbit_stats = build_earth_orbit_classes(session, names)
+        feature_types = build_feature_type_groups(session, names)
+        sun = star_member(session, names, radii, gms, poles)
         build.membership[GroupType.EARTH_ORBIT_CLASS] = earth_orbit_stats.membership
         build.stats[GroupType.EARTH_ORBIT_CLASS] = earth_orbit_stats.satcat_stats
 
@@ -461,6 +420,7 @@ def run_groups_tier(
         all_counts.update(extra_member_counts)
         category_data = build_category_data(
             session,
+            names,
             all_counts,
             feature_types.member_counts,
             small_body_stats.named_counts,
@@ -473,13 +433,14 @@ def run_groups_tier(
             wikidata_entities,
             planet_elements,
         )
-        split_comets = _split_comet_groups(session, wikidata_entities)
+        split_comets = _split_comet_groups(session, names)
         launch_vehicle_stats = build_launch_vehicle_stats(session)
         launch_site_stats = build_launch_site_stats(session)
         textured_ids = textured_object_ids(session)
         moon_discovery = build_moon_discovery(session)
         solar_system_map = build_solar_system_map(
             session,
+            names,
             radii,
             wikidata_entities,
             units,
@@ -494,12 +455,10 @@ def run_groups_tier(
             units,
             wikidata_entities,
         )
-    missions = _mission_groups()
-    star_families = build_star_family_groups(
-        star_objects or [], wikidata_entities, sun=sun
-    )
+    missions = _mission_groups(names)
+    star_families = build_star_family_groups(star_objects or [], names, sun=sun)
     planet_families = build_planet_family_groups(
-        wikidata_entities,
+        names,
         SolarPlanets(
             category_data.notable_members.get(PLANETS_SLUG, []),
             solar_planet_records(radii, gms, planet_elements),
@@ -598,6 +557,7 @@ def run_groups_tier(
 
     group_probes = build_group_probes(
         session,
+        names,
         {
             object_id: slug
             for slug, ids in split_comets.member_ids.items()
@@ -605,11 +565,14 @@ def run_groups_tier(
         },
     )
     # The target labels ride the same body_names map the per-body charts fill.
-    extra_chart_qids = {
-        slug: dict(qids) for slug, qids in category_data.chart_qids.items()
+    extra_chart_names = {
+        slug: dict(chart_names)
+        for slug, chart_names in category_data.chart_names.items()
     }
-    for slug, qids in group_probes.qids.items():
-        extra_chart_qids.setdefault(slug, {}).update(qids)
+    for slug, target_names in group_probes.names.items():
+        extra_chart_names.setdefault(slug, {}).update(target_names)
+    if planets_page is not None:
+        extra_chart_names.setdefault(PLANETS_SLUG, {}).update(planets_page.card_names)
 
     write_earth_membership(out_dir, build.membership)
     write_orbit_samples(out_dir, small_body_stats.orbit_samples)
@@ -637,7 +600,7 @@ def run_groups_tier(
         extra_member_lists=extra_member_lists,
         extra_probes=group_probes.probes,
         extra_chart_rows=category_data.chart_rows,
-        extra_chart_qids=extra_chart_qids,
+        extra_chart_names=extra_chart_names,
         extra_primary_ids=missions.primary_ids,
         child_slugs_by_group={
             **category_data.children,
@@ -651,7 +614,7 @@ def run_groups_tier(
             **solar_planet_counts,
         },
         extra_groups=(*split_comets.groups, *missions.groups),
-        extra_group_names=split_comets.names,
+        extra_group_names={**split_comets.names, **missions.names},
         launch_vehicle_stats=launch_vehicle_stats,
         launch_site_stats=launch_site_stats,
         feature_type_stats=feature_types.stats,
@@ -675,6 +638,7 @@ def update_metadata_group_bundles(out_dir: Path, group_bundles: dict[str, int]) 
 def export_groups_only(engine: Engine) -> None:
     """Additive run: write groups + membership + patch metadata.json only."""
     from space_map_data.export.localization import write_group_messages
+    from space_map_data.export.sitemap import available_planet_pages
     from space_map_data.export.systems import (
         load_displacement_metadata,
         load_gms,
@@ -690,6 +654,7 @@ def export_groups_only(engine: Engine) -> None:
     radii = load_radii(DOWNLOAD_DIR)
     gms = load_gms(DOWNLOAD_DIR)
     displacement_metadata = load_displacement_metadata(out_dir)
+    star_objects, planet_objects = available_extrasolar_objects()
     group_bundles = run_groups_tier(
         engine,
         out_dir,
@@ -698,7 +663,8 @@ def export_groups_only(engine: Engine) -> None:
         gms,
         displacement_metadata,
         load_model_metadata(out_dir),
-        available_extrasolar_objects()[0],
+        star_objects,
+        available_planet_pages().served(planet_objects),
     )
     update_metadata_group_bundles(out_dir, group_bundles)
     write_group_messages(wikidata_entities)

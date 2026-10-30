@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from sqlalchemy.orm import Session
 
 from space_map_data.constants.providers import LANGUAGES
+from space_map_data.export.names import ObjectNames
 from space_map_data.export.notable import (
     NotableObject,
     notable_descriptions,
@@ -26,7 +27,6 @@ from space_map_data.export.notable import (
 )
 from space_map_data.export.objects.writer import ChunkObjectData
 from space_map_data.export.small_body_color import resolve_major_body_color
-from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.models.object.main import Object, ObjectType
 
 logger = logging.getLogger(__name__)
@@ -84,7 +84,10 @@ def _resolve_host(session: Session, parent_id: str) -> str:
 
 
 def notable_moons_by_host(
-    session: Session, radii: dict[int, dict], poles: dict[int, dict]
+    session: Session,
+    names: ObjectNames,
+    radii: dict[int, dict],
+    poles: dict[int, dict],
 ) -> dict[str, HostMoons]:
     """Top moons per host body, keyed by the host's Object.id.
 
@@ -96,7 +99,6 @@ def notable_moons_by_host(
             Object.parent_id,
             Object.wikidata_qid,
             Object.name,
-            Object.provisional_designation,
             Object.naif_id,
             Object.image_available,
             Object.sitelinks_count,
@@ -141,7 +143,7 @@ def notable_moons_by_host(
                 NotableObject(
                     object_id=r.id,
                     wikidata_qid=r.wikidata_qid,
-                    fallback_name=r.name or r.provisional_designation or r.id,
+                    names=names.object(r.id),
                     diameter_km=_mean_diameter_km(r.naif_id, radii),
                     first_obs=None,
                     radii=geo.radii,
@@ -173,7 +175,7 @@ def notable_moons_by_host(
 def attach_notable_moons(
     session: Session,
     chunk: ChunkObjectData,
-    wikidata_entities: WikidataEntityCache,
+    names: ObjectNames,
     radii: dict[int, dict],
     poles: dict[int, dict],
     displacement_metadata: dict[str, dict] | None = None,
@@ -186,7 +188,7 @@ def attach_notable_moons(
     entry: the chunk's ``has_localized`` bit is set during the zone pass and
     can't be flipped here.
     """
-    hosts = notable_moons_by_host(session, radii, poles)
+    hosts = notable_moons_by_host(session, names, radii, poles)
     textured_ids = textured_object_ids(session)
     attached = 0
     for host_id, host_moons in hosts.items():
@@ -199,7 +201,6 @@ def attach_notable_moons(
             continue
         entries = notable_entries(
             host_moons.moons,
-            wikidata_entities,
             displacement_metadata,
             model_slugs,
             textured_ids,
@@ -212,13 +213,11 @@ def attach_notable_moons(
             localized = chunk.localized_data.get(lang, {}).get(host_id)
             if localized is None:
                 continue
-            names = notable_names(host_moons.moons, entries, lang, wikidata_entities)
-            if names:
-                localized["notable_moon_names"] = names
+            moon_names = notable_names(host_moons.moons, lang)
+            if moon_names:
+                localized["notable_moon_names"] = moon_names
             # Short descriptions feed the planet-page moon lineup hover tooltip.
-            descriptions = notable_descriptions(
-                host_moons.moons, lang, wikidata_entities
-            )
+            descriptions = notable_descriptions(host_moons.moons, lang, names.entities)
             if descriptions:
                 localized["notable_moon_descriptions"] = descriptions
         attached += 1

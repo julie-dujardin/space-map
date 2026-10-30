@@ -9,7 +9,6 @@ import logging
 import math
 from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import NamedTuple
 
 import orjson
 
@@ -76,12 +75,14 @@ from space_map_data.export.images import (
     localized_image_titles,
     object_image_count,
 )
+from space_map_data.export.names import Names
 from space_map_data.export.notable import (
     CraftModel,
     NotableObject,
     notable_descriptions,
     notable_entries,
     notable_names,
+    notable_system_names,
 )
 from space_map_data.export.objects.wikidata_claims import (
     attach_country_group_link,
@@ -134,18 +135,11 @@ MEMBER_GALLERY_IMAGES = 8
 MEMBER_GALLERY_CANDIDATES = 24
 
 
-class GallerySubject(NamedTuple):
-    """What a shelf needs to name the member it is about."""
-
-    name: str
-    wikidata_qid: str | None
-
-
 def _member_galleries(
     members: Sequence[NotableObject] | None,
     own_images: list[dict] | None,
     member_ids: Sequence[str] | None,
-    subjects: dict[str, GallerySubject] | None = None,
+    subjects: dict[str, Names] | None = None,
 ) -> list[dict] | None:
     """One image shelf per member, keyed and subjected by its id.
 
@@ -207,21 +201,15 @@ def _member_galleries(
 
 
 def _gallery_subject_names(
-    galleries: list[dict] | None,
-    subjects: dict[str, GallerySubject] | None,
-    lang: str,
-    wikidata_entities: WikidataEntityCache,
+    galleries: list[dict] | None, subjects: dict[str, Names] | None, lang: str
 ) -> dict[str, str]:
-    """Per-language shelf-subject labels, only where they differ from the base."""
+    """Shelf-subject names in ``lang``, only where they differ from the global
+    name."""
     out: dict[str, str] = {}
     for shelf in galleries or ():
         subject = (subjects or {}).get(shelf["key"])
-        if not subject or not subject.wikidata_qid:
-            continue
-        entity = wikidata_entities.get_entity(subject.wikidata_qid)
-        label = entity["labels"].get(lang) if entity else None
-        if label and label != subject.name:
-            out[shelf["key"]] = label
+        if subject is not None and (name := subject.get(lang)) != subject.name:
+            out[shelf["key"]] = name
     return out
 
 
@@ -379,10 +367,10 @@ def _build_global(
         }
     if largest_body is not None:
         data["largest_body"] = {
-            "name": largest_body.name,
+            "name": largest_body.names.name,
             "diameter_km": largest_body.diameter_km,
-            "primary_type": largest_body.primary_type,
-            "primary_id": largest_body.primary_id,
+            "primary_type": "object",
+            "primary_id": largest_body.object_id,
         }
     # Only asteroid classes + the Asteroids category carry a named count.
     if named_count:
@@ -513,7 +501,7 @@ def _group_name(
     group: Group,
     lang: str,
     wikidata_entities: WikidataEntityCache,
-    display_name: str | None = None,
+    page_names: Names | None = None,
 ) -> str | None:
     """The name of a group's page in ``lang``. Its chips on other pages show
     the same name. None where the frontend names the group."""
@@ -522,6 +510,10 @@ def _group_name(
     if group.type is GroupType.CATEGORY:
         if spec := CATEGORY_BY_SLUG.get(group.slug):
             return spec.name
+    # A split comet and a mission have the names that their fragments and
+    # probes give them (`export.names`).
+    elif page_names is not None:
+        return page_names.get(lang)
     # Orbit classes take their names from the frontend's i18n, not the
     # Wikidata label (IMB/MBA/OMB → "asteroid belt"; EL1/EL2 → bare "L1"/"L2").
     elif (
@@ -533,10 +525,6 @@ def _group_name(
         if group.type in CAPITALIZED_LABEL_TYPES:
             name = name[:1].upper() + name[1:]
         return name
-    # A split-comet family has no label of its own: the catalogue name of the
-    # comet is the reliable one.
-    if group.type is GroupType.SPLIT_COMET and display_name:
-        return display_name
     # The curated constant, so that no page or chip shows the raw slug.
     return _fallback_group_name(group)
 
@@ -551,15 +539,15 @@ def _build_localized(
     child_slugs: list[str] | None,
     member_counts: dict[str, int],
     child_counts: dict[str, int] | None = None,
-    display_name: str | None = None,
+    page_names: Names | None = None,
     lv_stats: LaunchVehicleStats | None = None,
     constellation_counts: dict[str, int] | None = None,
     ft_stats: FeatureTypeStats | None = None,
     site_stats: LaunchSiteStats | None = None,
-    chart_qids: dict[str, str] | None = None,
+    body_names: dict[str, Names] | None = None,
 ) -> dict:
     data: dict = {}
-    if name := _group_name(group, lang, wikidata_entities, display_name):
+    if name := _group_name(group, lang, wikidata_entities, page_names):
         data["name"] = name
     if group.wikidata_qid:
         wd = _group_entity(group, wikidata_entities)
@@ -622,18 +610,21 @@ def _build_localized(
         )
         if child_groups:
             data["child_groups"] = child_groups
-    # Localized labels for a page's per-body bar chart (features per body,
-    # probes per target); the global rows carry English body names.
-    row_qids = {**(ft_stats.body_qids if ft_stats else {}), **(chart_qids or {})}
-    if row_qids:
-        body_names = {
-            object_id: label
-            for object_id, qid in row_qids.items()
-            if (wd := wikidata_entities.get_entity(qid))
-            and (label := entity_label(wd, lang))
-        }
-        if body_names:
-            data["body_names"] = body_names
+    if (
+        ft_stats is not None
+        and ft_stats.largest_names is not None
+        and (name := ft_stats.largest_names.get(lang)) != ft_stats.largest_names.name
+    ):
+        data["largest_feature_name"] = name
+    # The bodies that the charts and the largest-body card name.
+    named = {**(ft_stats.body_names if ft_stats else {}), **(body_names or {})}
+    localized_names = {
+        object_id: name
+        for object_id, names in named.items()
+        if (name := names.get(lang)) != names.name
+    }
+    if localized_names:
+        data["body_names"] = localized_names
     if lv_stats and lv_stats.variants:
         variant_refs = _variant_refs(lv_stats.variants, lang, wikidata_entities)
         if variant_refs:
@@ -957,13 +948,13 @@ def write_group_bundles(
     extra_member_lists: dict[str, dict[str, list[NotableObject]]] | None = None,
     extra_probes: dict[str, list[NotableObject]] | None = None,
     extra_chart_rows: dict[str, dict[str, list[dict]]] | None = None,
-    extra_chart_qids: dict[str, dict[str, str]] | None = None,
+    extra_chart_names: dict[str, dict[str, Names]] | None = None,
     extra_primary_ids: dict[str, str] | None = None,
-    gallery_subjects: dict[str, GallerySubject] | None = None,
+    gallery_subjects: dict[str, Names] | None = None,
     child_slugs_by_group: dict[str, list[str]] | None = None,
     child_counts_by_group: dict[str, dict[str, int]] | None = None,
     extra_groups: tuple[Group, ...] = (),
-    extra_group_names: dict[str, str] | None = None,
+    extra_group_names: dict[str, Names] | None = None,
     launch_vehicle_stats: dict[str, LaunchVehicleStats] | None = None,
     launch_site_stats: dict[str, LaunchSiteStats] | None = None,
     feature_type_stats: dict[str, FeatureTypeStats] | None = None,
@@ -979,7 +970,7 @@ def write_group_bundles(
     The ``extra_*`` dicts carry per-slug stats for group types with no
     membership inverted index (orbit classes, small-body flags). ``extra_groups``
     are DB-derived groups (split-comet families) appended to the static
-    registry, with their localized names in ``extra_group_names``.
+    registry, with their names in ``extra_group_names``.
     ``extra_member_lists`` are lists of members beside ``notable_members``, by
     slug and bundle field.
     """
@@ -1014,7 +1005,6 @@ def write_group_bundles(
         member_entries = (
             notable_entries(
                 members,
-                wikidata_entities,
                 displacement_metadata,
                 model_slugs,
                 textured_ids,
@@ -1028,7 +1018,6 @@ def write_group_bundles(
                 listed,
                 notable_entries(
                     listed,
-                    wikidata_entities,
                     displacement_metadata,
                     model_slugs,
                     textured_ids,
@@ -1048,24 +1037,18 @@ def write_group_bundles(
         }
         probes = (extra_probes or {}).get(group.slug)
         probe_entries = (
-            notable_entries(probes, wikidata_entities, craft_models=craft_models)
-            if probes
-            else None
+            notable_entries(probes, craft_models=craft_models) if probes else None
         )
         chart_rows = (extra_chart_rows or {}).get(group.slug)
         lv_stats = (launch_vehicle_stats or {}).get(group.slug)
         ft_stats = (feature_type_stats or {}).get(group.slug)
-        # A star or a planet is no DB object, so its shelf takes the name of
-        # its entry.
+        # A star or a planet is no DB object, so its shelf takes the names of
+        # its member.
         subjects = gallery_subjects
-        if members and member_entries and any(m.extrasolar for m in members):
+        if members and any(m.extrasolar for m in members):
             subjects = {
                 **(gallery_subjects or {}),
-                **{
-                    m.object_id: GallerySubject(entry["name"], m.wikidata_qid)
-                    for m, entry in zip(members, member_entries)
-                    if m.extrasolar
-                },
+                **{m.object_id: m.names for m in members if m.extrasolar},
             }
         # A tab on another item has a shelf of its pictures, which the tab
         # shows as its hero. It stays out of `galleries`: deployed clients
@@ -1118,8 +1101,11 @@ def write_group_bundles(
             ]
         child_slugs = (child_slugs_by_group or {}).get(group.slug)
         child_counts = (child_counts_by_group or {}).get(group.slug)
-        display_name = (extra_group_names or {}).get(group.slug)
+        page_names = (extra_group_names or {}).get(group.slug)
         constellation_counts = (extra_constellation_counts or {}).get(group.slug)
+        body_names = dict((extra_chart_names or {}).get(group.slug, {}))
+        if largest_body is not None:
+            body_names[largest_body.object_id] = largest_body.names
         for lang in LANGUAGES:
             lang_data = _build_localized(
                 group,
@@ -1131,30 +1117,24 @@ def write_group_bundles(
                 child_slugs,
                 member_counts,
                 child_counts,
-                display_name,
+                page_names,
                 lv_stats,
                 constellation_counts,
                 ft_stats,
                 (launch_site_stats or {}).get(group.slug),
-                (extra_chart_qids or {}).get(group.slug),
+                body_names,
             )
-            member_names = _gallery_subject_names(
-                galleries, subjects, lang, wikidata_entities
-            )
-            if members and member_entries:
-                member_names.update(
-                    notable_names(members, member_entries, lang, wikidata_entities)
-                )
-            for listed, entries in member_lists.values():
-                member_names.update(
-                    notable_names(listed, entries, lang, wikidata_entities)
-                )
+            member_names = _gallery_subject_names(galleries, subjects, lang)
+            if members:
+                member_names.update(notable_names(members, lang))
+            for listed, _ in member_lists.values():
+                member_names.update(notable_names(listed, lang))
             if member_names:
                 lang_data["notable_member_names"] = member_names
-            if probes and probe_entries:
-                probe_names = notable_names(
-                    probes, probe_entries, lang, wikidata_entities
-                )
+            if members and (system_names := notable_system_names(members, lang)):
+                lang_data["member_system_names"] = system_names
+            if probes:
+                probe_names = notable_names(probes, lang)
                 if probe_names:
                     lang_data["probe_names"] = probe_names
             member_descriptions = {}

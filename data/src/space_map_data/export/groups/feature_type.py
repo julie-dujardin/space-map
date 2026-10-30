@@ -19,6 +19,7 @@ from space_map_data.constants.nomenclature.feature_types import (
     FEATURE_TYPE_SLUGS,
     FEATURE_TYPES,
 )
+from space_map_data.export.names import Names, ObjectNames, feature_names
 from space_map_data.export.nomenclature.notable import (
     feature_sitelinks,
     rank_notable_features,
@@ -26,7 +27,6 @@ from space_map_data.export.nomenclature.notable import (
 from space_map_data.export.nomenclature.writer import renderable_feature_filter
 from space_map_data.export.notable import NotableObject
 from space_map_data.export.objects.wikidata_claims import make_feature_entityref
-from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.models.feature import Feature
 from space_map_data.models.object.main import Object
 
@@ -89,16 +89,17 @@ class FeatureTypeStats:
     naming_origins: list[dict] = field(default_factory=list)
     # Bar-chart rows, most features first: {name, primary_type, primary_id, n}.
     bodies: list[dict] = field(default_factory=list)
-    # Biggest named example, as an EntityRef + its diameter.
+    # Biggest named example, as an EntityRef + its diameter, and its names.
     largest: dict | None = None
+    largest_names: Names | None = None
     # Typical size of the landform, over members with a measured diameter.
     # Absent when too few carry one to be representative.
     median_diameter_km: float | None = None
     first_approval: str | None = None  # ISO date
     last_approval: str | None = None
     approval_histogram: dict[int, int] = field(default_factory=dict)
-    # Chart-row body id -> Wikidata QID, so the bundle can localize row labels.
-    body_qids: dict[str, str] = field(default_factory=dict)
+    # Chart-row body id -> its names, so the bundle can localize row labels.
+    body_names: dict[str, Names] = field(default_factory=dict)
 
 
 @dataclass
@@ -111,9 +112,10 @@ class FeatureTypeGroups:
 
 
 def build_feature_type_groups(
-    session: Session, wikidata_entities: WikidataEntityCache
+    session: Session, names: ObjectNames
 ) -> FeatureTypeGroups:
     """Stats + notable members for every ft- page, keyed by group slug."""
+    wikidata_entities = names.entities
     by_code: dict[str, list[tuple[int, Feature]]] = defaultdict(list)
     unknown_codes: dict[str, int] = defaultdict(int)
     origins: dict[str, int] = defaultdict(int)
@@ -135,10 +137,8 @@ def build_feature_type_groups(
 
     body_ids = {f.object_id for entries in by_code.values() for _, f in entries}
     bodies = {
-        object_id: (name, qid)
-        for object_id, name, qid in session.query(
-            Object.id, Object.name, Object.wikidata_qid
-        ).filter(Object.id.in_(body_ids))
+        object_id: names.object(object_id)
+        for (object_id,) in session.query(Object.id).filter(Object.id.in_(body_ids))
     }
 
     out = FeatureTypeGroups()
@@ -184,10 +184,12 @@ def build_feature_type_groups(
 
         top_bodies = sorted(per_body.items(), key=lambda kv: (-kv[1], kv[0]))
         largest_ref = None
+        largest_names = None
         if largest is not None:
             assert largest.object_id is not None
+            largest_names = feature_names(largest, wikidata_entities)
             largest_ref = make_feature_entityref(
-                largest.object_id, largest.feature_id, largest.name
+                largest.object_id, largest.feature_id, largest_names.name
             ).to_dict()
             largest_ref["diameter_km"] = largest.diameter
 
@@ -196,7 +198,7 @@ def build_feature_type_groups(
             body_count=len(per_body),
             bodies=[
                 {
-                    "name": bodies[object_id][0],
+                    "name": bodies[object_id].name,
                     "primary_type": "object",
                     "primary_id": object_id,
                     "n": n,
@@ -204,24 +206,28 @@ def build_feature_type_groups(
                 for object_id, n in top_bodies
             ],
             largest=largest_ref,
+            largest_names=largest_names,
             median_diameter_km=median_diameter,
             first_approval=min(approvals) if approvals else None,
             last_approval=max(approvals) if approvals else None,
             approval_histogram=dict(sorted(histogram.items())),
-            body_qids={
-                object_id: qid
-                for object_id, _ in top_bodies
-                if (qid := bodies[object_id][1])
-            },
+            body_names={object_id: bodies[object_id] for object_id, _ in top_bodies},
         )
         out.member_counts[slug] = len(entries)
-        out.notable_members[slug] = rank_notable_features(entries)
+        out.notable_members[slug] = rank_notable_features(entries, wikidata_entities)
 
     # The meta category's own page: stat cards, family grouping for its 57
     # chips, whole-gazetteer naming timeline + etymology chart. Deliberately
     # absent from ``member_counts``: the category tier sums that map for its
     # member total. No first/last approval — three stat cards is the row.
     ranked_origins = sorted(origins.items(), key=lambda kv: (-kv[1], kv[0]))
+    # The biggest named landform anywhere, whatever its kind.
+    biggest = max(
+        (stats for stats in out.stats.values() if stats.largest),
+        # ty types the key's argument from default=None.
+        key=lambda stats: stats.largest["diameter_km"],  # ty: ignore[not-subscriptable]
+        default=None,
+    )
     out.stats[SURFACE_FEATURES_SLUG] = FeatureTypeStats(
         feature_count=sum(out.member_counts.values()),
         body_count=len(body_ids),
@@ -231,13 +237,8 @@ def build_feature_type_groups(
             {"name": name, "n": n} for name, n in ranked_origins[:TOP_ORIGINS]
         ],
         approval_histogram=dict(sorted(all_approvals.items())),
-        # The biggest named landform anywhere, whatever its kind.
-        largest=max(
-            (s.largest for s in out.stats.values() if s.largest),
-            # ty types the key's argument from default=None.
-            key=lambda ref: ref["diameter_km"],  # ty: ignore[not-subscriptable]
-            default=None,
-        ),
+        largest=biggest.largest if biggest else None,
+        largest_names=biggest.largest_names if biggest else None,
     )
     if unsized:
         logger.info(

@@ -26,6 +26,7 @@ from space_map_data.download.providers.bjj_rings import (
 from space_map_data.export.groups.categories import _wikidata_diameter_km
 from space_map_data.export.groups.registry import CLASS_SLUG_PREFIX
 from space_map_data.export.groups.small_body import OrbitClassSample
+from space_map_data.export.names import Names, ObjectNames
 from space_map_data.export.notable import render_size
 from space_map_data.export.quantities import UnitConverter
 from space_map_data.export.small_body_color import (
@@ -77,7 +78,7 @@ class MapObject:
 
     id: str  # Object.id — routing/focus id and localized-name key
     qid: str | None
-    name: str  # English fallback; frontend overrides with the localized label
+    names: Names
     kind: str  # star | planet | dwarf | asteroid | moon
     a: float  # semi-major axis [AU] — log x position (moons inherit their planet's)
     i: float  # inclination to ecliptic [deg] — vertical offset (0 for moons)
@@ -120,6 +121,7 @@ def _diameter_km(
 
 def _star_and_planets(
     session: Session,
+    names: ObjectNames,
     radii: dict[int, dict],
     planet_elements: dict[int, dict],
     moon_counts: dict[str, int],
@@ -153,7 +155,7 @@ def _star_and_planets(
             MapObject(
                 id=obj_id,
                 qid=qid,
-                name=name or obj_id,
+                names=names.object(obj_id),
                 kind=kind,
                 a=a,
                 i=i,
@@ -182,6 +184,7 @@ def _saturn_rings(naif_id: int | None, radii: dict[int, dict]) -> dict | None:
 
 def _moons(
     session: Session,
+    names: ObjectNames,
     radii: dict[int, dict],
     planet_elements: dict[int, dict],
     count: int,
@@ -248,7 +251,7 @@ def _moons(
                 MapObject(
                     id=obj_id,
                     qid=qid,
-                    name=name or obj_id,
+                    names=names.object(obj_id),
                     kind="moon",
                     a=a,
                     i=0.0,
@@ -270,6 +273,7 @@ def _moons(
 
 def _dwarf_planets(
     session: Session,
+    names: ObjectNames,
     entities: WikidataEntityCache,
     units: UnitConverter,
     planet_elements: dict[int, dict],
@@ -322,7 +326,7 @@ def _dwarf_planets(
             MapObject(
                 id=obj_id,
                 qid=qid,
-                name=name or obj_id,
+                names=names.object(obj_id),
                 kind="dwarf",
                 a=a,
                 i=i,
@@ -333,16 +337,13 @@ def _dwarf_planets(
     return out
 
 
-def _asteroids(session: Session, count: int) -> list[MapObject]:
+def _asteroids(session: Session, names: ObjectNames, count: int) -> list[MapObject]:
     """The ``count`` largest main-belt asteroids, sized by their SBDB diameter."""
     rows = (
         session.query(
             Object.id,
             Object.wikidata_qid,
-            Object.name,
             SBDB.spkid,
-            SBDB.full_name,
-            SBDB.pdes,
             SBDB.diameter,
             SBDB.a,
             SBDB.i,
@@ -363,10 +364,7 @@ def _asteroids(session: Session, count: int) -> list[MapObject]:
     for (
         obj_id,
         qid,
-        name,
         spkid,
-        full_name,
-        pdes,
         dia,
         a,
         i,
@@ -383,7 +381,7 @@ def _asteroids(session: Session, count: int) -> list[MapObject]:
             MapObject(
                 id=obj_id,
                 qid=qid,
-                name=name or full_name or pdes or obj_id,
+                names=names.object(obj_id),
                 kind="asteroid",
                 a=a,
                 i=i,
@@ -447,6 +445,7 @@ def _belts(orbit_samples: list[OrbitClassSample]) -> list[Belt]:
 
 def build_solar_system_map(
     session: Session,
+    names: ObjectNames,
     radii: dict[int, dict],
     entities: WikidataEntityCache,
     units: UnitConverter,
@@ -456,12 +455,12 @@ def build_solar_system_map(
     """Assemble the minimap: Sun + planets + dwarf planets + the largest
     main-belt asteroids, plus the belt bands."""
     moons, moon_counts = _moons(
-        session, radii, planet_elements, MOON_COUNT, MIN_MOON_DIAMETER_KM
+        session, names, radii, planet_elements, MOON_COUNT, MIN_MOON_DIAMETER_KM
     )
     objects = (
-        _star_and_planets(session, radii, planet_elements, moon_counts)
-        + _dwarf_planets(session, entities, units, planet_elements)
-        + _asteroids(session, ASTEROID_COUNT)
+        _star_and_planets(session, names, radii, planet_elements, moon_counts)
+        + _dwarf_planets(session, names, entities, units, planet_elements)
+        + _asteroids(session, names, ASTEROID_COUNT)
         + moons
     )
     belts = _belts(orbit_samples)
@@ -480,7 +479,7 @@ def _object_payload(o: MapObject) -> dict:
     entry: dict = {
         "id": o.id,
         "qid": o.qid,
-        "name": o.name,
+        "name": o.names.name,
         "kind": o.kind,
         "a": o.a,
         "i": o.i,
@@ -494,6 +493,8 @@ def _object_payload(o: MapObject) -> dict:
         entry["rings"] = o.rings
     if o.moon_count is not None:
         entry["moon_count"] = o.moon_count
+    if overrides := o.names.overrides():
+        entry["names"] = overrides
     return entry
 
 

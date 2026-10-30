@@ -21,7 +21,7 @@ import gzip
 import logging
 from collections import Counter, defaultdict
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import orjson
@@ -46,19 +46,16 @@ from space_map_data.export.groups.family_pages import (
     sitelink_rank,
 )
 from space_map_data.export.groups.stats import GroupExtraStats
+from space_map_data.export.names import Names, ObjectNames
 from space_map_data.export.notable import NotableObject
-from space_map_data.export.objects.stars import (
-    PREFIX,
-    PlanetObject,
-    planet_object,
-    planet_page_names,
-)
+from space_map_data.export.objects.stars import PREFIX
 from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.extrasolar.exoplanets.catalogues import (
     MINIMUM_MASS,
     TRUE_MASS,
 )
 from space_map_data.extrasolar.exoplanets.iau import PLANET
+from space_map_data.extrasolar.exoplanets.wikidata import planet_qid
 from space_map_data.utils.paths import EXTRASOLAR_DIR
 
 logger = logging.getLogger(__name__)
@@ -117,6 +114,8 @@ class PlanetsPage:
     stats: GroupExtraStats
     # Columns of PLOT_FILE.
     plot: dict
+    # The names of the planets that the stat cards name, by object id.
+    card_names: dict[str, Names] = field(default_factory=dict)
 
 
 @dataclass
@@ -131,7 +130,8 @@ class _Planet:
     """What the pages need of a planet."""
 
     object_id: str
-    name: str
+    # The names of its system file, or of its category member.
+    names: Names
     qid: str | None
     # Its published families.
     families: tuple[str, ...]
@@ -145,8 +145,8 @@ class _Planet:
     mass: tuple[float | None, int | None]
     radius: tuple[float | None, int | None]
     axis: tuple[float | None, int | None]
-    # An exoplanet's object entry; None without one.
-    entry: PlanetObject | None = None
+    # True for an exoplanet with an object entry.
+    entry: bool = False
     # A Solar System planet's category member.
     body: NotableObject | None = None
     # The kind of a measured mass: true or minimum.
@@ -160,7 +160,7 @@ class _Planet:
 
 
 def build_planet_family_groups(
-    wikidata_entities: WikidataEntityCache,
+    names: ObjectNames,
     solar: SolarPlanets,
     extrasolar_dir: Path = EXTRASOLAR_DIR,
 ) -> PlanetGroups:
@@ -198,9 +198,9 @@ def build_planet_family_groups(
             for family in FAMILIES
         ),
     )
-    ranked = _ranked(planets, wikidata_entities)
-    out.notable_members = _family_lists(ranked, wikidata_entities)
-    out.planets = _planets_page(planets, ranked, wikidata_entities, out.member_counts)
+    ranked = _ranked(planets, names.entities)
+    out.notable_members = _family_lists(ranked, names)
+    out.planets = _planets_page(planets, ranked, names, out.member_counts)
     logger.info(
         "Planet pages: %d planets (%d exoplanets), %d families, %d with planets,"
         " %d with listed planets",
@@ -231,18 +231,22 @@ def _plotted(
 def _planet(
     record: dict,
     object_id: str,
-    name: str,
+    names: Names,
     distance: float | None,
-    entry: PlanetObject | None = None,
     body: NotableObject | None = None,
 ) -> _Planet:
+    """A Solar System planet from its record and its category member
+    (``body``), or an exoplanet from its system file record."""
     mass = _plotted(record, "mass", EARTH_MASSES_PER_JUPITER)
     diameter, how = _plotted(record, "radius", JUPITER_DIAMETER_KM)
     year = record["values"].get("discovery_year")
+    entry = body is None and record["object"]
     return _Planet(
         object_id=object_id,
-        name=name,
-        qid=body.wikidata_qid if body else (entry.qid if entry else None),
+        names=names,
+        qid=body.wikidata_qid
+        if body
+        else (planet_qid(record["cross_ids"]) if entry else None),
         families=tuple(record["families"]),
         estimated_only=bool(not record["families"] and record["families_estimated"]),
         distance=distance,
@@ -279,7 +283,7 @@ def _solar_planets(solar: SolarPlanets) -> list[_Planet]:
         _planet(
             solar.records[member.object_id],
             member.object_id,
-            member.fallback_name,
+            member.names,
             0.0,
             body=member,
         )
@@ -305,9 +309,8 @@ def _served_planets(reader: ExportReader) -> list[_Planet]:
                 _planet(
                     planet,
                     f"{PREFIX}{planet['host']}-b-{planet['number']}",
-                    planet["name"],
+                    Names(planet["name"], planet["names"]),
                     distances[planet["host"]],
-                    entry=planet_object(planet) if planet["object"] else None,
                 )
             )
     return out
@@ -346,35 +349,32 @@ def _ranked(
     return [(p, ranks[p.object_id][0]) for p in first] + [(p, None) for p in rest]
 
 
+def _names(planet: _Planet, names: ObjectNames) -> Names:
+    """The names of the planet's page: those of its entry, else those of its
+    system file or its category member."""
+    return (names.find(planet.object_id) if planet.entry else None) or planet.names
+
+
 def _member(
-    planet: _Planet,
-    sitelinks: int | None,
-    wikidata_entities: WikidataEntityCache,
+    planet: _Planet, sitelinks: int | None, names: ObjectNames
 ) -> NotableObject:
     """The list entry of a planet. A Solar System planet keeps its category
-    member. An exoplanet takes the names of its page."""
+    member."""
     if planet.body is not None:
         return replace(planet.body, sitelinks_count=sitelinks)
     return NotableObject(
         object_id=planet.object_id,
         wikidata_qid=planet.qid,
-        fallback_name=planet.name,
+        names=_names(planet, names),
         diameter_km=planet.diameter_km,
         first_obs=planet.first_obs,
         extrasolar=True,
-        page_names=(
-            planet_page_names(
-                wikidata_entities.get_listed_star(planet.qid), planet.entry
-            )
-            if planet.entry
-            else {}
-        ),
         sitelinks_count=sitelinks,
     )
 
 
 def _family_lists(
-    ranked: list[tuple[_Planet, int | None]], wikidata_entities: WikidataEntityCache
+    ranked: list[tuple[_Planet, int | None]], names: ObjectNames
 ) -> dict[str, list[NotableObject]]:
     """The planets that each family page lists. A published family only: a
     page lists what the measured values say."""
@@ -388,7 +388,7 @@ def _family_lists(
         if not lists:
             continue
         # Only for a listed planet: the entities stay in a shared cache.
-        member = _member(planet, sitelinks, wikidata_entities)
+        member = _member(planet, sitelinks, names)
         for members in lists:
             members.append(member)
     return {slug: members for slug, members in out.items() if members}
@@ -397,7 +397,7 @@ def _family_lists(
 def _planets_page(
     planets: list[_Planet],
     ranked: list[tuple[_Planet, int | None]],
-    wikidata_entities: WikidataEntityCache,
+    names: ObjectNames,
     member_counts: dict[str, int],
 ) -> PlanetsPage:
     """The Planets page: every planet, its list, its stats and its plot."""
@@ -409,46 +409,58 @@ def _planets_page(
         estimated_planet_count=sum(1 for p in planets if p.estimated_only),
         planet_family_count=sum(1 for n in member_counts.values() if n),
     )
+    card_names: dict[str, Names] = {}
     # A wide error bar can hide a disk's glow (HD 100546 b, radius ±42%).
     largest = _largest(
-        [p for p in planets if "radius" in p.precise], "radius", lambda p: p.radius
+        [p for p in planets if "radius" in p.precise],
+        "radius",
+        lambda p: p.radius,
+        names,
     )
     if largest is not None:
-        stats.largest_planet = largest
+        card, page = largest
+        stats.largest_planet = card
+        card_names[card["primary_id"]] = page
     heaviest = _largest(
-        [p for p in planets if "mass" in p.precise], "mass", lambda p: p.mass
+        [p for p in planets if "mass" in p.precise], "mass", lambda p: p.mass, names
     )
     if heaviest is not None:
-        stats.most_massive_planet = heaviest
+        card, page = heaviest
+        stats.most_massive_planet = card
+        card_names[card["primary_id"]] = page
     return PlanetsPage(
         member_count=len(planets),
         notable_members=[
-            _member(planet, sitelinks, wikidata_entities)
+            _member(planet, sitelinks, names)
             for planet, sitelinks in ranked[:NOTABLE_PLANETS]
         ],
         solar_members=solar_members,
         stats=stats,
         plot=_plot(planets),
+        card_names=card_names,
     )
 
 
-def _largest(planets: list[_Planet], name: str, value) -> dict | None:
+def _largest(
+    planets: list[_Planet], name: str, value, names: ObjectNames
+) -> tuple[dict, Names] | None:
     """The planet with the largest measured `name`, as {primary_type,
-    primary_id, name, <name>_earth}. A minimum mass is measured, and a mass
-    names its kind."""
+    primary_id, name, <name>_earth}, and the names of its page. A minimum mass
+    is measured, and a mass names its kind."""
     found = [p for p in planets if value(p)[1] in (MEASURED, MINIMUM)]
     if not found:
         return None
     best = max(found, key=lambda p: (value(p)[0], p.object_id))
+    page = _names(best, names)
     out = {
         "primary_type": "object",
         "primary_id": best.object_id,
-        "name": best.name,
+        "name": page.name,
         f"{name}_earth": _round(value(best)[0]),
     }
     if name == "mass":
         out["mass_kind"] = best.mass_kind
-    return out
+    return out, page
 
 
 def _round(x: float | None) -> float | None:

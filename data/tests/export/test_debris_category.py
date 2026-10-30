@@ -28,6 +28,7 @@ from space_map_data.export.groups.registry import (
     GROUP_BY_SLUG,
     GroupType,
 )
+from space_map_data.export.names import Names
 from space_map_data.export.notable import NotableObject
 from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.models.object import Object, ObjectType
@@ -90,49 +91,49 @@ def _add(
 class TestEarthOrbitSplit:
     """`build_earth_orbit_classes` partitions each zone by payload vs debris."""
 
-    def test_counts_partition_the_zone(self, session):
+    def test_counts_partition_the_zone(self, session, object_names):
         _add(session, 1)
         _add(session, 2)
         _add(session, 3, debris=True)
-        stats = build_earth_orbit_classes(session)
+        stats = build_earth_orbit_classes(session, object_names)
 
         assert stats.payload_counts[_LEO] == 2
         assert stats.debris_counts[_LEO] == 1
         # The zone itself still holds both — it's a region, not a fleet.
         assert stats.member_counts[_LEO] == 3
 
-    def test_notable_pools_are_disjoint(self, session):
+    def test_notable_pools_are_disjoint(self, session, object_names):
         _add(session, 1, name="SAT", sitelinks=9)
         _add(session, 2, name="FRAGMENT", debris=True, sitelinks=4)
-        stats = build_earth_orbit_classes(session)
+        stats = build_earth_orbit_classes(session, object_names)
 
         assert [m.object_id for m in stats.notable_members[_LEO]] == ["norad_satcat-1"]
         assert [m.object_id for m in stats.debris_notable_members[_LEO]] == [
             "norad_satcat-2"
         ]
 
-    def test_launch_histograms_split(self, session):
+    def test_launch_histograms_split(self, session, object_names):
         _add(session, 1, launch_date="1999-05-10")
         _add(session, 2, debris=True, launch_date="2007-01-11")
-        stats = build_earth_orbit_classes(session)
+        stats = build_earth_orbit_classes(session, object_names)
 
         assert stats.payload_satcat_stats[_LEO].launch_histogram == {1999: 1}
         assert stats.debris_satcat_stats[_LEO].launch_histogram == {2007: 1}
         # The combined bucket still sees every object.
         assert stats.satcat_stats[_LEO].launch_histogram == {1999: 1, 2007: 1}
 
-    def test_debris_sources_counted_once_per_object(self, session):
+    def test_debris_sources_counted_once_per_object(self, session, object_names):
         _add(session, 1, debris=True, constellation="fengyun-1c-asat-debris")
         _add(session, 2, debris=True, constellation="fengyun-1c-asat-debris")
         # A payload of the same fleet must not inflate the debris source.
         _add(session, 3, constellation="fengyun-1c-asat-debris")
-        stats = build_earth_orbit_classes(session)
+        stats = build_earth_orbit_classes(session, object_names)
 
         assert stats.debris_source_counts == {"fengyun-1c-asat-debris": 2}
 
-    def test_payload_only_zone_has_no_debris_entry(self, session):
+    def test_payload_only_zone_has_no_debris_entry(self, session, object_names):
         _add(session, 1)
-        stats = build_earth_orbit_classes(session)
+        stats = build_earth_orbit_classes(session, object_names)
 
         assert stats.debris_counts.get(_LEO) is None
         assert stats.debris_notable_members == {}
@@ -141,18 +142,20 @@ class TestEarthOrbitSplit:
 class TestLagrangeZones:
     """The Sun-Earth libration zones, whose members are probes, not satellites."""
 
-    def test_zone_members_survive_the_satellite_ranking(self, session, monkeypatch):
+    def test_zone_members_survive_the_satellite_ranking(
+        self, session, object_names, monkeypatch
+    ):
         # `_rank_notable` replaces the whole notable-member map, and no probe is
         # ever in the pool it ranks — so writing the zones before it silently
         # emptied both pages. Regression for that ordering.
         monkeypatch.setattr(
             "space_map_data.export.groups.earth_sat.build_lagrange_zones",
-            lambda: {
+            lambda names: {
                 f"{CLASS_SLUG_PREFIX}EL2": [
                     NotableObject(
                         object_id="probe-1",
                         wikidata_qid=None,
-                        fallback_name="Gaia",
+                        names=Names("Gaia"),
                         diameter_km=None,
                         first_obs=None,
                     )
@@ -160,7 +163,7 @@ class TestLagrangeZones:
             },
         )
         _add(session, 1)
-        stats = build_earth_orbit_classes(session)
+        stats = build_earth_orbit_classes(session, object_names)
 
         el2 = f"{CLASS_SLUG_PREFIX}EL2"
         assert [m.object_id for m in stats.notable_members[el2]] == ["probe-1"]

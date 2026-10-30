@@ -14,6 +14,7 @@ from space_map_data.constants.planets.families import (
 from space_map_data.constants.stars.families import STAR_FAMILY_PAGES
 from space_map_data.constants.wikidata_topics import topic_page_qids
 from space_map_data.download.providers.wikidata.downloader import family_page_qids
+from space_map_data.export.extrasolar import build
 from space_map_data.export.extrasolar.build import export_extrasolar
 from space_map_data.export.extrasolar.reader import ExportReader
 from space_map_data.export.groups import bundles, planet_family
@@ -24,16 +25,20 @@ from space_map_data.export.groups.registry import (
     GroupType,
 )
 from space_map_data.export.groups.stats import GroupExtraStats
+from space_map_data.export.names import Names, ObjectNames
 from space_map_data.export.notable import (
     NotableObject,
     notable_entries,
     notable_names,
 )
+from space_map_data.export.objects.stars import PlanetObject, StarObject
 from space_map_data.export.objects.wikipedia import WikipediaSummary
 from space_map_data.export.solar_planets import solar_planet_records
+from tests.conftest import EntityStub, labelled
 from tests.export.test_solar_planets import ELEMENTS, GMS, RADII
 from tests.export.test_star_family_groups import _entities
 from tests.extrasolar.export_registry import planet, star, write_registry
+from tests.extrasolar.test_export_planets import _StarStub
 
 
 class TestRegistry:
@@ -105,7 +110,7 @@ def _id(host: int, number: int) -> str:
 
 
 def _body(object_id: str, qid: str, name: str) -> NotableObject:
-    return NotableObject(object_id, qid, name, None, None, mass_kg=1.0)
+    return NotableObject(object_id, qid, Names(name), None, None, mass_kg=1.0)
 
 
 # Earth and Jupiter, with test QIDs.
@@ -145,9 +150,11 @@ class TestBuild:
         export_extrasolar(built.root, out, workers=1, cultures_dir=tmp_path / "none")
         return built.ids, out
 
-    def test_counts_and_children(self, served):
+    def test_counts_and_children(self, served, session):
         _, out = served
-        groups = planet_family.build_planet_family_groups(_entities({}), SOLAR, out)
+        groups = planet_family.build_planet_family_groups(
+            ObjectNames(_entities({}), session), SOLAR, out
+        )
         assert set(groups.member_counts) == {f"planet-{f}" for f in FAMILIES}
         assert groups.member_counts["planet-gas-giant"] == 5
         stats = groups.extra_stats["planet-gas-giant"]
@@ -168,10 +175,12 @@ class TestBuild:
             "planet-terrestrial-planet",
         ]
 
-    def test_planets_with_an_article_then_the_nearest(self, served):
+    def test_planets_with_an_article_then_the_nearest(self, served, session):
         ids, out = served
         entities = _entities(SITELINKS)
-        groups = planet_family.build_planet_family_groups(entities, SOLAR, out)
+        groups = planet_family.build_planet_family_groups(
+            ObjectNames(entities, session), SOLAR, out
+        )
         gas = groups.notable_members["planet-gas-giant"]
         assert [m.object_id for m in gas] == [
             "naif-599",
@@ -192,43 +201,52 @@ class TestBuild:
 
         # Every planet takes its host's name and its letter, with an entry or
         # without one.
-        entries = notable_entries(gas, entities)
+        entries = notable_entries(gas)
         assert [e["name"] for e in entries] == [
-            "Label Q599",
+            "Jupiter",
             "Far b",
             "Near b",
             "Near c",
             "Far d",
         ]
 
-    def test_a_planet_is_listed_by_its_page_names(self, served):
+    def test_a_planet_is_listed_by_its_page_names(self, served, session):
         ids, out = served
-        entities = _entities({"Q2": (90, []), "Q3": (40, ["en"])})
-        labels = {"en": "Label Q3", "de": "Zeta b", "fr": "Osiris"}
+        entities = _entities({"Q2": (90, []), "Q3": (40, ["en"]), "Q9": (1, [])})
+        labels = {
+            "Q3": {"en": "Label Q3", "de": "Zeta b", "fr": "Osiris"},
+            "Q9": {"en": "Far", "de": "Fern"},
+        }
         listed = entities.get_listed_star.side_effect
         entities.get_listed_star.side_effect = lambda qid: (
-            listed(qid) | {"labels": labels} if qid == "Q3" else listed(qid)
+            listed(qid) | {"labels": labels[qid]} if qid in labels else listed(qid)
         )
-        groups = planet_family.build_planet_family_groups(entities, SOLAR, out)
+        host = StarObject(ids[1], "Far", "Q9")
+        entry = PlanetObject(ids[1], 1, "Planet 1 1", "Q3", letter="b")
+        groups = planet_family.build_planet_family_groups(
+            ObjectNames(entities, session, [host], [entry]), SOLAR, out
+        )
         hot = groups.notable_members["planet-hot-jupiter"]
-        entries = notable_entries(hot, entities)
+        entries = notable_entries(hot)
         assert [e["name"] for e in entries] == ["Far b", "Near c"]
-        # A nickname is an alias of the page, not its name.
+        # The planet's own labels name it in no language.
         key = _id(ids[1], 1)
-        assert notable_names(hot, entries, "de", entities) == {key: "Zeta b"}
-        assert notable_names(hot, entries, "fr", entities) == {}
+        assert notable_names(hot, "de") == {key: "Fern b"}
+        assert notable_names(hot, "fr") == {}
 
-    def test_the_list_stops_at_its_size(self, served, monkeypatch):
+    def test_the_list_stops_at_its_size(self, served, session, monkeypatch):
         ids, out = served
         monkeypatch.setattr(planet_family, "NOTABLE_PLANETS", 2)
-        groups = planet_family.build_planet_family_groups(_entities({}), SOLAR, out)
+        groups = planet_family.build_planet_family_groups(
+            ObjectNames(_entities({}), session), SOLAR, out
+        )
         gas = groups.notable_members["planet-gas-giant"]
         assert [m.object_id for m in gas] == ["naif-599", _id(ids[0], 1)]
 
-    def test_no_served_export(self, tmp_path):
+    def test_no_served_export(self, tmp_path, session):
         """The Solar System planets still count and list."""
         groups = planet_family.build_planet_family_groups(
-            _entities({}), SOLAR, tmp_path / "none"
+            ObjectNames(_entities({}), session), SOLAR, tmp_path / "none"
         )
         assert groups.member_counts["planet-gas-giant"] == 1
         assert groups.member_counts["planet-hot-jupiter"] == 0
@@ -245,18 +263,55 @@ class TestBuild:
         assert groups.planets.stats.exoplanet_count == 0
         assert planet_family.served_planet_families_stamp(tmp_path / "none") is None
 
-    def test_an_export_without_planet_families_is_refused(self, tmp_path):
+    def test_an_export_without_planet_families_is_refused(self, tmp_path, session):
         root = tmp_path / "old" / "v1" / "x"
         root.mkdir(parents=True)
         (root / "metadata.json").write_text(json.dumps({"planets": {"token": "0"}}))
         with pytest.raises(KeyError):
             planet_family.build_planet_family_groups(
-                _entities({}), SOLAR, tmp_path / "old"
+                ObjectNames(_entities({}), session), SOLAR, tmp_path / "old"
             )
         with pytest.raises(KeyError):
             planet_family.served_planet_families_stamp(tmp_path / "old")
 
-    def test_stamp_is_the_served_counts_and_planets_token(self, served):
+    def test_an_export_without_page_names_is_refused(self, served, session):
+        """The lists name a planet as its system file does, so a served export
+        from before the `names` field must be exported again."""
+        _, out = served
+        reader = ExportReader(out / "v1" / "x")
+        for key in {host["system"] for host in reader.planet_hosts().values()}:
+            path = reader.root / reader.metadata["planets"]["system"].replace(
+                "{key}", str(key)
+            )
+            content = json.loads(gzip.decompress(path.read_bytes()))
+            for record in content["planets"]:
+                del record["names"]
+            path.write_bytes(gzip.compress(json.dumps(content).encode()))
+        with pytest.raises(KeyError):
+            planet_family.build_planet_family_groups(
+                ObjectNames(_entities({}), session), SOLAR, out
+            )
+
+    def test_a_planet_without_an_entry_is_listed_by_its_system_file_names(
+        self, tmp_path, session, monkeypatch
+    ):
+        """Its host's page names it in each language, as on its own page."""
+        built = write_registry(
+            tmp_path / "reg",
+            [star(11.0, 5.0, 5.0, name="Far") | {"_qid": "Q9"}],
+            planets=[planet(0, 1, period=3.0)],
+        )
+        out = tmp_path / "space-map-extrasolar"
+        far = _StarStub({"Q9": labelled({"en": "Far", "de": "Fern"})})
+        monkeypatch.setattr(build, "WikidataEntityCache", lambda: far)
+        export_extrasolar(built.root, out, workers=1, cultures_dir=tmp_path / "none")
+        groups = planet_family.build_planet_family_groups(
+            ObjectNames(_entities({}), session), SOLAR, out
+        )
+        hot = groups.notable_members["planet-hot-jupiter"]
+        assert [m.names for m in hot] == [Names("Far b", {"de": "Fern b"})]
+
+    def test_stamp_is_the_served_counts_and_planets_token(self, served, session):
         _, out = served
         stamp = planet_family.served_planet_families_stamp(out)
         assert stamp is not None
@@ -269,7 +324,7 @@ class TestPlanetsPage:
     """The Planets page counts, lists, ranks and plots every planet."""
 
     @pytest.fixture
-    def page(self, tmp_path):
+    def page(self, tmp_path, session):
         built = write_registry(
             tmp_path / "reg",
             [star(10.0, 5.0, 50.0, name="Near")],
@@ -302,7 +357,7 @@ class TestPlanetsPage:
         out = tmp_path / "space-map-extrasolar"
         export_extrasolar(built.root, out, workers=1, cultures_dir=tmp_path / "none")
         groups = planet_family.build_planet_family_groups(
-            _entities(SITELINKS), SOLAR, out
+            ObjectNames(_entities(SITELINKS), session), SOLAR, out
         )
         assert groups.planets is not None
         return built.ids, groups
@@ -346,7 +401,7 @@ class TestPlanetsPage:
             _id(ids[0], 3): (None, "2000"),
             _id(ids[0], 4): (None, "2000"),
         }
-        entries = notable_entries(members, _entities(SITELINKS))
+        entries = notable_entries(members)
         assert (entries[2]["diameter_km"], entries[2]["first_obs"]) == (
             214500.0,
             "2000",
@@ -370,6 +425,37 @@ class TestPlanetsPage:
             "mass_earth": 3814.0,
             "mass_kind": "true",
         }
+        # The page localizes the two cards by these names.
+        assert groups.planets.card_names == {
+            _id(ids[0], 1): Names("Near b"),
+            _id(ids[0], 3): Names("Near d"),
+        }
+
+    def test_a_card_has_the_names_of_the_planets_page(self, session):
+        planet = planet_family._Planet(
+            object_id="x-1-b-1",
+            names=Names("Proxima Cen b"),
+            qid="Q1",
+            families=(),
+            estimated_only=False,
+            distance=1.3,
+            mass=(1.07, planet_family.MEASURED),
+            radius=(None, None),
+            axis=(None, None),
+            entry=True,
+        )
+        host = labelled({"en": "Proxima Centauri", "ja": "プロキシマ・ケンタウリ"})
+        names = ObjectNames(
+            EntityStub({"Q2": host}),
+            session,
+            [StarObject(1, "Proxima Centauri", "Q2")],
+            [PlanetObject(1, 1, "Proxima Cen b", "Q1", ("Proxima Cen b",), "b")],
+        )
+        found = planet_family._largest([planet], "mass", lambda p: p.mass, names)
+        assert found is not None
+        card, page = found
+        assert card["name"] == page.name == "Proxima Centauri b"
+        assert page.get("ja") == "プロキシマ・ケンタウリ b"
 
     def test_plot(self, page):
         _, groups = page
@@ -395,6 +481,7 @@ class TestListEntry:
     @staticmethod
     def _record(**values) -> dict:
         return {
+            "object": False,
             "families": [],
             "families_estimated": [],
             "values": {"radius": 1.5, "discovery_year": 1995} | values,
@@ -413,12 +500,15 @@ class TestListEntry:
         ],
     )
     def test_diameter(self, flags, diameter):
-        found = planet_family._planet(self._record() | flags, "x-1-b-1", "b", 1.0)
+        found = planet_family._planet(
+            self._record() | flags, "x-1-b-1", Names("b"), 1.0
+        )
         assert (found.diameter_km, found.first_obs) == (diameter, "1995")
 
     def test_no_discovery_year(self):
         record = self._record(discovery_year=None)
-        assert planet_family._planet(record, "x-1-b-1", "b", 1.0).first_obs is None
+        found = planet_family._planet(record, "x-1-b-1", Names("b"), 1.0)
+        assert found.first_obs is None
 
 
 class TestBundles:

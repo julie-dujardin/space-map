@@ -52,10 +52,18 @@ from space_map_data.export.notable import (
     shape_model_slugs,
 )
 from space_map_data.export.objects.features import attach_notable_features
-from space_map_data.export.objects.fragments import attach_comet_fragments
+from space_map_data.export.objects.fragments import (
+    CometFamily,
+    attach_comet_fragments,
+    build_comet_families,
+)
 from space_map_data.export.objects.galleries import attach_galleries
 from space_map_data.export.objects.interior import load_taxonomy
-from space_map_data.export.objects.missions import attach_probe_missions
+from space_map_data.export.objects.missions import (
+    ProbeMission,
+    attach_probe_missions,
+    build_probe_missions,
+)
 from space_map_data.export.objects.moon_sources import load_moon_sources
 from space_map_data.export.objects.moons import attach_notable_moons
 from space_map_data.export.objects.position_sources import (
@@ -841,18 +849,27 @@ def _moon_host_names(
 def _page_links(
     session: Session,
     names: ObjectNames,
+    families: Mapping[str, CometFamily],
+    missions: list[ProbeMission],
     model_sources: Mapping[str, dict],
     probe_names: Mapping[int, Names],
     ring_moons: Mapping[str, RingMoon],
 ) -> dict[str, dict[str, Names]]:
     """For each object page, the names of the pages it links to by name, by
-    page id: the craft that carries a probe, the craft that observed a shape
-    model, and the moons of a ring catalogue.
+    page id: the comet of a fragment, the mission of a probe, the craft that
+    carries a probe, the craft that observed a shape model, and the moons of a
+    ring catalogue.
 
     Built before the object data, so that a page with no other localized text
     gets a localized entry for them.
     """
     links: dict[str, dict[str, Names]] = defaultdict(dict)
+    for family in families.values():
+        for object_id in family.member_ids:
+            links[object_id][family.page_id] = family.names
+    for mission in missions:
+        for member in (mission.primary, *mission.members):
+            links[member.object_id][mission.slug] = mission.names
     for attachment in resolve_attachments():
         carrier_id = f"probe-{attachment.carrier_probe_id}"
         if (carrier := names.find(carrier_id)) is not None:
@@ -1179,9 +1196,14 @@ def _export(engine: Engine, names_session: Session, limit_per_zone: int) -> None
     probe_names = {entry["probe_id"]: names.probe(entry) for entry in load_registry()}
     # {slug: provenance block} for the detail sources section.
     model_sources = build_model_sources(model_metadata, probe_names)
+    # The object data names families and missions before the late passes link them.
+    missions = build_probe_missions(names)
     with Session(engine) as session:
+        families = build_comet_families(session, names)
         ring_moons = load_ring_moons(session, names)
-        page_links = _page_links(session, names, model_sources, probe_names, ring_moons)
+        page_links = _page_links(
+            session, names, families, missions, model_sources, probe_names, ring_moons
+        )
     probe_kernel_sources = load_probe_kernel_sources()
     probe_ephemeris_accuracy = load_probe_ephemeris_accuracy()
     probe_position_sources = load_probe_position_sources()
@@ -1343,7 +1365,7 @@ def _export(engine: Engine, names_session: Session, limit_per_zone: int) -> None
             attach_notable_moons(
                 session,
                 agg.all_objects,
-                wikidata_entities,
+                names,
                 radii,
                 j2000_poles(
                     orientation, nut_prec, nut_prec_angles, nut_prec_phase_degrees
@@ -1352,22 +1374,20 @@ def _export(engine: Engine, names_session: Session, limit_per_zone: int) -> None
                 model_slugs,
             )
             attach_featured_satellites(session, agg.all_objects, names)
-            attach_comet_fragments(session, agg.all_objects, wikidata_entities)
+            attach_comet_fragments(agg.all_objects, families)
             # {object_id: mesh + real length} for spacecraft, which the probe
             # lists below put on their entries so a probe lineup can draw them.
             craft_models = craft_model_slugs(session, model_metadata)
         attach_notable_features(
             agg.all_objects, nomenclature_by_body, wikidata_entities
         )
-        attach_probe_missions(agg.all_objects, wikidata_entities)
-        attach_probe_targets(agg.all_objects, wikidata_entities, craft_models)
+        attach_probe_missions(agg.all_objects, missions)
+        attach_probe_targets(agg.all_objects, names, craft_models)
         # After the per-body pass, which it supersedes on a barycenter: the
         # Earth-Moon L2 craft target the barycenter directly and belong in the
         # system's rolled-up list rather than in one of their own.
         with Session(engine) as session:
-            attach_system_probes(
-                session, agg.all_objects, wikidata_entities, craft_models
-            )
+            attach_system_probes(session, agg.all_objects, names, craft_models)
         attach_probe_events(agg.all_objects, names)
         # Pools the moon and feature lists the two passes above just wrote.
         attach_galleries(agg.all_objects)
@@ -1433,6 +1453,7 @@ def _export(engine: Engine, names_session: Session, limit_per_zone: int) -> None
             displacement_metadata,
             model_metadata,
             star_objects,
+            planet_objects,
         )
         incremental.write_tier_b_meta(
             out_dir, tier_b_fp, bundle_ns, feature_bundle_ns, group_bundle_ns

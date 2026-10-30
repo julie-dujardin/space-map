@@ -33,6 +33,7 @@ from space_map_data.constants.earth_sats.satcat import OrbitCenter, OrbitType
 from space_map_data.export.groups.membership import GroupSatcatStats, _accumulate
 from space_map_data.export.groups.probe_targets import build_lagrange_zones
 from space_map_data.export.groups.registry import CLASS_SLUG_PREFIX
+from space_map_data.export.names import Names, ObjectNames
 from space_map_data.export.notable import NotableObject
 from space_map_data.export.position.elements.celestrak_source import iter_day_dirs
 from space_map_data.models.object import Object, ObjectType
@@ -56,7 +57,7 @@ class EarthOrbitSample:
     """One scatter-plot point; ``classes`` lists every zone the sat hits."""
 
     slug: str
-    name: str
+    names: Names  # the names of the sat's page
     perigee_km: float
     apogee_km: float
     inclination_deg: float | None
@@ -152,7 +153,9 @@ def _load_latest_inclinations() -> dict[int, float]:
     return out
 
 
-def build_earth_orbit_classes(session: Session) -> EarthOrbitClassStats:
+def build_earth_orbit_classes(
+    session: Session, names: ObjectNames
+) -> EarthOrbitClassStats:
     """Bucket active Earth-orbiting SATCAT rows into zones.
 
     Active = no decay_date, orbit_type=ORBIT, orbit_center=EARTH + Earth parent
@@ -164,13 +167,11 @@ def build_earth_orbit_classes(session: Session) -> EarthOrbitClassStats:
     rows = (
         session.query(
             Object.id,
-            Object.name,
             Object.wikidata_qid,
             Object.sitelinks_count,
             Object.image_available,
             Object.object_type,
             Satcat.NORAD_CAT_ID,
-            Satcat.OBJECT_NAME,
             Satcat.perigee,
             Satcat.apogee,
             Satcat.decay_date,
@@ -192,25 +193,23 @@ def build_earth_orbit_classes(session: Session) -> EarthOrbitClassStats:
     stats = EarthOrbitClassStats()
     skip_counters: Counter[str] = Counter()
     population_per_class: Counter[str] = Counter()
-    pool: dict[str, list[tuple[str, str, float, float, float | None, list[str]]]] = {}
+    pool: dict[str, list[tuple[str, float, float, float | None, list[str]]]] = {}
     perigee_pool: dict[str, list[float]] = {}
     # Notable-member candidates per zone: (image_available, sitelinks, id, qid, name).
     # Split by payload/debris so each category page draws from its own side.
-    notable_pool: dict[str, list[tuple[bool, int, str, str | None, str]]] = {}
-    debris_notable_pool: dict[str, list[tuple[bool, int, str, str | None, str]]] = {}
+    notable_pool: dict[str, list[tuple[bool, int, str, str | None]]] = {}
+    debris_notable_pool: dict[str, list[tuple[bool, int, str, str | None]]] = {}
     # Per constellation, its sat count per zone (→ dominant zone). Rocket
     # "constellations" that surface as lv- pages are excluded.
     constellation_zone_counts: dict[str, Counter[str]] = {}
 
     for (
         obj_id,
-        obj_name,
         wikidata_qid,
         sitelinks_count,
         image_available,
         object_type,
         norad,
-        sat_name,
         perigee,
         apogee,
         decay_date,
@@ -276,7 +275,6 @@ def build_earth_orbit_classes(session: Session) -> EarthOrbitClassStats:
                     constellation_slug,
                 )
 
-        display_name = sat_name or obj_name or f"NORAD {norad}"
         side_pool = debris_notable_pool if is_debris else notable_pool
         side_pool.setdefault(primary_slug, []).append(
             (
@@ -284,11 +282,10 @@ def build_earth_orbit_classes(session: Session) -> EarthOrbitClassStats:
                 sitelinks_count or 0,
                 obj_id,
                 wikidata_qid,
-                display_name,
             )
         )
         pool.setdefault(primary_slug, []).append(
-            (obj_id, display_name, float(perigee), float(apogee), inc, class_names)
+            (obj_id, float(perigee), float(apogee), inc, class_names)
         )
         if (
             constellation_slug
@@ -298,13 +295,13 @@ def build_earth_orbit_classes(session: Session) -> EarthOrbitClassStats:
                 primary_slug
             ] += 1
 
-    stats.notable_members = _rank_notable(notable_pool)
-    stats.debris_notable_members = _rank_notable(debris_notable_pool)
+    stats.notable_members = _rank_notable(notable_pool, names)
+    stats.debris_notable_members = _rank_notable(debris_notable_pool, names)
 
     # After the ranking above, which replaces the whole map: the libration
     # zones' members are probes, not catalogued satellites, so they are never
     # in the pool it ranks and an earlier write would be thrown away.
-    for slug, probes in build_lagrange_zones().items():
+    for slug, probes in build_lagrange_zones(names).items():
         stats.membership[slug] = [p.object_id for p in probes]
         stats.notable_members[slug] = probes[:NOTABLE_MEMBER_COUNT]
 
@@ -323,7 +320,7 @@ def build_earth_orbit_classes(session: Session) -> EarthOrbitClassStats:
         best_zone = max(zone_counts.items(), key=lambda kv: (kv[1], kv[0]))[0]
         stats.constellation_zone[f"{CONSTELLATION_SLUG_PREFIX}{c_slug}"] = best_zone
 
-    stats.orbit_samples = _build_samples(pool)
+    stats.orbit_samples = _build_samples(pool, names)
     stats.median_perigees = {
         slug: statistics.median(perigees) for slug, perigees in perigee_pool.items()
     }
@@ -349,7 +346,8 @@ def build_earth_orbit_classes(session: Session) -> EarthOrbitClassStats:
 
 
 def _rank_notable(
-    pool: dict[str, list[tuple[bool, int, str, str | None, str]]],
+    pool: dict[str, list[tuple[bool, int, str, str | None]]],
+    names: ObjectNames,
 ) -> dict[str, list[NotableObject]]:
     """Top members per zone: most-photogenic, then most-notable. The id tiebreak
     keeps the pick deterministic across runs."""
@@ -360,12 +358,12 @@ def _rank_notable(
             NotableObject(
                 object_id=obj_id,
                 wikidata_qid=qid,
-                fallback_name=name,
+                names=names.object(obj_id),
                 diameter_km=None,
                 first_obs=None,
                 sitelinks_count=sitelinks,
             )
-            for _img, sitelinks, obj_id, qid, name in candidates[:NOTABLE_MEMBER_COUNT]
+            for _img, sitelinks, obj_id, qid in candidates[:NOTABLE_MEMBER_COUNT]
         ]
     return out
 
@@ -391,9 +389,11 @@ def _allocate_samples(
 
 
 def _build_samples(
-    pool: dict[str, list[tuple[str, str, float, float, float | None, list[str]]]],
+    pool: dict[str, list[tuple[str, float, float, float | None, list[str]]]],
+    names: ObjectNames,
 ) -> list[EarthOrbitSample]:
-    """Pick samples per primary zone; overlays ride on each dot via classes."""
+    """Pick samples per primary zone; overlays ride on each dot via classes.
+    Each dot has the names of its sat's page."""
     primary_counts = {slug: len(entries) for slug, entries in pool.items()}
     allocation = _allocate_samples(primary_counts)
     out: list[EarthOrbitSample] = []
@@ -404,11 +404,12 @@ def _build_samples(
         entries = sorted(pool[slug], key=lambda t: t[0])
         step = max(1, len(entries) // n)
         picked = entries[::step][:n]
-        for obj_id, name, peri, apo, inc, class_names in picked:
+        found = names.objects(entry[0] for entry in picked)
+        for obj_id, peri, apo, inc, class_names in picked:
             out.append(
                 EarthOrbitSample(
                     slug=slug,
-                    name=name,
+                    names=found[obj_id],
                     perigee_km=peri,
                     apogee_km=apo,
                     inclination_deg=inc,
@@ -424,12 +425,13 @@ def write_earth_orbit_samples(out_dir: Path, samples: list[EarthOrbitSample]) ->
         "samples": [
             {
                 "slug": s.slug,
-                "name": s.name,
+                "name": s.names.name,
                 "perigee_km": s.perigee_km,
                 "apogee_km": s.apogee_km,
                 "inclination_deg": s.inclination_deg,
                 "classes": s.classes,
             }
+            | ({"names": names} if (names := s.names.overrides()) else {})
             for s in samples
         ],
     }

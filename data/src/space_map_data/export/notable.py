@@ -3,7 +3,8 @@
 Used by small-body group bundles (notable members) and object bundles
 (notable moons). A ranked list of objects becomes denormalized records
 carrying name, routing id, optional diameter/discovery and a thumbnail, plus
-a per-language label-override map keyed by the same routing id.
+a per-language name map keyed by the same routing id. The names come from
+`export.names`, as on the members' own pages.
 """
 
 import math
@@ -22,10 +23,11 @@ from space_map_data.export.images import (
     collect_star_images,
     pick_thumbnail,
 )
+from space_map_data.export.names import Names
 from space_map_data.export.objects.wikidata_claims import radius_km_from_claims
 from space_map_data.export.quantities import UnitConverter
 from space_map_data.export.systems import displacement_block
-from space_map_data.export.wikidata import WikidataEntityCache, entity_label
+from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.models.object.main import Object
 from space_map_data.utils.naif import nut_prec_owner
 
@@ -41,22 +43,22 @@ class NotableObject:
     """
 
     object_id: str  # full Object.id — both the routing/focus id and image-cache key
-    wikidata_qid: str | None  # for localized labels at bundle-write time
-    fallback_name: str  # used when no Wikidata label exists
+    wikidata_qid: str | None  # for descriptions and pictures
+    names: Names  # from `export.names`, as the member's own page has them
     diameter_km: float | None
     first_obs: str | None  # discovery proxy, YYYY-MM-DD or YYYY
     # Set → the thumbnail is this object's: a planetary system routes to its
     # barycenter, which has no photograph, and borrows its primary's.
     image_of: str | None = None
+    # Set → a planetary system, whose page is its barycenter's: the names of
+    # that page ("Jupiter system"). `names` stays the planet's, because
+    # deployed clients add " system" to it themselves.
+    system_names: Names | None = None
     group_slug: str | None = None  # set → a group member, routes to /g/<slug>
     feature_id: int | None = None  # set → a surface feature on `object_id`
     # Set → a star or a planet of the extrasolar export. Its entity and its
     # pictures are found by QID.
     extrasolar: bool = False
-    # Set → the names its page takes by language where they differ from
-    # `fallback_name`, its global one. A list then names it as its page does,
-    # not by its labels.
-    page_names: dict[str, str] | None = None
     sitelinks_count: int | None = None  # Wikidata prominence, for cross-member ranking
     mass_kg: float | None = None  # from PCK GM; major bodies only
     # Probe-on-target only: {kind, arrival, end?} — what the probe did there.
@@ -287,7 +289,6 @@ def craft_model_slugs(
 
 def notable_entries(
     members: list[NotableObject],
-    wikidata_entities: WikidataEntityCache,
     displacement_metadata: dict[str, dict] | None = None,
     model_slugs: dict[str, str] | None = None,
     textured_ids: set[str] | None = None,
@@ -301,12 +302,7 @@ def notable_entries(
     out: list[dict] = []
     entry: dict
     for member in members:
-        wd = _member_entity(member, wikidata_entities)
-        name = (
-            member.fallback_name
-            if member.page_names is not None
-            else entity_label(wd, "en") or member.fallback_name
-        )
+        name = member.names.name
         # Group members route to /g/<slug>; object members focus their mesh.
         if member.group_slug is not None:
             entry = {"name": name, "group": member.group_slug}
@@ -333,6 +329,8 @@ def notable_entries(
             out.append(entry)
             continue
         entry = {"name": name, "id": member.object_id}
+        if member.system_names is not None:
+            entry["system_name"] = member.system_names.name
         if member.diameter_km is not None:
             entry["diameter_km"] = member.diameter_km
         if member.mass_kg is not None:
@@ -400,23 +398,25 @@ def notable_entries(
     return out
 
 
-def notable_names(
-    members: list[NotableObject],
-    entries: list[dict],
-    lang: str,
-    wikidata_entities: WikidataEntityCache,
-) -> dict[str, str]:
-    """Per-language name overrides keyed by object id, only where they differ."""
-    out: dict[str, str] = {}
-    for member, entry in zip(members, entries):
-        if member.page_names is not None:
-            label = member.page_names.get(lang)
-        else:
-            wd = _member_entity(member, wikidata_entities)
-            label = entity_label(wd, lang) if wd else None
-        if label and label != entry["name"]:
-            out[_member_key(member)] = label
-    return out
+def notable_names(members: list[NotableObject], lang: str) -> dict[str, str]:
+    """Names in ``lang`` keyed by routing id, only where they differ from the
+    global name."""
+    return {
+        _member_key(member): name
+        for member in members
+        if (name := member.names.get(lang)) != member.names.name
+    }
+
+
+def notable_system_names(members: list[NotableObject], lang: str) -> dict[str, str]:
+    """The names in ``lang`` of the planetary systems among ``members``, keyed
+    by routing id, only where they differ from `system_name`."""
+    return {
+        _member_key(member): name
+        for member in members
+        if member.system_names is not None
+        and (name := member.system_names.get(lang)) != member.system_names.name
+    }
 
 
 def notable_descriptions(

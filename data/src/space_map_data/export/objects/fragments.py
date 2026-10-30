@@ -9,8 +9,14 @@ into families and, mirroring ``objects/moons.py``, attaches a ranked
 Parentless families (no intact body in the catalog) point ``fragment_of`` at
 the synthetic family group page instead, where the fragment list is surfaced.
 Ranking mirrors notable members: image availability, then sitelinks, id tiebreak.
+
+A family has the names of its page: the names of the intact body, else the
+labels of the comet's Wikidata item, else the name of a fragment without its
+fragment letters.
 """
 
+import csv
+import io
 import logging
 import re
 from collections import defaultdict
@@ -26,11 +32,13 @@ from space_map_data.constants.comet_fragments import (
 )
 from space_map_data.constants.providers import LANGUAGES
 from space_map_data.export.images import collect_object_images, pick_thumbnail
+from space_map_data.export.names import Names, ObjectNames, entity_names
 from space_map_data.export.notable import NotableObject, notable_entries, notable_names
 from space_map_data.export.objects.writer import ChunkObjectData
 from space_map_data.export.wikidata import WikidataEntityCache, entity_label
 from space_map_data.models.object.main import Object
 from space_map_data.models.object.sbdb import SBDB, CometPrefix
+from space_map_data.utils.paths import SOURCES_METADATA_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -45,25 +53,39 @@ class CometFamily:
     parent_pdes: str
     parent_object_id: str | None  # None for parentless families (e.g. SL9)
     parent_qid: str | None
-    parent_name: str  # display name for the breadcrumb / stat card
+    names: Names  # the names of the family's page
     designation: str = ""  # full IAU designation, e.g. "C/1860 D1" or "483P"
     fragments: list[NotableObject] = field(default_factory=list)  # capped display list
     member_ids: list[str] = field(default_factory=list)  # every fragment's object id
     total: int = 0
 
+    @property
+    def page_id(self) -> str:
+        """The page of the comet: the intact body, else the family group."""
+        return self.parent_object_id or family_group_slug(self.parent_pdes)
 
-def _parent_display_name(
-    obj_name: str | None,
-    full_name: str | None,
-    qid: str | None,
-    wikidata_entities: WikidataEntityCache,
-) -> str | None:
-    """Wikidata English label when available, else the catalog name."""
-    if qid:
-        label = entity_label(wikidata_entities.get_entity(qid), "en")
-        if label:
-            return label
-    return obj_name or full_name
+
+# Wikidata properties whose match CSVs key on a comet's designation.
+_DESIGNATION_MATCH_PIDS = ("P5736", "P490")
+
+
+def _designation_qids() -> dict[str, list[str]]:
+    """``{comet designation: [qid]}`` from the P5736/P490 Wikidata match CSVs.
+
+    Mirrors the ingest reader, but keyed on the full designation (``C/1860 D1``)
+    so a parentless family, which matches no object, can still be linked to
+    its Wikidata item when an editor sets the designation property there.
+    """
+    matches_dir = SOURCES_METADATA_DIR / "wikidata" / "ids" / "matches"
+    out: dict[str, set[str]] = defaultdict(set)
+    for pid in _DESIGNATION_MATCH_PIDS:
+        path = matches_dir / f"{pid}.csv"
+        if not path.exists():
+            continue
+        for row in csv.reader(io.StringIO(path.read_text())):
+            if row and len(row) > 1 and row[1]:
+                out[row[0]].update(row[1].split())
+    return {designation: sorted(qids) for designation, qids in out.items()}
 
 
 def _parentless_name(full_name: str | None, parent_pdes: str, suffix: str) -> str:
@@ -113,13 +135,17 @@ def _resolve_parentless_qid(
 
 
 def build_comet_families(
-    session: Session, wikidata_entities: WikidataEntityCache
+    session: Session, names: ObjectNames
 ) -> dict[str, CometFamily]:
     """Group comet rows into split-comet families, keyed by parent designation.
 
     Fragments are ranked (image, sitelinks, id) and capped for display, but
-    ``total`` reflects the full count.
+    ``total`` reflects the full count. A parentless family takes its Wikidata
+    item from its fragments' own links where possible, else from a lookup by
+    designation.
     """
+    wikidata_entities = names.entities
+    designation_qids = _designation_qids()
     rows = (
         session.query(
             SBDB.object_id,
@@ -148,6 +174,7 @@ def build_comet_families(
             parents[row.pdes] = row
 
     families: dict[str, CometFamily] = {}
+    by_designation = 0
     for parent_pdes, frag_rows in frags_by_parent.items():
         frag_rows.sort(key=lambda r: r.object_id)
         frag_rows.sort(
@@ -158,7 +185,7 @@ def build_comet_families(
             NotableObject(
                 object_id=r.object_id,
                 wikidata_qid=r.wikidata_qid,
-                fallback_name=r.pdes or r.full_name or r.object_id,
+                names=names.object(r.object_id),
                 diameter_km=None,
                 first_obs=None,
             )
@@ -169,14 +196,11 @@ def build_comet_families(
         designation = _iau_designation(parent_pdes, frag_rows[0].prefix)
         parent = parents.get(parent_pdes)
         if parent is not None:
-            parent_name = _parent_display_name(
-                parent.name, parent.full_name, parent.wikidata_qid, wikidata_entities
-            )
             family = CometFamily(
                 parent_pdes=parent_pdes,
                 parent_object_id=parent.object_id,
                 parent_qid=parent.wikidata_qid,
-                parent_name=parent_name or parent_pdes,
+                names=names.object(parent.object_id),
                 designation=designation,
                 fragments=fragments,
                 member_ids=member_ids,
@@ -188,14 +212,16 @@ def build_comet_families(
                 rep.full_name, parent_pdes, frag_suffix[rep.object_id]
             )
             qid = _resolve_parentless_qid(frag_rows, wikidata_entities)
+            if qid is None:
+                candidates = designation_qids.get(designation, [])
+                if len(candidates) == 1:
+                    qid = candidates[0]
+                    by_designation += 1
             family = CometFamily(
                 parent_pdes=parent_pdes,
                 parent_object_id=None,
                 parent_qid=qid,
-                parent_name=_parent_display_name(
-                    reconstructed, None, qid, wikidata_entities
-                )
-                or reconstructed,
+                names=entity_names(wikidata_entities.get_entity(qid), reconstructed),
                 designation=designation,
                 fragments=fragments,
                 member_ids=member_ids,
@@ -205,9 +231,11 @@ def build_comet_families(
 
     parentless = sum(1 for f in families.values() if f.parent_object_id is None)
     logger.info(
-        "Built %d split-comet families (%d parentless), %d fragments total",
+        "Built %d split-comet families (%d parentless, %d of those with a"
+        " Wikidata QID by designation), %d fragments total",
         len(families),
         parentless,
+        by_designation,
         sum(f.total for f in families.values()),
     )
     return families
@@ -215,27 +243,23 @@ def build_comet_families(
 
 def _fragment_of(family: CometFamily) -> dict:
     """The ``fragment_of`` block a fragment carries: parent name + route + image."""
-    out: dict = {"name": family.parent_name}
+    out: dict = {
+        "name": family.names.name,
+        "primary_type": "object" if family.parent_object_id else "group",
+        "primary_id": family.page_id,
+    }
     if family.parent_object_id is not None:
-        out["primary_type"] = "object"
-        out["primary_id"] = family.parent_object_id
         thumbnail = pick_thumbnail(collect_object_images(family.parent_object_id))
         if thumbnail:
             out["thumbnail"] = thumbnail
-    else:
-        out["primary_type"] = "group"
-        out["primary_id"] = family_group_slug(family.parent_pdes)
     return out
 
 
 def attach_comet_fragments(
-    session: Session,
-    chunk: ChunkObjectData,
-    wikidata_entities: WikidataEntityCache,
+    chunk: ChunkObjectData, families: dict[str, CometFamily]
 ) -> None:
     """Inject ``fragments``/``fragment_count`` onto parents and ``fragment_of``
     onto each fragment. Mutates ``chunk`` in place (mirrors notable moons)."""
-    families = build_comet_families(session, wikidata_entities)
     parents_done = 0
     frags_done = 0
     for family in families.values():
@@ -257,16 +281,16 @@ def attach_comet_fragments(
                 family.parent_pdes,
             )
             continue
-        entries = notable_entries(family.fragments, wikidata_entities)
+        entries = notable_entries(family.fragments)
         parent_global["fragments"] = entries
         parent_global["fragment_count"] = family.total
         for lang in LANGUAGES:
             localized = chunk.localized_data.get(lang, {}).get(family.parent_object_id)
             if localized is None:
                 continue
-            names = notable_names(family.fragments, entries, lang, wikidata_entities)
-            if names:
-                localized["fragment_names"] = names
+            fragment_names = notable_names(family.fragments, lang)
+            if fragment_names:
+                localized["fragment_names"] = fragment_names
         parents_done += 1
 
     logger.info(

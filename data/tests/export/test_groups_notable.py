@@ -21,6 +21,7 @@ from space_map_data.export.groups.categories import (
     _atmosphere_stats,
     _magnetic_stats,
     _ocean_stats,
+    _planetary_system_members,
     _probe_members,
     _radiation_stats,
     _ring_system_stats,
@@ -30,9 +31,11 @@ from space_map_data.export.groups.categories import (
 from space_map_data.export.groups.registry import CLASS_SLUG_PREFIX
 from space_map_data.export.groups.small_body import (
     NOTABLE_MEMBER_COUNT,
+    _largest_body,
     _notable_members,
     build_small_body_group_stats,
 )
+from space_map_data.export.names import Names, ObjectNames
 from space_map_data.export.notable import NotableObject
 from space_map_data.export.objects.activity import collection_row
 from space_map_data.export.objects.atmosphere import atmosphere_block, pressure_block
@@ -52,6 +55,11 @@ from space_map_data.export.objects.rings import (
 from space_map_data.export.wikidata import WikidataEntity, WikidataEntityCache
 from space_map_data.models.object import Object, ObjectType, OrbitalSource
 from space_map_data.models.object.sbdb import SBDB, CometPrefix, OrbitClass
+from tests.conftest import EntityStub, labelled
+
+
+def _names(session: Session) -> ObjectNames:
+    return ObjectNames(EntityStub(), session)
 
 
 def _add_member(
@@ -118,7 +126,9 @@ class TestNotableMembers:
         _add_member(session, 4, h_mag=8.0)  # no diameter: H tier
         _add_member(session, 5, h_mag=10.0)  # dimmer than 4
 
-        members = _notable_members(session, SBDB.class_ == OrbitClass.MBA)
+        members = _notable_members(
+            session, _names(session), SBDB.class_ == OrbitClass.MBA
+        )
         assert [m.object_id for m in members] == [
             "spkid-2",
             "spkid-1",
@@ -130,41 +140,53 @@ class TestNotableMembers:
     def test_spkid_tiebreak_is_deterministic(self, session: Session) -> None:
         for spkid in (12, 10, 11):
             _add_member(session, spkid)
-        members = _notable_members(session, SBDB.class_ == OrbitClass.MBA)
+        members = _notable_members(
+            session, _names(session), SBDB.class_ == OrbitClass.MBA
+        )
         assert [m.object_id for m in members] == ["spkid-10", "spkid-11", "spkid-12"]
 
     def test_includes_spice_routed_dwarf_planets(self, session: Session) -> None:
         _add_member(session, 2000001, sitelinks=200, orbital_source=OrbitalSource.spice)
-        members = _notable_members(session, SBDB.class_ == OrbitClass.MBA)
+        members = _notable_members(
+            session, _names(session), SBDB.class_ == OrbitClass.MBA
+        )
         assert [m.object_id for m in members] == ["spkid-2000001"]
 
     def test_excludes_defunct_comets(self, session: Session) -> None:
         _add_member(session, 1, sitelinks=100, prefix=CometPrefix.D)
         _add_member(session, 2)
-        members = _notable_members(session, SBDB.class_ == OrbitClass.MBA)
+        members = _notable_members(
+            session, _names(session), SBDB.class_ == OrbitClass.MBA
+        )
         assert [m.object_id for m in members] == ["spkid-2"]
 
     def test_limits_to_notable_member_count(self, session: Session) -> None:
         for spkid in range(100, 100 + NOTABLE_MEMBER_COUNT + 5):
             _add_member(session, spkid)
-        members = _notable_members(session, SBDB.class_ == OrbitClass.MBA)
+        members = _notable_members(
+            session, _names(session), SBDB.class_ == OrbitClass.MBA
+        )
         assert len(members) == NOTABLE_MEMBER_COUNT
 
     def test_flag_filter(self, session: Session) -> None:
         _add_member(session, 1, neo=True)
         _add_member(session, 2)
-        members = _notable_members(session, SBDB.neo.is_(True))
+        members = _notable_members(session, _names(session), SBDB.neo.is_(True))
         assert [m.object_id for m in members] == ["spkid-1"]
 
     def test_carries_albedo_and_prefers_smass_spec(self, session: Session) -> None:
         _add_member(session, 7, albedo=0.09, spec_b="C", spec_t="G")
-        (member,) = _notable_members(session, SBDB.class_ == OrbitClass.MBA)
+        (member,) = _notable_members(
+            session, _names(session), SBDB.class_ == OrbitClass.MBA
+        )
         assert member.albedo == 0.09
         assert member.spec == "C"  # SMASS (spec_B) wins over Tholen (spec_T)
 
     def test_spec_falls_back_to_tholen(self, session: Session) -> None:
         _add_member(session, 8, spec_t="S")
-        (member,) = _notable_members(session, SBDB.class_ == OrbitClass.MBA)
+        (member,) = _notable_members(
+            session, _names(session), SBDB.class_ == OrbitClass.MBA
+        )
         assert member.spec == "S"
 
     def test_pole_for_pck_dwarf(self, session: Session) -> None:
@@ -172,13 +194,15 @@ class TestNotableMembers:
         _add_member(session, 2000001, naif_id=2000001)
         poles = {2000001: {"ra": 291.418, "dec": 66.764}}
         (member,) = _notable_members(
-            session, SBDB.class_ == OrbitClass.MBA, poles=poles
+            session, _names(session), SBDB.class_ == OrbitClass.MBA, poles=poles
         )
         assert member.pole == {"ra": 291.418, "dec": 66.764}
 
     def test_no_pole_without_poles(self, session: Session) -> None:
         _add_member(session, 2000001, naif_id=2000001)
-        (member,) = _notable_members(session, SBDB.class_ == OrbitClass.MBA)
+        (member,) = _notable_members(
+            session, _names(session), SBDB.class_ == OrbitClass.MBA
+        )
         assert member.pole is None
 
     def test_carries_display_fields(self, session: Session) -> None:
@@ -190,14 +214,42 @@ class TestNotableMembers:
             diameter=199.8,
             first_obs="1847-08-13",
         )
-        (member,) = _notable_members(session, SBDB.class_ == OrbitClass.MBA)
+        (member,) = _notable_members(
+            session, _names(session), SBDB.class_ == OrbitClass.MBA
+        )
         assert member == NotableObject(
             object_id="spkid-7",
             wikidata_qid="Q149012",
-            fallback_name="Iris",
+            names=Names("Iris"),
             diameter_km=199.8,
             first_obs="1847-08-13",
         )
+
+
+class TestLargestBody:
+    """The card links the page of the body, which keys its localized names."""
+
+    def test_the_card_links_the_object_id(self, session: Session) -> None:
+        ceres = Object(
+            id="naif-2000001",
+            name="Ceres",
+            object_type=ObjectType.dwarf_planet,
+            orbital_source=OrbitalSource.spice,
+        )
+        session.add(ceres)
+        session.add(
+            SBDB(
+                spkid="2000001",
+                object_id=ceres.id,
+                class_=OrbitClass.MBA,
+                diameter=939.4,
+            )
+        )
+        _add_member(session, 4, diameter=525.4)
+        body = _largest_body(session, _names(session), SBDB.class_ == OrbitClass.MBA)
+        assert body is not None
+        assert (body.object_id, body.names.name) == ("naif-2000001", "Ceres")
+        assert body.diameter_km == 939.4
 
 
 class TestRenderSize:
@@ -220,7 +272,7 @@ class TestNamedCounts:
         _add_member(session, 1, cls=OrbitClass.MBA, sbdb_name="Ceres")
         _add_member(session, 2, cls=OrbitClass.MBA)  # designation-only
         _add_member(session, 3, cls=OrbitClass.TNO, sbdb_name="Eris")
-        stats = build_small_body_group_stats(session)
+        stats = build_small_body_group_stats(session, _names(session))
         assert stats.named_counts == {
             f"{CLASS_SLUG_PREFIX}MBA": 1,
             f"{CLASS_SLUG_PREFIX}TNO": 1,
@@ -231,7 +283,7 @@ class TestNamedCounts:
         _add_member(
             session, 1, cls=OrbitClass.COM, prefix=CometPrefix.C, sbdb_name="Halley"
         )
-        stats = build_small_body_group_stats(session)
+        stats = build_small_body_group_stats(session, _names(session))
         assert f"{CLASS_SLUG_PREFIX}COM" not in stats.named_counts
 
 
@@ -276,7 +328,7 @@ class TestProbeMembers:
         )
         _add_member(session, 99)  # an asteroid — must be excluded too
 
-        members, total = _probe_members(session, {}, {}, {})
+        members, total = _probe_members(session, _names(session), {}, {}, {})
         assert total == 3
         assert [m.object_id for m in members] == ["probe-2", "probe-1", "probe-3"]
 
@@ -312,11 +364,13 @@ class _StubEntityCache(WikidataEntityCache):
     get_referenced = get_entity
 
 
-def _obj(object_id: str, qid: str | None, fallback: str) -> NotableObject:
+def _obj(
+    object_id: str, qid: str | None, name: str, langs: dict[str, str] | None = None
+) -> NotableObject:
     return NotableObject(
         object_id=object_id,
         wikidata_qid=qid,
-        fallback_name=fallback,
+        names=Names(name, langs or {}),
         diameter_km=None,
         first_obs=None,
     )
@@ -380,8 +434,7 @@ class TestCraftModelSlugs:
 class TestNotableEntries:
     """Shared bundle-entry shape and localized name overrides."""
 
-    def test_entries_resolve_en_label_and_thumbnail(self, monkeypatch) -> None:
-        cache = _StubEntityCache({"Q1": {"en": "Ceres", "ru": "Церера"}})
+    def test_entries_carry_the_global_name_and_thumbnail(self, monkeypatch) -> None:
         monkeypatch.setattr(
             notable,
             "collect_object_images",
@@ -392,28 +445,26 @@ class TestNotableEntries:
             ),
         )
         entries = notable.notable_entries(
-            [_obj("spkid-1", "Q1", "1 Ceres"), _obj("spkid-2", None, "Vesta fallback")],
-            cache,
+            [_obj("spkid-1", "Q1", "Ceres"), _obj("spkid-2", None, "4 Vesta")]
         )
         assert entries[0] == {
             "name": "Ceres",
             "id": "spkid-1",
             "thumbnail": {"file": "Ceres.jpg", "label": "s", "ext": "webp"},
         }
-        assert entries[1] == {"name": "Vesta fallback", "id": "spkid-2"}
+        assert entries[1] == {"name": "4 Vesta", "id": "spkid-2"}
 
     def test_entries_include_optional_stats(self, monkeypatch) -> None:
         monkeypatch.setattr(notable, "collect_object_images", lambda object_id: None)
         member = NotableObject(
             object_id="spkid-3",
             wikidata_qid=None,
-            fallback_name="Juno",
+            names=Names("Juno"),
             diameter_km=246.6,
             first_obs="1804-09-01",
         )
         (entry,) = notable.notable_entries(
             [member],
-            _StubEntityCache({}),
         )
         assert entry["diameter_km"] == 246.6
         assert entry["first_obs"] == "1804-09-01"
@@ -423,7 +474,7 @@ class TestNotableEntries:
         member = NotableObject(
             object_id="spkid-4",
             wikidata_qid=None,
-            fallback_name="Vesta",
+            names=Names("Vesta"),
             diameter_km=525.4,
             first_obs=None,
             albedo=0.42,
@@ -431,7 +482,6 @@ class TestNotableEntries:
         )
         (entry,) = notable.notable_entries(
             [member],
-            _StubEntityCache({}),
         )
         assert entry["albedo"] == 0.42
         assert entry["spec"] == "V"
@@ -445,7 +495,6 @@ class TestNotableEntries:
         members = [_obj("probe-1", None, "Cassini"), _obj("spkid-2", None, "Eros")]
         entries = notable.notable_entries(
             members,
-            _StubEntityCache({}),
             model_slugs={"probe-1": "eros", "spkid-2": "eros"},
             craft_models={"probe-1": notable.CraftModel("cassini", 6.7, 6.7)},
         )
@@ -462,7 +511,6 @@ class TestNotableEntries:
         monkeypatch.setattr(notable, "collect_object_images", lambda object_id: None)
         entries = notable.notable_entries(
             [_obj("probe-1", None, "Ulysses")],
-            _StubEntityCache({}),
             craft_models={"probe-1": notable.CraftModel("ulysses", 63.1, 3.155)},
         )
         assert entries[0]["length_m"] == 63.1
@@ -472,30 +520,22 @@ class TestNotableEntries:
         # Explicit false (not omission) distinguishes "no texture" from a
         # pre-flag bundle; omitted when no set is supplied.
         monkeypatch.setattr(notable, "collect_object_images", lambda object_id: None)
-        cache = _StubEntityCache({})
         members = [_obj("spkid-1", None, "Ceres"), _obj("spkid-2", None, "Pallas")]
         entries = notable.notable_entries(
             members,
-            cache,
             textured_ids={"spkid-1"},
         )
         assert entries[0]["texture"] is True
         assert entries[1]["texture"] is False
-        entries = notable.notable_entries(members, cache)
+        entries = notable.notable_entries(members)
         assert "texture" not in entries[0]
 
-    def test_localized_names_only_when_differing(self, monkeypatch) -> None:
-        monkeypatch.setattr(notable, "collect_object_images", lambda object_id: None)
-        cache = _StubEntityCache(
-            {
-                "Q1": {"en": "Ceres", "ru": "Церера"},
-                "Q2": {"en": "Vesta", "ru": "Vesta"},
-            }
-        )
-        members = [_obj("spkid-1", "Q1", "1 Ceres"), _obj("spkid-2", "Q2", "4 Vesta")]
-        entries = notable.notable_entries(members, cache)
-        names = notable.notable_names(members, entries, "ru", cache)
-        assert names == {"spkid-1": "Церера"}
+    def test_localized_names_only_when_differing(self) -> None:
+        members = [
+            _obj("spkid-1", "Q1", "Ceres", {"ru": "Церера"}),
+            _obj("spkid-2", "Q2", "Vesta", {"ru": "Vesta"}),
+        ]
+        assert notable.notable_names(members, "ru") == {"spkid-1": "Церера"}
 
     def test_group_member_routes_to_group_page(self, monkeypatch) -> None:
         # A constellation resolves to a group entry (no object id), thumbnail
@@ -509,29 +549,23 @@ class TestNotableEntries:
                 else None
             ),
         )
-        cache = _StubEntityCache({"Q1": {"en": "Starlink", "ru": "Старлинк"}})
         member = NotableObject(
             object_id="",
             wikidata_qid="Q1",
-            fallback_name="STARLINK",
+            names=Names("Starlink", {"ru": "Старлинк"}),
             diameter_km=None,
             first_obs=None,
             group_slug="const-starlink",
             sitelinks_count=42,
         )
-        entries = notable.notable_entries([member], cache)
+        entries = notable.notable_entries([member])
         assert entries[0] == {
             "name": "Starlink",
             "group": "const-starlink",
             "thumbnail": {"file": "Starlink.jpg", "label": "s", "ext": "webp"},
         }
         # Localized overrides key by the group slug (frontend uses id ?? group).
-        names = notable.notable_names(
-            [member],
-            entries,
-            "ru",
-            cache,
-        )
+        names = notable.notable_names([member], "ru")
         assert names == {"const-starlink": "Старлинк"}
 
     def test_localized_descriptions_omit_members_without_one(self) -> None:
@@ -546,6 +580,43 @@ class TestNotableEntries:
         ]
         descs = notable.notable_descriptions(members, "en", cache)
         assert descs == {"spkid-1": "dwarf planet"}
+
+
+class TestPlanetarySystemMembers:
+    """A member of the Satellite Systems page routes to the barycenter. It
+    keeps its planet's names, which deployed clients title "<planet> system",
+    and carries the names of the system's page beside them."""
+
+    def test_the_planet_names_the_member_and_the_system_its_page(
+        self, session: Session, monkeypatch
+    ) -> None:
+        monkeypatch.setattr(notable, "collect_object_images", lambda object_id: None)
+        session.add_all(
+            [
+                Object(id="naif-5", naif_id=5, object_type=ObjectType.barycenter),
+                Object(
+                    id="naif-599",
+                    naif_id=599,
+                    name="Jupiter",
+                    object_type=ObjectType.planet,
+                    parent_id="naif-5",
+                    wikidata_qid="Q319",
+                ),
+                Object(id="naif-501", object_type=ObjectType.moon, parent_id="naif-5"),
+            ]
+        )
+        session.commit()
+        jupiter = labelled({"en": "Jupiter", "fr": "Jupiter", "ru": "Юпитер"})
+        names = ObjectNames(EntityStub({"Q319": jupiter}), session)
+        (member,) = _planetary_system_members(session, names, {}, {}, {})
+        assert (member.object_id, member.image_of) == ("naif-5", "naif-599")
+        (entry,) = notable.notable_entries([member])
+        assert (entry["name"], entry["system_name"]) == ("Jupiter", "Jupiter system")
+        assert notable.notable_names([member], "ru") == {"naif-5": "Юпитер"}
+        assert notable.notable_system_names([member], "fr") == {
+            "naif-5": "Système de Jupiter"
+        }
+        assert notable.notable_system_names([member], "en") == {}
 
 
 class TestJ2000Poles:
@@ -595,14 +666,13 @@ class TestRingSystemMembers:
         member = NotableObject(
             object_id="naif-699",
             wikidata_qid=None,
-            fallback_name="Saturn",
+            names=Names("Saturn"),
             diameter_km=None,
             first_obs=None,
             ring_mass={"low_kg": 1.54e19, "uncertainty_kg": 4.9e18},
         )
         (entry,) = notable.notable_entries(
             [member],
-            _StubEntityCache({}),
         )
         assert entry["ring_mass"] == {"low_kg": 1.54e19, "uncertainty_kg": 4.9e18}
 
@@ -612,13 +682,12 @@ class TestRingSystemMembers:
         member = NotableObject(
             object_id="naif-899",
             wikidata_qid=None,
-            fallback_name="Neptune",
+            names=Names("Neptune"),
             diameter_km=None,
             first_obs=None,
         )
         (entry,) = notable.notable_entries(
             [member],
-            _StubEntityCache({}),
         )
         assert "ring_mass" not in entry
 
@@ -637,7 +706,7 @@ class TestRingSystemStats:
         return NotableObject(
             object_id=object_id,
             wikidata_qid=None,
-            fallback_name=name,
+            names=Names(name),
             diameter_km=None,
             first_obs=None,
         )
@@ -737,7 +806,7 @@ class TestStructureActivityStats:
         return NotableObject(
             object_id=object_id,
             wikidata_qid=None,
-            fallback_name=name,
+            names=Names(name),
             diameter_km=None,
             first_obs=None,
             **extra,
@@ -865,7 +934,7 @@ class TestHeatPageStats:
             NotableObject(
                 object_id=body,
                 wikidata_qid=None,
-                fallback_name=body,
+                names=Names(body),
                 diameter_km=None,
                 first_obs=None,
                 activity=collection_row(body),
@@ -882,9 +951,12 @@ class TestHeatPageStats:
             for body, activity in GEOLOGIC_ACTIVITY.items()
             if activity.volcanism.status == "active"
         }
-        assert stats.erupting_now is not None
-        assert set(stats.erupting_now) == active
-        assert stats.erupting_now == sorted(stats.erupting_now)
+        assert stats.erupting_now_refs is not None
+        assert {ref["primary_id"] for ref in stats.erupting_now_refs} == active
+        names = [ref["name"] for ref in stats.erupting_now_refs]
+        assert names == sorted(names)
+        # Deployed clients join the names for the tooltip.
+        assert stats.erupting_now == names
 
     def test_vents_sum_every_survey(self) -> None:
         stats = _volcanism_stats(self._members(GEOLOGIC_ACTIVITY, None))
@@ -900,7 +972,7 @@ class TestHeatPageStats:
         titan = NotableObject(
             object_id="naif-606",
             wikidata_qid=None,
-            fallback_name="Titan",
+            names=Names("Titan"),
             diameter_km=None,
             first_obs=None,
             activity={
@@ -972,7 +1044,7 @@ class TestRadiationCollection:
             NotableObject(
                 object_id=body,
                 wikidata_qid=None,
-                fallback_name=body,
+                names=Names(body),
                 diameter_km=None,
                 first_obs=None,
                 radiation=row,
@@ -1026,7 +1098,13 @@ class TestRadiationCollection:
         """Three of seven, which is the page's first fact. Venus, Io and Europa
         carry published figures that are somebody's transport code."""
         stats = _radiation_stats(self._members(), self.PLACES)
-        assert stats.radiation_measured == ["naif-301", "naif-399", "naif-499"]
+        measured = ("naif-301", "naif-399", "naif-499")
+        assert stats.radiation_measured_refs == [
+            {"name": body, "primary_type": "object", "primary_id": body}
+            for body in measured
+        ]
+        # Deployed clients join the names for the tooltip.
+        assert stats.radiation_measured == list(measured)
 
     def test_the_quietest_card_carries_what_the_chart_cannot(self) -> None:
         """Venus's bar is zero pixels wide against the Moon's."""

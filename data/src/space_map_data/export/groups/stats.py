@@ -62,8 +62,11 @@ class GroupExtraStats:
     deepest_ocean: dict | None = None
     # Volcanism: the bodies caught in the act, by name. A list rather than a
     # count because four is few enough that a reader wants to know which, and
-    # the card puts them in its tooltip.
+    # the card puts them in its tooltip. `erupting_now` holds their global
+    # names, as deployed clients read it. `erupting_now_refs` links them, as
+    # {primary_type, primary_id, name}.
     erupting_now: list[str] | None = None
+    erupting_now_refs: list[dict] | None = None
     # Volcanism / Tidal heating: the body losing the most heat, as
     # {primary_type, primary_id, name, watts}. Io on both, for one reason.
     hottest_body: dict | None = None
@@ -89,9 +92,12 @@ class GroupExtraStats:
     tide_dominant_count: int | None = None
     # Radiation: members a dosimeter has actually been landed on and read out
     # as a dose to a body, by name. Three of seven, and the card names them
-    # because the state of the subject is the page's first fact — everything
-    # else here is a transport code's output.
+    # because the state of the subject is the page's first fact. Everything
+    # else here is a transport code's output. `radiation_measured` holds their
+    # global names, as deployed clients read it. `radiation_measured_refs`
+    # links them, as {primary_type, primary_id, name}.
     radiation_measured: list[str] | None = None
+    radiation_measured_refs: list[dict] | None = None
     # Radiation: the least irradiated surface, as {..., sv_per_day}. Venus,
     # nine orders below Earth's ground under a hundred thousand g/cm² of CO₂.
     # The chart cannot show it — its bar is zero pixels against the Moon's.

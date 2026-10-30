@@ -10,6 +10,7 @@ brightest other stars of the family, which the extrasolar export picks.
 import json
 import logging
 from collections import defaultdict
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from functools import partial
@@ -32,9 +33,9 @@ from space_map_data.export.groups.family_pages import (
     served_metadata,
     sitelink_rank,
 )
+from space_map_data.export.names import Names, ObjectNames
 from space_map_data.export.notable import NotableObject
 from space_map_data.export.objects.stars import PREFIX, StarObject
-from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.extrasolar.families import of_spectral_type
 from space_map_data.extrasolar.tables import METADATA
 from space_map_data.utils.content_stamp import content_stamp
@@ -66,7 +67,7 @@ def served_families_stamp(extrasolar_dir: Path = EXTRASOLAR_DIR) -> dict | None:
 
 def build_star_family_groups(
     star_objects: list[StarObject],
-    wikidata_entities: WikidataEntityCache,
+    names: ObjectNames,
     extrasolar_dir: Path = EXTRASOLAR_DIR,
     sun: NotableObject | None = None,
 ) -> FamilyGroups:
@@ -89,7 +90,7 @@ def build_star_family_groups(
             reader,
             [entry["slug"] for entry in listed],
             star_objects,
-            wikidata_entities,
+            names,
             sun,
         )
 
@@ -117,7 +118,7 @@ def _notable_stars(
     reader: ExportReader,
     bits: list[str],
     star_objects: list[StarObject],
-    wikidata_entities: WikidataEntityCache,
+    names: ObjectNames,
     sun: NotableObject | None,
 ) -> dict[str, list[NotableObject]]:
     """The stars that each family but the root lists. A published family
@@ -126,6 +127,7 @@ def _notable_stars(
     The stars with a Wikipedia article and the Sun come first, most sitelinks
     first. The brightest other stars of the family fill the rest of the list
     (`_add_brightest`)."""
+    wikidata_entities = names.entities
     entries = {star.id: star for star in star_objects}
     stars = {id_: star for id_, star in entries.items() if star.qid}
     rows = reader.rows(METADATA.slug, sorted(stars), ["families"])
@@ -135,19 +137,26 @@ def _notable_stars(
     rank = partial(sitelink_rank, wikidata_entities)
     with ThreadPoolExecutor(8) as pool:
         ranks = dict(zip(tagged, pool.map(rank, [stars[id_].qid for id_ in tagged])))
-    ranked = [
+
+    def member(id_: int, sitelinks: int) -> NotableObject:
+        return NotableObject(
+            object_id=f"{PREFIX}{id_}",
+            wikidata_qid=stars[id_].qid,
+            names=names.star(stars[id_]),
+            diameter_km=None,
+            first_obs=None,
+            extrasolar=True,
+            sitelinks_count=sitelinks,
+        )
+
+    # A star gets its names only when a list takes it: the names read its
+    # item into the shared LRU, and most tagged stars are in no list.
+    ranked: list[tuple[int, int, str, Callable[[], NotableObject]]] = [
         (
             sitelinks,
             rows[id_]["families"],
-            NotableObject(
-                object_id=f"{PREFIX}{id_}",
-                wikidata_qid=stars[id_].qid,
-                fallback_name=stars[id_].name,
-                diameter_km=None,
-                first_obs=None,
-                extrasolar=True,
-                sitelinks_count=sitelinks,
-            ),
+            f"{PREFIX}{id_}",
+            partial(member, id_, sitelinks),
         )
         for id_, (sitelinks, article) in ranks.items()
         if article
@@ -156,10 +165,12 @@ def _notable_stars(
         sitelinks, _ = object_sitelink_rank(wikidata_entities, sun.wikidata_qid)
         families = set(of_spectral_type(SUN_SPECTRAL_TYPE))
         mask = sum(1 << bit for bit, family in enumerate(bits) if family in families)
-        ranked.append((sitelinks, mask, replace(sun, sitelinks_count=sitelinks)))
-    ranked.sort(key=lambda each: (-each[0], each[2].object_id))
+        listed_sun = replace(sun, sitelinks_count=sitelinks)
+        ranked.append((sitelinks, mask, sun.object_id, lambda: listed_sun))
+    ranked.sort(key=lambda each: (-each[0], each[2]))
     out: dict[str, list[NotableObject]] = defaultdict(list)
-    for _, mask, member in ranked:
+    for _, mask, _, make in ranked:
+        found = None
         for bit, family in enumerate(bits):
             # Every star with a family is in the root, so its list would only
             # be the best-known stars.
@@ -167,8 +178,10 @@ def _notable_stars(
                 continue
             members = out[PAGES.slug(family)]
             if mask >> bit & 1 and len(members) < LISTED_STARS:
-                members.append(member)
-    _add_brightest(reader, out, entries)
+                if found is None:
+                    found = make()
+                members.append(found)
+    _add_brightest(reader, out, entries, names)
     return {slug: members for slug, members in out.items() if members}
 
 
@@ -176,10 +189,11 @@ def _add_brightest(
     reader: ExportReader,
     out: dict[str, list[NotableObject]],
     entries: dict[int, StarObject],
+    names: ObjectNames,
 ) -> None:
     """Fill each list up to LISTED_STARS with the brightest stars of its
-    family in FAMILIES_FILE that it does not list yet. A star takes the name
-    of its Metadata row, as its own page does."""
+    family in FAMILIES_FILE that it does not list yet. A star with no entry
+    takes the name of its Metadata row, as its own page does."""
     brightest = json.loads(families_file(reader.root).read_text())["brightest"]
     published = {
         entry["slug"]: entry["published"] for entry in reader.metadata["families"]
@@ -200,7 +214,11 @@ def _add_brightest(
                 NotableObject(
                     object_id=object_id,
                     wikidata_qid=found.qid if found else None,
-                    fallback_name=star["name"] or str(star["id"]),
+                    names=(
+                        names.star(found)
+                        if found
+                        else Names(star["name"] or str(star["id"]))
+                    ),
                     diameter_km=None,
                     first_obs=None,
                     extrasolar=True,

@@ -7,12 +7,13 @@ from pathlib import Path
 import pytest
 from sqlalchemy.orm import Session
 
+from space_map_data.export.names import ObjectNames
 from space_map_data.export.notable import CraftModel
 from space_map_data.export.objects import probe_targets
 from space_map_data.export.objects.probe_targets import attach_system_probes
 from space_map_data.export.objects.writer import ChunkObjectData
-from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.models.object import Object, ObjectType
+from tests.conftest import EntityStub
 
 
 @pytest.fixture
@@ -140,7 +141,7 @@ def chunk() -> ChunkObjectData:
 def test_system_lists_every_members_probes(
     session: Session, events: None, chunk: ChunkObjectData
 ) -> None:
-    attach_system_probes(session, chunk, WikidataEntityCache())
+    attach_system_probes(session, chunk, ObjectNames(EntityStub(), session))
     mars = chunk.global_data["naif-4"]
     assert mars["probe_count"] == 2
     # Latest arrival first, as the per-body lists are.
@@ -150,7 +151,7 @@ def test_system_lists_every_members_probes(
 def test_row_names_the_bodies_it_reached(
     session: Session, events: None, chunk: ChunkObjectData
 ) -> None:
-    attach_system_probes(session, chunk, WikidataEntityCache())
+    attach_system_probes(session, chunk, ObjectNames(EntityStub(), session))
     both = chunk.global_data["naif-4"]["probes"][1]
     assert both["visits"] == [
         {
@@ -174,7 +175,7 @@ def test_barycenter_keeps_the_probes_that_target_it(
     session: Session, events: None, chunk: ChunkObjectData
 ) -> None:
     """Earth-Moon L2 craft name NAIF 3, which is the system, not a body in it."""
-    attach_system_probes(session, chunk, WikidataEntityCache())
+    attach_system_probes(session, chunk, ObjectNames(EntityStub(), session))
     earth_moon = chunk.global_data["naif-3"]
     assert [p["id"] for p in earth_moon["probes"]] == ["probe-3"]
     assert earth_moon["probes"][0]["visits"][0]["id"] == "naif-3"
@@ -183,7 +184,7 @@ def test_barycenter_keeps_the_probes_that_target_it(
 def test_a_system_nothing_reached_gets_no_list(
     session: Session, events: None, chunk: ChunkObjectData
 ) -> None:
-    attach_system_probes(session, chunk, WikidataEntityCache())
+    attach_system_probes(session, chunk, ObjectNames(EntityStub(), session))
     assert "probes" not in chunk.global_data["naif-499"]
 
 
@@ -194,7 +195,7 @@ def test_rows_carry_the_craft_mesh(
     attach_system_probes(
         session,
         chunk,
-        WikidataEntityCache(),
+        ObjectNames(EntityStub(), session),
         {"probe-2": CraftModel("viking-orbiter", 3.3, 3.3)},
     )
     rows = {p["id"]: p for p in chunk.global_data["naif-4"]["probes"]}

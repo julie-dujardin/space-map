@@ -8,9 +8,9 @@ from space_map_data.export.groups import bundles as bundles_mod
 from space_map_data.export.groups.bundles import (
     MEMBER_GALLERY_COUNT,
     MEMBER_GALLERY_IMAGES,
-    GallerySubject,
     _member_galleries,
 )
+from space_map_data.export.names import Names
 from space_map_data.export.notable import NotableObject
 
 
@@ -22,7 +22,7 @@ def _notable(object_id: str, **kwargs) -> NotableObject:
     return NotableObject(
         object_id=object_id,
         wikidata_qid=None,
-        fallback_name=object_id,
+        names=Names(object_id),
         diameter_km=None,
         first_obs=None,
         **kwargs,
@@ -130,7 +130,7 @@ class TestMemberGalleries:
 
     def test_a_shelf_carries_its_subject_name(self, pool):
         pool["m"] = [_image("M.jpg")]
-        subjects = {"m": GallerySubject("Meteosat-8", "Q42")}
+        subjects = {"m": Names("Meteosat-8")}
         out = _member_galleries(None, None, ["m"], subjects)
         assert out is not None
         assert out[0]["name"] == "Meteosat-8"

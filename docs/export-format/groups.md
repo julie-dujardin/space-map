@@ -48,7 +48,8 @@ shared by group `notable_members` and object `notable_moons`:
 
 ```typescript
 interface NotableEntry {
-  name: string;                     // English Wikidata label (matching object bundles), or the DB fallback name
+  name: string;                     // global name from `export/names.py`, as on the member's own page; on `cat-satellite-systems` the planet's name, kept for deployed clients, which add " system" themselves
+  system_name?: string;             // `cat-satellite-systems` only: the global name of the system's page ("Jupiter system"); per-language names in LocalizedGroupData.member_system_names
   id?: string;                      // full Object.id; route /<type>/<id> (e.g. spkid-2000004, naif-502). Absent on group entries
   group?: string;                   // group slug; route /g/<slug> instead of an object (featured constellations in notable_satellites)
   feature_id?: number;              // IAU feature id (feature_type groups); `id` holds the host body — route /<type>/<id>/f/<feature_id>. Label/description overrides key on "<id>:<feature_id>"
@@ -65,7 +66,7 @@ interface NotableEntry {
   first_obs?: string;               // discovery proxy — YYYY-MM-DD or YYYY (members only; moons omit it). On a `probes` entry it is the probe's launch date; on an exoplanet, its discovery year (YYYY)
   visits?: {                        // `probes` entries only: the members this probe reached, latest arrival first, uncapped
     id: string;                     // member Object.id; per-language label overrides in LocalizedGroupData.body_names
-    name: string;                   // English Object.name
+    name: string;                   // the member's global name (`export/names.py`)
     arrival: string;                // ISO date of the first event at that member
     end?: string;                   // departure or end of mission there; absent while the visit is ongoing
   }[];
@@ -294,10 +295,10 @@ interface GlobalGroupData {
   // SBDB; the major-body categories rank the PCK radii the renderer uses and
   // report 2 × the mean of the three axes.
   largest_body?: {
-    name: string;        // SBDB full_name (fallback: name, pdes, spkid) or Object.name
+    name: string;        // the body's global name (`export/names.py`); per-language names in LocalizedGroupData.body_names, keyed by Object.id
     diameter_km: number; // equivalent-sphere diameter
-    primary_type: "spkid" | "object";  // "object" ids are whole; spkid ones need the prefix
-    primary_id: string;  // SBDB.spkid → /o/spkid-<id>, or Object.id → /<type>/<id>
+    primary_type: "object";
+    primary_id: string;  // Object.id → /<type>/<id>, also for a small body (Ceres is naif-2000001)
   };
 
   // PHA member count for orbit_class groups and the Asteroids category;
@@ -375,13 +376,13 @@ interface GlobalGroupData {
   // gazetteer doesn't use still gets a page, with these fields absent.
   body_count?: number;                        // Distinct bodies carrying this feature type
   feature_bodies?: {                          // Bar-chart rows, most features first — every body the type appears on (paginated)
-    name: string;                             // English Object.name; per-language overrides in LocalizedGroupData.body_names
+    name: string;                             // the body's global name (`export/names.py`); per-language overrides in LocalizedGroupData.body_names
     n: number;                                // Features of this type on that body
     primary_type: "object";
     primary_id: string;                       // Object.id; route /<type>/<id>
   }[];
   largest_feature?: {                         // Biggest example by IAU diameter; absent when none is measured
-    name: string;                             // IAU feature name
+    name: string;                             // IAU feature name in the IAU spelling (`export/names.py`); other languages in LocalizedGroupData.largest_feature_name
     diameter_km: number;
     primary_type: string;                     // host body id type ("naif")
     primary_id: string;                       // host body id value; route /<type>/<id>/f/<secondary_id>
@@ -451,15 +452,14 @@ interface GlobalGroupData {
   // puts here: first the planets with a Wikipedia article in one of the
   // site's languages, most sitelinks first (so the Solar System planets
   // lead); then other planets of the family, nearest host first (hosts with
-  // no distance last). An exoplanet (`id` = `x-<host>-b-<n>`) has the names
-  // of its page: the `name` of its planet record, and in
-  // `notable_member_names` the localized names of its object entry, not its
-  // Wikidata labels; it takes its Wikidata entity and pictures from that
-  // entry, and without one it has no thumbnail. It has `diameter_km` when its
-  // radius is measured (no estimate, no limit, no assumed value) and
-  // `first_obs` when it has a discovery year. A Solar System planet (`id` =
-  // `naif-<n>99`) is the entry of the `cat-planets` lineup, with its
-  // Wikidata labels. `galleries` has a shelf for each listed planet that has
+  // no distance last). Each planet has the names of its page
+  // (`export/names.py`): `name`, and `notable_member_names` where a language
+  // differs. An exoplanet (`id` = `x-<host>-b-<n>`) takes its Wikidata entity
+  // and pictures from its object entry, and without one it has no thumbnail.
+  // It has `diameter_km` when its radius is measured (no estimate, no limit,
+  // no assumed value) and `first_obs` when it has a discovery year. A Solar
+  // System planet (`id` = `naif-<n>99`) is the entry of the `cat-planets`
+  // lineup. `galleries` has a shelf for each listed planet that has
   // pictures. `child_groups` (localized) lists the families it contains that
   // have planets, most planets first. There is no root family: a family
   // without a parent family has `cat-planets` in `parent_families`, and
@@ -480,7 +480,7 @@ interface GlobalGroupData {
   solar_member_count?: number;       // 8
   exoplanet_count?: number;          // served exoplanets of the IAU class planet
   largest_planet?: {                 // the largest measured radius (no estimate, no limit) whose error bars are within 10% of it; a Solar System planet always qualifies
-    primary_type: "object"; primary_id: string; name: string;  // id `naif-<n>99` or `x-<host>-b-<n>`; name is the global one
+    primary_type: "object"; primary_id: string; name: string;  // id `naif-<n>99` or `x-<host>-b-<n>`; name is the global one (`export/names.py`), other languages in LocalizedGroupData.body_names
     radius_earth: number;            // R⊕, 4 significant digits
   };
   most_massive_planet?: {            // the largest measured mass (no estimate, no limit) whose error bars are within 10% of it
@@ -533,10 +533,13 @@ interface GlobalGroupData {
   // cat-oceans — the thickest one. Not what the chart ranks by: that is volume, which a
   // large cold moon wins on area as much as on depth.
   deepest_ocean?: { name: string; thickness_km: number; primary_type: "object"; primary_id: string };
-  erupting_now?: string[];          // cat-volcanism — the bodies caught in the act, by name.
-                                    // A list rather than a count: four is few enough that a
-                                    // reader wants to know which, and the card names them in
-                                    // its tooltip.
+  // cat-volcanism — the bodies caught in the act, sorted by name. A list rather than a
+  // count: four is few enough that a reader wants to know which, and the card names them in
+  // its tooltip. `erupting_now` holds their global names, as deployed clients read it;
+  // `erupting_now_refs` links them, in the same order. Each is a member of the page, so
+  // `notable_member_names` localizes both.
+  erupting_now?: string[];
+  erupting_now_refs?: { name: string; primary_type: "object"; primary_id: string }[];
   known_centres?: number;           // cat-volcanism — vents, edifices and thermal sources
                                     // anyone has mapped, summed over the members. What counts
                                     // as one is each survey's definition, not ours.
@@ -557,10 +560,13 @@ interface GlobalGroupData {
   most_tilted_field?: { name: string; degrees: number; primary_type: "object"; primary_id: string };
   tide_dominant_count?: number;     // cat-tidal-heating — members whose heat budget the tide
                                     // *is*, rather than contributes to
-  radiation_measured?: string[];    // cat-radiation — members a dosimeter has been landed on and
-                                    // read out as a dose to a body, by name. Three of seven,
-                                    // which is the page's first fact; everything else is a
-                                    // transport code's output. The card names them in its tooltip.
+  // cat-radiation — members a dosimeter has been landed on and read out as a dose to a body,
+  // sorted by name. Three of seven, which is the page's first fact; everything else is a
+  // transport code's output. The card names them in its tooltip. `radiation_measured` holds
+  // their global names, as deployed clients read it; `radiation_measured_refs` links them, in
+  // the same order. `notable_member_names` localizes both.
+  radiation_measured?: string[];
+  radiation_measured_refs?: { name: string; primary_type: "object"; primary_id: string }[];
   // cat-radiation — the least irradiated surface. The chart cannot show it: Venus is nine decades
   // under the Moon, so its bar is zero pixels wide and this card is where its figure reads.
   quietest_surface?: { name: string; sv_per_day: number; primary_type: "object"; primary_id: string };
@@ -636,7 +642,8 @@ typically lands in the 1000–1100 range. Source:
 ```typescript
 interface OrbitClassSample {
   slug: string;        // class-<OrbitClass.name>, e.g. "class-Main-belt"
-  name: string;        // SBDB full_name → name → pdes fallback
+  name: string;        // global name of the body's page (`export/names.py`)
+  names?: Record<string, string>; // its name by language where it differs from `name`; absent when none does
   a: number | null;    // Semi-major axis [AU]; null for parabolic (e = 1) comets
   e: number;           // Eccentricity
   q: number;           // Perihelion distance [AU]
@@ -670,7 +677,8 @@ small bodies — the frontend tints the rest from its shared palette.
 interface SolarSystemMapObject {
   id: string;          // Object.id — routing/focus id and localized-name key
   qid: string | null;  // Wikidata QID
-  name: string;        // English fallback; frontend prefers the localized label
+  name: string;        // global name (`export/names.py`)
+  names?: Record<string, string>; // lang → name, only where it differs from `name`
   kind: 'star' | 'planet' | 'dwarf' | 'asteroid' | 'moon';
   a: number;           // Semi-major axis [AU] — log x (moons inherit their planet's)
   i: number;           // Inclination to ecliptic [deg] — vertical offset (0 for moons)
@@ -747,7 +755,8 @@ Source data:
 ```typescript
 interface EarthOrbitSample {
   slug: string;                  // Shape class slug, e.g. "class-LEO"
-  name: string;                  // SATCAT OBJECT_NAME → Object.name fallback
+  name: string;                  // global name of the sat's page (`export/names.py`)
+  names?: Record<string, string>; // its name by language where it differs from `name`; absent when none does
   perigee_km: number;            // km above Earth surface
   apogee_km: number;             // km above Earth surface
   inclination_deg: number | null; // deg; null when no GP row
@@ -787,7 +796,7 @@ tier.
 
 ```typescript
 interface LocalizedGroupData {
-  name?: string;                      // Localized Wikidata label. Categories use a hand-set plural; orbit_class groups omit it (frontend uses `orbit_class_<NAME>` i18n keys, keeping IMB/MBA/OMB distinct).
+  name?: string;                      // Localized Wikidata label. Categories use a hand-set plural; orbit_class groups omit it (frontend uses `orbit_class_<NAME>` i18n keys, keeping IMB/MBA/OMB distinct). A mission page and a split-comet page have the names that the probes and the fragments that link to them carry (`mission`, `fragment_of` in objects.md), in every language.
   description?: string;
   wikipedia?: { extract?: string; description?: string; url?: string };
   operators?: EntityRef[];            // Constellation operators (constants, not Wikidata P137); link to /g/org-<slug>
@@ -800,10 +809,12 @@ interface LocalizedGroupData {
   variant_refs?: Record<string, EntityRef>;  // lv-<slug> only: GCAT variant name (from the global `variants` list) → its Wikipedia ref, for variants matched to a more-specific Wikidata entity than the family. The breakdown keeps the GCAT name as its label and uses this only for the per-variant link; absent for family-level / unmatched variants.
   reusable_vehicle_refs?: Record<string, EntityRef>;  // lv-<slug> only: reusable-vehicle name (from `reusable_vehicles`) → its Wikipedia ref. Shuttle orbiters resolve; Falcon cores have no article so are absent (shown as serial + count).
   pad_refs?: Record<string, EntityRef>;       // site-<slug> only: GCAT pad code (from `gcat_sites[].pads[].code`) → its Wikipedia ref, for the merged pad chart. Keyed across the whole range, so it survives the chart merging the GCAT sites away. The chart keeps the GCAT code as its label and uses this only for the link: a pad's Wikipedia title is often the parent complex's (Wallops' eight LA2 launcher rows are one article), and coverage outside en/de/ru is thin — `he` has none at all.
-  notable_member_names?: Record<string, string>; // notable-member Object.id → localized label, only where it differs from the global name (feature members key on "<body id>:<feature_id>"); also covers `solar_members` on cat-planets
+  notable_member_names?: Record<string, string>; // notable-member Object.id → localized label, only where it differs from the global name (feature members key on "<body id>:<feature_id>"); also covers `solar_members` on cat-planets. On `cat-satellite-systems` the planets' names, kept for deployed clients
+  member_system_names?: Record<string, string>;  // `cat-satellite-systems` only: member Object.id → the name of the system's page in this language, only where it differs from `system_name`
   exoplanets?: { name?: string; description?: string; wikipedia?: { extract?: string; description?: string; url?: string } }; // cat-planets only: the label, description and Wikipedia text of `exoplanets_qid` in this language, for the Exoplanets tab
   probe_names?: Record<string, string>;       // `probes` entry Object.id → localized label, only where it differs from the global name
-  body_names?: Record<string, string>;        // Object.id → localized body label: `feature_bodies` rows on ft-<slug>, `probe_targets` rows on cat-probes, and the members each `probes` entry names in `visits`
+  body_names?: Record<string, string>;        // Object.id → name in this language where it differs from the global one (`export/names.py`): `feature_bodies` rows on ft-<slug>, `moon_counts` rows on cat-moons, `probe_targets` rows on cat-probes, the body of `largest_body`, the planets of `largest_planet` and `most_massive_planet` on cat-planets, and the members each `probes` entry names in `visits`
+  largest_feature_name?: string;              // the name of `largest_feature` in this language, where it differs from the global one
 }
 ```
 

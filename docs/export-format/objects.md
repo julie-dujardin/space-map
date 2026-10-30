@@ -449,7 +449,11 @@ interface GlobalObjectData {
   // Present on each fragment object (a `<pdes>-<letters>` body): the comet it
   // broke off, for the "Fragment of <parent>" stat card + breadcrumb. Points
   // at the parent's object page when the intact body is catalogued, else at
-  // the synthetic split-comet group page (primary_type "group").
+  // the synthetic split-comet group page (primary_type "group"). `name` is the
+  // global name of that page: the parent's names, else the labels of the
+  // comet's Wikidata item (from a fragment's item or the designation match
+  // files), else a fragment's name without its letters. The group page names
+  // itself the same way. Other languages: LocalizedObjectData.link_names.
   fragment_of?: {
     name: string;
     primary_type: "object" | "group";
@@ -462,6 +466,10 @@ interface GlobalObjectData {
   // member carries `part_of_mission`. Both link to the /g/mission-<slug> page,
   // whose `primary` redirect (see GlobalGroupData) focuses the primary probe.
   // Per-language label overrides: LocalizedObjectData.mission_member_names.
+  // The link has the global name of the mission page (`names.mission`): the
+  // labels of the mission's Wikidata item, else the names of its primary
+  // craft. The group page names itself the same way. Other languages:
+  // LocalizedObjectData.link_names.
   mission?: { name: string; primary_type: "group"; primary_id: string };
   mission_members?: NotableEntry[];
   mission_member_count?: number;

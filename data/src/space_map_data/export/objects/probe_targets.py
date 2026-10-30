@@ -28,6 +28,7 @@ from dataclasses import dataclass, replace
 from sqlalchemy.orm import Session
 
 from space_map_data.constants.providers import LANGUAGES
+from space_map_data.export.names import Names, ObjectNames
 from space_map_data.export.notable import (
     CraftModel,
     NotableObject,
@@ -35,7 +36,6 @@ from space_map_data.export.notable import (
     notable_names,
 )
 from space_map_data.export.objects.writer import ChunkObjectData
-from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.models.object.main import Object, ObjectType
 from space_map_data.probes.events import target_object_ids
 from space_map_data.probes.landing_events import EVENTS_DIR
@@ -217,7 +217,9 @@ def _launch_date(inception_mjd: int | None) -> str | None:
     return (_MJD_ZERO + datetime.timedelta(days=int(inception_mjd))).isoformat()
 
 
-def build_probe_targets(known_ids: set[str]) -> dict[str, list[NotableObject]]:
+def build_probe_targets(
+    known_ids: set[str], names: ObjectNames
+) -> dict[str, list[NotableObject]]:
     """Body object id → its probes, latest arrival first. Probes missing from
     the registry have no object of their own and are dropped; a target whose
     no candidate id is in ``known_ids`` keeps its first candidate, so the
@@ -245,7 +247,7 @@ def build_probe_targets(known_ids: set[str]) -> dict[str, list[NotableObject]]:
             NotableObject(
                 object_id=f"probe-{r['probe_id']}",
                 wikidata_qid=r.get("wikidata_qid"),
-                fallback_name=r.get("name") or f"probe-{r['probe_id']}",
+                names=names.probe(r),
                 diameter_km=None,
                 first_obs=launch(r),
                 visit=visits[int(r["probe_id"])],
@@ -263,7 +265,7 @@ def build_probe_targets(known_ids: set[str]) -> dict[str, list[NotableObject]]:
 
 def attach_probe_targets(
     chunk: ChunkObjectData,
-    wikidata_entities: WikidataEntityCache,
+    names: ObjectNames,
     craft_models: dict[str, CraftModel] | None = None,
 ) -> None:
     """Inject ``probes``/``probe_count`` (+ localized ``probe_names``) onto
@@ -272,21 +274,21 @@ def attach_probe_targets(
     place."""
     attached = 0
     missing: list[str] = []
-    for body_id, probes in build_probe_targets(set(chunk.global_data)).items():
+    for body_id, probes in build_probe_targets(set(chunk.global_data), names).items():
         global_data = chunk.global_data.get(body_id)
         if global_data is None:
             missing.append(body_id)
             continue
-        entries = notable_entries(probes, wikidata_entities, craft_models=craft_models)
+        entries = notable_entries(probes, craft_models=craft_models)
         global_data["probes"] = entries
         global_data["probe_count"] = len(entries)
         for lang in LANGUAGES:
             localized = chunk.localized_data.get(lang, {}).get(body_id)
             if localized is None:
                 continue
-            names = notable_names(probes, entries, lang, wikidata_entities)
-            if names:
-                localized["probe_names"] = names
+            probe_names = notable_names(probes, lang)
+            if probe_names:
+                localized["probe_names"] = probe_names
         attached += 1
     logger.info(
         "Attached probes to %d bodies; %d targets without a bundle: %s",
@@ -296,8 +298,10 @@ def attach_probe_targets(
     )
 
 
-def _system_members(session: Session) -> dict[str, dict[str, str]]:
-    """Planetary system barycenter id -> {member object id: English name}.
+def _system_members(
+    session: Session, names: ObjectNames
+) -> dict[str, dict[str, Names]]:
+    """Planetary system barycenter id -> {member object id: its names}.
 
     Members are the barycenter itself, its dominant planet and every moon
     hanging off either — the same set the system map draws, plus the
@@ -307,27 +311,27 @@ def _system_members(session: Session) -> dict[str, dict[str, str]]:
         f"naif-{n}": f"naif-{n}99" for n in range(1, 10)
     }  # SPICE convention, matching the frontend's `dominantPlanetId`
     rows = {
-        row.id: row.name or row.id
-        for row in session.query(Object.id, Object.name, Object.parent_id).filter(
+        object_id: names.object(object_id)
+        for (object_id,) in session.query(Object.id).filter(
             Object.id.in_(set(barycenters) | set(barycenters.values()))
         )
     }
     moons = (
-        session.query(Object.id, Object.name, Object.parent_id)
+        session.query(Object.id, Object.parent_id)
         .filter(
             Object.object_type == ObjectType.moon,
             Object.parent_id.in_(set(barycenters) | set(barycenters.values())),
         )
         .all()
     )
-    out: dict[str, dict[str, str]] = {}
+    out: dict[str, dict[str, Names]] = {}
     for bary_id, primary_id in barycenters.items():
         if bary_id not in rows:
             continue
         members = {mid: rows[mid] for mid in (bary_id, primary_id) if mid in rows}
         for moon in moons:
             if moon.parent_id in (bary_id, primary_id):
-                members[moon.id] = moon.name or moon.id
+                members[moon.id] = names.object(moon.id)
         out[bary_id] = members
     return out
 
@@ -335,7 +339,7 @@ def _system_members(session: Session) -> dict[str, dict[str, str]]:
 def attach_system_probes(
     session: Session,
     chunk: ChunkObjectData,
-    wikidata_entities: WikidataEntityCache,
+    names: ObjectNames,
     craft_models: dict[str, CraftModel] | None = None,
 ) -> None:
     """Inject ``probes``/``probe_count`` onto each planetary system's
@@ -350,15 +354,15 @@ def attach_system_probes(
     call, as a collection's rows do: one probe rarely did the same thing at
     all of them.
     """
-    by_target = build_probe_targets(set(chunk.global_data))
+    by_target = build_probe_targets(set(chunk.global_data), names)
     attached: dict[str, int] = {}
-    for bary_id, members in _system_members(session).items():
+    for bary_id, members in _system_members(session, names).items():
         global_data = chunk.global_data.get(bary_id)
         if global_data is None:
             continue
         rows: dict[str, NotableObject] = {}
         visits: dict[str, list[dict]] = {}
-        for member_id, member_name in members.items():
+        for member_id, member_names in members.items():
             for probe in by_target.get(member_id, []):
                 rows.setdefault(probe.object_id, probe)
                 dates = {
@@ -367,7 +371,7 @@ def attach_system_probes(
                     if k in ("arrival", "end")
                 }
                 visits.setdefault(probe.object_id, []).append(
-                    {"id": member_id, "name": member_name, **dates}
+                    {"id": member_id, "name": member_names.name, **dates}
                 )
         if not rows:
             continue
@@ -382,7 +386,7 @@ def attach_system_probes(
         probes = [
             replace(rows[probe_id], visit=None, visits=v) for probe_id, v in ordered
         ]
-        entries = notable_entries(probes, wikidata_entities, craft_models=craft_models)
+        entries = notable_entries(probes, craft_models=craft_models)
         global_data["probes"] = entries
         global_data["probe_count"] = len(entries)
         attached[bary_id] = len(entries)
@@ -390,16 +394,13 @@ def attach_system_probes(
             localized = chunk.localized_data.get(lang, {}).get(bary_id)
             if localized is None:
                 continue
-            if names := notable_names(probes, entries, lang, wikidata_entities):
-                localized["probe_names"] = names
-            # The bodies each row names, in this language — read off the members'
-            # own bundles rather than Wikidata, which already localized them.
+            if probe_names := notable_names(probes, lang):
+                localized["probe_names"] = probe_names
+            # The bodies each row names, in this language.
             body_names = {
                 member_id: name
                 for member_id in {v["id"] for vs in visits.values() for v in vs}
-                if (member := chunk.localized_data[lang].get(member_id))
-                and (name := member.get("name"))
-                and name != members[member_id]
+                if (name := members[member_id].get(lang)) != members[member_id].name
             }
             if body_names:
                 localized["body_names"] = body_names

@@ -38,16 +38,17 @@ def attach_notable_features(
             missing.append(body_id)
             continue
         members = rank_notable_features(
-            [(feature_sitelinks(f, wikidata_entities), f) for f in features]
+            [(feature_sitelinks(f, wikidata_entities), f) for f in features],
+            wikidata_entities,
         )
-        entries = notable_entries(members, wikidata_entities)
+        entries = notable_entries(members)
         global_data["feature_count"] = len(features)
         global_data["notable_features"] = entries
         for lang in LANGUAGES:
             localized = chunk.localized_data.get(lang, {}).get(body_id)
             if localized is None:
                 continue
-            names = notable_names(members, entries, lang, wikidata_entities)
+            names = notable_names(members, lang)
             if names:
                 localized["notable_feature_names"] = names
         attached += 1

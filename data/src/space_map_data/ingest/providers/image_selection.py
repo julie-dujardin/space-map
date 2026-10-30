@@ -42,7 +42,7 @@ from space_map_data.export.groups.registry import (
     GROUPS,
     GroupCategory,
 )
-from space_map_data.export.objects.missions import build_probe_missions
+from space_map_data.export.objects.missions import mission_items
 from space_map_data.export.objects.stars import PlanetObject, read_extrasolar_objects
 from space_map_data.extrasolar.registry import NoRegistry
 from space_map_data.models.feature import Feature
@@ -162,8 +162,8 @@ def ingest() -> None:
         for g in GROUPS
         if g.wikidata_qid and not g.slug.startswith(COUNTRY_SLUG_PREFIX)
     ]
-    missions = build_probe_missions()
-    groups += [(m.slug, m.mission_qid) for m in missions]
+    missions = mission_items()
+    groups += missions
     groups += [
         (category_tab_key(slug, tab), qid)
         for slug, tabs in CATEGORY_TAB_PAGES.items()
@@ -174,7 +174,7 @@ def ingest() -> None:
         for g in GROUPS
         if g.applies_to in _SCHEMATIC_GROUP_CATEGORIES
         or g.slug in _SCHEMATIC_CATEGORY_SLUGS
-    } | {m.slug for m in missions}
+    } | {slug for slug, _ in missions}
     group_selections = _select_for_qids(
         groups,
         metadata_cache,

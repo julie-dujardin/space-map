@@ -12,9 +12,15 @@ from space_map_data.export.groups.probe_targets import (
     build_group_probes,
     build_probe_target_chart,
 )
+from space_map_data.export.names import ObjectNames
 from space_map_data.export.objects import probe_targets
 from space_map_data.models.object import Object, ObjectType
 from space_map_data.models.object.sbdb import SBDB, OrbitClass
+from tests.conftest import EntityStub
+
+
+def _names(session: Session) -> ObjectNames:
+    return ObjectNames(EntityStub(), session)
 
 
 @pytest.fixture
@@ -92,7 +98,7 @@ def events(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_rows_rank_by_probes_then_sitelinks(session: Session, events: None) -> None:
-    rows = build_probe_target_chart(session).rows
+    rows = build_probe_target_chart(session, _names(session)).rows
     # Moon and Mars tie at two probes; the Moon's sitelinks break it. The
     # single-visit tail has none, so it falls back to the name.
     assert [(r["name"], r["n"]) for r in rows] == [
@@ -108,7 +114,9 @@ def test_rows_rank_by_probes_then_sitelinks(session: Session, events: None) -> N
 def test_libration_points_link_to_their_collection(
     session: Session, events: None
 ) -> None:
-    rows = {r["name"]: r for r in build_probe_target_chart(session).rows}
+    rows = {
+        r["name"]: r for r in build_probe_target_chart(session, _names(session)).rows
+    }
     assert rows["Sun-Earth L2"]["primary_type"] == "group"
     assert rows["Sun-Earth L2"]["primary_id"] == "class-EL2"
     # NAIF 3 resolves to the Earth-Moon barycenter, which is not where the
@@ -116,8 +124,13 @@ def test_libration_points_link_to_their_collection(
     assert "primary_id" not in rows["Earth-Moon L2"]
 
 
-def test_qids_cover_the_linked_rows(session: Session, events: None) -> None:
-    assert build_probe_target_chart(session).qids == {"naif-499": "Q111"}
+def test_names_cover_the_linked_rows(session: Session, events: None) -> None:
+    chart = build_probe_target_chart(session, _names(session))
+    assert {k: v.name for k, v in chart.names.items()} == {
+        "naif-499": "Mars",
+        "naif-301": "Moon",
+        "spkid-120065803": "Dimorphos",
+    }
 
 
 @pytest.fixture
@@ -224,8 +237,8 @@ def small_body_events(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
 def test_collections_list_the_probes_sent_to_their_members(
     small_bodies: Session, small_body_events: None
 ) -> None:
-    probes = build_group_probes(small_bodies).probes
-    assert {slug: [p.fallback_name for p in rows] for slug, rows in probes.items()} == {
+    probes = build_group_probes(small_bodies, _names(small_bodies)).probes
+    assert {slug: [p.names.name for p in rows] for slug, rows in probes.items()} == {
         "class-MBA": ["Probe 1"],
         "class-JFc": ["Probe 2"],
         "cat-asteroids": ["Probe 1"],
@@ -238,7 +251,7 @@ def test_collections_list_the_probes_sent_to_their_members(
 def test_a_probe_carries_every_member_it_reached_latest_first(
     small_bodies: Session, small_body_events: None
 ) -> None:
-    (dawn,) = build_group_probes(small_bodies).probes["class-MBA"]
+    (dawn,) = build_group_probes(small_bodies, _names(small_bodies)).probes["class-MBA"]
     assert dawn.visits == [
         # The probe is not alive, so its last event at Ceres closes the visit.
         {
@@ -263,15 +276,16 @@ def test_a_split_comet_family_lists_its_fragments_probes(
     small_bodies: Session, small_body_events: None
 ) -> None:
     probes = build_group_probes(
-        small_bodies, {"spkid-1000093": "comet-family-1993-f2"}
+        small_bodies, _names(small_bodies), {"spkid-1000093": "comet-family-1993-f2"}
     ).probes
-    assert [p.fallback_name for p in probes["comet-family-1993-f2"]] == ["Probe 2"]
+    assert [p.names.name for p in probes["comet-family-1993-f2"]] == ["Probe 2"]
 
 
-def test_target_qids_localize_the_bodies_a_row_names(
+def test_target_names_localize_the_bodies_a_row_names(
     small_bodies: Session, small_body_events: None
 ) -> None:
-    # Only Vesta has a Wikidata entity to localize from.
-    assert build_group_probes(small_bodies).qids["class-MBA"] == {
-        "spkid-20000004": "Q3030"
+    names = build_group_probes(small_bodies, _names(small_bodies)).names
+    assert {k: v.name for k, v in names["class-MBA"].items()} == {
+        "spkid-20000001": "1 Ceres",
+        "spkid-20000004": "4 Vesta",
     }

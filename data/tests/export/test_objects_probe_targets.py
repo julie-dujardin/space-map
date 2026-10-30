@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from space_map_data.export.names import ObjectNames
 from space_map_data.export.objects import probe_targets
 from space_map_data.export.objects.probe_targets import (
     build_probe_targets,
@@ -138,8 +139,10 @@ def test_target_ids_follow_horizons_convention() -> None:
     assert target_object_ids(120065803) == ("spkid-120065803",)
 
 
-def test_probes_per_body_once_latest_first(events: None) -> None:
-    targets = build_probe_targets({"naif-499", "naif-2000433"})
+def test_probes_per_body_once_latest_first(
+    events: None, object_names: ObjectNames
+) -> None:
+    targets = build_probe_targets({"naif-499", "naif-2000433"}, object_names)
     mars = targets["naif-499"]
     assert [p.object_id for p in mars] == ["probe-2", "probe-1"]
     assert mars[1].first_obs == "1941-01-06"
@@ -152,8 +155,8 @@ def test_probes_per_body_once_latest_first(events: None) -> None:
     assert "naif-199" not in targets
 
 
-def test_visit_kind_and_dates(events: None) -> None:
-    targets = build_probe_targets({"naif-499", "naif-2000433"})
+def test_visit_kind_and_dates(events: None, object_names: ObjectNames) -> None:
+    targets = build_probe_targets({"naif-499", "naif-2000433"}, object_names)
     later, earlier = targets["naif-499"]
     # A flyby is a single day.
     assert earlier.visit == {
@@ -175,10 +178,12 @@ def test_visit_kind_and_dates(events: None) -> None:
     }
 
 
-def test_observation_is_an_observer_visit(events: None) -> None:
+def test_observation_is_an_observer_visit(
+    events: None, object_names: ObjectNames
+) -> None:
     # A recovered contact loss is not an end, and the campaign's own end_date
     # beats the probe's later mission_end.
-    sun = build_probe_targets({"naif-10"})["naif-10"]
+    sun = build_probe_targets({"naif-10"}, object_names)["naif-10"]
     assert [p.object_id for p in sun] == ["probe-3"]
     assert sun[0].visit == {
         "kind": "observer",

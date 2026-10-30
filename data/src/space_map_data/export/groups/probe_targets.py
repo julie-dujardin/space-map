@@ -25,6 +25,7 @@ from space_map_data.export.groups.registry import (
     CLASS_SLUG_PREFIX,
     SMALL_BODY_FLAG_SLUG_PREFIX,
 )
+from space_map_data.export.names import Names, ObjectNames
 from space_map_data.export.notable import NotableObject
 from space_map_data.export.objects.probe_targets import (
     build_probe_targets,
@@ -46,10 +47,10 @@ _LAGRANGE_GROUPS = {
 LAGRANGE_ZONE_SLUGS: frozenset[str] = frozenset(_LAGRANGE_GROUPS.values())
 
 
-def build_lagrange_zones() -> dict[str, list[NotableObject]]:
+def build_lagrange_zones(names: ObjectNames) -> dict[str, list[NotableObject]]:
     """Zone slug -> its probes, latest arrival first, for every Sun-Earth
     libration zone (empty when nothing targets it)."""
-    by_target = build_probe_targets(set())
+    by_target = build_probe_targets(set(), names)
     zones = {
         slug: by_target.get(f"naif-{naif}", [])
         for naif, slug in _LAGRANGE_GROUPS.items()
@@ -63,14 +64,14 @@ def build_lagrange_zones() -> dict[str, list[NotableObject]]:
 
 @dataclass
 class ProbeTargetChart:
-    """Bar-chart rows, plus the QIDs their labels localize from."""
+    """Bar-chart rows, plus the names their labels localize from."""
 
     rows: list[dict] = field(default_factory=list)
-    # Object id -> Wikidata QID, for the localized row labels.
-    qids: dict[str, str] = field(default_factory=dict)
+    # Object id -> its names, for the localized row labels.
+    names: dict[str, Names] = field(default_factory=dict)
 
 
-def build_probe_target_chart(session: Session) -> ProbeTargetChart:
+def build_probe_target_chart(session: Session, names: ObjectNames) -> ProbeTargetChart:
     """Probes per target, most-visited first, ties by sitelink count."""
     index = read_target_index()
     candidates = {naif: target_object_ids(naif) for naif in index.events}
@@ -78,9 +79,7 @@ def build_probe_target_chart(session: Session) -> ProbeTargetChart:
         row.id: row
         for row in session.query(
             Object.id,
-            Object.name,
             Object.object_type,
-            Object.wikidata_qid,
             Object.sitelinks_count,
         )
         .filter(Object.id.in_({c for ids in candidates.values() for c in ids}))
@@ -88,7 +87,7 @@ def build_probe_target_chart(session: Session) -> ProbeTargetChart:
     }
 
     ranked: list[tuple[int, dict]] = []
-    qids: dict[str, str] = {}
+    row_names: dict[str, Names] = {}
     unplaced: list[str] = []
     for naif, by_probe in index.events.items():
         # A barycenter is never the destination: the Earth-Moon L2 events
@@ -105,11 +104,10 @@ def build_probe_target_chart(session: Session) -> ProbeTargetChart:
         name = index.names.get(naif) or f"naif-{naif}"
         row = {"name": name, "n": len(by_probe)}
         if body is not None:
-            row["name"] = body.name or name
+            row_names[body.id] = names.object(body.id)
+            row["name"] = row_names[body.id].name
             row["primary_type"] = "object"
             row["primary_id"] = body.id
-            if body.wikidata_qid:
-                qids[body.id] = body.wikidata_qid
         elif group_slug := _LAGRANGE_GROUPS.get(naif):
             row["primary_type"] = "group"
             row["primary_id"] = group_slug
@@ -126,17 +124,17 @@ def build_probe_target_chart(session: Session) -> ProbeTargetChart:
         len(unplaced),
         ", ".join(sorted(unplaced)) if unplaced else "[]",
     )
-    return ProbeTargetChart(rows=rows, qids=qids)
+    return ProbeTargetChart(rows=rows, names=row_names)
 
 
 @dataclass
 class GroupProbes:
-    """Per-collection probe lists, plus the QIDs their target labels localize
+    """Per-collection probe lists, plus the names their target labels localize
     from (the same ``body_names`` map the per-body charts fill)."""
 
     probes: dict[str, list[NotableObject]] = field(default_factory=dict)
-    # Group slug -> {target object id: Wikidata QID}.
-    qids: dict[str, dict[str, str]] = field(default_factory=dict)
+    # Group slug -> {target object id: its names}.
+    names: dict[str, dict[str, Names]] = field(default_factory=dict)
 
 
 def _collection_slugs(
@@ -158,7 +156,7 @@ def _collection_slugs(
 
 
 def build_group_probes(
-    session: Session, family_slugs: dict[str, str] | None = None
+    session: Session, names: ObjectNames, family_slugs: dict[str, str] | None = None
 ) -> GroupProbes:
     """Collection slug -> the probes sent to any of its members, latest arrival
     first.
@@ -170,14 +168,12 @@ def build_group_probes(
     """
     index = read_target_index()
     bodies = {
-        row.id: row
-        for row in session.query(Object.id, Object.name, Object.wikidata_qid)
-        .filter(
+        object_id
+        for (object_id,) in session.query(Object.id).filter(
             Object.id.in_({c for naif in index.events for c in target_object_ids(naif)})
         )
-        .all()
     }
-    by_target = build_probe_targets(set(bodies))
+    by_target = build_probe_targets(bodies, names)
     small_bodies = {
         object_id: (orbit_class, neo, pha)
         for object_id, orbit_class, neo, pha in session.query(
@@ -194,7 +190,7 @@ def build_group_probes(
         classification = small_bodies.get(body_id)
         if classification is None:
             continue
-        body = bodies[body_id]
+        body = names.object(body_id)
         for slug in _collection_slugs(
             *classification, (family_slugs or {}).get(body_id)
         ):
@@ -209,9 +205,8 @@ def build_group_probes(
                 }
                 visits_by_slug.setdefault(slug, {}).setdefault(
                     probe.object_id, []
-                ).append({"id": body_id, "name": body.name or body_id, **dates})
-            if body.wikidata_qid:
-                out.qids.setdefault(slug, {})[body_id] = body.wikidata_qid
+                ).append({"id": body_id, "name": body.name, **dates})
+            out.names.setdefault(slug, {})[body_id] = body
 
     for slug, by_probe in visits_by_slug.items():
         ordered = sorted(

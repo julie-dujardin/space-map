@@ -101,19 +101,19 @@ class TestAttachNotableFeatures:
         ]
 
     def test_localized_names_land_only_where_the_body_has_an_entry(self):
-        chunk = _chunk("naif-301", langs=("fr",))
-        entities = _entities({"Q1": {"en": "Tycho", "fr": "Tycho (cratère)"}})
+        chunk = _chunk("naif-301", langs=("ja",))
+        entities = _entities({"Q1": {"en": "Tycho", "ja": "ティコ"}})
         attach_notable_features(
             chunk,
             {"naif-301": [_feature(7, name="Tycho", wikidata_qid="Q1")]},
             entities,
         )
 
-        assert chunk.localized_data["fr"]["naif-301"]["notable_feature_names"] == {
-            "naif-301:7": "Tycho (cratère)"
+        assert chunk.localized_data["ja"]["naif-301"]["notable_feature_names"] == {
+            "naif-301:7": "ティコ"
         }
-        # No `ja` entry for this body → nothing to attach, and no crash.
-        assert "naif-301" not in chunk.localized_data["ja"]
+        # No `ru` entry for this body → nothing to attach, and no crash.
+        assert "naif-301" not in chunk.localized_data["ru"]
 
     def test_caps_the_notable_list(self):
         chunk = _chunk("naif-301")

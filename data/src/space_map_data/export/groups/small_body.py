@@ -27,13 +27,13 @@ from space_map_data.export.groups.registry import (
     CLASS_SLUG_PREFIX,
     SMALL_BODY_FLAG_SLUG_PREFIX,
 )
+from space_map_data.export.names import Names, ObjectNames
 from space_map_data.export.notable import NotableObject, render_geometry
 from space_map_data.export.quantities import UnitConverter
 from space_map_data.export.small_body_color import (
     albedo_beyond_hex,
     resolve_small_body_color,
 )
-from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.models.object.main import Object, OrbitalSource
 from space_map_data.models.object.sbdb import SBDB, CometPrefix, OrbitClass
 
@@ -56,7 +56,7 @@ class OrbitClassSample:
     """One scatter-plot point for the orbit-class chart."""
 
     slug: str  # class-<OrbitClass.name>
-    name: str
+    names: Names  # the names of the body's page
     a: float | None  # AU; None for parabolic comets (e = 1)
     e: float
     q: float  # AU; perihelion, always defined
@@ -67,17 +67,14 @@ class OrbitClassSample:
 
 @dataclass
 class LargestBody:
-    """The biggest member of a group, by diameter.
+    """The biggest member of a group, by diameter. Small-body groups measure
+    SBDB diameters, the solar-system categories rank PCK radii."""
 
-    ``primary_type`` routes the card: small-body groups measure SBDB diameters
-    and link by spkid, the solar-system categories rank PCK radii and link the
-    NAIF body.
-    """
-
-    name: str
+    names: Names
     diameter_km: float
-    primary_id: str
-    primary_type: str = "spkid"
+    # The page id of the body: the card links it, and it keys the localized
+    # names.
+    object_id: str
 
 
 @dataclass
@@ -131,7 +128,7 @@ def _allocate_samples(
 
 
 def _sample_orbit_class(
-    session: Session, cls: OrbitClass, n: int
+    session: Session, names: ObjectNames, cls: OrbitClass, n: int
 ) -> list[OrbitClassSample]:
     """Pick ``n`` deterministic samples from one orbit class.
 
@@ -141,9 +138,7 @@ def _sample_orbit_class(
     """
     rows = (
         session.query(
-            SBDB.full_name,
-            SBDB.name,
-            SBDB.pdes,
+            SBDB.object_id,
             SBDB.a,
             SBDB.e,
             SBDB.q,
@@ -160,10 +155,11 @@ def _sample_orbit_class(
         .all()
     )
     slug = f"{CLASS_SLUG_PREFIX}{cls.name}"
+    found = names.objects(row.object_id for row in rows)
     return [
         OrbitClassSample(
             slug=slug,
-            name=full_name or name or pdes or "",
+            names=found[object_id],
             a=a,
             e=e,
             q=q,
@@ -171,21 +167,22 @@ def _sample_orbit_class(
             neo=bool(neo),
             pha=bool(pha),
         )
-        for (full_name, name, pdes, a, e, q, i, neo, pha) in rows
+        for (object_id, a, e, q, i, neo, pha) in rows
     ]
 
 
 def build_orbit_class_samples(
-    session: Session, class_counts: dict[OrbitClass, int]
+    session: Session, names: ObjectNames, class_counts: dict[OrbitClass, int]
 ) -> list[OrbitClassSample]:
-    """Pick a representative scatter sample for every non-empty orbit class."""
+    """Pick a representative scatter sample for every non-empty orbit class.
+    Each dot has the names of its body's page."""
     allocation = _allocate_samples(class_counts)
     samples: list[OrbitClassSample] = []
     short_falls: list[tuple[str, int, int]] = []
     for cls, n in allocation.items():
         if n == 0:
             continue
-        class_samples = _sample_orbit_class(session, cls, n)
+        class_samples = _sample_orbit_class(session, names, cls, n)
         samples.extend(class_samples)
         if len(class_samples) < n:
             short_falls.append((cls.name, n, len(class_samples)))
@@ -204,14 +201,16 @@ def build_orbit_class_samples(
     return samples
 
 
-def _largest_body(session: Session, *filter_clauses) -> LargestBody | None:
+def _largest_body(
+    session: Session, names: ObjectNames, *filter_clauses
+) -> LargestBody | None:
     """Largest ``diameter`` matching the filters; ``None`` if nothing has one.
 
     Skips the orbital-source clause so SPICE-routed dwarf planets (Ceres,
     Pluto, …) still count.
     """
     row = (
-        session.query(SBDB.full_name, SBDB.name, SBDB.pdes, SBDB.spkid, SBDB.diameter)
+        session.query(SBDB.object_id, SBDB.diameter)
         .join(Object, Object.id == SBDB.object_id)
         .filter(SBDB.prefix.is_distinct_from(CometPrefix.D))
         .filter(SBDB.diameter.is_not(None))
@@ -222,22 +221,18 @@ def _largest_body(session: Session, *filter_clauses) -> LargestBody | None:
     )
     if row is None:
         return None
-    full_name, name, pdes, spkid, diameter = row
-    if spkid is None:
-        return None
+    object_id, diameter = row
     return LargestBody(
-        name=full_name or name or pdes or spkid,
-        diameter_km=diameter,
-        primary_id=spkid,
+        names=names.object(object_id), diameter_km=diameter, object_id=object_id
     )
 
 
 def _notable_members(
     session: Session,
+    names: ObjectNames,
     *filter_clauses,
     radii: dict[int, dict] | None = None,
     units: UnitConverter | None = None,
-    wikidata_entities: WikidataEntityCache | None = None,
     poles: dict[int, dict] | None = None,
 ) -> list[NotableObject]:
     """Top members by (has image, sitelinks, diameter, brightness).
@@ -249,7 +244,7 @@ def _notable_members(
     planets (Ceres, Pluto, …) still rank. spkid tiebreak keeps the selection
     deterministic across exports.
 
-    ``radii``/``units``/``wikidata_entities`` resolve each member's render size
+    ``radii``/``units`` and the Wikidata items resolve each member's render size
     (PCK triaxial radii or the Wikidata-radius override) so the lineup hero
     sizes dwarf planets the same way the 3D scene does. ``poles`` gives the
     PCK dwarfs (Ceres in MBA, Pluto in TNO) the same axial tilt they get on the
@@ -260,10 +255,6 @@ def _notable_members(
             Object.id,
             Object.naif_id,
             Object.wikidata_qid,
-            Object.name,
-            SBDB.full_name,
-            SBDB.name,
-            SBDB.pdes,
             SBDB.spkid,
             SBDB.diameter,
             SBDB.first_obs,
@@ -292,10 +283,6 @@ def _notable_members(
             object_id,
             naif_id,
             qid,
-            obj_name,
-            full_name,
-            sbdb_name,
-            pdes,
             spkid,
             diameter,
             first_obs,
@@ -303,13 +290,13 @@ def _notable_members(
             spec_b,
             spec_t,
         ) = row
-        geo = render_geometry(naif_id, qid, radii, units, wikidata_entities, poles)
+        geo = render_geometry(naif_id, qid, radii, units, names.entities, poles)
         surface = resolve_small_body_color(object_id, spkid, spec_b or spec_t, albedo)
         members.append(
             NotableObject(
                 object_id=object_id,
                 wikidata_qid=qid,
-                fallback_name=obj_name or full_name or sbdb_name or pdes or str(spkid),
+                names=names.object(object_id),
                 diameter_km=diameter,
                 first_obs=first_obs,
                 radii=geo.radii,
@@ -328,9 +315,9 @@ def _notable_members(
 
 def build_small_body_group_stats(
     session: Session,
+    names: ObjectNames,
     radii: dict[int, dict] | None = None,
     units: UnitConverter | None = None,
-    wikidata_entities: WikidataEntityCache | None = None,
     poles: dict[int, dict] | None = None,
 ) -> SmallBodyGroupStats:
     """Return member counts and discovery-year histograms per small-body group.
@@ -338,8 +325,8 @@ def build_small_body_group_stats(
     All aggregation runs in SQL — the function pulls only summary rows
     (~5k for class×year histograms, ~200 each for NEO/PHA). Rows lacking a
     parseable year are excluded from histograms but still count toward
-    ``member_counts``. ``radii``/``units``/``wikidata_entities``/``poles``
-    give notable members their render size + tilt for the lineup hero.
+    ``member_counts``. ``radii``/``units``/``poles`` give notable members
+    their render size + tilt for the lineup hero.
     """
     base = (
         session.query(SBDB)
@@ -444,13 +431,13 @@ def build_small_body_group_stats(
 
     largest_bodies: dict[str, LargestBody] = {}
     for cls in class_counts:
-        body = _largest_body(session, SBDB.class_ == cls)
+        body = _largest_body(session, names, SBDB.class_ == cls)
         if body is not None:
             largest_bodies[f"{CLASS_SLUG_PREFIX}{cls.name}"] = body
-    neo_largest = _largest_body(session, SBDB.neo.is_(True))
+    neo_largest = _largest_body(session, names, SBDB.neo.is_(True))
     if neo_largest is not None:
         largest_bodies[f"{SMALL_BODY_FLAG_SLUG_PREFIX}neo"] = neo_largest
-    pha_largest = _largest_body(session, SBDB.pha.is_(True))
+    pha_largest = _largest_body(session, names, SBDB.pha.is_(True))
     if pha_largest is not None:
         largest_bodies[f"{SMALL_BODY_FLAG_SLUG_PREFIX}pha"] = pha_largest
 
@@ -483,30 +470,30 @@ def build_small_body_group_stats(
     for cls in class_counts:
         members = _notable_members(
             session,
+            names,
             SBDB.class_ == cls,
             radii=radii,
             units=units,
-            wikidata_entities=wikidata_entities,
             poles=poles,
         )
         if members:
             notable_members[f"{CLASS_SLUG_PREFIX}{cls.name}"] = members
     neo_notable = _notable_members(
         session,
+        names,
         SBDB.neo.is_(True),
         radii=radii,
         units=units,
-        wikidata_entities=wikidata_entities,
         poles=poles,
     )
     if neo_notable:
         notable_members[f"{SMALL_BODY_FLAG_SLUG_PREFIX}neo"] = neo_notable
     pha_notable = _notable_members(
         session,
+        names,
         SBDB.pha.is_(True),
         radii=radii,
         units=units,
-        wikidata_entities=wikidata_entities,
         poles=poles,
     )
     if pha_notable:
@@ -524,7 +511,7 @@ def build_small_body_group_stats(
         len(largest_bodies),
         len(notable_members),
     )
-    orbit_samples = build_orbit_class_samples(session, class_counts)
+    orbit_samples = build_orbit_class_samples(session, names, class_counts)
     return SmallBodyGroupStats(
         member_counts=member_counts,
         named_counts=named_counts,
@@ -547,7 +534,7 @@ def write_orbit_samples(out_dir: Path, samples: list[OrbitClassSample]) -> None:
         "samples": [
             {
                 "slug": s.slug,
-                "name": s.name,
+                "name": s.names.name,
                 "a": s.a,
                 "e": s.e,
                 "q": s.q,
@@ -555,6 +542,7 @@ def write_orbit_samples(out_dir: Path, samples: list[OrbitClassSample]) -> None:
                 "neo": s.neo,
                 "pha": s.pha,
             }
+            | ({"names": names} if (names := s.names.overrides()) else {})
             for s in samples
         ],
     }

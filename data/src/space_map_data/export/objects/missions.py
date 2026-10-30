@@ -5,6 +5,7 @@ row with ``primary_qid`` + ``mission_slug`` and each sibling **member** with
 ``primary_probe_id``. The member gets ``part_of_mission``; the primary gets
 ``mission`` + a ranked ``mission_members`` strip + ``mission_member_count``.
 Both link to the mission group page, whose focus resolves to the primary probe.
+The links and the page take the names of the mission from ``names.mission``.
 """
 
 import datetime
@@ -12,9 +13,9 @@ import logging
 from dataclasses import dataclass, field
 
 from space_map_data.constants.providers import LANGUAGES
+from space_map_data.export.names import Names, ObjectNames
 from space_map_data.export.notable import NotableObject, notable_entries, notable_names
 from space_map_data.export.objects.writer import ChunkObjectData
-from space_map_data.export.wikidata import WikidataEntityCache, entity_label
 from space_map_data.probes.events import ProbeStatus, events_by_probe_id
 from space_map_data.probes.probe_id import load_registry
 
@@ -31,6 +32,7 @@ class ProbeMission:
 
     slug: str  # full /g/ slug, e.g. "mission-viking-2"
     mission_qid: str  # the mission's Wikidata QID
+    names: Names  # the names of the mission page
     primary_object_id: str  # "probe-<primary_probe_id>"
     primary: NotableObject
     members: list[NotableObject] = field(default_factory=list)  # siblings, ranked
@@ -56,23 +58,31 @@ def probe_launch_year(inception_mjd: int | None) -> int | None:
     return (_MJD_ZERO + datetime.timedelta(days=int(inception_mjd))).year
 
 
-def _notable(entry: dict) -> NotableObject:
-    probe_id = entry["probe_id"]
+def _notable(entry: dict, names: ObjectNames) -> NotableObject:
     return NotableObject(
-        object_id=f"probe-{probe_id}",
+        object_id=f"probe-{entry['probe_id']}",
         wikidata_qid=entry.get("wikidata_qid"),
-        fallback_name=entry.get("name") or f"probe-{probe_id}",
+        names=names.probe(entry),
         diameter_km=None,
         first_obs=None,
     )
 
 
-def build_probe_missions() -> list[ProbeMission]:
+def mission_items() -> list[tuple[str, str]]:
+    """The group slug and the Wikidata QID of each mission."""
+    return [
+        (f"{MISSION_SLUG_PREFIX}{entry['mission_slug']}", entry["primary_qid"])
+        for entry in load_registry()
+        if entry.get("primary_qid") and entry.get("mission_slug")
+    ]
+
+
+def build_probe_missions(names: ObjectNames) -> list[ProbeMission]:
     """Group registry rows into missions, keyed off each primary's mission_slug.
 
     A mission needs both ``primary_qid`` and ``mission_slug`` on its primary
     row; members are the rows whose ``primary_probe_id`` points at it. Members
-    are ranked by Wikidata-label presence then fallback name for a stable strip.
+    are ranked by Wikidata-label presence then registry name for a stable strip.
     """
     registry = load_registry()
     statuses = events_by_probe_id()
@@ -98,13 +108,15 @@ def build_probe_missions() -> list[ProbeMission]:
         curated = statuses.get(int(entry["probe_id"]))
         if curated is None:
             unmatched.append(entry.get("name") or slug)
+        primary = _notable(entry, names)
         missions.append(
             ProbeMission(
                 slug=f"{MISSION_SLUG_PREFIX}{slug}",
                 mission_qid=qid,
+                names=names.mission(qid, primary.names),
                 primary_object_id=f"probe-{entry['probe_id']}",
-                primary=_notable(entry),
-                members=[_notable(r) for r in member_rows],
+                primary=primary,
+                members=[_notable(r, names) for r in member_rows],
                 launch_year=probe_launch_year(entry.get("inception_mjd")),
                 status=_mission_status(curated.status if curated else None),
             )
@@ -120,32 +132,23 @@ def build_probe_missions() -> list[ProbeMission]:
     return missions
 
 
-def _mission_name(
-    mission_qid: str, fallback: str, wikidata_entities: WikidataEntityCache
-) -> str:
-    return entity_label(wikidata_entities.get_entity(mission_qid), "en") or fallback
-
-
-def attach_probe_missions(
-    chunk: ChunkObjectData,
-    wikidata_entities: WikidataEntityCache,
-) -> None:
+def attach_probe_missions(chunk: ChunkObjectData, missions: list[ProbeMission]) -> None:
     """Inject ``mission``/``mission_members`` onto primaries and
     ``part_of_mission`` onto each member. Mutates ``chunk`` in place."""
-    missions = build_probe_missions()
     primaries_done = 0
     members_done = 0
     for mission in missions:
-        name = _mission_name(
-            mission.mission_qid, mission.primary.fallback_name, wikidata_entities
-        )
         # Primary and members both link to the mission group page.
-        link = {"name": name, "primary_type": "group", "primary_id": mission.slug}
+        link = {
+            "name": mission.names.name,
+            "primary_type": "group",
+            "primary_id": mission.slug,
+        }
 
         primary_global = chunk.global_data.get(mission.primary_object_id)
         if primary_global is not None:
             primary_global["mission"] = link
-            entries = notable_entries(mission.members, wikidata_entities)
+            entries = notable_entries(mission.members)
             if entries:
                 primary_global["mission_members"] = entries
                 primary_global["mission_member_count"] = len(mission.members)
@@ -155,11 +158,9 @@ def attach_probe_missions(
                     )
                     if localized is None:
                         continue
-                    names = notable_names(
-                        mission.members, entries, lang, wikidata_entities
-                    )
-                    if names:
-                        localized["mission_member_names"] = names
+                    member_names = notable_names(mission.members, lang)
+                    if member_names:
+                        localized["mission_member_names"] = member_names
             primaries_done += 1
 
         for member in mission.members:

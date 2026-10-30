@@ -4,6 +4,7 @@ Shared by the ``ft-`` type pages and each body's own Features tab so both list
 the same features in the same order.
 """
 
+from space_map_data.export.names import feature_names
 from space_map_data.export.notable import NotableObject
 from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.models.feature import Feature
@@ -20,7 +21,9 @@ def feature_sitelinks(feature: Feature, wikidata_entities: WikidataEntityCache) 
 
 
 def rank_notable_features(
-    features: list[tuple[int, Feature]], limit: int = NOTABLE_FEATURES
+    features: list[tuple[int, Feature]],
+    wikidata_entities: WikidataEntityCache,
+    limit: int = NOTABLE_FEATURES,
 ) -> list[NotableObject]:
     """Top features from ``(sitelinks, feature)`` pairs, most prominent first.
 
@@ -35,7 +38,7 @@ def rank_notable_features(
         NotableObject(
             object_id=f.object_id or "",
             wikidata_qid=f.wikidata_qid,
-            fallback_name=f.name,
+            names=feature_names(f, wikidata_entities),
             diameter_km=f.diameter or None,
             first_obs=f.approval_date.isoformat() if f.approval_date else None,
             feature_id=f.feature_id,
