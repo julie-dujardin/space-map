@@ -81,6 +81,9 @@ MEASURED, MINIMUM, ESTIMATED = 0, 1, 2
 PLOT_DIGITS = 4
 # The planet records give radii in Jupiter radii.
 JUPITER_DIAMETER_KM = 2 * JUPITER_RADIUS_CM / 1e5
+# A card shows no uncertainty, so its value has error bars within this
+# fraction of it.
+CARD_PRECISION = 0.1
 
 
 def served_planet_families_stamp(extrasolar_dir: Path = EXTRASOLAR_DIR) -> dict | None:
@@ -152,6 +155,8 @@ class _Planet:
     diameter_km: float | None = None
     # The discovery year, as YYYY.
     first_obs: str | None = None
+    # The values that a card can show: "mass", "radius".
+    precise: frozenset[str] = frozenset()
 
 
 def build_planet_family_groups(
@@ -249,6 +254,22 @@ def _planet(
         mass_kind={MEASURED: TRUE_MASS, MINIMUM: MINIMUM_MASS}.get(mass[1]),
         diameter_km=_round(diameter) if how == MEASURED else None,
         first_obs=None if year is None else str(year),
+        precise=frozenset(
+            name
+            for name in ("mass", "radius")
+            if body is not None or _precise(record, name)
+        ),
+    )
+
+
+def _precise(record: dict, name: str) -> bool:
+    """Whether both error bars of the value `name` are within CARD_PRECISION
+    of it."""
+    values = record["values"]
+    value = values.get(name)
+    errors = (values.get(f"{name}_error_upper"), values.get(f"{name}_error_lower"))
+    return value is not None and all(
+        e is not None and e <= CARD_PRECISION * value for e in errors
     )
 
 
@@ -388,14 +409,15 @@ def _planets_page(
         estimated_planet_count=sum(1 for p in planets if p.estimated_only),
         planet_family_count=sum(1 for n in member_counts.values() if n),
     )
-    # A card shows no uncertainty, so it takes a planet whose true mass is
-    # measured too: a radius alone can be a disk's glow (HD 100546 b).
+    # A wide error bar can hide a disk's glow (HD 100546 b, radius ±42%).
     largest = _largest(
-        [p for p in planets if p.mass[1] == MEASURED], "radius", lambda p: p.radius
+        [p for p in planets if "radius" in p.precise], "radius", lambda p: p.radius
     )
     if largest is not None:
         stats.largest_planet = largest
-    heaviest = _largest(planets, "mass", lambda p: p.mass)
+    heaviest = _largest(
+        [p for p in planets if "mass" in p.precise], "mass", lambda p: p.mass
+    )
     if heaviest is not None:
         stats.most_massive_planet = heaviest
     return PlanetsPage(

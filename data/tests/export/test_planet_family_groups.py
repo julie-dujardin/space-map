@@ -96,6 +96,10 @@ def _with_qid(row: dict, qid: str) -> dict:
     return row | {"cross_ids": [*row["cross_ids"], item]}
 
 
+def _errors(name: str, error: float) -> dict:
+    return {f"{name}_error_upper": error, f"{name}_error_lower": error}
+
+
 def _id(host: int, number: int) -> str:
     return f"x-{host}-b-{number}"
 
@@ -268,9 +272,23 @@ class TestPlanetsPage:
             tmp_path / "reg",
             [star(10.0, 5.0, 50.0, name="Near")],
             planets=[
-                _with_qid(planet(0, 1, radius=1.5), "Q1"),
-                planet(0, 2, mass=3.0, mass_kind="minimum", radius=2.0),
-                planet(0, 3, mass=12.0, radius=2.5, estimated=["radius"]),
+                _with_qid(planet(0, 1, radius=1.5, **_errors("radius", 0.1)), "Q1"),
+                planet(
+                    0,
+                    2,
+                    mass=3.0,
+                    mass_kind="minimum",
+                    radius=2.0,
+                    **_errors("radius", 0.5),
+                ),
+                planet(
+                    0,
+                    3,
+                    mass=12.0,
+                    radius=2.5,
+                    estimated=["radius"],
+                    **_errors("mass", 0.6),
+                ),
                 planet(0, 4, mass=0.01, limits=["mass<"], semi_major_axis=None),
                 planet(0, 5, mass=30.0, **{"class": "brown dwarf"}),
             ],
@@ -330,8 +348,8 @@ class TestPlanetsPage:
         assert "diameter_km" not in entries[4]
 
     def test_largest_and_most_massive(self, page):
-        """The largest measured radius of a planet with a measured true mass;
-        a minimum mass counts for the most massive and says so."""
+        """The largest measured value with error bars within 10% of it: planet
+        0 2 has a larger radius, ±25%."""
         ids, groups = page
         assert groups.planets.stats.largest_planet == {
             "primary_type": "object",

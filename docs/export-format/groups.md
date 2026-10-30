@@ -479,11 +479,11 @@ interface GlobalGroupData {
   solar_members?: NotableEntry[];    // the eight Solar System planets in heliocentric order, with the lineup fields (mass_kg, radii, pole, …); their localized names are in notable_member_names
   solar_member_count?: number;       // 8
   exoplanet_count?: number;          // served exoplanets of the IAU class planet
-  largest_planet?: {                 // the largest measured radius (no estimate, no limit) of a planet whose true mass is measured too
+  largest_planet?: {                 // the largest measured radius (no estimate, no limit) whose error bars are within 10% of it; a Solar System planet always qualifies
     primary_type: "object"; primary_id: string; name: string;  // id `naif-<n>99` or `x-<host>-b-<n>`; name is the global one
     radius_earth: number;            // R⊕, 4 significant digits
   };
-  most_massive_planet?: {            // the largest measured mass (no estimate, no limit) of any planet
+  most_massive_planet?: {            // the largest measured mass (no estimate, no limit) whose error bars are within 10% of it
     primary_type: "object"; primary_id: string; name: string;
     mass_earth: number;              // M⊕, 4 significant digits
     mass_kind: "true" | "minimum";   // a minimum mass (m sin i) is a lower bound
