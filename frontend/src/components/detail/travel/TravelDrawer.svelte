@@ -22,7 +22,7 @@
 	import { fetchObjectDetail, type GlobalObjectData } from '$lib/fetch/objects/object-data';
 	import { fetchGroupDetail } from '$lib/fetch/groups/details';
 	import { CAT_SOLAR_SYSTEM } from '$lib/fetch/groups/registry';
-	import type { TimelineEntry } from '$lib/travel/timeline';
+	import type { Timeline } from '$lib/travel/timeline';
 	import type { Hazard } from '$lib/travel/hazards';
 	import type { OrbitPreview } from '$lib/scene/objects/travel/orbit-preview';
 	import { withinValidity } from '$lib/math/orbit/offset';
@@ -79,8 +79,9 @@
 		onOptionsChange: (options: readonly LabelledPath[]) => void;
 		/** Which trajectory the reader is pointing at; null when none. */
 		onHoverChange: (id: string | null) => void;
-		/** The same trajectory as its legs, for the timeline under the map. */
-		onTimelineChange: (entries: TimelineEntry[] | null) => void;
+		/** The same trajectory as its legs and its end names, for the timeline
+		 *  under the map. */
+		onTimelineChange: (timeline: Timeline | null) => void;
 		/** What that trajectory puts the craft through, for the map to band it with. */
 		onHazardsChange: (hazards: readonly Hazard[]) => void;
 		/** The orbits the trip's ends are being met in, for the map to draw round

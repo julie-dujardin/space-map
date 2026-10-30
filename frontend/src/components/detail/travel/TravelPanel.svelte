@@ -91,10 +91,10 @@
 		type OrbitChoice
 	} from '$lib/travel/orbits';
 	import { activeFamily, familyOf, routeTabs, type RouteFamily } from '$lib/travel/route-families';
-	import { buildTimeline, type DrawnDates, type TimelineEntry } from '$lib/travel/timeline';
+	import { buildTimeline, type DrawnDates, type Timeline } from '$lib/travel/timeline';
 	import { routeHazards, type Hazard } from '$lib/travel/hazards';
 	import type { LabelledPath } from '$lib/travel/labelled-path';
-	import { formatAcceleration } from '$lib/travel/format';
+	import { formatAcceleration, formatTripDate } from '$lib/travel/format';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import InlineMenu from './InlineMenu.svelte';
 	import VehicleField from './VehicleField.svelte';
@@ -107,6 +107,7 @@
 	import RouteDetail from './RouteDetail.svelte';
 	import { endpointModeLabel, groundLabel } from './endpoint-labels';
 	import { hazardKey, routeKey, timelineKey } from './route-keys';
+	import { pastCalendarText, refusalText } from './route-blocked';
 
 	/** One end of the trip as the page describes it. Everything here comes from
 	 *  the URL and the catalogue; how the end is *met* is the panel's own. */
@@ -175,9 +176,9 @@
 		/** Which trajectory the reader is pointing at, by whichever end of the link
 		 *  they touched. Null when none. */
 		onHoverChange: (id: string | null) => void;
-		/** The same trajectory as the legs it is made of, for the timeline along the
-		 *  bottom of the map. */
-		onTimelineChange: (entries: TimelineEntry[] | null) => void;
+		/** The same trajectory as its legs and the names of its two ends, for the
+		 *  timeline along the bottom of the map. */
+		onTimelineChange: (timeline: Timeline | null) => void;
 		/** What the trajectory being read puts the craft through, for the map to band
 		 *  its arc with. Trajectory only — the craft's own reading of them stays in
 		 *  the detail. */
@@ -330,13 +331,12 @@
 		if (panel.vehicleId !== null && panel.vehicles.length === 0) void panel.loadVehicles();
 	});
 
-	// Only craft the trip could actually be flown with: able to leave the way it
-	// does, and — once a trajectory is being read — not priced out of it on Δv
-	// or endurance. A refusal to judge is not a no, so the unjudgeable stay. The
-	// chosen craft stays whatever it can do: hiding a selection would read as
-	// losing it.
+	// The picker shows the craft that can fly the trip. A craft must leave the way
+	// the trip does and have the Δv and endurance for the open route. A craft that
+	// cannot be judged stays. The chosen craft always stays, because a hidden
+	// selection looks lost.
 	let shownVehicles = $derived.by(() => {
-		const route = panel.selectedRoute;
+		const route = pickerRoute;
 		return panel.vehicles.filter((vehicle) => {
 			if (vehicle.id === panel.vehicleId) return true;
 			if (!canDepartFrom(vehicle, panel.departureMode)) return false;
@@ -358,6 +358,11 @@
 	);
 	let frame = $derived(transferFrame(plan));
 	let interstellar = $derived(plan?.kind === 'interstellar');
+
+	// The route the picker judges each craft against. Between stars each craft
+	// flies a route of its own, so the chosen craft's route says nothing about
+	// the others.
+	let pickerRoute = $derived(interstellar ? null : panel.selectedRoute);
 
 	/**
 	 * Which end a same-system transfer crosses to, when that end is measured
@@ -952,7 +957,10 @@
 			id,
 			path,
 			departure: { name: ends.origin.name ?? '', when: formatJulianDate(route.departJd) },
-			arrival: { name: ends.target.name ?? '', when: formatJulianDate(route.arriveJd) },
+			arrival: {
+				name: ends.target.name ?? '',
+				when: formatTripDate(route.arriveJd, route.departJd)
+			},
 			...offer
 		};
 	}
@@ -1110,6 +1118,13 @@
 
 	let hazardsByProfile = $state.raw<ReadonlyMap<RouteOption, Hazard[]>>(new Map());
 
+	// A row measures its chips again when it gets a new array, so a route that did
+	// not change keeps the array of the last scan. Without this, every row would
+	// flash while the cruise slider moves the custom arc. A change of context
+	// drops the arrays, because the same route can then read differently.
+	let hazardCache = new WeakMap<Route, Hazard[]>();
+	let hazardCacheContext: string | null = null;
+
 	$effect(() => {
 		const key = hazardsKey;
 		untrack(() => {
@@ -1126,9 +1141,19 @@
 				// scan needs the same candidates the search had to rebuild the second.
 				vias: assistBodies
 			};
+			const contextKey = [centerId, frame.orbit, panel.pricedRevision].join(';');
+			if (contextKey !== hazardCacheContext) {
+				hazardCache = new WeakMap();
+				hazardCacheContext = contextKey;
+			}
 			const next = new Map<RouteOption, Hazard[]>();
 			for (const choice of panel.offered) {
-				next.set(choice.profile, routeHazards(pathOrigin, pathTarget, choice.route, context));
+				let hazards = hazardCache.get(choice.route);
+				if (!hazards) {
+					hazards = routeHazards(pathOrigin, pathTarget, choice.route, context);
+					hazardCache.set(choice.route, hazards);
+				}
+				next.set(choice.profile, hazards);
 			}
 			hazardsByProfile = next;
 		});
@@ -1169,8 +1194,8 @@
 				onTimelineChange(null);
 				return;
 			}
-			onTimelineChange(
-				buildTimeline(
+			onTimelineChange({
+				entries: buildTimeline(
 					route,
 					(bodyId) => {
 						for (const role of ['origin', 'target'] as const) {
@@ -1181,8 +1206,9 @@
 					},
 					timelineBodies,
 					planDrawn
-				)
-			);
+				),
+				names: { origin: ends.origin.name ?? '', target: ends.target.name ?? '' }
+			});
 		});
 	});
 
@@ -1207,6 +1233,14 @@
 	let wantedFamily = $state<RouteFamily | null>(null);
 	let tabs = $derived(routeTabs(panel.offered, panel.assistSearching));
 	let family = $derived(activeFamily(tabs, wantedFamily));
+
+	// A crossing that ends past the last date that can be shown misses every
+	// deadline, and a longer coast only makes it later. So the note says that a
+	// date does not help, and the cruise slider is not offered.
+	let lateNote = $derived(
+		panel.crossingPastCalendar ? pastCalendarText() : m.travel_no_routes_by_date()
+	);
+	let cruiseRecovers = $derived(panel.lateCrossing === 'torch' && !panel.crossingPastCalendar);
 
 	// Opening a trajectory says which tab the reader is in as surely as picking
 	// one does — including a link that opened straight onto a swing-by, which
@@ -1330,7 +1364,7 @@
 					class="inline size-[1em] align-[-0.125em] rtl:rotate-180"
 					aria-hidden="true"
 				/>
-				{formatJulianDate(chosen.route.arriveJd)}
+				{formatTripDate(chosen.route.arriveJd, chosen.route.departJd)}
 			</p>
 		</div>
 
@@ -1441,7 +1475,7 @@
 					vehicles={shownVehicles}
 					loaded={panel.vehiclesReady}
 					selected={panel.vehicle}
-					route={panel.selectedRoute}
+					route={pickerRoute}
 					manifest={panel.manifest}
 					passengers={panel.passengers}
 					departureMode={panel.departureMode}
@@ -1491,24 +1525,30 @@
 				<!-- On the offer list rather than on `status`: a route can be withdrawn
 			     after a solve answered — a longer coast missing the deadline — and
 			     the panel still has to say so rather than go blank. -->
-				<!-- Which of the two nothings this is: the pair has no transfer at all, or
-			     it has them and they are all too slow for the date asked for. -->
+				<!-- One line says why there is no route. The craft cannot fly between the
+			     stars, every route arrives late, or the pair has no route. -->
 				<p class="text-muted-foreground text-xs">
-					{panel.missedDeadline ? m.travel_no_routes_by_date() : m.travel_no_routes()}
+					{panel.interstellarRefusal
+						? refusalText(panel.interstellarRefusal)
+						: panel.missedDeadline
+							? lateNote
+							: interstellar
+								? m.travel_no_interstellar_route()
+								: m.travel_no_routes()}
 				</p>
 				<!-- A coast long enough to miss the deadline is what took the arc off the
 			     list, so the control that did it has to outlive the list. -->
-				{#if panel.lateCrossing === 'torch'}<CruiseBox state={panel} />{/if}
+				{#if cruiseRecovers}<CruiseBox state={panel} />{/if}
 			{:else if panel.offered.length > 0}
 				<!-- Said above the list rather than instead of it: what is left when the
 			     search found nothing in time is a hand-picked point or a craft's own
 			     arc, and neither of them answers for the search. -->
 				{#if panel.missedDeadline}
-					<p class="text-muted-foreground text-xs">{m.travel_no_routes_by_date()}</p>
+					<p class="text-muted-foreground text-xs">{lateNote}</p>
 				{/if}
 				<!-- The arc is gone, so its tab is too, and the control that took it has
 			     nowhere left to live but over the list. -->
-				{#if panel.lateCrossing === 'torch'}<CruiseBox state={panel} />{/if}
+				{#if cruiseRecovers}<CruiseBox state={panel} />{/if}
 				<!-- One family of trajectory is on offer often enough — a chemical craft
 			     with no swing-by to be had — that a single tab would be a control
 			     with nothing to choose. -->

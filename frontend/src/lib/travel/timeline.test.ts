@@ -5,11 +5,17 @@ import { legSeconds } from './playback.svelte';
 import {
 	buildAssistRoute,
 	buildConstantThrustRoute,
+	buildInterstellarCruiseRoute,
+	buildInterstellarTorchRoute,
 	buildRoute,
 	hohmannTransferDays,
-	nextTransferWindows
+	nextTransferWindows,
+	type Route,
+	type SystemEnd
 } from '$lib/math/travel';
+import { G0_M_S2, GM_SUN_KM3_S2 } from '$lib/math/travel/constants';
 import { EARTH, J2000, JUPITER, MARS, VENUS } from '$lib/math/travel/test-fixtures';
+import { LIGHT_YEAR_KM } from '$lib/math/units';
 import { dateToJD } from '$lib/time/jd';
 
 const MARS_WINDOW = nextTransferWindows(EARTH, MARS, J2000, 1)[0];
@@ -246,6 +252,58 @@ describe('buildTimeline', () => {
 	});
 });
 
+describe('the timeline of a trip between stars', () => {
+	const FROM_EARTH: SystemEnd = {
+		body: EARTH,
+		starKm: [0, 0, 0],
+		starMu: GM_SUN_KM3_S2,
+		atStar: false
+	};
+	const PROXIMA: SystemEnd = {
+		body: {
+			id: 'x-27424668',
+			mu: 0.122 * GM_SUN_KM3_S2,
+			muEstimated: true,
+			radiusKm: 100_000,
+			elements: { a: 0, e: 0, i: 0, om: 0, w: 0, ma: 0, n: 0, epoch: J2000 }
+		},
+		starKm: [4.24 * LIGHT_YEAR_KM, 0, 0],
+		starMu: 0.122 * GM_SUN_KM3_S2,
+		atStar: true
+	};
+
+	it('leaves, burns, coasts and burns, with ship time on the legs at speed', () => {
+		const route = buildInterstellarTorchRoute(FROM_EARTH, PROXIMA, J2000, G0_M_S2, {
+			departureMode: 'orbit',
+			arrivalMode: 'rendezvous',
+			coastFraction: 0.25
+		})!;
+		const entries = buildTimeline(route, idAsName);
+		expect(entries.slice(0, 4).map((e) => e.kind)).toEqual([
+			'injection',
+			'boost',
+			'cruise',
+			'brake'
+		]);
+		for (const kind of ['boost', 'cruise', 'brake']) {
+			const entry = entries.find((e) => e.kind === kind)!;
+			expect(entry.shipDays!).toBeLessThan(entry.days);
+		}
+		expect(entries[entries.length - 1].endJd).toBeCloseTo(route.arriveJd, 6);
+	});
+
+	it('only coasts on a Δv budget', () => {
+		const route = buildInterstellarCruiseRoute(
+			FROM_EARTH,
+			PROXIMA,
+			J2000,
+			{ kind: 'budget', dvKms: 40 },
+			{ departureMode: 'orbit', arrivalMode: 'flyby' }
+		) as Route;
+		expect(buildTimeline(route, idAsName).map((e) => e.kind)).toEqual(['injection', 'cruise']);
+	});
+});
+
 describe('entryIndexAt', () => {
 	const entries = buildTimeline(buildRoute(EARTH, MARS, MARS_WINDOW, MARS_TOF)!, idAsName);
 
@@ -345,6 +403,23 @@ describe('axisTicks', () => {
 				expect(tick.jd).toBeLessThanOrEqual(start + span);
 			}
 		}
+	});
+
+	it('ends at the last year a Date holds, for a trip that arrives after it', () => {
+		const start = dateToJD(new Date(2030, 5, 15));
+		for (const years of [250_000, 300_000, 626_000, 5e6]) {
+			const ticks = axisTicks(start, start + years * 365.25, 7);
+			expect(ticks.length).toBeLessThanOrEqual(7);
+			for (const tick of ticks) {
+				expect(tick.unit).toBe('year');
+				expect(Number.isFinite(tick.date.getTime())).toBe(true);
+			}
+		}
+		expect(
+			axisTicks(start, start + 300_000 * 365.25, 7)
+				.at(-1)
+				?.date.getFullYear()
+		).toBe(250_000);
 	});
 
 	it('draws nothing for a span there is no room in', () => {

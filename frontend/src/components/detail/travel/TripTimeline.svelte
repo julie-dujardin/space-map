@@ -12,21 +12,24 @@
 	import MoveRightIcon from '@lucide/svelte/icons/move-right';
 	import * as m from '$lib/paraglide/messages.js';
 	import TimelineStrip from '../../timeline/TimelineStrip.svelte';
-	import { formatJulianDate } from '$lib/format/date';
 	import { pathViewpoint, type TrajectoryPath } from '$lib/math/travel/path';
 	import { craftPositionAt } from '$lib/math/travel/path-sample';
 	import type { SimClock } from '$lib/scene/state/clock.svelte';
 	import { stepEntryIndex } from '$lib/timeline/axis';
 	import type { StripItem } from '$lib/timeline/strip';
 	import { PHASE_COLORS } from '$lib/travel/arc-colors';
+	import { formatTripDate } from '$lib/travel/format';
 	import { TripPlayback } from '$lib/travel/playback.svelte';
 	import type { TimelineEntry, TimelineFocus } from '$lib/travel/timeline';
+	import type { TripRole } from '$lib/travel/trip';
 	import { legLabel } from './leg-labels';
 	import { entryDetail } from './timeline-labels';
 
 	interface Props {
 		/** The legs of the chosen trajectory, in flight order. */
 		entries: readonly TimelineEntry[];
+		/** What the planner calls the two ends, for the title. */
+		names: Record<TripRole, string>;
 		/** The same trajectory as geometry, for placing the camera on the arc
 		 *  itself. Null when the route has none that could be rebuilt. */
 		path: TrajectoryPath | null;
@@ -35,14 +38,14 @@
 		 *  owns the URL, so this moves the camera and nothing else. */
 		onFocus: (target: TimelineFocus) => void;
 	}
-	let { entries, path, clock, onFocus }: Props = $props();
+	let { entries, names, path, clock, onFocus }: Props = $props();
 
 	let items = $derived(
 		entries.map(
 			(entry): StripItem => ({
 				id: entry.id,
 				label: legLabel(entry.kind),
-				when: formatJulianDate(entry.startJd),
+				when: formatTripDate(entry.startJd, entries[0].startJd),
 				detail: entryDetail(entry),
 				startJd: entry.startJd,
 				endJd: entry.endJd,
@@ -111,9 +114,9 @@
 </script>
 
 {#snippet title()}
-	{entries[0]?.bodyName ?? ''}
+	{names.origin}
 	<MoveRightIcon class="inline size-[1em] align-[-0.125em] rtl:rotate-180" aria-hidden="true" />
-	{entries[entries.length - 1]?.bodyName ?? ''}
+	{names.target}
 	<span class="text-muted-foreground font-normal">· {m.travel_timeline()}</span>
 {/snippet}
 

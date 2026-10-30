@@ -7,7 +7,7 @@
  * either subject.
  */
 
-import { dateToJD, jdToDate } from '$lib/time/jd';
+import { dateToJD, jdToDate, LAST_DATE_JD } from '$lib/time/jd';
 
 /** A stretch of time on the strip. An instant has `endJd === startJd`. */
 export interface TimelineSpan {
@@ -103,7 +103,8 @@ export function axisTicks(startJd: number, endJd: number, maxTicks = 6): AxisTic
 	if (!(spanDays > 0) || !Number.isFinite(spanDays) || maxTicks < 1) return [];
 
 	const start = jdToDate(startJd);
-	const end = jdToDate(endJd);
+	// Past the range of `Date` there is no calendar to tick.
+	const end = jdToDate(Math.min(endJd, LAST_DATE_JD));
 	const ticks: AxisTick[] = [];
 	const push = (date: Date, unit: TickUnit) => {
 		const jd = dateToJD(date);
@@ -119,7 +120,8 @@ export function axisTicks(startJd: number, endJd: number, maxTicks = 6): AxisTic
 		const first = Math.ceil(start.getFullYear() / step) * step;
 		for (let year = first; ; year += step) {
 			const date = atYear(year);
-			if (date > end) break;
+			// An invalid date compares false, so this also stops at the end of the range.
+			if (!(date <= end)) break;
 			push(date, 'year');
 		}
 	} else if (stepDays >= 25) {
@@ -128,7 +130,7 @@ export function axisTicks(startJd: number, endJd: number, maxTicks = 6): AxisTic
 		const startIndex = start.getFullYear() * 12 + start.getMonth();
 		for (let index = Math.ceil(startIndex / step) * step; ; index += step) {
 			const date = atMonth(Math.floor(index / 12), index % 12);
-			if (date > end) break;
+			if (!(date <= end)) break;
 			push(date, 'month');
 		}
 	} else if (stepDays >= 0.5) {

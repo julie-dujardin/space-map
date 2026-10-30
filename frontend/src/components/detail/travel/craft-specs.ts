@@ -104,7 +104,11 @@ export function craftSpecs(vehicle: Vehicle, route: Route): CraftSpec[] {
 
 	const seats = crewCapacity(vehicle);
 	if (seats) {
-		specs.push({ label: m.travel_seats(), value: String(seats), source: vehicle.crew?.source });
+		specs.push({
+			label: m.travel_seats(),
+			value: formatNumber(seats),
+			source: vehicle.crew?.source
+		});
 	}
 	if (vehicle.enduranceDays) {
 		specs.push({

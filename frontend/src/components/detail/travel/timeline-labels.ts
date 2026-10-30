@@ -6,12 +6,12 @@ import { formatKm } from '$lib/format/distance';
 import { formatDurationNarrow } from '$lib/format/duration';
 import * as m from '$lib/paraglide/messages.js';
 import { formatDegrees } from '$lib/format/quantities';
-import { formatDv, formatEndOrbit } from '$lib/travel/format';
+import { formatDv, formatEndOrbit, shipDuration } from '$lib/travel/format';
 import type { TimelineEntry } from '$lib/travel/timeline';
 
-/** Where it happens, what it costs, how long it takes. Figures are isolated
- *  LTR since they sit inline with words, not in their own column — in RTL
- *  they'd otherwise swap ends with their unit. */
+/** Where it happens, what it costs, and how long it takes on each clock.
+ *  Figures are isolated LTR because they sit inline with words. Without this,
+ *  RTL puts a figure and its unit in the wrong order. */
 export function entryDetail(entry: TimelineEntry): string {
 	const parts: string[] = [];
 	if (entry.bodyName) parts.push(entry.bodyName);
@@ -23,6 +23,8 @@ export function entryDetail(entry: TimelineEntry): string {
 	if (entry.dvKms > 0) parts.push(ltrIsolate(formatDv(entry.dvKms)));
 	if (entry.absorbedKms) parts.push(ltrIsolate(formatDv(entry.absorbedKms)));
 	if (entry.days > 0) parts.push(ltrIsolate(formatDurationNarrow(entry.days)));
+	const ship = shipDuration(entry.days, entry.shipDays);
+	if (ship) parts.push(m.travel_clock_ship({ value: ltrIsolate(ship) }));
 	// The aero legs already say the atmosphere did it in their own names.
 	if (entry.aerobraked && entry.kind !== 'aero-pass' && entry.kind !== 'aerobrake') {
 		parts.push(m.travel_aerobraked());

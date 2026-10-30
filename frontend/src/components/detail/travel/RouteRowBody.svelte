@@ -1,7 +1,8 @@
 <!--
   One trajectory: name and dates on the left, cost on the right, hazards on a
   line of their own beneath both. Shared by the list and the cruise box, so
-  rows always match.
+  rows always match. A trip between stars that the two clocks read differently
+  gives both durations on the right.
 
   The cost column tops out with the name rather than centring, which frees the
   hazard line to run the row's full width and carry a chip more.
@@ -10,14 +11,20 @@
   holding the slider keeps its height.
 -->
 <script lang="ts">
-	import { untrack } from 'svelte';
+	import { tick, untrack } from 'svelte';
 	import * as m from '$lib/paraglide/messages.js';
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 	import MoveRightIcon from '@lucide/svelte/icons/move-right';
 	import { formatJulianDate } from '$lib/format/date';
 	import { formatDurationNarrow } from '$lib/format/duration';
-	import { formatAcceleration, formatDvBrief } from '$lib/travel/format';
-	import { routeDurationDays, type Route } from '$lib/math/travel';
+	import { formatNumber } from '$lib/format/quantities';
+	import {
+		formatAcceleration,
+		formatDvBrief,
+		formatTripDate,
+		shipDuration
+	} from '$lib/travel/format';
+	import { routeDurationDays, routeShipDays, type Route } from '$lib/math/travel';
 	import type { Hazard } from '$lib/travel/hazards';
 	import { hazardChip } from '$lib/travel/hazard-labels';
 	import type { RouteOption } from '$lib/travel/trip';
@@ -90,32 +97,43 @@
 		return n;
 	}
 
-	// Widths are read with every chip in place, one frame after they are put
-	// back — a chip that is not rendered has no width to measure. The line cannot
-	// grow with its contents (see `min-w-0` below), so restoring them cannot
-	// resize it and set this off again.
+	// Widths are read with every chip in place: a chip that is not rendered has
+	// no width to measure. They are read after the DOM update and before the
+	// paint, so the full line never shows. The line cannot grow with its contents
+	// (see `min-w-0` below), so restoring them cannot resize it and set this off
+	// again.
 	$effect(() => {
 		const line = lineEl;
 		if (!line) return;
 		void hazards;
-		let frame = 0;
+		let run = 0;
 		const measure = () => {
-			cancelAnimationFrame(frame);
+			const at = ++run;
 			untrack(() => (fits = Number.POSITIVE_INFINITY));
-			frame = requestAnimationFrame(() => untrack(() => (fits = howManyFit(line))));
+			void tick().then(() => {
+				if (at === run) untrack(() => (fits = howManyFit(line)));
+			});
 		};
 		measure();
 		const ro = new ResizeObserver(measure);
 		ro.observe(line);
 		return () => {
 			ro.disconnect();
-			cancelAnimationFrame(frame);
+			run = -1;
 		};
 	});
 
 	/** Drive strength for the two continuously-powered route kinds; null for
 	 *  coasting ones. */
 	let accel = $derived(route ? (route.constantThrust ?? route.lowThrust?.accelMs2 ?? null) : null);
+
+	/** Everything the trip takes, on the Earth's clock. */
+	let earthTime = $derived(route ? formatDurationNarrow(routeDurationDays(route)) : '');
+	/** The ship's clock, on a trip between stars where it reads differently. */
+	let shipTime = $derived(
+		route?.interstellar ? shipDuration(routeDurationDays(route), routeShipDays(route)) : null
+	);
+	let dateBox = $derived(shipTime ? 'inline-block' : 'whitespace-nowrap');
 </script>
 
 <span class="grid w-full grid-cols-[auto_1fr_auto_auto] items-start gap-x-3">
@@ -129,23 +147,34 @@
 
 	<span class="col-start-2 row-start-1 min-w-0">
 		<!-- Acceleration sits by the name: it separates two powered routes, and
-		     explains duration on a spiral. -->
-		<span class="block text-sm font-medium">
+		     explains duration on a spiral. When the name and the figure do not fit
+		     on one line, the figure goes to the next line with its unit. -->
+		<span class="flex flex-wrap items-baseline gap-x-1.5 text-sm font-medium">
 			{routeLabel(profile)}{#if accel !== null}<span
-					class="text-muted-foreground ms-1.5 text-xs font-normal tabular-nums"
+					class="text-muted-foreground text-xs font-normal whitespace-nowrap tabular-nums"
 					>{formatAcceleration(accel)}</span
-				>{:else if via}<span class="text-muted-foreground ms-1.5 text-xs font-normal"
+				>{:else if via}<span class="text-muted-foreground text-xs font-normal"
 					>{m.travel_via({ body: via })}</span
 				>{/if}
 		</span>
-		<span class="text-muted-foreground block truncate text-xs">
+		<!-- The two clocks of a trip between stars give the cost column a third
+		     line, so the dates can use two lines. Each date is then a box that
+		     goes to the next line whole. Only a date wider than the column breaks
+		     inside, at a space, so that no date is cut. -->
+		<span
+			class="text-muted-foreground block text-xs {shipTime
+				? 'overflow-hidden text-ellipsis'
+				: 'truncate'}"
+		>
 			{#if route}
-				{formatJulianDate(route.departJd)}
-				<MoveRightIcon
-					class="inline size-[1em] align-[-0.125em] rtl:rotate-180"
-					aria-hidden="true"
-				/>
-				{formatJulianDate(route.arriveJd)}
+				<span class={dateBox}>{formatJulianDate(route.departJd)}</span>
+				<span class={dateBox}
+					><MoveRightIcon
+						class="inline size-[1em] align-[-0.125em] rtl:rotate-180"
+						aria-hidden="true"
+					/>
+					{formatTripDate(route.arriveJd, route.departJd)}</span
+				>
 			{:else if hint}
 				{hint}
 			{:else}
@@ -158,11 +187,21 @@
 		{#if blocked}
 			<span class="text-muted-foreground block text-xs">{blocked.header}</span>
 			<span class="text-muted-foreground block text-[11px] tabular-nums">{blocked.detail}</span>
+		{:else if route && shipTime}
+			<span class="block text-sm font-semibold tabular-nums">
+				{m.travel_clock_ship({ value: shipTime })}
+			</span>
+			<span class="text-muted-foreground block text-xs tabular-nums">
+				{m.travel_clock_earth({ value: earthTime })}
+			</span>
+			<span class="text-muted-foreground block text-xs tabular-nums">
+				{formatDvBrief(route.totalDvKms)}
+			</span>
 		{:else if route}
 			<!-- Everything the trip takes, not only the crossing. A route that arrives
 			     sooner and then aerobrakes for five months is not faster. -->
 			<span class="block text-sm font-semibold tabular-nums">
-				{formatDurationNarrow(routeDurationDays(route))}
+				{earthTime}
 			</span>
 			<span class="text-muted-foreground block text-xs tabular-nums">
 				{formatDvBrief(route.totalDvKms)}
@@ -202,7 +241,7 @@
 			{/each}
 			{#if hazards.length > fits}
 				<span class="text-muted-foreground shrink-0"
-					>{m.travel_hazard_more({ count: hazards.length - fits })}</span
+					>{m.travel_hazard_more({ count: formatNumber(hazards.length - fits) })}</span
 				>
 			{/if}
 		</span>

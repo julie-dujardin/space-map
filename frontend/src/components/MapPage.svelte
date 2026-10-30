@@ -28,7 +28,8 @@
 	import { ringBrightnessOptions } from './rings/brightness-options';
 	import type { Hazard } from '$lib/travel/hazards';
 	import { labelHazards } from '$lib/travel/hazard-labels';
-	import type { TimelineEntry, TimelineFocus } from '$lib/travel/timeline';
+	import { formatTripDate } from '$lib/travel/format';
+	import type { Timeline, TimelineEntry, TimelineFocus } from '$lib/travel/timeline';
 	import { SHEET_COLLAPSED_PX } from '$lib/drawer';
 	import { prefetchObjectDetail } from '$lib/fetch/objects/object-data';
 	import { prefetchFeatureDetail } from '$lib/fetch/nomenclature/details';
@@ -55,9 +56,9 @@
 	let ProbeTimeline = $state<typeof import('./detail/probes/ProbeTimeline.svelte').default | null>(
 		null
 	);
-	// The chosen trajectory as the planner hands it out: its legs for the timeline,
-	// and its geometry so the timeline can put the camera on the arc itself.
-	let timelineEntries = $state.raw<TimelineEntry[] | null>(null);
+	// The chosen trajectory as the planner gives it. The timeline shows its legs
+	// and end names, and puts the camera on the arc from its geometry.
+	let timeline = $state.raw<Timeline | null>(null);
 	let travelPlan = $state.raw<LabelledPath | null>(null);
 	// The mounted timeline, so a step dot on the map can press the card it
 	// stands for — playback stop included.
@@ -563,7 +564,8 @@
 	function travelSteps(): PathStep[] {
 		if (!travelPlan) return [];
 		const steps: PathStep[] = [];
-		for (const entry of timelineEntries ?? []) {
+		const entries = timeline?.entries ?? [];
+		for (const entry of entries) {
 			if (entry.isPhase || entry.kind === 'start-orbit' || entry.kind === 'final-orbit') continue;
 			const together = steps[steps.length - 1];
 			if (together && together.jd === entry.startJd && together.bodyId === entry.bodyId) {
@@ -576,7 +578,7 @@
 				bodyId: entry.bodyId,
 				jd: entry.startJd,
 				name: legLabel(entry.kind),
-				when: formatJulianDate(entry.startJd),
+				when: formatTripDate(entry.startJd, entries[0].startJd),
 				onPick: () => pickStep(entry)
 			});
 		}
@@ -1170,8 +1172,8 @@
 						drawTravel();
 					}}
 					onHoverChange={(id) => map.setTravelHover(id)}
-					onTimelineChange={(entries) => {
-						timelineEntries = entries;
+					onTimelineChange={(next) => {
+						timeline = next;
 						drawTravel();
 					}}
 					onHazardsChange={(hazards) => {
@@ -1192,11 +1194,12 @@
 					/>
 				</div>
 			{/if}
-			{#if isNav && TripTimeline && timelineEntries && timelineEntries.length > 1}
+			{#if isNav && TripTimeline && timeline && timeline.entries.length > 1}
 				<div inert={bgInert} class="contents">
 					<TripTimeline
 						bind:this={tripTimeline}
-						entries={timelineEntries}
+						entries={timeline.entries}
+						names={timeline.names}
 						path={travelPlan?.path ?? null}
 						{clock}
 						onFocus={focusTimeline}

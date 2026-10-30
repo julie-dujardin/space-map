@@ -45,6 +45,13 @@ export function joinParts(parts: Parts): string {
 	return parts.tight ? `${parts.value}${parts.unit}` : `${parts.value} ${parts.unit}`;
 }
 
+/** `joinParts` with a no-break space. In running text a line end must not
+ *  part a figure from its unit. */
+export function joinPartsNoBreak(parts: Parts): string {
+	if (!parts.unit) return parts.value;
+	return parts.tight ? `${parts.value}${parts.unit}` : `${parts.value}\u00a0${parts.unit}`;
+}
+
 /**
  * Two readings as one span, low end first.
  *
@@ -141,16 +148,27 @@ export function formatPercent(fraction: number, significantDigits = 2): string {
 }
 
 /**
- * One share among several. Two significant digits, except a share that would
- * round up to 100% while others remain, which keeps digits until it stays
- * under: "99.7%" beside "0.35%", never "100%" beside anything.
+ * The significant digits for a percentage: two, or more when a figure under 100
+ * would round up to 100. "100" says that nothing remains, which is false.
+ */
+export function digitsUnderHundred(percent: number, maxDigits: number): number {
+	let digits = 2;
+	while (percent < 100 && Number(percent.toPrecision(digits)) >= 100 && digits < maxDigits) {
+		digits++;
+	}
+	return digits;
+}
+
+/** The most significant digits a share takes. */
+const SHARE_MAX_DIGITS = 6;
+
+/**
+ * One share among several: "99.7%" beside "0.35%", never "100%" beside
+ * anything. A share alone is all there is, so it takes two digits.
  */
 export function formatShare(fraction: number, alone = false): string {
-	if (alone || fraction < 0.995) return formatPercent(fraction);
-	for (let digits = 3; digits <= 6; digits++) {
-		if (Number((fraction * 100).toPrecision(digits)) < 100) return formatPercent(fraction, digits);
-	}
-	return formatPercent(fraction, 6);
+	if (alone) return formatPercent(fraction);
+	return formatPercent(fraction, digitsUnderHundred(fraction * 100, SHARE_MAX_DIGITS));
 }
 
 /** The locale's percent sign on a figure the caller wrote — a chart's share

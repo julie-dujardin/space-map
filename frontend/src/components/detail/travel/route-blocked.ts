@@ -1,13 +1,15 @@
 /**
  * Why the chosen craft cannot fly a trajectory. Gives the two lines a row shows
  * in place of its figures. It sits beside the list because the cruise box shows
- * a row as well.
+ * a row as well. Also gives the lines the panel shows when the craft has no
+ * route between two stars.
  */
 
 import * as m from '$lib/paraglide/messages.js';
 import { formatNumber, formatQuantity } from '$lib/format/quantities';
 import { formatDvBrief } from '$lib/travel/format';
-import type { Route } from '$lib/math/travel';
+import { jdToDate, LAST_DATE_JD } from '$lib/time/jd';
+import type { InterstellarRefusal, Route } from '$lib/math/travel';
 import type { TravelPanelState } from '$lib/travel/panel.svelte';
 import { departureNote } from './vehicle-labels';
 
@@ -60,4 +62,26 @@ export function blockedText(state: TravelPanelState, route: Route): Blocked | nu
 	// The last case. The drive cannot burn impulsively, and this trajectory needs
 	// two such burns. That drive has a row of its own above.
 	return unjudged(m.travel_thrust_too_low());
+}
+
+const REFUSAL_TEXT: Record<InterstellarRefusal, () => string> = {
+	'no-craft': m.travel_refusal_no_craft,
+	'no-drive': m.travel_refusal_no_drive,
+	'low-thrust': m.travel_refusal_low_thrust,
+	'cannot-escape': m.travel_refusal_cannot_escape,
+	'cannot-stop': m.travel_refusal_cannot_stop
+};
+
+/** Why the chosen craft has no route between two stars. */
+export function refusalText(refusal: InterstellarRefusal): string {
+	return REFUSAL_TEXT[refusal]();
+}
+
+/** The year of the last date that a `Date` holds. */
+const LAST_YEAR = jdToDate(LAST_DATE_JD).getUTCFullYear();
+
+/** Why no "arrive by" date admits the crossing: the fastest one ends after the
+ *  last date that can be shown. */
+export function pastCalendarText(): string {
+	return m.travel_no_routes_past_calendar({ year: formatNumber(LAST_YEAR) });
 }

@@ -1,6 +1,7 @@
 <!--
   Everything about the chosen route: the headline figures, the Δv budget, what
-  you are left with on arrival, and the steps in order.
+  you are left with on arrival, and the steps in order. Between stars the
+  headline is the two clocks, then the speed, γ and distance.
 -->
 <script lang="ts">
 	import Link from '../sections/kit/Link.svelte';
@@ -20,11 +21,13 @@
 	import ShellIcon from '@lucide/svelte/icons/shell';
 	import CircleDashedIcon from '@lucide/svelte/icons/circle-dashed';
 	import RotateCcwIcon from '@lucide/svelte/icons/rotate-ccw';
+	import ShieldIcon from '@lucide/svelte/icons/shield';
 	import {
 		endArrivalOrbit,
 		endDepartureOrbit,
 		dvWithPayloadKms,
 		routeDurationDays,
+		routeShipDays,
 		type Route,
 		type TravelBody
 	} from '$lib/math/travel';
@@ -40,18 +43,24 @@
 		formatDv,
 		formatDvBrief,
 		formatEndOrbit,
+		formatLorentzFactor,
 		formatSpeed,
-		lightPercent
+		formatTripDate,
+		isPastLight,
+		lightPercent,
+		lightYearParts,
+		shipDuration
 	} from '$lib/travel/format';
 	import { formatDegrees, formatNumber } from '$lib/format/quantities';
 	import type { TravelPanelState } from '$lib/travel/panel.svelte';
-	import { adjustForVehicle, type Hazard } from '$lib/travel/hazards';
+	import { adjustForVehicle, crossingShield, type Hazard } from '$lib/travel/hazards';
 	import {
 		hazardCampaign,
 		hazardCraftNote,
 		hazardDetail,
 		hazardName,
-		hazardValue
+		hazardValue,
+		shieldRows
 	} from '$lib/travel/hazard-labels';
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import CraftSpecs from './CraftSpecs.svelte';
@@ -90,6 +99,9 @@
 	// states where the trip goes and shouldn't change because a craft was
 	// picked — least of all before a linked one has even fetched.
 	let shownHazards = $derived(adjustForVehicle(hazards, state.vehicle, route));
+	// The shield covers several hazards, so its rows come after all of them.
+	let shield = $derived(crossingShield(route));
+	let shieldList = $derived(shield ? shieldRows(shield) : []);
 	// The id is the last resort rather than the first: it is at least unambiguous,
 	// where a blank would leave a sentence with a hole in it.
 	let originLabel = $derived(originName ?? nameOf(route.departureId));
@@ -124,11 +136,13 @@
 		descent: ArrowDownIcon
 	};
 
-	// Fastest the craft goes, reported by the arc rather than the ladder: once
-	// gravity is in the crossing, spent Δv no longer equals bought speed. Falls
-	// back to the burn for a route solved before that was true.
+	// The arc gives the top speed. With gravity in the crossing, the Δv spent is
+	// not the speed gained. A route without a peak takes its boost burn.
 	let topSpeedKms = $derived(
-		route.peakSpeedKms ?? route.legs.find((leg) => leg.kind === 'boost')?.dvKms ?? 0
+		route.interstellar?.cruiseKms ??
+			route.peakSpeedKms ??
+			route.legs.find((leg) => leg.kind === 'boost')?.dvKms ??
+			0
 	);
 	let topSpeedPercentC = $derived(lightPercent(topSpeedKms));
 
@@ -138,7 +152,8 @@
 		label: string;
 		value: string;
 		unit: string;
-		/** Spells out a unit too terse to stand alone, like "% c". */
+		/** The full name of a short unit, such as "% c", or the technical term
+		 *  for the label. */
 		tooltip?: string;
 	}
 
@@ -156,27 +171,61 @@
 					unit: m.symbol_kilometre_per_second()
 				}
 	);
-	let tiles = $derived<Tile[]>([
-		// The whole trip, not just the transfer: a route that arrives sooner and
-		// then aerobrakes for five months is not the faster one.
-		{
-			label: m.travel_trip_time(),
-			value: formatDurationNarrow(routeDurationDays(route)),
-			unit: ''
-		},
-		{ label: m.travel_total_dv(), ...dvParts(route.totalDvKms) },
-		route.constantThrust
-			? topSpeedTile
-			: route.lowThrust
-				? // A spiral is thrown by nothing, so it has no launch energy — what
-					// it has instead is the acceleration the whole trip follows from.
-					{ label: m.travel_drive_accel(), ...accelerationParts(route.lowThrust.accelMs2) }
-				: {
-						label: m.travel_launch_c3(),
-						value: formatNumber(route.c3Km2S2),
-						unit: m.travel_km2_s2()
-					}
-	]);
+
+	// Past c the unit is c. The tooltip gives its name.
+	let dvTile = $derived<Tile>({
+		label: m.travel_total_dv(),
+		...dvParts(route.totalDvKms),
+		tooltip: isPastLight(route.totalDvKms) ? m.travel_times_c_name() : undefined
+	});
+
+	/** The six figures of a trip between stars, in two columns. */
+	let crossingTiles = $derived.by<Tile[] | null>(() => {
+		const crossing = route.interstellar;
+		if (!crossing) return null;
+		return [
+			{
+				label: m.travel_ship_time(),
+				value: formatDurationNarrow(routeShipDays(route)),
+				unit: '',
+				tooltip: m.travel_ship_time_name()
+			},
+			{
+				label: m.travel_earth_time(),
+				value: formatDurationNarrow(routeDurationDays(route)),
+				unit: '',
+				tooltip: m.travel_earth_time_name()
+			},
+			topSpeedTile,
+			{ label: m.travel_lorentz_factor(), value: formatLorentzFactor(crossing.gamma), unit: '' },
+			{ label: m.travel_star_distance(), ...lightYearParts(crossing.distanceKm) },
+			dvTile
+		];
+	});
+
+	let tiles = $derived<Tile[]>(
+		crossingTiles ?? [
+			// The time of the whole trip. A route that arrives sooner and then
+			// aerobrakes for five months is not the faster route.
+			{
+				label: m.travel_trip_time(),
+				value: formatDurationNarrow(routeDurationDays(route)),
+				unit: ''
+			},
+			dvTile,
+			route.constantThrust
+				? topSpeedTile
+				: route.lowThrust
+					? // Nothing throws a spiral, so it has no launch energy. Its
+						// acceleration sets the whole trip.
+						{ label: m.travel_drive_accel(), ...accelerationParts(route.lowThrust.accelMs2) }
+					: {
+							label: m.travel_launch_c3(),
+							value: formatNumber(route.c3Km2S2),
+							unit: m.travel_km2_s2()
+						}
+		]
+	);
 
 	let delay = $derived(signalDelaySeconds(origin, target, route));
 
@@ -235,17 +284,20 @@
 
 		for (const [index, leg] of route.legs.entries()) {
 			const notes: string[] = [];
-			// A burn costs Δv, a coast costs time, a leg under thrust costs both — so
-			// the duration goes here rather than being lost, with the held acceleration.
+			const ship = shipDuration(leg.days, leg.shipDays);
+			const aboard = ship ? m.travel_clock_ship({ value: ship }) : null;
+			// A leg under thrust costs Δv and time. The figure is the Δv, so the
+			// duration and the held acceleration go in the note.
 			if (leg.dvKms > 0 && leg.days > 0) {
-				notes.push(
-					route.constantThrust
-						? m.travel_burn_at({
-								duration: formatDurationNarrow(leg.days),
-								value: formatAcceleration(route.constantThrust)
-							})
-						: formatDurationNarrow(leg.days)
-				);
+				const burn = route.constantThrust
+					? m.travel_burn_at({
+							duration: formatDurationNarrow(leg.days),
+							value: formatAcceleration(route.constantThrust)
+						})
+					: formatDurationNarrow(leg.days);
+				notes.push(aboard ? `${burn} · ${aboard}` : burn);
+			} else if (aboard) {
+				notes.push(aboard);
 			}
 			// The aero steps say what they are in their own names; the note that a
 			// leg was aerobraked belongs only on the one still wearing an engine
@@ -290,7 +342,10 @@
 	let specs = $derived(state.vehicle ? craftSpecs(state.vehicle, route) : []);
 	// The dose figures are computed here rather than fetched, so their works come
 	// from a module of their own; the craft's come with the catalogue.
-	let sources = $derived([...craftSpecSources(specs), ...radiationSources(shownHazards)]);
+	let sources = $derived([
+		...craftSpecSources(specs),
+		...radiationSources(shownHazards, [route.departureId, route.targetId], shield !== null)
+	]);
 
 	// What the detour bought, against the best the direct search found — the
 	// reason this route is listed at all, so it's said rather than left to be
@@ -324,7 +379,7 @@
 {/snippet}
 
 <div class="flex flex-col gap-4">
-	<div class="grid auto-cols-fr grid-flow-col gap-2">
+	<div class="grid gap-2 {crossingTiles ? 'grid-cols-2' : 'auto-cols-fr grid-flow-col'}">
 		{#each tiles as tile (tile.label)}
 			{#if tile.tooltip}
 				<Tooltip.Root>
@@ -384,7 +439,7 @@
 
 				<dt class="text-muted-foreground">{m.travel_flyby_turn()}</dt>
 				<dd class="text-end tabular-nums">
-					{formatNumber(pass.turnDeg)}°
+					{formatDegrees(pass.turnDeg)}
 					{#if pass.dvKms < FREE_PASS_KMS}
 						<span class="text-muted-foreground ms-1 text-xs">{m.travel_flyby_free()}</span>
 					{/if}
@@ -411,8 +466,10 @@
 							aria-hidden="true"
 						/>
 						<div class="min-w-0 flex-1">
+							<!-- The name wraps and is not cut. The dust value has two measures,
+							     so it leaves less room for the name than the other rows. -->
 							<div class="flex items-baseline justify-between gap-2">
-								<span class="truncate text-sm">{hazardName(hazard.kind)}</span>
+								<span class="overflow-hidden text-sm text-ellipsis">{hazardName(hazard.kind)}</span>
 								<span class="shrink-0 text-sm tabular-nums">{hazardValue(hazard)}</span>
 							</div>
 							<!-- Said the way the rest of the panel says a date: a stretch gets
@@ -420,14 +477,14 @@
 							     icon's colour, not a word. -->
 							<div class="text-muted-foreground text-xs tabular-nums">
 								{#if hazard.endJd > hazard.startJd}
-									{formatJulianDate(hazard.startJd)}
+									{formatTripDate(hazard.startJd, route.departJd)}
 									<MoveRightIcon
 										class="inline size-[1em] align-[-0.125em] rtl:rotate-180"
 										aria-hidden="true"
 									/>
-									{formatJulianDate(hazard.endJd)}
+									{formatTripDate(hazard.endJd, route.departJd)}
 								{:else}
-									{formatJulianDate(hazard.startJd)}
+									{formatTripDate(hazard.startJd, route.departJd)}
 								{/if}
 							</div>
 							<p class="text-muted-foreground mt-1 text-xs">
@@ -437,6 +494,20 @@
 							{#if craftNote}
 								<p class="text-muted-foreground mt-1 text-xs">{craftNote}</p>
 							{/if}
+						</div>
+					</li>
+				{/each}
+				<!-- The shield is not a hazard, so the icon has no severity colour and
+				     the map shows no chip for it. -->
+				{#each shieldList as row (row.name)}
+					<li class="flex gap-3">
+						<ShieldIcon class="text-muted-foreground mt-0.5 size-4 shrink-0" aria-hidden="true" />
+						<div class="min-w-0 flex-1">
+							<div class="flex items-baseline justify-between gap-2">
+								<span class="overflow-hidden text-sm text-ellipsis">{row.name}</span>
+								<span class="shrink-0 text-sm tabular-nums">{row.value}</span>
+							</div>
+							<p class="text-muted-foreground mt-1 text-xs">{row.detail}</p>
 						</div>
 					</li>
 				{/each}

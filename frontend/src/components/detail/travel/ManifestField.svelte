@@ -15,7 +15,7 @@
 	import MinusIcon from '@lucide/svelte/icons/minus';
 	import PlusIcon from '@lucide/svelte/icons/plus';
 	import type { ManifestFit } from '$lib/math/travel';
-	import { formatQuantity, formatUnit } from '$lib/format/quantities';
+	import { formatNumber, formatQuantity, formatUnit } from '$lib/format/quantities';
 
 	interface Props {
 		passengers: number;
@@ -43,7 +43,7 @@
 	let note = $derived.by(() => {
 		if (fit === null) return null;
 		if (fit.status === 'over-capacity') {
-			return { text: m.travel_over_capacity({ value: fit.seats }), warn: true };
+			return { text: m.travel_over_capacity({ value: formatNumber(fit.seats) }), warn: true };
 		}
 		if (fit.status === 'unknown-capacity') {
 			return { text: m.travel_capacity_unpublished(), warn: false };

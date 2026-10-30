@@ -10,6 +10,7 @@ import {
 	formatNumber,
 	formatPercent,
 	formatQuantity,
+	formatShare,
 	percentParts,
 	scientificNotation,
 	spanFields,
@@ -149,6 +150,19 @@ describe('percentParts', () => {
 
 	it('joins back to what Intl wrote', () => {
 		expect(formatPercent(0.2437, 3)).toBe('24.4%');
+	});
+});
+
+describe('formatShare', () => {
+	it('keeps a share among others under 100%', () => {
+		expect(formatShare(0.24)).toBe('24%');
+		expect(formatShare(0.9965)).toBe('99.7%');
+		expect(formatShare(0.99995)).toBe('99.995%');
+		expect(formatShare(0.99999999)).toBe('100%');
+	});
+
+	it('gives a share alone two digits', () => {
+		expect(formatShare(0.9965, true)).toBe('100%');
 	});
 });
 

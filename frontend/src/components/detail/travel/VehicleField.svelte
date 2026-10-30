@@ -37,6 +37,7 @@
 		vehicleStatsParts
 	} from './vehicle-labels';
 	import { isCoarsePointer } from '$lib/device';
+	import { formatNumber } from '$lib/format/quantities';
 	import VehicleMeta from './VehicleMeta.svelte';
 	import FullscreenPicker from './FullscreenPicker.svelte';
 
@@ -267,7 +268,7 @@
 											title={m.travel_seats()}
 										>
 											<UsersIcon class="size-3.5" aria-hidden="true" />
-											<span class="sr-only">{m.travel_seats()}</span>{seats}
+											<span class="sr-only">{m.travel_seats()}</span>{formatNumber(seats)}
 										</span>
 									{/if}
 									{#if active}

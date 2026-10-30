@@ -9,7 +9,8 @@ import ShieldIcon from '@lucide/svelte/icons/shield';
 import RadiationIcon from '@lucide/svelte/icons/radiation';
 import OrbitIcon from '@lucide/svelte/icons/orbit';
 import DnaOffIcon from '@lucide/svelte/icons/dna-off';
-import SparklesIcon from '@lucide/svelte/icons/sparkles';
+import CloudHailIcon from '@lucide/svelte/icons/cloud-hail';
+import AtomIcon from '@lucide/svelte/icons/atom';
 import { lethalDoseFraction } from '$lib/math/travel';
 import type { Hazard, HazardKind, HazardSeverity } from '$lib/travel/hazards';
 
@@ -26,9 +27,11 @@ export const HAZARD_ICONS: Record<HazardKind, typeof FlameIcon> = {
 	// Orbit icon, not the radiation trefoil: a belt is a ring around a planet you
 	// chose to pass, which the trefoil would just repeat from the row above.
 	'belt-crossing': OrbitIcon,
-	dust: SparklesIcon,
-	// Placeholder until the panel layer writes the gas row.
-	gas: RadiationIcon
+	// The grains come from the interstellar cloud and strike the craft like hail.
+	dust: CloudHailIcon,
+	// Atoms, not the trefoil: the dose comes from the gas the craft runs into, and
+	// the trefoil is already on the cosmic ray row.
+	gas: AtomIcon
 };
 
 /** Past which a belt pass stops being a crossing to survive and becomes a dose

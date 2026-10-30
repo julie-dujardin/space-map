@@ -45,6 +45,7 @@ import {
 	type Hazard,
 	type HazardKind
 } from './hazards';
+import { hazardDetail, hazardValue } from './hazard-labels';
 import { equilibriumTempK, sunsAt } from './sunlight';
 
 const SUN = 'naif-10';
@@ -659,6 +660,21 @@ describe('a crossing between two stars', () => {
 		expect(lag.endJd).toBe(torch.arriveJd);
 		expect(lag.startJd).toBeGreaterThan(torch.departJd);
 		expect(signalDelaySeconds(EARTH, PROXIMA.body, torch)).toBeCloseTo(seconds, 0);
+	});
+
+	it('words the dose against the ship clock and the lag in years', () => {
+		const hazards = routeHazards(EARTH, PROXIMA.body, torch, context);
+		const dose = hazards.find((h) => h.kind === 'radiation')!;
+		expect(dose.shipTime).toBe(true);
+		expect(hazardDetail(dose, 'Earth')).toContain('per day of ship time');
+		expect(hazardDetail(dose, 'Earth')).toContain('added lifetime cancer risk');
+		// A coast of thousands of years is past the range of the linear risk model.
+		const slow = routeHazards(EARTH, PROXIMA.body, coast, context).find(
+			(h) => h.kind === 'radiation'
+		)!;
+		expect(hazardDetail(slow, 'Earth')).toContain('does not hold');
+		const lag = hazards.find((h) => h.kind === 'signal-lag')!;
+		expect(hazardValue(lag)).toBe('4y 2m one way');
 	});
 
 	describe('dust', () => {

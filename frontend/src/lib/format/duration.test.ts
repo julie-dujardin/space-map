@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { durationUnits, formatDurationNarrow } from './duration';
+import { durationUnits, formatDurationNarrow, formatSignedDuration } from './duration';
 
 /** Days per month the formatter rounds against. */
 const MONTH = 30.44;
@@ -47,5 +47,12 @@ describe('formatDurationNarrow', () => {
 	it('refuses to render a nonsense duration', () => {
 		expect(formatDurationNarrow(NaN)).toBe('—');
 		expect(formatDurationNarrow(-1)).toBe('—');
+	});
+});
+
+describe('formatSignedDuration', () => {
+	it('puts the sign on a positive duration too', () => {
+		expect(formatSignedDuration(300_000 * 365.25)).toBe('+300,000 years');
+		expect(formatSignedDuration(-2)).toBe('-2 days');
 	});
 });

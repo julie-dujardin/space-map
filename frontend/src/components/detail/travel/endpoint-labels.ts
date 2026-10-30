@@ -1,9 +1,8 @@
 /** The mode names. The picker and the trajectory use this file. */
 
 import * as m from '$lib/paraglide/messages.js';
-import { getLocale } from '$lib/paraglide/runtime.js';
 import { formatKm } from '$lib/format/distance';
-import { formatDegrees } from '$lib/format/quantities';
+import { angleParts, fixed, formatDegrees, joinParts } from '$lib/format/quantities';
 import type { LaunchPad } from '$lib/travel/launch-pad';
 import type { EndpointMode } from '$lib/travel/trip';
 
@@ -76,7 +75,6 @@ export function groundLabel(
 ): string | null {
 	if (pad) return pad.name;
 	if (!place) return null;
-	const deg = (v: number) =>
-		`${v.toLocaleString(getLocale(), { minimumFractionDigits: 1, maximumFractionDigits: 1 })}°`;
+	const deg = (v: number) => joinParts(angleParts(fixed(v, 1)));
 	return `${endpointModeLabel('surface', role)} · ${deg(place.lat)}, ${deg(place.lon)}`;
 }

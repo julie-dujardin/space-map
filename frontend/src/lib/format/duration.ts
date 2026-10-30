@@ -29,14 +29,24 @@ function convert(days: number, to: DurationUnit): number {
 	}
 }
 
-/** Format a duration (in days) to a human-readable string with auto-selected unit. */
+/** A duration in days, in the unit that suits its size. */
 export function formatDuration(days: number): string {
+	return durationText(days, 'auto');
+}
+
+/** The same with a plus sign on a positive duration: "+300,000 years". */
+export function formatSignedDuration(days: number): string {
+	return durationText(days, 'always');
+}
+
+function durationText(days: number, signDisplay: 'auto' | 'always'): string {
 	const unit = pickUnit(days);
 	const value = convert(days, unit);
 	return new Intl.NumberFormat(getLocale(), {
 		style: 'unit',
 		unit,
 		unitDisplay: 'long',
+		signDisplay,
 		...precisionOptions(value)
 	}).format(value);
 }

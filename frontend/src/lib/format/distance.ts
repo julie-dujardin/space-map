@@ -1,5 +1,13 @@
+import * as m from '$lib/paraglide/messages.js';
 import { getLocale } from '$lib/paraglide/runtime.js';
-import { formatQuantity, formatUnit, joinParts, precisionOptions } from './quantities';
+import {
+	formatQuantity,
+	formatUnit,
+	joinParts,
+	precisionOptions,
+	sigFigures,
+	type Parts
+} from './quantities';
 import { AU_KM } from '$lib/math/units';
 
 type DistanceUnit = 'astronomical_unit' | 'kilometre';
@@ -50,4 +58,23 @@ export function formatKmRange(fromKm: number, toKm: number): string {
 	const from = format.format(from_);
 	if (from === format.format(to_)) return joinParts({ value: from, unit });
 	return joinParts({ value: format.formatRange(from_, to_), unit });
+}
+
+/** A length under a metre, in µm below 1 mm and in mm above, to `digits`
+ *  significant figures. The rounding comes first, so 999.7 µm gives 1 mm. */
+export function smallLengthParts(metres: number, digits = 2): Parts {
+	const rounded = Number(metres.toPrecision(digits));
+	return rounded >= 1e-3
+		? { value: sigFigures(rounded * 1e3, digits), unit: m.symbol_millimetre() }
+		: { value: sigFigures(rounded * 1e6, digits), unit: m.symbol_micrometre() };
+}
+
+/** A length in mm below 1 cm, in cm below 1 m and in m above, to `digits`
+ *  significant figures. The rounding comes first, so 99.7 cm gives 1 m. */
+export function lengthParts(metres: number, digits = 2): Parts {
+	const rounded = Number(metres.toPrecision(digits));
+	if (rounded >= 1) return { value: sigFigures(rounded, digits), unit: m.symbol_metre() };
+	return rounded >= 1e-2
+		? { value: sigFigures(rounded * 1e2, digits), unit: m.symbol_centimetre() }
+		: { value: sigFigures(rounded * 1e3, digits), unit: m.symbol_millimetre() };
 }

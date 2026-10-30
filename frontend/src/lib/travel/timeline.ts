@@ -20,6 +20,7 @@ import type { LegKind, Route, TravelBody } from '$lib/math/travel';
 // and the index carries Lambert, the porkchop and the vehicle catalogue.
 import { endArrivalOrbit, endDepartureOrbit, type EndOrbit } from '$lib/math/travel/maneuvers';
 import { LEG_END } from '$lib/math/travel/route';
+import type { TripRole } from './trip';
 
 /** What a step of the trip is: the legs of the route, plus the two ends that
  *  aren't legs at all — the orbit flown out of, and the one left in. Nothing
@@ -35,6 +36,8 @@ export interface TimelineEntry {
 	/** Equal to `startJd` for an event. */
 	endJd: number;
 	days: number;
+	/** How long it takes on the ship's clock, days. Absent where it equals `days`. */
+	shipDays?: number;
 	/** A stretch of the trip rather than a moment in it. */
 	isPhase: boolean;
 	/** The body it happens at, where there is one. Null out in the cruise. */
@@ -194,6 +197,7 @@ export function buildTimeline(
 			// legs after it; an instant is over the moment it happens.
 			endJd: leg.days > 0 ? jd + leg.days : at,
 			days: leg.days,
+			shipDays: leg.shipDays,
 			isPhase: leg.days > 0,
 			bodyId,
 			bodyName: bodyId ? nameFor(bodyId) : '',
@@ -224,6 +228,14 @@ export function buildTimeline(
 	}
 
 	return entries;
+}
+
+/** The timeline of the chosen trip, as the planner gives it to the map. */
+export interface Timeline {
+	entries: TimelineEntry[];
+	/** What the planner calls the two ends. A flyby ends on a step with no body,
+	 *  so the last entry cannot name the target. */
+	names: Record<TripRole, string>;
 }
 
 /** Where to look when an entry is picked: a place on the drawn arc wherever
