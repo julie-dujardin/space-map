@@ -104,8 +104,13 @@ def dictionary_columns(table: TableDef) -> frozenset[str]:
     return DICTIONARY | {group.source_column for group in table.groups}
 
 
+# Struct columns that the container format has no type for. They stay in the
+# registry tables and are not in the tiles.
+NOT_IN_TILES = frozenset({"orbit", "star"})
+
+
 def tile_schema(table: TableDef) -> pa.Schema:
-    schema = table.schema
+    schema = pa.schema([f for f in table.schema if f.name not in NOT_IN_TILES])
     for computed in COMPUTED.get(table.slug, ()):
         schema = schema.append(computed)
     return schema

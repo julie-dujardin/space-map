@@ -654,6 +654,10 @@ class SystemHosts(Protocol):
         """The root of the system of an ID, else 0."""
         ...
 
+    def node(self, id_: int) -> float | None:
+        """The node on the sky of the pair with this ID, else None."""
+        ...
+
 
 @dataclass
 class PlanetsExtension:
@@ -682,6 +686,8 @@ class PlanetsExtension:
         incoming: list[numbering.Incoming] = []
         host_of: dict[int, int] = {}
         system_of: dict[int, int] = {}
+        # The node of the pair of each circumbinary planet.
+        node_of: dict[int, float] = {}
         # System ID → rank of its key star, so that joined systems keep the
         # key rule.
         rank: dict[int, tuple] = {}
@@ -694,6 +700,8 @@ class PlanetsExtension:
                 pair = self.systems.host(at)
                 circumbinary += bool(pair)
                 host = pair or host
+                if pair and (node := self.systems.node(pair)) is not None:
+                    node_of[at] = node
                 # A host or a key in a star system goes to the file of its root.
                 system = self.systems.root(host) or self.systems.root(system) or system
             if not host or not system:
@@ -722,7 +730,13 @@ class PlanetsExtension:
             incoming, state, _previous(registry), ingest, complete
         )
         rows = [
-            table.to_row(prepared.records[at], number[0], number[1], system_of[at])
+            table.to_row(
+                prepared.records[at],
+                number[0],
+                number[1],
+                system_of[at],
+                node_of.get(at),
+            )
             for at, number in assignment.number.items()
         ]
         planets = pa.Table.from_pylist(rows, schema=table.SCHEMA)
@@ -742,6 +756,7 @@ class PlanetsExtension:
                 ),
                 f"Wikidata: {len(links.qid)} planets have an item",
                 f"circumbinary planets on the node of their pair: {circumbinary}",
+                f"circumbinary planets with the node of their pair's orbit: {len(node_of)}",
                 *_listed(
                     "check: Wikidata items whose ids name several planets",
                     links.several,

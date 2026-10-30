@@ -30,7 +30,8 @@ Defaults for unknown values:
 - eccentricity 0, argument of periastron 90°;
 - inclination of a transiting planet of the same host, else 90°;
 - node: one angle per system from a hash of its key ID (`default_node`), so
-  the assumed orbits of a system share one plane;
+  the assumed orbits of a system share one plane; a planet around both stars
+  of a pair takes the node of the pair's orbit, so they share one plane;
 - periastron at J2000.0 when no transit or periastron time is known.
 """
 
@@ -537,11 +538,15 @@ def default_node(system: int) -> float:
     return int.from_bytes(digest, "big") % 360_000 / 1000
 
 
-def to_row(record: Record, host: int, number: int, system: int) -> dict:
+def to_row(
+    record: Record, host: int, number: int, system: int, node: float | None = None
+) -> dict:
+    """The table row of a record. `node` is the node of the pair that a
+    circumbinary planet orbits, for a planet with no node of its own."""
     values = dict(record.values)
     assumed = set(record.assumed)
     if values.get("node") is None:
-        values["node"] = default_node(system)
+        values["node"] = default_node(system) if node is None else node
         assumed.add("node")
     row = {name: values.get(name) for name in SCHEMA.names}
     row.update(host=host, number=number, system=system)

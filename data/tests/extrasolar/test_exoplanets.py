@@ -915,6 +915,9 @@ class TestTable:
         assert row["node"] == table.default_node(123) and "node" in row["assumed"]
         assert table.to_row(b, 123, 1, 123)["node"] == row["node"]
         assert table.default_node(124) != row["node"]
+        # A planet around both stars of a pair takes the pair's node.
+        pair = table.to_row(c, 123, 2, 123, node=33.0)
+        assert pair["node"] == 33.0 and "node" in pair["assumed"]
 
     def test_mass_cut(self):
         heavy = planet(ARCHIVE, "S b", "2.1", 5.0, values={"mass": Measure(70.0)})

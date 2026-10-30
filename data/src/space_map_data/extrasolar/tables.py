@@ -775,10 +775,12 @@ BINARY_ORBIT = TableDef(
 )
 
 # A direct member of a system node: a star (a point that holds one star), a
-# system (an inner node) or an entry (a star with no ID, inside its node's
-# point or known from a catalogue only). `id` is null for an entry. `letter`
-# is its component letter, `inner` the inner pair of an entry inside a point
-# ("Ca" in "Cab"). The values are those of the catalogue that `source` names:
+# system (an inner node), a held star or an entry. A held star and an entry
+# have no point of their own: they are inside their node's point or known
+# from a catalogue only. A held star has an ID and a System row, an entry has
+# neither. `letter` is its component letter, `inner` the inner pair of an
+# entry inside a point ("Ca" in "Cab"). The values are those of the catalogue
+# that `source` names:
 # V and G in mag, mass in solar masses, and the orbit about the node's
 # primary: separation and semi-major axis in arcsec, position angle in deg,
 # period in d. `known` says how the member is known (spectroscopic,
@@ -881,17 +883,20 @@ SYSTEM_NODE = pa.struct(
     ]
 )
 
-# A node of a star system: a point that holds two or more stars, or a resolved
-# system, which has no point of its own. A point keeps its ID. A resolved
-# system has an ID of this table, with the cell of its primary point's
-# position. `depth` is 0 at the root, and `stars` counts the stars below the
-# node. `ra` and `dec` are the J2016.0 ICRS position of the primary point, in
-# deg. `label` holds the component letters ("AB"), `spectral_type` the
-# composite type of the stars, `evidence` the source that shows that a point
-# holds several stars, `sources` the trees that list the node, first in
-# source order. The links to other IDs come once every ID is minted: `parent`
-# (null at the root), `root`, `primary`, `members` and, in the root's row,
-# `tree`, every node of the system.
+# A node of a star system: a point that holds two or more stars, a resolved
+# system, which has no point of its own, or a held star, a star with no point
+# of its own. A point keeps its ID. A resolved system and a held star have an
+# ID of this table, with the cell of the position of the primary point of
+# their node. `depth` is 0 at the root, and `stars` counts the stars below the
+# node: 1 for a held star only. `ra` and `dec` are the J2016.0 ICRS position
+# of the primary point, in deg. `label` holds the component letters ("AB",
+# "Ab"), `spectral_type` the composite type of the stars, `evidence` the
+# source that shows that a point holds several stars, `sources` the trees
+# that list the node, first in source order. The links to other IDs come once
+# every ID is minted: `parent` (null at the root), `root`, `primary`,
+# `members` and, in the root's row, `tree`, every node of the system. A node
+# of two members has the `orbit` of its second member about its first when
+# one can be drawn (`systems.drawn`). A held star has its values in `star`.
 SYSTEM = TableDef(
     number=SYSTEM_TABLE,
     slug="system",
@@ -913,6 +918,8 @@ SYSTEM = TableDef(
         *_fields(pa.int64(), "parent", "root", "primary"),
         pa.field("members", pa.list_(SYSTEM_MEMBER)),
         pa.field("tree", pa.list_(SYSTEM_NODE)),
+        pa.field("orbit", SYSTEM_ORBIT),
+        pa.field("star", SYSTEM_STAR),
     ),
 )
 

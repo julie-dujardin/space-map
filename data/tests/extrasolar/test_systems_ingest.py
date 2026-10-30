@@ -9,8 +9,9 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pytest
 
+from space_map_data.download.providers.stars import msc
 from space_map_data.export.extrasolar import systems as export_systems
-from space_map_data.extrasolar import sky
+from space_map_data.extrasolar import frame, sky
 from space_map_data.extrasolar.engine import IngestRun, Source
 from space_map_data.extrasolar.exoplanets.sources import ARCHIVE_SOURCE
 from space_map_data.extrasolar.ids import cell_of, table_of
@@ -24,6 +25,7 @@ from space_map_data.extrasolar.sources.hipparcos import HIPPARCOS
 from space_map_data.extrasolar.sources.simbad import SIMBAD, SimbadList, SimbadObject
 from space_map_data.extrasolar.systems import ingest as systems_ingest
 from space_map_data.extrasolar.systems.msc import msc_nodes
+from space_map_data.extrasolar.systems.orbits import msc_orbits
 from space_map_data.extrasolar.systems.pairs import el_badry_pairs, orbit_pairs
 from space_map_data.extrasolar.systems.planets import PLANETS_INPUT
 from space_map_data.extrasolar.systems.prepare import Inputs
@@ -38,6 +40,7 @@ from space_map_data.extrasolar.tables import (
     SYSTEM_TABLE,
     merge_by_source_order,
 )
+from tests.download.orbit_catalogue_files import MSC_LINES, MSC_ORB_README
 from tests.extrasolar.conftest import offset
 from tests.extrasolar.systems_fakes import (
     FakeResolver,
@@ -139,6 +142,7 @@ def inputs(
     wds_components: dict = WDS_COMPONENTS,
     el_badry: pa.Table | None = None,
     orbits: pa.Table | None = None,
+    catalogue_orbits: pa.Table | None = None,
 ) -> tuple[Inputs, SimbadIndex]:
     comp = [
         msc_comp("14396-6050", "A", HIP=71683),
@@ -170,6 +174,7 @@ def inputs(
             el_badry=el_badry,
             orbits=orbits,
             planets=planets,
+            catalogue_orbits=catalogue_orbits,
         ),
         index,
     )
@@ -292,7 +297,9 @@ class TestSystemsIngest:
     def test_system_ids_and_rows(self, registry_after_two):
         registry, _, report, _, _, _ = registry_after_two
         system = table(registry, SYSTEM.slug)
-        resolved = system.filter(pc.invert(system["point"]))
+        resolved = system.filter(
+            pc.and_(pc.invert(system["point"]), pc.greater(system["stars"], 1))
+        )
         # α Cen, α Cen AB, the MSC pair and the WDS pair.
         assert resolved.num_rows == 4
         assert set(table_of(resolved["id"].to_numpy()).tolist()) == {3}
@@ -306,6 +313,37 @@ class TestSystemsIngest:
             assert cell_of(row["id"]) == primary
         assert "Systems at the commit" in report
         assert "system IDs: minted 4, kept 0" in report
+
+    def test_held_stars(self, registry_after_two):
+        """Aa and Ab, which the point of HIP 1001 holds, have IDs of the System
+        table in its cell, rows of their own, and a place in the tree."""
+        registry, _, report, report_two, _, _ = registry_after_two
+        system = {row["id"]: row for row in table(registry, SYSTEM.slug).to_pylist()}
+        (p1,) = ids_of(registry, ["1001"])
+        members = system[p1]["members"]
+        assert [(m["letter"], m["kind"]) for m in members] == [
+            ("Aa", "held star"),
+            ("Ab", "held star"),
+        ]
+        for member in members:
+            row = system[member["id"]]
+            assert table_of(member["id"]) == SYSTEM_TABLE
+            assert cell_of(member["id"]) == cell_of(p1)
+            assert row["parent"] == p1 and row["root"] == system[p1]["root"]
+            assert row["stars"] == 1 and not row["point"]
+            assert row["depth"] == system[p1]["depth"] + 1
+            assert row["label"] == member["letter"] and row["members"] == []
+            # Their letters make them held stars; the MSC gives no values.
+            assert row["star"]["mass"] is None and row["star"]["references"] == []
+        root = system[system[p1]["root"]]
+        tree = {entry["id"]: entry for entry in root["tree"]}
+        assert {m["id"] for m in members} <= set(tree)
+        meta = {row["id"]: row for row in table(registry, METADATA.slug).to_pylist()}
+        for member in members:
+            assert meta[member["id"]]["system"] == system[p1]["root"]
+            assert meta[member["id"]]["class"] == "star"
+        assert "held star IDs: minted 2, kept 0" in report
+        assert "held star IDs: minted 0, kept 2" in report_two
 
     def test_previous_systems_reads_only_system_ids(
         self, registry_after_two, monkeypatch
@@ -556,9 +594,14 @@ class TestUnmintedObjects:
         registry, _, report, _ = unminted_two
         (a,) = ids_of(registry, ["1009"])
         node = node_of(table(registry, SYSTEM.slug), a)
-        entries = sorted(m["letter"] for m in node["members"] if m["kind"] == "entry")
-        # B matches a Gaia row that gets no ID, and C matches nothing.
-        assert entries == ["B", "C"]
+        held = sorted(
+            (m["letter"], table_of(m["id"]))
+            for m in node["members"]
+            if m["kind"] == "held star"
+        )
+        # B matches a Gaia row that gets no ID, and C matches nothing. Each has
+        # its letter, so it is a held star.
+        assert held == [("B", SYSTEM_TABLE), ("C", SYSTEM_TABLE)]
         found = registry.lookup("wds", "component", ["06000+3000 B", "06000+3000 C"])
         assert found.tolist() == [0, 0]
         # Two minted objects of the first pair, and A here.
@@ -569,10 +612,10 @@ class TestUnmintedObjects:
         (a,) = ids_of(registry, ["1008"])
         system = table(registry, SYSTEM.slug)
         node = node_of(system, a)
-        # B holds a Gaia orbit, but its object gets no ID: B is an entry.
-        (entry,) = [m for m in node["members"] if m["kind"] == "entry"]
+        # B holds a Gaia orbit, but its object gets no ID: B is a held star.
+        (entry,) = [m for m in node["members"] if m["kind"] == "held star"]
         assert ("gaia", "dr3", str(GAIA["orbit"])) in entry_ids(entry)
-        assert sorted(m["kind"] for m in node["members"]) == ["entry", "star"]
+        assert sorted(m["kind"] for m in node["members"]) == ["held star", "star"]
         assert system.filter(system["point"])["id"].to_pylist() == ids_of(
             registry, ["1001"]
         )
@@ -597,17 +640,19 @@ class TestUnmintedObjects:
 
         lost = {str(GAIA["pair"]), str(GAIA["orbit"]), "06000+3000 B"}
 
-        def entries(system: pa.Table) -> list[tuple[int, str]]:
-            """The entries of the stars of objects that get no ID."""
+        def entries(system: pa.Table) -> list[tuple[int, str, str, int]]:
+            """The members of the stars of objects that get no ID."""
             return sorted(
-                (row["id"], m["letter"] or "")
+                (row["id"], m["letter"] or "", m["kind"], m["id"] or 0)
                 for row in system.to_pylist()
                 for m in row["members"]
-                if m["kind"] == "entry"
-                and any(x["catalogue_id"] in lost for x in m["ids"] or [])
+                if any(x["catalogue_id"] in lost for x in m["ids"] or [])
             )
 
-        assert len(entries(first)) == 3
+        # The El-Badry star has no value of its own; B of the orbit and of
+        # the WDS have their letters.
+        kinds = sorted(kind for _, _, kind, _ in entries(first))
+        assert kinds == ["entry", "held star", "held star"]
         assert entries(second) == entries(first)
 
 
@@ -634,8 +679,8 @@ class TestPointsWithNoClaim:
     def test_it_raises(self, tmp_path, monkeypatch):
         claims = systems_ingest.RunResolver.claims
 
-        def without(resolver, keys):
-            found = claims(resolver, keys)
+        def without(resolver, keys, **kwargs):
+            found = claims(resolver, keys, **kwargs)
             rows = resolver.run.row_keys(HIPPARCOS.name)
             hips = dict(zip(rows["catalogue_id"].to_pylist(), rows["key"].to_pylist()))
             drop = pc.equal(found["key"], hips["1004"])
@@ -1066,10 +1111,49 @@ class TestComponentOnItsPairsPoint:
             assert system[int(key)]["point"] and system[int(key)]["stars"] == 2
             members = system[int(key)]["members"]
             assert [(m["letter"], m["kind"]) for m in members] == [
-                ("A", "entry"),
-                ("B", "entry"),
+                ("A", "held star"),
+                ("B", "held star"),
             ]
             (wds,) = [
                 s for s in registry.ingests[-1]["sources"] if s["catalogue"] == "wds"
             ]
             assert wds["excluded_links"] == 1
+
+
+class TestPairOrbits:
+    """The MSC orbit of α Cen A and B on the System row of α Cen AB, ready to
+    draw, and its node for the planets."""
+
+    @pytest.fixture(scope="class")
+    def drawn(self, tmp_path_factory):
+        folder = tmp_path_factory.mktemp("orbits")
+        (folder / msc.README_FILE).write_text(MSC_ORB_README, encoding="latin-1")
+        (folder / msc.ORB_FILE).write_text(
+            "\n".join(MSC_LINES) + "\n", encoding="latin-1"
+        )
+        root = folder / "registry"
+        extension, report = ingest(root, catalogue_orbits=msc_orbits(folder))
+        return Registry(root), extension, report
+
+    def test_the_orbit_of_alpha_cen_ab(self, drawn):
+        registry, extension, report = drawn
+        a, b = ids_of(registry, ["71683", "71681"])
+        system = table(registry, SYSTEM.slug).to_pylist()
+        (ab,) = [
+            row for row in system if {m["id"] for m in row["members"] or []} == {a, b}
+        ]
+        orbit = ab["orbit"]
+        assert orbit["period_source"] == "msc" and orbit["centre"] == "barycentre"
+        assert orbit["semi_major_axis_arcsec"] == 17.66
+        assert orbit["semi_major_axis"] == pytest.approx(17.66 * REYLE["71683"])
+        assert (orbit["node"], orbit["arg_periastron"]) == (204.75, 232.30)
+        assert orbit["node_ascending"] and orbit["assumed"] == []
+        assert orbit["barycentre"] == pytest.approx(4.61 / (4.61 + 5.45))
+        expected = frame.ecliptic_angles(
+            frame.direction(ab["ra"], ab["dec"]), 79.32, 204.75, 232.30
+        )
+        assert (orbit["i"], orbit["om"], orbit["w"]) == pytest.approx(expected)
+        assert extension.node(ab["id"]) == 204.75
+        others = [row for row in system if row["id"] != ab["id"]]
+        assert all(row["orbit"] is None for row in others)
+        assert "drawn: orbits 1" in report

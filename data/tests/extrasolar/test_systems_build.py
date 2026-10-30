@@ -1565,8 +1565,9 @@ class TestUnverifiedInterior:
 
 class TestRegistryInputs:
     def test_no_gaia_orbits(self, tmp_path):
-        orbits = registry_orbits(Registry(tmp_path))
+        orbits, elements = registry_orbits(Registry(tmp_path))
         assert orbits.num_rows == 0 and orbits.schema == PAIRS
+        assert elements.num_rows == 0
 
 
 class TestComponentOnItsPairsPoint:

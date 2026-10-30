@@ -1,13 +1,14 @@
 """The checks of the star systems in the System table.
 
-A node is a System row: a point that holds two or more stars, or a resolved
-system. Its members are stars (points that hold one star, with no System
-row), nodes, and entries, which have no ID. The export refuses when:
+A node is a System row: a point that holds two or more stars, a resolved
+system, or a held star (a star with no point of its own). Its members are
+stars (points that hold one star, with no System row), nodes, held stars,
+and entries, which have no ID. The export refuses when:
 
 - an ID has two System rows;
-- a member star has a System row, a member node has none or names another
-  parent, or a row has a parent that is no System row or that does not list
-  it;
+- a member star has a System row, a member node or held star has none or
+  names another parent, or a row has a parent that is no System row or that
+  does not list it;
 - an ID is a member of two nodes: a node has one parent, and a star is in one
   system;
 - the parents of a node lead to no root (a cycle), or to another root than
@@ -46,8 +47,8 @@ type Runner = Callable[[Callable, list, str], list]
 
 SYSTEM_BIT = 1 << SYSTEM_TABLE
 # The member kinds, by their code in `Systems.member_kind`.
-KINDS = (assemble.STAR, assemble.SYSTEM, assemble.ENTRY)
-STAR, NODE, ENTRY = range(len(KINDS))
+KINDS = (assemble.STAR, assemble.SYSTEM, assemble.ENTRY, assemble.HELD)
+STAR, NODE, ENTRY, HELD = range(len(KINDS))
 UNKNOWN_KIND = len(KINDS)
 
 
@@ -173,7 +174,7 @@ class Systems:
         problems.add("star or node member with no ID", node[no_id], int(no_id.sum()))
         stars = (kind == STAR) & (find_sorted(self.id, member) >= 0)
         problems.add("member star with a System row", member[stars], int(stars.sum()))
-        inner = kind == NODE
+        inner = (kind == NODE) | (kind == HELD)
         at = find_sorted(self.id, member[inner])
         problems.add(
             "member node with no System row",
@@ -306,6 +307,7 @@ class Systems:
             "roots": int((self.parent == 0).sum()),
             "member stars": int((kind == STAR).sum()),
             "member nodes": int((kind == NODE).sum()),
+            "held stars": int((kind == HELD).sum()),
             "entries": int((kind == ENTRY).sum()),
             "deepest": int(self.depth.max()) if self.depth.size else 0,
             "largest system": int(sizes.max()) if sizes.size else 0,

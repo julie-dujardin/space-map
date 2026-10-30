@@ -2,9 +2,10 @@
 
     python -m space_map_data.extrasolar.systems --out <dir>
 
-It reads the sources, holds the registry's shared lock while it builds, and
-writes the report section and the output tables to `--out`. It writes
-nothing into the registry or the exports.
+It reads the sources, holds the registry's shared lock while it builds and
+draws, and writes the report section and the output tables to `--out`, the
+held stars and the orbits of the pairs too. It writes nothing into the
+registry or the exports.
 """
 
 import argparse
@@ -21,7 +22,10 @@ from space_map_data.extrasolar.exoplanets import simbad as exoplanet_simbad
 from space_map_data.extrasolar.registry import Registry
 from space_map_data.extrasolar.sources.simbad import SimbadList
 from space_map_data.extrasolar.systems.build import build
+from space_map_data.extrasolar.systems.drawn import draw
+from space_map_data.extrasolar.systems.ingest import drawn_lines
 from space_map_data.extrasolar.systems.msc import read_msc, refuted_pairs
+from space_map_data.extrasolar.systems.orbits import read_orbits
 from space_map_data.extrasolar.systems.pairs import read_el_badry
 from space_map_data.extrasolar.systems.planets import (
     read_oec_trees,
@@ -72,6 +76,7 @@ def cli() -> None:
         refuted=refuted_pairs(),
         el_badry=read_el_badry(),
     )
+    inputs.catalogue_orbits, inputs.catalogue_stars = read_orbits()
     read = time.monotonic()
     logger.info(
         "systems: sources read in %.0f s, peak %d MB", read - started, _peak_mb()
@@ -80,9 +85,10 @@ def cli() -> None:
     registry = Registry(args.root)
     with registry.reader():
         inputs.planets = registry_planets(registry, hub)
-        inputs.orbits = registry_orbits(registry)
+        inputs.orbits, inputs.orbit_elements = registry_orbits(registry)
         resolver = RegistryResolver(registry)
         systems = build(inputs, resolver)
+        drawn = draw(systems, inputs, resolver)
         targets = target_keys(index, resolver)
     built = time.monotonic()
     logger.info("systems: built in %.0f s, peak %d MB", built - read, _peak_mb())
@@ -100,7 +106,10 @@ def cli() -> None:
         "events",
     ):
         pq.write_table(getattr(systems, name), args.out / f"{name}.parquet")
+    pq.write_table(drawn.held, args.out / "held.parquet")
+    pq.write_table(drawn.orbits, args.out / "orbits.parquet")
     lines = report_lines(systems, targets, examples=args.examples)
+    lines += drawn_lines(drawn)
     lines += [
         "",
         f"timings: sources {read - started:.0f} s, build {built - read:.0f} s",

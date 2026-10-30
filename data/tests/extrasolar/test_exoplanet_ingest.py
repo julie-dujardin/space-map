@@ -333,6 +333,9 @@ class StarSystems:
     def root(self, id_: int) -> int:
         return self.roots.get(id_, 0)
 
+    def node(self, id_: int) -> float | None:
+        return None
+
 
 class TestStarSystemRoots:
     def test_the_key_of_a_planet_system_takes_its_root(self, root, backup, tmp_path):

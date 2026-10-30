@@ -15,10 +15,14 @@
    point claims one of its own ids. The rows carry the System columns, the
    class and the name of a node, and the system distance and the spectral
    type of a star.
+   A held star (`drawn`) mints an ID of the System table too, in the cell
+   of its node. It claims its node's anchor and its tag in the node.
 3. `SystemsExtension` sets the links between IDs at the commit, when every
    ID is minted: `parent`, `root`, `primary`, `members` and `tree` of
-   System, and `system` of Metadata. It gives the planets extension the
-   host of a circumbinary planet and the root of each host.
+   System, and `system` of Metadata. It sets `orbit` on the pairs, with the
+   assumed node of the planets where an orbit has none, and `star` on the
+   held stars. It gives the planets extension the host of a circumbinary
+   planet, the root of each host and the node of each drawn pair.
 """
 
 import json
@@ -33,7 +37,7 @@ import numpy as np
 import pyarrow as pa
 import pyarrow.compute as pc
 
-from space_map_data.download.providers.stars import el_badry, msc, wds
+from space_map_data.download.providers.stars import el_badry, msc, orb6, sbx, wds
 from space_map_data.extrasolar import families
 from space_map_data.extrasolar.engine import (
     ExtensionResult,
@@ -55,15 +59,20 @@ from space_map_data.extrasolar.registry import (
 )
 from space_map_data.extrasolar.sources.gaia import GaiaReader
 from space_map_data.extrasolar.sources.simbad import SIMBAD, SimbadList
-from space_map_data.extrasolar.systems.assemble import ENTRY, Systems
+from space_map_data.extrasolar.systems import assemble
+from space_map_data.extrasolar.systems.assemble import ENTRY, HELD, Systems
 from space_map_data.extrasolar.systems.build import build
+from space_map_data.extrasolar.systems.drawn import Drawn, assumed_node, draw, scene
+from space_map_data.extrasolar.systems.elements import GAIA_ELEMENTS
 from space_map_data.extrasolar.systems.msc import read_msc, refuted_pairs
 from space_map_data.extrasolar.systems.nodes import (
     GAIA_DR3,
     OBJECT_CATALOGUES,
     SIMBAD_OID,
+    WDS,
     WDS_ID,
 )
+from space_map_data.extrasolar.systems.orbits import read_orbits
 from space_map_data.extrasolar.systems.pairs import (
     ORBIT_COLUMNS,
     orbit_pairs,
@@ -89,6 +98,8 @@ from space_map_data.extrasolar.tables import (
     SYSTEM,
     SYSTEM_MEMBER,
     SYSTEM_NODE,
+    SYSTEM_ORBIT,
+    SYSTEM_STAR,
     SYSTEM_TABLE,
     TableDef,
     merge_by_source_order,
@@ -118,9 +129,12 @@ SYSTEMS = Source(
 # A resolved system claims its catalogue ids under this catalogue, with the
 # catalogue of the id as the release. So the row of an object never reaches a
 # system through the object's own id. A system with no catalogue id claims
-# its primary's id and its nesting rank among the systems of that primary.
+# its primary's id and its nesting rank among the systems of that primary. A
+# held star claims the anchor of its node (`_anchors`) and its tag.
 SYSTEM_CLAIMS = "star-system"
 PRIMARY_CLAIM = (SYSTEM_CLAIMS, "primary")
+HELD_CLAIM = (SYSTEM_CLAIMS, "member")
+HELD_CLASS = "star"
 SYSTEM_METHOD = "system"
 EXAMPLES = 20
 # The catalogues beside Gaia DR3 that the builder looks up.
@@ -396,14 +410,16 @@ class RunResolver:
                 )
             )
 
-    def claims(self, keys: np.ndarray) -> pa.Table:
+    def claims(self, keys: np.ndarray, own_first: bool = False) -> pa.Table:
         """One catalogue id of each of `keys`: `key`, `catalogue`, `release`,
         `catalogue_id`, null where the run holds none. An id that a lookup
-        gave comes first."""
+        gave comes first, or with `own_first` the id of the object's first
+        row in source order, which stays the same between ingests."""
         keys = np.asarray(keys, np.int64)
         taken = np.zeros(keys.size, bool)
         rows, parts = [], []
-        for catalogue, release, ids, hits in [*self._found, *self._own]:
+        found = [*self._own, *self._found] if own_first else [*self._found, *self._own]
+        for catalogue, release, ids, hits in found:
             order = np.argsort(hits, kind="stable")
             at = find_sorted(hits[order], keys)
             new = np.flatnonzero((at >= 0) & ~taken)
@@ -496,20 +512,60 @@ class Plan:
     # several stars.
     classes: Counter = field(default_factory=Counter)
     counts: Counter = field(default_factory=Counter)
+    # The held stars and the orbits of the pairs, and the label of the row of
+    # each held star, null for a star with no row.
+    drawn: Drawn | None = None
+    held_labels: pa.Array = field(default_factory=lambda: pa.array([], pa.string()))
 
 
 def _node_names(systems: Systems) -> dict[int, str]:
-    """The best name of each node."""
+    """The best name of each resolved node.
+
+    A node with no name of its own, only a WDS designation or none, takes the
+    name of its primary member: a point's name, or the name of an inner node.
+    """
     names = systems.names
-    order = np.lexsort((names["rank"].to_numpy(), names["node"].to_numpy()))
-    found: dict[int, str] = {}
-    for node, name in zip(
-        names["node"].take(pa.array(order)).to_pylist(),
-        names["name"].take(pa.array(order)).to_pylist(),
+    order = pa.array(np.lexsort((names["rank"].to_numpy(), names["node"].to_numpy())))
+    found: dict[int, tuple[str, str]] = {}
+    for node, source, name in zip(
+        names["node"].take(order).to_pylist(),
+        names["source"].take(order).to_pylist(),
+        names["name"].take(order).to_pylist(),
     ):
         if name:
-            found.setdefault(node, name)
-    return found
+            found.setdefault(node, (source, name))
+    best = {node: name for node, (source, name) in found.items() if source != WDS}
+    point_names = dict(
+        zip(systems.points["key"].to_pylist(), systems.points["name"].to_pylist())
+    )
+    members = systems.members
+    first = np.unique(members["node"].to_numpy(), return_index=True)
+    primary = dict(
+        zip(
+            first[0].tolist(),
+            zip(
+                members["kind"].take(pa.array(first[1])).to_pylist(),
+                members["key"].take(pa.array(first[1])).to_pylist(),
+                members["member"].take(pa.array(first[1])).to_pylist(),
+            ),
+        )
+    )
+    nodes = systems.nodes
+    resolved = nodes.filter(pc.equal(nodes["key"], 0))
+    order = np.argsort(-resolved["depth"].to_numpy(), kind="stable")
+    for number in resolved["node"].to_numpy()[order].tolist():
+        if number in best or number not in primary:
+            continue
+        kind, key, member = primary[number]
+        name = None
+        if kind == assemble.STAR or (kind == assemble.SYSTEM and key):
+            name = point_names.get(key)
+        elif kind == assemble.SYSTEM:
+            name = best.get(member)
+        name = name or found.get(number, (None, None))[1]
+        if name:
+            best[number] = name
+    return best
 
 
 def _nesting_rank(primaries: np.ndarray, depth: np.ndarray) -> np.ndarray:
@@ -618,8 +674,14 @@ def _one_claim(claims: pa.Table) -> pa.ListArray:
     return pa.ListArray.from_arrays(offsets, struct)
 
 
-def pass_rows(systems: Systems, resolver: RunResolver, planets: pa.Table) -> Plan:
-    """The rows of the star-systems pass: one per node and one per star."""
+def pass_rows(
+    systems: Systems,
+    resolver: RunResolver,
+    planets: pa.Table,
+    drawn: Drawn | None = None,
+) -> Plan:
+    """The rows of the star-systems pass: one per node, one per star of a
+    system and one per held star."""
     counts: Counter = Counter()
     facts = resolver.facts_table
     assert facts is not None
@@ -672,6 +734,7 @@ def pass_rows(systems: Systems, resolver: RunResolver, planets: pa.Table) -> Pla
     resolved_labels = np.array([f"node {n}" for n in resolved_numbers.tolist()], object)
     resolved_labels[named[unique]] = text[unique]
     labels[resolved] = resolved_labels
+    anchors = _anchors(nodes, resolver)
     resolved_table = {
         "catalogue_id": pa.array(resolved_labels, pa.string()),
         "mint": pa.array(np.ones(resolved_rows.num_rows, bool)),
@@ -771,6 +834,12 @@ def pass_rows(systems: Systems, resolver: RunResolver, planets: pa.Table) -> Pla
     counts["stars placed by system distance"] = int(np.isfinite(distance).sum())
     counts["composite spectral types moved"] = int(moved.sum())
     parts = [resolved_part, point_part, pa.table(star_table)]
+    held_labels = pa.array([], pa.string())
+    if drawn is not None:
+        held_part, held_labels = _held_rows(
+            systems, drawn.held, names, labels, anchors, fact, counts
+        )
+        parts.append(held_part)
     # With an empty part, the engine's take of these rows fails (pyarrow 25).
     rows = pa.concat_tables(
         [part for part in parts if part.num_rows] or parts[:1],
@@ -822,7 +891,132 @@ def pass_rows(systems: Systems, resolver: RunResolver, planets: pa.Table) -> Pla
         system_claims,
         classes,
         counts,
+        drawn,
+        held_labels,
     )
+
+
+def _anchors(nodes: pa.Table, resolver: RunResolver) -> np.ndarray:
+    """The text that the held stars of each node claim with their tag.
+
+    It is the node's first catalogue id, else its point's own id, else its
+    primary's own id and its nesting rank. Own ids stay the same between
+    ingests, where the id that a lookup finds first can change.
+    """
+    ids = nodes["catalogue_ids"].combine_chunks()
+    named = pc.list_value_length(ids).fill_null(0).to_numpy() > 0
+    found = np.full(nodes.num_rows, None, object)
+    at = np.flatnonzero(named)
+    first = pc.list_element(ids.take(pa.array(at)), 0)
+    found[at] = _id_texts(*first.flatten()).to_numpy(zero_copy_only=False)
+    keys = nodes["key"].to_numpy()
+    primary = nodes["primary"].to_numpy()
+    rank = _nesting_rank(primary, nodes["depth"].to_numpy())
+    rest = np.flatnonzero(~named)
+    of = np.where(keys[rest] != 0, keys[rest], primary[rest])
+    own = resolver.claims(of, own_first=True)
+    texts = _id_texts(*own.select(CROSS_ID.names).columns).to_numpy(
+        zero_copy_only=False
+    )
+    for row, text in zip(rest.tolist(), texts):
+        if text is not None:
+            found[row] = text if keys[row] else f"{text} {rank[row]}"
+    return found
+
+
+def _held_rows(
+    systems: Systems,
+    held: pa.Table,
+    names: dict[int, str],
+    labels: np.ndarray,
+    anchors: np.ndarray,
+    fact: Callable[[np.ndarray, str], pa.Array],
+    counts: Counter,
+) -> tuple[pa.Table, pa.Array]:
+    """The rows of the held stars, and the label of the row of each, null for
+    a star with no position.
+
+    `labels` and `anchors` are those of the rows of `systems.nodes`. A held
+    star takes its root's name and its letter, and its node's position.
+    """
+    nodes = systems.nodes
+    numbers = nodes["node"].to_numpy()
+    order = np.argsort(numbers, kind="stable")
+    at = order[np.searchsorted(numbers[order], held["number"].to_numpy())]
+    ra = nodes["ra"].fill_null(np.nan).to_numpy()[at]
+    dec = nodes["dec"].fill_null(np.nan).to_numpy()[at]
+    valid = np.isfinite(ra) & np.isfinite(dec)
+    counts["held stars with no position"] = int((~valid).sum())
+    roots = nodes["root"].to_numpy()[at]
+    keys = nodes["key"].to_numpy()
+    point_names = dict(
+        zip(systems.points["key"].to_pylist(), systems.points["name"].to_pylist())
+    )
+
+    def root_name(root: int) -> str | None:
+        found = names.get(root)
+        if found is None:
+            key = int(keys[order[np.searchsorted(numbers[order], root)]])
+            found = point_names.get(key) if key else None
+        return found
+
+    members = systems.members.take(pa.array(held["member"].to_numpy()))
+    own_mag = pc.coalesce(members["g_mag"], members["v_mag"]).to_numpy(
+        zero_copy_only=False
+    )
+    primary_mag = fact(nodes["primary"].to_numpy()[at], "mag").to_numpy(
+        zero_copy_only=False
+    )
+    sources = members["source"].to_pylist()
+    texts, claims, row_names, mags = [], [], [], []
+    seen: set[str] = set()
+    for row, (tag, letter, root) in enumerate(
+        zip(held["tag"].to_pylist(), held["letter"].to_pylist(), roots.tolist())
+    ):
+        texts.append(f"{labels[at[row]]} | {tag}")
+        claim = anchors[at[row]]
+        text = None if claim is None else f"{claim} {tag}"
+        if text in seen:
+            counts["held stars whose claim another held star makes"] += 1
+            text = None
+        if text:
+            seen.add(text)
+        claims.append(
+            [dict(zip(CROSS_ID.names, (*HELD_CLAIM, text)))] if text else None
+        )
+        name = root_name(root)
+        row_names.append(f"{name} {letter}" if name and letter else None)
+        mag = own_mag[row]
+        mags.append(mag if mag is not None and np.isfinite(mag) else primary_mag[row])
+    counts["held stars named by their root and letter"] = sum(
+        n is not None for n in row_names
+    )
+    pick = pa.array(np.flatnonzero(valid))
+    n = int(valid.sum())
+    part = pa.table(
+        {
+            "catalogue_id": pa.array(texts, pa.string()).take(pick),
+            "mint": pa.array(np.ones(n, bool)),
+            "claims": pa.array(claims, pa.list_(CROSS_ID)).take(pick),
+            "name": pa.array(row_names, pa.string()).take(pick),
+            "class": pa.array([HELD_CLASS] * n, pa.string()),
+            "match_ra": pa.array(ra[valid]),
+            "match_dec": pa.array(dec[valid]),
+            "match_mag": pa.array(mags, pa.float32(), from_pandas=True).take(pick),
+            "point": pa.array(np.zeros(n, bool)),
+            "depth": pa.array(nodes["depth"].to_numpy()[at][valid] + 1, pa.int16()),
+            "stars": pa.array(np.ones(n, np.int32)),
+            "ra": pa.array(ra[valid]),
+            "dec": pa.array(dec[valid]),
+            "label": held["letter"].take(pick),
+            "sources": pa.array(
+                [[s] if s else None for s in sources], pa.list_(pa.string())
+            ).take(pick),
+        }
+    )
+    labels_out = pc.if_else(pa.array(valid), pa.array(texts, pa.string()), None)
+    counts["rows of held stars"] = n
+    return part, labels_out
 
 
 def _id_texts(
@@ -890,6 +1084,8 @@ class SystemsExtension:
     _hosts: dict[int, int] = field(default_factory=dict)
     _root_keys: np.ndarray = field(default_factory=lambda: np.zeros(0, np.int64))
     _root_values: np.ndarray = field(default_factory=lambda: np.zeros(0, np.int64))
+    # The node on the sky of each drawn pair, by ID.
+    _nodes: dict[int, float] = field(default_factory=dict)
 
     def items_moved(self, moved: list[str]) -> None:
         """Report the Wikidata items that go to a system, not to its star."""
@@ -904,6 +1100,10 @@ class SystemsExtension:
         """The root of the system of an ID, else 0."""
         at = find_sorted(self._root_keys, np.array([id_], np.int64))[0]
         return int(self._root_values[at]) if at >= 0 else 0
+
+    def node(self, id_: int) -> float | None:
+        """The node on the sky of the drawn pair with this ID, else None."""
+        return self._nodes.get(id_)
 
     def build(
         self,
@@ -925,18 +1125,22 @@ class SystemsExtension:
 
         id_systems = _with_ids(systems, node_id, point_id)
         nodes, members, points = id_systems.nodes, id_systems.members, id_systems.points
-        system = _system_patch(nodes, members)
-        metadata = _metadata_patch(nodes, points)
+        held_ids = _ids_of(plan.held_labels, rows)
+        held = plan.drawn.held if plan.drawn is not None else None
+        with_held, members = _with_held(nodes, members, held, held_ids, node_id)
+        system = _system_patch(with_held, members)
+        system, drawn_counts = self._drawn_columns(system, with_held, held_ids, node_id)
+        metadata = _metadata_patch(with_held, points)
         records = list(self.plan.hosts)
         host_ids = _ids_of(
             pa.array([self.plan.hosts[r] for r in records], pa.string()), rows
         )
         self._hosts = {r: int(i) for r, i in zip(records, host_ids.tolist()) if i}
         member_ids = np.concatenate(
-            [nodes["node"].to_numpy(), points["key"].to_numpy()]
+            [with_held["node"].to_numpy(), points["key"].to_numpy()]
         )
         member_roots = np.concatenate(
-            [nodes["root"].to_numpy(), points["root"].to_numpy()]
+            [with_held["root"].to_numpy(), points["root"].to_numpy()]
         )
         keep = (member_ids > 0) & (member_roots > 0)
         self._root_keys, self._root_values = _sorted(
@@ -946,13 +1150,17 @@ class SystemsExtension:
         resolved = nodes.filter(pc.invert(nodes["point"]))["node"].to_numpy()
         previous = _previous_systems(registry)
         counts = dict(plan.counts)
+        minted_held = held_ids[held_ids > 0]
         counts |= {
             "system rows": system.num_rows,
             "metadata system": metadata.num_rows,
             "minted": int((~np.isin(resolved, previous) & (resolved > 0)).sum()),
             "kept": int(np.isin(resolved, previous).sum()),
-            "gone": int((~np.isin(previous, resolved)).sum()),
+            "gone": int((~np.isin(previous, np.r_[resolved, minted_held])).sum()),
             "no id": int((node_ids == 0).sum() + (point_ids == 0).sum()),
+            "held minted": int((~np.isin(minted_held, previous)).sum()),
+            "held kept": int(np.isin(minted_held, previous).sum()),
+            **drawn_counts,
         }
         id_targets = [
             (label, int(point_id(np.array([key], np.int64))[0]) if key else 0)
@@ -965,9 +1173,16 @@ class SystemsExtension:
             f" retired or merged {counts['gone']:,}"
         )
         lines.append(
+            f"held star IDs: minted {counts['held minted']:,},"
+            f" kept {counts['held kept']:,}; with no row"
+            f" {int(plan.held_labels.null_count):,}, with no ID"
+            f" {int((held_ids == 0).sum()) - int(plan.held_labels.null_count):,}"
+        )
+        lines.append(
             f"System rows: {system.num_rows:,}; Metadata `system` on"
             f" {metadata.num_rows:,} IDs; rows with no ID {counts['no id']:,}"
         )
+        lines += [f"drawn: {k} {v:,}" for k, v in sorted(drawn_counts.items())]
         lines += [f"pass: {k} {v:,}" for k, v in sorted(plan.counts.items())]
         lines += _engine_lines(self.run)
         lines.append(f"circumbinary hosts: {len(self._hosts):,}")
@@ -981,8 +1196,109 @@ class SystemsExtension:
             patches={SYSTEM.slug: system, METADATA.slug: metadata},
         )
 
+    def _drawn_columns(
+        self,
+        system: pa.Table,
+        nodes: pa.Table,
+        held_ids: np.ndarray,
+        node_id: IdMap,
+    ) -> tuple[pa.Table, dict[str, int]]:
+        """`system` with the `orbit` of each drawn pair and the `star` of each
+        held star. A pair with no node takes the assumed node of its root."""
+        n = system.num_rows
+        drawn = self.plan.drawn
+        if drawn is None:
+            system = system.append_column("orbit", pa.nulls(n, SYSTEM_ORBIT))
+            return system.append_column("star", pa.nulls(n, SYSTEM_STAR)), {}
+        ids = system["id"].to_numpy()
+        root_of = dict(zip(nodes["node"].to_pylist(), nodes["root"].to_pylist()))
+        orbits: dict[int, dict] = {}
+        assumed = 0
+        pair_ids = node_id(drawn.orbits["number"].to_numpy())
+        for id_, row in zip(pair_ids.tolist(), drawn.orbits.to_pylist()):
+            if not id_:
+                continue
+            node = row["node"]
+            if node is None:
+                node = assumed_node(root_of.get(id_) or id_)
+                assumed += 1
+            orbits[id_] = scene(row, node)
+            self._nodes[id_] = node
+        stars: dict[int, dict] = {}
+        names = [f.name for f in SYSTEM_STAR]
+        for id_, row in zip(held_ids.tolist(), drawn.held.select(names).to_pylist()):
+            if id_:
+                stars[id_] = row
+        system = system.append_column(
+            "orbit", pa.array([orbits.get(i) for i in ids.tolist()], SYSTEM_ORBIT)
+        )
+        system = system.append_column(
+            "star", pa.array([stars.get(i) for i in ids.tolist()], SYSTEM_STAR)
+        )
+        return system, {
+            "orbits": len(orbits),
+            "orbits with an assumed node": assumed,
+            "held stars with values": len(stars),
+        }
+
 
 IdMap = Callable[[np.ndarray], np.ndarray]
+
+
+def _with_held(
+    nodes: pa.Table,
+    members: pa.Table,
+    held: pa.Table | None,
+    ids: np.ndarray,
+    node_id: IdMap,
+) -> tuple[pa.Table, pa.Table]:
+    """The nodes with a row per held star that has an ID, and the members
+    with the kind and the ID of each such star."""
+    if held is None or not (ids > 0).any():
+        return nodes, members
+    keep = ids > 0
+    rows = held["member"].to_numpy()[keep]
+    kind = np.array(members["kind"].to_pylist(), object)
+    kind[rows] = HELD
+    member = members["member"].to_numpy().copy()
+    member[rows] = ids[keep]
+    members = members.set_column(
+        members.schema.get_field_index("kind"), "kind", pa.array(kind, pa.string())
+    )
+    members = members.set_column(
+        members.schema.get_field_index("member"), "member", pa.array(member)
+    )
+    parents = node_id(held["number"].to_numpy()[keep])
+    number = nodes["node"].to_numpy()
+    order = np.argsort(number, kind="stable")
+    at = pa.array(order[np.searchsorted(number[order], parents)])
+    n = int(keep.sum())
+    sources = members["source"].take(pa.array(rows)).to_pylist()
+    new = pa.table(
+        {
+            "node": pa.array(ids[keep], pa.int64()),
+            "key": pa.array(np.zeros(n, np.int64)),
+            "parent": pa.array(parents, pa.int64()),
+            "root": nodes["root"].take(at),
+            "depth": pc.add(nodes["depth"].take(at), 1).cast(pa.int16()),
+            "point": pa.array(np.zeros(n, bool)),
+            "stars": pa.array(np.ones(n, np.int32)),
+            "class": pa.array([HELD_CLASS] * n, pa.string()),
+            "primary": pa.array(np.zeros(n, np.int64)),
+            "ra": nodes["ra"].take(at),
+            "dec": nodes["dec"].take(at),
+            "distance": nodes["distance"].take(at),
+            "label": held["letter"].filter(pa.array(keep)),
+            "catalogue_ids": pa.nulls(n, pa.list_(CROSS_ID)),
+            "sources": pa.array(
+                [[s] if s else None for s in sources], pa.list_(pa.string())
+            ),
+            "spectral_type": pa.nulls(n, pa.string()),
+            "evidence": pa.nulls(n, pa.string()),
+        },
+        schema=nodes.schema,
+    )
+    return pa.concat_tables([nodes, new]), members
 
 
 def _with_ids(systems: Systems, node_id: IdMap, point_id: IdMap) -> Systems:
@@ -1128,7 +1444,7 @@ def _engine_lines(run: IngestRun, examples: int = EXAMPLES) -> list[str]:
 
 
 # The downloads that the systems read, beside those of the stars.
-INPUT_DIRS = (wds.OUT_DIR, msc.OUT_DIR, el_badry.OUT_DIR)
+INPUT_DIRS = (wds.OUT_DIR, msc.OUT_DIR, el_badry.OUT_DIR, orb6.OUT_DIR, sbx.OUT_DIR)
 
 
 def check_inputs(directories: Iterable[Path] = INPUT_DIRS) -> None:
@@ -1139,7 +1455,7 @@ def check_inputs(directories: Iterable[Path] = INPUT_DIRS) -> None:
         if not path.exists() or not json.loads(path.read_text()).get("complete"):
             raise FileNotFoundError(
                 f"{directory}: no complete download; run space-map-download"
-                " --sources wds msc el_badry_binaries"
+                " --sources wds msc el_badry_binaries orb6 sbx"
             )
 
 
@@ -1152,7 +1468,9 @@ def read_inputs(
 ) -> tuple[Inputs, SimbadIndex]:
     """The tree sources, the Gaia orbits and the planets of the run."""
     index = SimbadIndex.build(simbad_list)
-    orbits = reader.read_orbits().rows.select(["source_id", *ORBIT_COLUMNS])
+    gaia = reader.read_orbits().rows
+    orbits = gaia.select(["source_id", *ORBIT_COLUMNS])
+    catalogue_orbits, catalogue_stars = read_orbits()
     inputs = Inputs(
         msc=read_msc(),
         refuted=refuted_pairs(),
@@ -1165,8 +1483,20 @@ def read_inputs(
         el_badry=read_el_badry(),
         orbits=orbit_pairs(orbits),
         planets=run_planets(run, prepared, hub),
+        orbit_elements=gaia.select(list(GAIA_ELEMENTS)),
+        catalogue_orbits=catalogue_orbits,
+        catalogue_stars=catalogue_stars,
     )
     return inputs, index
+
+
+def drawn_lines(drawn: Drawn) -> list[str]:
+    """The report lines of the held stars and the orbits of the pairs."""
+    return [
+        "",
+        f"Held stars {drawn.held.num_rows:,}, pairs drawn {drawn.orbits.num_rows:,}",
+        *(f"  {k}: {v:,}" for k, v in sorted(drawn.counts.items())),
+    ]
 
 
 def add_systems(
@@ -1186,12 +1516,14 @@ def add_systems(
     hosts = resolver.objects(planets["host"].to_numpy())
     planets = planets.set_column(at, "host", pa.array(hosts, pa.int64()))
     systems = build(replace(inputs, planets=planets), resolver)
+    drawn = draw(systems, inputs, resolver)
     built = time.monotonic()
     targets = target_keys(index, resolver)
-    plan = pass_rows(systems, resolver, planets)
+    plan = pass_rows(systems, resolver, planets, drawn)
     lines = [
         "resolver: "
-        + ", ".join(f"{k} {v:,}" for k, v in sorted(resolver.counts.items()))
+        + ", ".join(f"{k} {v:,}" for k, v in sorted(resolver.counts.items())),
+        *drawn_lines(drawn),
     ]
     # The pass needs none of the facts and links.
     del resolver

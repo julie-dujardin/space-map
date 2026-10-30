@@ -30,6 +30,7 @@ from space_map_data.extrasolar.ids import CELL_LEVEL, cell_of
 from space_map_data.extrasolar.match import Pairs, assign, excluded_pairs
 from space_map_data.extrasolar.placement import COLUMNS, placement
 from space_map_data.extrasolar.registry import Registry
+from space_map_data.extrasolar.systems.elements import GAIA_ELEMENTS
 from space_map_data.extrasolar.systems.nodes import GAIA_DR3
 from space_map_data.extrasolar.systems.pairs import ORBIT_COLUMNS, PAIRS, orbit_pairs
 from space_map_data.extrasolar.systems.planets import PLANETS_INPUT, planet_star_ids
@@ -336,15 +337,19 @@ def registry_planets(registry: Registry, hub: Simbad) -> pa.Table:
     return planets.select(PLANETS_INPUT.names).cast(PLANETS_INPUT)
 
 
-def registry_orbits(registry: Registry) -> pa.Table:
-    """The PAIRS of the Gaia orbits of the registry's table 2."""
-    columns = ["id", *ORBIT_COLUMNS]
+def registry_orbits(registry: Registry) -> tuple[pa.Table, pa.Table]:
+    """The PAIRS of the Gaia orbits of the registry's table 2, and their
+    GAIA_ELEMENTS, row for row."""
+    elements = [name for name in GAIA_ELEMENTS if name not in ORBIT_COLUMNS]
+    columns = ["id", *ORBIT_COLUMNS, *elements]
     tables = [
         table
         for region in registry.table_regions("binary-orbit")
         if (table := registry.read_table("binary-orbit", region, columns)) is not None
     ]
     if not tables:
-        return PAIRS.empty_table()
-    rows = pa.concat_tables(tables).rename_columns(["key", *ORBIT_COLUMNS])
-    return orbit_pairs(rows)
+        empty = pa.table({name: pa.array([], pa.float64()) for name in GAIA_ELEMENTS})
+        return PAIRS.empty_table(), empty
+    rows = pa.concat_tables(tables)
+    pairs = rows.select(["id", *ORBIT_COLUMNS]).rename_columns(["key", *ORBIT_COLUMNS])
+    return orbit_pairs(pairs), rows.select(list(GAIA_ELEMENTS))
