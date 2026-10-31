@@ -21,8 +21,10 @@
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import type { FocusFeature, FocusObject } from '$lib/state/focusable';
 
-	/** A group's members (by slug), or a body's moons / surface features (by id). */
+	/** A group's members (by slug), a body's moons / surface features (by id), or
+	 *  a list that the page holds whole in `fallback`, shown a page at a time. */
 	type MemberSource =
+		| { kind: 'list'; key: string }
 		| { kind: 'group'; slug: string }
 		| { kind: 'parent'; parentId: string }
 		| { kind: 'features'; bodyId: string; quad?: string; featureType?: string };
@@ -66,16 +68,17 @@
 
 	// Primitive identity of the source, so the load effect tracks only a change
 	// of group/body — not the fresh object literal the parent passes each render.
-	let sourceKey = $derived(
-		source.kind === 'group'
-			? `g:${source.slug}`
-			: source.kind === 'features'
-				? `f:${source.bodyId}:${source.quad ?? ''}:${source.featureType ?? ''}`
-				: `p:${source.parentId}`
-	);
+	let sourceKey = $derived.by(() => {
+		if (source.kind === 'list') return `l:${source.key}`;
+		if (source.kind === 'group') return `g:${source.slug}`;
+		return source.kind === 'features'
+			? `f:${source.bodyId}:${source.quad ?? ''}:${source.featureType ?? ''}`
+			: `p:${source.parentId}`;
+	});
+	let isList = $derived(source.kind === 'list');
 
 	function fetchPage(
-		src: MemberSource,
+		src: Exclude<MemberSource, { kind: 'list' }>,
 		offset: number,
 		limit: number,
 		locale: string
@@ -88,7 +91,7 @@
 
 	function fallbackRows(): Row[] {
 		return fallback
-			.filter((e) => e.id || e.group)
+			.filter((e) => isList || e.id || e.group)
 			.map((e) => {
 				const key = memberEntryKey(e);
 				return {
@@ -163,12 +166,16 @@
 		const seed = fallbackRows();
 		const seedTotal = totalCount;
 		untrack(() => {
-			rows = seed;
 			total = seedTotal;
 			searchBacked = false;
 			// Restore deep-linked depth (?mp=N); untracked so our setMemberPage
 			// writes don't re-trigger this reload.
 			const targetPages = Math.max(1, appState?.view.memberPage ?? 1);
+			if (isList) {
+				rows = seed.slice(0, targetPages * PAGE_SIZE);
+				return;
+			}
+			rows = seed;
 			// A fully-baked list (small group exported whole) needs no search backend.
 			if (seed.length < seedTotal && isSearchEnabled()) void loadInitial(key, targetPages);
 		});
@@ -176,6 +183,7 @@
 
 	async function loadInitial(key: string, targetPages: number) {
 		const src = untrack(() => source);
+		if (src.kind === 'list') return;
 		loading = true;
 		const locale = getLocale();
 		// One request, not N round-trips.
@@ -201,6 +209,11 @@
 		if (loading) return;
 		const key = sourceKey;
 		const src = source;
+		if (src.kind === 'list') {
+			rows = fallbackRows().slice(0, rows.length + PAGE_SIZE);
+			appState?.setMemberPage(Math.ceil(rows.length / PAGE_SIZE));
+			return;
+		}
 		loading = true;
 		const locale = getLocale();
 		let page: GroupMemberPage;
@@ -219,7 +232,9 @@
 		loading = false;
 	}
 
-	let hasMore = $derived(searchBacked && rows.length < Math.min(total, HARD_CAP));
+	let hasMore = $derived(
+		isList ? rows.length < total : searchBacked && rows.length < Math.min(total, HARD_CAP)
+	);
 
 	// Auto-load when the sentinel nears the viewport, clipped to whatever scroll
 	// container wraps the list. Reads `rows.length` to re-observe after each
@@ -251,12 +266,13 @@
 		</div>
 	{/if}
 	<ul class="flex flex-col">
-		{#each rows as row, i (memberEntryKey(row))}
+		<!-- A list can hold two figures of one name, each with no page. -->
+		{#each rows as row, i (isList ? i : memberEntryKey(row))}
 			<MemberRow
 				name={row.name}
 				thumbnail={row.thumbnail}
 				href={targetHref(appState, row, row.name)}
-				onclick={targetClick(nav, row, row.name)}
+				onclick={row.id || row.group ? targetClick(nav, row, row.name) : undefined}
 				onmouseenter={() => onHoverFeature?.(row.feature_id ?? null)}
 				onmouseleave={() => onHoverFeature?.(null)}
 				onfocus={() => onHoverFeature?.(row.feature_id ?? null)}

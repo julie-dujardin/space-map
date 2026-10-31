@@ -31,6 +31,7 @@ import {
 	MOONLESS_SYSTEM_HILL_FRACTION,
 	computeVisibilityFromRatio
 } from '$lib/scene/visibility/thresholds';
+import { SwitchFade } from '$lib/scene/visibility/switch-fade';
 import { ZoneFades } from '$lib/scene/visibility/zone-fade';
 import { VisibilityThresholdFades } from '$lib/scene/visibility/threshold-fade';
 
@@ -71,6 +72,11 @@ export class VisibilityController {
 	isZoomedIn = false;
 	/** The main zone and the satellite systems, faded to `activeSystemId`. */
 	readonly zones = new ZoneFades();
+	/** The sky is being cleared for the constellations. A view state: the
+	 *  reader's layers stay as they are, and so do the clouds the open group
+	 *  page is about. */
+	clearSky = false;
+	private readonly clearing = new SwitchFade(false);
 	private readonly thresholds = new VisibilityThresholdFades();
 	private share = 1;
 	/** Reactive: false once `systemShare` is 0, for the credits. */
@@ -121,7 +127,8 @@ export class VisibilityController {
 		private readonly getProbeStore: () => ProbeStore | null = () => null,
 		private readonly getEarthSatGroupFilter: () => ReadonlySet<string> | null = () => null,
 		private readonly getSmallBodyFilter: () => SmallBodyFilter | null = () => null,
-		private readonly getLayers: () => LayerSet = () => ALL_LAYERS
+		private readonly getLayers: () => LayerSet = () => ALL_LAYERS,
+		private readonly getEarthTypeFilter: () => ReadonlySet<ObjectType> | null = () => null
 	) {}
 
 	/** Per-tick mask read by the orbit worker pool to hide non-matching small
@@ -193,6 +200,7 @@ export class VisibilityController {
 	/** Advances after camera visibility selects this frame's targets. */
 	stepZones(dtMs: number): void {
 		this.zones.step(this.activeSystemId, dtMs);
+		this.clearing.step(this.clearSky, dtMs);
 		this.thresholds.beginFrame(dtMs);
 	}
 
@@ -209,7 +217,7 @@ export class VisibilityController {
 	}
 
 	get fading(): boolean {
-		return this.zones.fading || this.thresholds.fading;
+		return this.zones.fading || this.thresholds.fading || this.clearing.fading;
 	}
 
 	/** Probe focus reads the `systemIntervals` annotation instead of walking
@@ -585,6 +593,22 @@ export class VisibilityController {
 
 	/** Returns the share of the cloud's solar or satellite zone. */
 	spacecraftGroupShare(groupParentId: string): number {
+		const share = this.spacecraftZoneShare(groupParentId);
+		if (groupParentId !== EARTH_ID) return share;
+		const asked = this.getEarthSatGroupFilter() || this.getEarthTypeFilter();
+		return asked ? share : share * this.unclearedShare;
+	}
+
+	private get unclearedShare(): number {
+		return 1 - this.clearing.share;
+	}
+
+	private zoneUnclearedShare(zone: string): number {
+		const asked = this.getSmallBodyFilter() && zone.startsWith(SMALL_BODY_ZONE_PREFIX);
+		return asked ? 1 : this.unclearedShare;
+	}
+
+	private spacecraftZoneShare(groupParentId: string): number {
 		if (this.systemShare === 0) return 0;
 		if (this.getLayers().hidesSpacecraftGroup(groupParentId)) return 0;
 		const parent = this.bodies.bodiesById.get(groupParentId);
@@ -601,7 +625,9 @@ export class VisibilityController {
 
 	/** Asteroids fade with the main zone while their ordinary gates pass. */
 	asteroidGroupShare(zone: string): number {
-		return this.isAsteroidGroupVisible(zone) ? this.zones.mainShare : 0;
+		return this.isAsteroidGroupVisible(zone)
+			? this.zones.mainShare * this.zoneUnclearedShare(zone)
+			: 0;
 	}
 
 	/** Whether an asteroid zone's point-cloud is visible: camera distance vs. the
@@ -611,7 +637,7 @@ export class VisibilityController {
 	isAsteroidGroupVisible(zone: string): boolean {
 		if (this.systemShare === 0) return false;
 		if (this.getLayers().hidesZone(zone)) return false;
-		if (this.zones.mainShare === 0) return false;
+		if (this.zones.mainShare === 0 || this.zoneUnclearedShare(zone) === 0) return false;
 		// The asteroid clouds are drawn about the Sun.
 		if (!this.bodies.bodiesById.get(SUN_ID)?.position) return false;
 		const filter = this.getSmallBodyFilter();

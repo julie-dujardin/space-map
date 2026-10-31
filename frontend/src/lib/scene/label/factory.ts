@@ -1,6 +1,6 @@
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { ObjectType, isAsteroid, isMajorBody, type PositionedBody } from '$lib/types/objects';
-import { isModifiedClick } from '$lib/modified-click';
+import { onLinkTap } from '../objects/tap-not-drag';
 import type { BodyObjects } from '../types';
 import { syncLabelAria } from './annotations';
 import './label.css';
@@ -152,26 +152,6 @@ export function createLabel(
 	}
 	el.appendChild(halo);
 
-	// Click-vs-drag: record pointer position on pointerdown, then compare
-	// with the click event's coordinates (which reflect the mouseup position).
-	// This avoids pointermove which stops firing when the pointer leaves the
-	// small label element during a drag.
-	let downX = 0;
-	let downY = 0;
-	el.addEventListener('pointerdown', (e: PointerEvent) => {
-		downX = e.clientX;
-		downY = e.clientY;
-	});
-	const guardedClick = (e: MouseEvent) => {
-		e.stopPropagation();
-		// ⌘/ctrl/shift/middle-click → let the browser follow the anchor href (new tab).
-		if (isModifiedClick(e)) return;
-		e.preventDefault();
-		const dx = e.clientX - downX;
-		const dy = e.clientY - downY;
-		if (dx * dx + dy * dy <= 9) onClick();
-	};
-
 	// Name text: absolutely positioned to the right, vertically centered on indicator
 	if (name) addLabelNameSpan(el, name, variant, isLarge);
 	// Minor halos collapse to the same scale as occluded/dimmed labels by
@@ -179,7 +159,7 @@ export function createLabel(
 	// they revert to the collapsed scale (instead of the no-transform default).
 	if (isMinor) halo.style.transform = 'scale(0.3)';
 
-	el.addEventListener('click', guardedClick);
+	onLinkTap(el, onClick);
 	el.addEventListener('mouseenter', () => {
 		halo.style.transform = 'scale(1.15)';
 		document.body.style.cursor = 'pointer';

@@ -36,6 +36,11 @@ export interface FocusState {
 	 *  whole animation instead of easing from `camOriginWorld` — for plain focus
 	 *  switches the `focusTruePos` smoothstep alone carries the scene transition. */
 	cameraStaysOnBody: boolean;
+	/** The orbit pivot, from the focus, when the camera looks away from the
+	 *  focused body: at a constellation, say. Null when it looks at the body. */
+	aim: Vec3 | null;
+	/** An orbit fly started looking away from the body: the turn back eases in. */
+	leavesAim: boolean;
 	focusStartTime: number;
 	focusDurationMs: number;
 }
@@ -106,7 +111,7 @@ export function stepFocusAnimation(
 				camWorld[1] - state.focusTruePos[1],
 				camWorld[2] - state.focusTruePos[2]
 			);
-			if (focusChanging && !state.arcOrbit) {
+			if ((focusChanging && !state.arcOrbit) || state.leavesAim) {
 				// Approaching a new body: slerp from the start orientation straight to a
 				// per-frame lookAt at the body's CURRENT position. The turn still reads
 				// in first (position eases slower, above), but it tracks the body even
@@ -138,7 +143,14 @@ export function stepFocusAnimation(
 			// Slerp toward a lookAt recomputed each frame from the actual camera
 			// world position; freezing the source would drift the body off-centre
 			// when the camera is body-tracking.
-			const lookAtQ = lookAtQuaternion(camWorld, state.focusTargetWorld, camera.up);
+			const lookAt: Vec3 = state.aim
+				? [
+						state.focusTargetWorld[0] + state.aim[0],
+						state.focusTargetWorld[1] + state.aim[1],
+						state.focusTargetWorld[2] + state.aim[2]
+					]
+				: state.focusTargetWorld;
+			const lookAtQ = lookAtQuaternion(camWorld, lookAt, camera.up);
 			camera.quaternion.slerpQuaternions(state.flyQ0!, lookAtQ, s);
 			camera.position.set(
 				camWorld[0] - state.focusTruePos[0],
@@ -161,7 +173,8 @@ export function stepFocusAnimation(
 		// Rebuild point cloud vertex buffers relative to new focus
 		rebuildPointCloudBasis();
 	}
-	controls.target.set(0, 0, 0);
+	if (state.aim) controls.target.set(state.aim[0], state.aim[1], state.aim[2]);
+	else controls.target.set(0, 0, 0);
 	if (state.camTargetWorld) {
 		const cx = state.camTargetWorld[0] - state.focusTruePos[0];
 		const cy = state.camTargetWorld[1] - state.focusTruePos[1];
@@ -179,6 +192,7 @@ export function stepFocusAnimation(
 		state.flyQ0 = null;
 		state.orbitFly = false;
 		state.arcOrbit = false;
+		state.leavesAim = false;
 		state.cameraStaysOnBody = false;
 	}
 	return !controls.update();
@@ -199,6 +213,8 @@ export function prepareFocusTarget(
 	state.focusOriginWorld = [...state.focusTruePos];
 	state.focusTargetWorld = [...bodyPosition];
 	state.focusStartTime = performance.now();
+	state.aim = null;
+	state.leavesAim = false;
 	// Arc-orbit is only for re-framing the already-focused body; a new-body focus
 	// (incl. the orbitFly approach set by the controller) must use the linear path.
 	state.arcOrbit = false;
@@ -277,6 +293,30 @@ export function prepareFocusTarget(
 	}
 }
 
+/** Turn the camera to `aim`, a pivot given from the focus, from where it
+ *  stands. The focus stays: the camera still follows its body. */
+export function prepareAim(
+	state: FocusState,
+	aim: Vec3,
+	camera: PerspectiveCamera,
+	cameraTruePos: Vec3,
+	instant: boolean
+): void {
+	prepareFocusTarget(state, [...state.focusTargetWorld], camera, cameraTruePos);
+	state.aim = aim;
+	_forwardA.set(0, 0, -1).applyQuaternion(camera.quaternion);
+	_forwardB
+		.set(
+			state.focusTruePos[0] + aim[0] - cameraTruePos[0],
+			state.focusTruePos[1] + aim[1] - cameraTruePos[1],
+			state.focusTruePos[2] + aim[2] - cameraTruePos[2]
+		)
+		.normalize();
+	state.focusDurationMs = instant
+		? 0
+		: angularDuration(_forwardA.angleTo(_forwardB), FOCUS_ROT_PACING);
+}
+
 /** Start a fly-to animation around the current focus body (orbit), keeping it centered. */
 export function prepareFlyToCamera(
 	state: FocusState,
@@ -304,6 +344,8 @@ export function prepareFlyToCamera(
 	state.focusOriginWorld = [...state.focusTruePos];
 	state.focusTargetWorld = [...state.focusTruePos];
 	state.focusStartTime = performance.now();
+	state.leavesAim = state.aim !== null;
+	state.aim = null;
 	state.orbitFly = true;
 	state.arcOrbit = true;
 	state.cameraStaysOnBody = false;
@@ -312,13 +354,16 @@ export function prepareFlyToCamera(
 	// Pace by translation distance or by the angular sweep around the focus
 	// (the camera lookAt re-targets each frame, so this is how much it'll rotate).
 	const dist = f64dist(cameraTruePos, camPos);
-	_forwardA
-		.set(
-			state.focusTruePos[0] - cameraTruePos[0],
-			state.focusTruePos[1] - cameraTruePos[1],
-			state.focusTruePos[2] - cameraTruePos[2]
-		)
-		.normalize();
+	if (state.leavesAim) _forwardA.set(0, 0, -1).applyQuaternion(state.flyQ0);
+	else {
+		_forwardA
+			.set(
+				state.focusTruePos[0] - cameraTruePos[0],
+				state.focusTruePos[1] - cameraTruePos[1],
+				state.focusTruePos[2] - cameraTruePos[2]
+			)
+			.normalize();
+	}
 	_forwardB
 		.set(
 			state.focusTruePos[0] - camPos[0],

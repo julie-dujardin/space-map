@@ -11,9 +11,11 @@
 		 *  quadrangle) take half the object default so they don't crowd out the
 		 *  list they sit above. */
 		truncateLength?: number;
+		/** The language of a text that is not in the reader's. */
+		lang?: string;
 	}
 
-	let { extract, wikipediaUrl, truncateLength = 400 }: Props = $props();
+	let { extract, wikipediaUrl, truncateLength = 400, lang }: Props = $props();
 	let expanded = $state(false);
 
 	let needsTruncation = $derived(extract ? extract.length > truncateLength : false);
@@ -29,7 +31,7 @@
 {#if extract}
 	<div class="flex flex-col gap-2">
 		{#each displayText.split('\n').filter((p) => p.trim()) as paragraph, i (i)}
-			<p class="text-sm leading-relaxed">{paragraph}</p>
+			<p class="text-sm leading-relaxed" {lang} dir={lang ? 'auto' : undefined}>{paragraph}</p>
 		{/each}
 		{#if needsTruncation || wikipediaUrl}
 			<div class="flex items-center gap-3 text-xs text-muted-foreground">

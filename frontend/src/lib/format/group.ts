@@ -10,6 +10,7 @@ import {
 	CAT_OCEANS,
 	CAT_PLANETS,
 	CAT_STARS,
+	CAT_CONSTELLATIONS,
 	CAT_PROBES,
 	CAT_RADIATION,
 	CAT_RING_SYSTEMS,
@@ -49,7 +50,9 @@ const GROUP_TYPE_NAME: Record<GroupType, { one: () => string; many: () => string
 	mission: { one: m.mission, many: m.group_type_plural_mission },
 	feature_type: { one: m.group_type_feature_type, many: m.group_type_plural_feature_type },
 	star_family: { one: m.group_type_star_family, many: m.group_type_plural_star_family },
-	planet_family: { one: m.group_type_planet_family, many: m.group_type_plural_planet_family }
+	planet_family: { one: m.group_type_planet_family, many: m.group_type_plural_planet_family },
+	sky_constellation: { one: m.star_constellation, many: m.group_type_plural_sky_constellation },
+	sky_culture: { one: m.layers_sky_culture, many: m.group_type_plural_sky_culture }
 };
 
 export function groupTypeLabel(type: GroupType): string {
@@ -94,6 +97,7 @@ const CATEGORY_NAME: Record<string, () => string> = {
 	[CAT_SOLAR_SYSTEM]: m.category_name_solar_system,
 	[CAT_SATELLITE_SYSTEMS]: m.category_name_satellite_systems,
 	[CAT_STARS]: m.category_name_stars,
+	[CAT_CONSTELLATIONS]: m.layers_constellations,
 	[CAT_PLANETS]: m.category_name_planets,
 	[CAT_DWARF_PLANETS]: m.category_name_dwarf_planets,
 	[CAT_MOONS]: m.category_name_moons,

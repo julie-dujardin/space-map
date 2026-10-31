@@ -12,7 +12,9 @@
 		/** Overrides the map's glass trigger for chrome on a light surface. The
 		 *  panel then drops below it; a glass trigger's panel opens over it. */
 		triggerClass?: string;
-		children: Snippet;
+		/** `coverDone` closes the panel where it covers the map: a choice made
+		 *  there cannot be seen. */
+		children: Snippet<[{ coverDone: () => void }]>;
 	}
 
 	let { title, Icon, triggerClass, children }: Props = $props();
@@ -35,6 +37,10 @@
 		const shown = open;
 		return mobile && shown;
 	});
+
+	function coverDone(): void {
+		if (isMobile) open = false;
+	}
 
 	const mapGlass = `flex items-center justify-center
 		w-10 h-10 md:w-8 md:h-8 rounded-full
@@ -66,7 +72,7 @@
 				>
 					<XIcon class="size-5" />
 				</Dialog.Close>
-				{@render children()}
+				{@render children({ coverDone })}
 			</Dialog.Content>
 		</Dialog.Portal>
 	</Dialog.Root>
@@ -90,7 +96,7 @@
 					<XIcon class="size-4" />
 				</Popover.Close>
 			{/if}
-			{@render children()}
+			{@render children({ coverDone })}
 		</Popover.Content>
 	</Popover.Root>
 {/if}

@@ -6,6 +6,7 @@
 	import PlanetarySystemTiles from '../../sections/crossref/PlanetarySystemTiles.svelte';
 	import PropertyMemberList from '../../sections/PropertyMemberList.svelte';
 	import ChildGroups from '../../sections/ChildGroups.svelte';
+	import CultureFigures from '../../sections/CultureFigures.svelte';
 	import FeatureTypeFamilies from '../../sections/FeatureTypeFamilies.svelte';
 	import GroupProperties from '../../sections/GroupProperties.svelte';
 	import GroupOrbitMap from '../../charts/GroupOrbitMap.svelte';
@@ -22,11 +23,20 @@
 		orbitClassLabel,
 		scatterZoneSlugs
 	} from '$lib/charts/orbit-zones';
-	import { CAT_STRUCTURE_ACTIVITY } from '$lib/fetch/groups/registry';
+	import { byRegion } from '../../../layers/sky-culture-list';
+	import type { Source } from '../../sections/SourcesFooter.svelte';
+	import { fetchPickableCultures } from '$lib/fetch/extrasolar/skycultures';
+	import {
+		CAT_CONSTELLATIONS,
+		CAT_STRUCTURE_ACTIVITY,
+		SKY_CULTURE_SLUG_PREFIX
+	} from '$lib/fetch/groups/registry';
 	import { PROPERTY_ACCENT, type CategoryConfig } from '$lib/state/category-config';
-	import type { GroupDetailData } from '$lib/fetch/groups/details';
+	import type { FeatureFamily, GroupDetailData } from '$lib/fetch/groups/details';
 	import type { MembersState } from '../../state/members-state.svelte';
+	import { groupTypeLabelPlural } from '$lib/format/group';
 	import * as m from '$lib/paraglide/messages.js';
+	import { getLocale } from '$lib/paraglide/runtime.js';
 
 	interface Props {
 		slug: string;
@@ -35,9 +45,11 @@
 		members: MembersState;
 		/** The overview is the tab in view. */
 		active: boolean;
+		/** The sources of the figures of a culture page, for the footer. */
+		onFigureCredits?: (credits: Source[]) => void;
 	}
 
-	let { slug, cat, groupDetail, members, active }: Props = $props();
+	let { slug, cat, groupDetail, members, active, onFigureCredits }: Props = $props();
 
 	let notableMembers = $derived(members.notableMembers);
 	let memberNames = $derived(members.memberNames);
@@ -74,6 +86,35 @@
 		if (!categoryPlot) return cg;
 		const onScatter = scatterZoneSlugs(categoryPlot);
 		return cg.filter((c) => !(c.primary_id && onScatter.has(c.primary_id)));
+	});
+	// A culture page lists all its figures. Its chips are the ones with a page.
+	let cultureKey = $derived(
+		slug.startsWith(SKY_CULTURE_SLUG_PREFIX) ? slug.slice(SKY_CULTURE_SLUG_PREFIX.length) : null
+	);
+	// The Constellations page, by the regions of the layer's picker.
+	let isConstellations = $derived(slug === CAT_CONSTELLATIONS);
+	let cultureRegions = $state.raw<FeatureFamily[] | null>(null);
+	$effect(() => {
+		const wanted = isConstellations;
+		const locale = getLocale();
+		cultureRegions = null;
+		if (!wanted) return;
+		let current = true;
+		fetchPickableCultures().then(
+			(cultures) => {
+				if (!current || !cultures) return;
+				cultureRegions = byRegion(cultures, locale).map((region) => ({
+					key: region.group,
+					name: region.label,
+					n: region.cultures.length,
+					types: region.cultures.map((c) => `${SKY_CULTURE_SLUG_PREFIX}${c.key}`)
+				}));
+			},
+			(e: unknown) => console.warn('[constellations] no sky cultures:', e)
+		);
+		return () => {
+			current = false;
+		};
 	});
 	/** The meta node, whose children are the property collections themselves. */
 	let isStructureActivity = $derived(slug === CAT_STRUCTURE_ACTIVITY);
@@ -136,10 +177,21 @@
 {#if categoryPlot && groupDetail?.global}
 	<GroupOrbitMap global={groupDetail.global} plotOverride={categoryPlot} />
 {/if}
-{#if visibleChildGroups.length && !cat.solarSystem && !cat.planets}
+{#if cultureKey}
+	<CultureFigures culture={cultureKey} onCredits={onFigureCredits} />
+{:else if visibleChildGroups.length && !cat.solarSystem && !cat.planets}
 	<!-- Surface Features groups its 57 type chips by landform family. -->
 	{#if featureFamilies}
 		<FeatureTypeFamilies families={featureFamilies} childGroups={visibleChildGroups} />
+	{:else if cultureRegions}
+		<FeatureTypeFamilies
+			families={cultureRegions}
+			childGroups={visibleChildGroups}
+			heading={groupTypeLabelPlural('sky_culture')}
+			collapsedTo={Infinity}
+		/>
+	{:else if isConstellations}
+		<!-- The regions are on their way. -->
 	{:else if isStructureActivity}
 		<!-- Chips would name the collections; tiles draw what each holds.
 		     Full width here: every child is a drawn collection, so the

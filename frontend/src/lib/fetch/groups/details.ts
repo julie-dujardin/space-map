@@ -17,6 +17,7 @@ import type {
 	NotableMemberEntry,
 	ObjectImage
 } from '$lib/fetch/objects/object-data';
+import type { ExtrasolarCredit } from '$lib/fetch/extrasolar/files';
 import type { GroupCategory, GroupType, OrganizationRole, SatelliteCategory } from './registry';
 
 export type { NotableMemberEntry };
@@ -90,8 +91,20 @@ export interface ReusableVehicle {
  *  slugs it holds (most-populated type first). */
 export interface FeatureFamily {
 	key: string;
+	/** A name of its own, where the key does not give one. */
+	name?: string;
 	n: number;
 	types: string[];
+}
+
+export interface CultureText {
+	text: string;
+	distribution: 'open' | 'non-commercial';
+	credit: ExtrasolarCredit;
+	/** The text in the languages that Stellarium translates it to. */
+	translations?: Record<string, string>;
+	/** Who wrote `translations`. */
+	translation_credit?: ExtrasolarCredit;
 }
 
 export interface GlobalGroupData {
@@ -106,6 +119,11 @@ export interface GlobalGroupData {
 	 *  The breadcrumb climbs to the first. A top family names `cat-stars` or
 	 *  `cat-planets` here. */
 	parent_families?: string[];
+	/** Constellation and culture pages: the page above this one. */
+	parent_group?: string;
+	/** Culture pages: the culture's own text. Its licence decides which hosts
+	 *  may show it. */
+	culture_text?: CultureText;
 	/** Star families only: the stars that only an estimate puts in the
 	 *  family, of `member_count`. */
 	estimated_star_count?: number;
@@ -361,6 +379,8 @@ export interface ChildGroupEntry extends EntityRef {
 
 export interface LocalizedGroupData {
 	name?: string;
+	/** The name of `parent_group`, where the app has none of its own. */
+	parent_group_name?: string;
 	description?: string;
 	wikipedia?: {
 		extract?: string;

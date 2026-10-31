@@ -5,9 +5,7 @@
 -->
 <script lang="ts">
 	import { getContext, untrack } from 'svelte';
-	import SearchIcon from '@lucide/svelte/icons/search';
 	import MapPinIcon from '@lucide/svelte/icons/map-pin';
-	import XIcon from '@lucide/svelte/icons/x';
 	import * as m from '$lib/paraglide/messages.js';
 	import { getLocale } from '$lib/paraglide/runtime.js';
 	import {
@@ -26,6 +24,7 @@
 	import { isCoarsePointer } from '$lib/device';
 	import type { TravelEndpointPick } from '$lib/travel/endpoint';
 	import SearchProof from '../../search/SearchProof.svelte';
+	import SearchBox from './SearchBox.svelte';
 
 	interface Props {
 		/** What this search chooses — accessible name, so the two otherwise-identical boxes announce apart. */
@@ -193,41 +192,17 @@
 
 {#if isSearchEnabled()}
 	<div class="flex min-h-0 flex-col gap-2 {fullscreen ? 'flex-1' : ''}">
-		<div
-			class="border-border/60 bg-background flex shrink-0 items-center gap-2 rounded-md border px-2 py-1.5"
-		>
-			<SearchIcon class="text-muted-foreground size-3.5 shrink-0" />
-			<!-- Deliberately not type="search": its native cancel button is drawn far heavier than the rest. -->
-			<input
-				bind:this={input}
-				bind:value={query}
-				type="text"
-				placeholder={m.travel_search_placeholder()}
-				aria-label={label}
-				role="combobox"
-				aria-expanded={visible.length > 0}
-				aria-controls={listboxId}
-				aria-activedescendant={activeIndex >= 0 ? optionId(activeIndex) : undefined}
-				aria-autocomplete="list"
-				onkeydown={onKey}
-				autocomplete="off"
-				spellcheck="false"
-				class="placeholder:text-muted-foreground min-w-0 flex-1 bg-transparent text-sm outline-none"
-			/>
-			{#if query}
-				<button
-					type="button"
-					onclick={() => {
-						query = '';
-						input?.focus();
-					}}
-					aria-label={m.search_clear_search()}
-					class="text-muted-foreground hover:bg-accent hover:text-foreground shrink-0 rounded-full p-0.5 transition-colors"
-				>
-					<XIcon class="size-3.5" />
-				</button>
-			{/if}
-		</div>
+		<SearchBox
+			bind:input
+			bind:value={query}
+			{label}
+			role="combobox"
+			aria-expanded={visible.length > 0}
+			aria-controls={listboxId}
+			aria-activedescendant={activeIndex >= 0 ? optionId(activeIndex) : undefined}
+			aria-autocomplete="list"
+			onkeydown={onKey}
+		/>
 
 		<SearchProof shown={query.trim().length >= MIN_QUERY} />
 

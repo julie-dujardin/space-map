@@ -22,7 +22,9 @@ export type GroupType =
 	| 'mission'
 	| 'feature_type'
 	| 'star_family'
-	| 'planet_family';
+	| 'planet_family'
+	| 'sky_constellation'
+	| 'sky_culture';
 
 /** An organization's role tags, surfaced as badges on its /g/org-<slug> page. */
 export type OrganizationRole = 'operator' | 'manufacturer';
@@ -61,6 +63,14 @@ export const STAR_FAMILY_SLUG_PREFIX = 'star-';
 /** Mirrors ``FAMILY_SLUG_PREFIX`` in ``data/constants/planets/families.py``. */
 export const PLANET_FAMILY_SLUG_PREFIX = 'planet-';
 
+/** Mirrors ``SKY_CONSTELLATION_SLUG_PREFIX`` in
+ *  ``data/constants/stars/constellations.py``. */
+export const SKY_CONSTELLATION_SLUG_PREFIX = 'sky-';
+
+/** Mirrors ``SKY_CULTURE_SLUG_PREFIX`` in
+ *  ``data/constants/stars/cultures.py``. */
+export const SKY_CULTURE_SLUG_PREFIX = 'culture-';
+
 /** A star or planet family page. */
 export function isFamilySlug(slug: string): boolean {
 	return slug.startsWith(STAR_FAMILY_SLUG_PREFIX) || slug.startsWith(PLANET_FAMILY_SLUG_PREFIX);
@@ -71,6 +81,7 @@ export const CATEGORY_SLUG_PREFIX = 'cat-';
 export const CAT_SOLAR_SYSTEM = `${CATEGORY_SLUG_PREFIX}solar-system`;
 export const CAT_SATELLITE_SYSTEMS = `${CATEGORY_SLUG_PREFIX}satellite-systems`;
 export const CAT_STARS = `${CATEGORY_SLUG_PREFIX}stars`;
+export const CAT_CONSTELLATIONS = `${CATEGORY_SLUG_PREFIX}constellations`;
 export const CAT_PLANETS = `${CATEGORY_SLUG_PREFIX}planets`;
 export const CAT_DWARF_PLANETS = `${CATEGORY_SLUG_PREFIX}dwarf-planets`;
 export const CAT_MOONS = `${CATEGORY_SLUG_PREFIX}moons`;
@@ -167,6 +178,8 @@ export interface GroupIndexEntry {
 	n: number;
 	/** Feature-type groups only: the 2-letter IAU descriptor code. */
 	code?: string;
+	/** A constellation page of another culture than the IAU's: its culture. */
+	culture?: string;
 }
 
 export type GroupIndex = Record<string, GroupIndexEntry>;

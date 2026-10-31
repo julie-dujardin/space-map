@@ -8,13 +8,16 @@ import {
 	COMET_FAMILY_SLUG_PREFIX,
 	FEATURE_TYPE_SLUG_PREFIX,
 	isFamilySlug,
+	SKY_CONSTELLATION_SLUG_PREFIX,
+	SKY_CULTURE_SLUG_PREFIX,
 	SMALL_BODY_FLAG_SLUG_PREFIX
 } from '$lib/fetch/groups/registry';
 import { SAT_ORBIT_ZONES } from '$lib/charts/orbit-zones';
 import { isLagrangeClass } from '$lib/math/orbit/lagrange';
 import { DEFAULT_TRIP, parseTrip, serializeTripSuffix, type TripState } from '$lib/travel/trip';
-import { EARTH_ID, SUN_ID } from '$lib/constants';
+import { DEFAULT_SKY_CULTURE, EARTH_ID, SUN_ID } from '$lib/constants';
 import { SUN_VIEW_ZOOM } from '$lib/scene/framing';
+import type { PageSky } from '$lib/scene/settings.svelte';
 import { formatNavEnd, isBodyId, NAV_UNSET, parseNavEnd } from './nav-end';
 import { bodyHref, featureHref, groupHref } from './page-href';
 import {
@@ -102,8 +105,9 @@ export function groupAnchor(slug: string): { id: string; zoom: number } {
 	if (slug.startsWith(FEATURE_TYPE_SLUG_PREFIX)) {
 		return { id: SUN_ID, zoom: SUN_GROUP_ZOOM };
 	}
-	// A family's members are all over the sky, with no one star to frame.
-	if (isFamilySlug(slug)) {
+	// A family's members are all over the sky, with no one star to frame, and a
+	// constellation is seen from here.
+	if (isFamilySlug(slug) || isSkyPage(slug)) {
 		return { id: SUN_ID, zoom: SUN_GROUP_ZOOM };
 	}
 	return { id: EARTH_ID, zoom: EARTH_GROUP_ZOOM };
@@ -462,6 +466,25 @@ export function applyGallery(current: MapViewState, key: string | null): MapView
 export interface GroupOpen {
 	frame?: boolean;
 	tab?: Exclude<DrawerTab, 'overview'>;
+}
+
+/** A constellation page or a culture page. */
+export function isSkyPage(slug: string): boolean {
+	return slug.startsWith(SKY_CONSTELLATION_SLUG_PREFIX) || slug.startsWith(SKY_CULTURE_SLUG_PREFIX);
+}
+
+/** What the page `slug` shows of the sky. A `sky-` page is about a figure of a
+ *  culture, the IAU's unless the group index gives `culture`, and its members
+ *  are that figure's stars, so it draws that culture whatever the reader picked. */
+export function pageSkyOf(
+	slug: string | null,
+	opening: boolean,
+	culture: string = DEFAULT_SKY_CULTURE
+): PageSky | null {
+	if (!slug || !isSkyPage(slug)) return null;
+	return slug.startsWith(SKY_CULTURE_SLUG_PREFIX)
+		? { culture: slug.slice(SKY_CULTURE_SLUG_PREFIX.length), slug: null, opening, hidden: false }
+		: { culture, slug, opening, hidden: false };
 }
 
 /** Next view when opening a group. Opening one moves no camera, so `id` stays

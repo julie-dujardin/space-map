@@ -63,7 +63,8 @@ export class ContextManager {
 		() => this.probeStore,
 		() => this.earthSatFilter,
 		() => this.smallBodyFilter,
-		() => this.layers
+		() => this.layers,
+		() => this.earthTypeFilter
 	);
 
 	loading = $state(true);

@@ -98,6 +98,34 @@ describe('parentCrumb: star families', () => {
 	});
 });
 
+describe('parentCrumb: sky pages', () => {
+	it('climbs from a constellation to its culture, by its exported name', () => {
+		const crumb = parentCrumb(
+			{ kind: 'group', slug: 'sky-orion' },
+			undefined,
+			null,
+			{ slug: 'sky-orion', parent_group: 'culture-modern_iau' } as never,
+			null,
+			null,
+			'Moderne (UAI)'
+		);
+		expect(crumb).toEqual({
+			label: 'Moderne (UAI)',
+			target: { kind: 'group', slug: 'culture-modern_iau', name: 'Moderne (UAI)' }
+		});
+	});
+
+	it('climbs from a culture to the Constellations page, and on to Stars', () => {
+		const crumb = parentCrumb({ kind: 'group', slug: 'culture-aztec' }, undefined, null, {
+			slug: 'culture-aztec',
+			parent_group: 'cat-constellations'
+		} as never);
+		expect(crumb?.target).toMatchObject({ kind: 'group', slug: 'cat-constellations' });
+		const up = parentCrumb({ kind: 'group', slug: 'cat-constellations' }, undefined, null, null);
+		expect(up?.target).toMatchObject({ kind: 'group', slug: 'cat-stars' });
+	});
+});
+
 describe('parentCrumb: planet families', () => {
 	it('climbs to the first family that contains it', () => {
 		const crumb = parentCrumb({ kind: 'group', slug: 'planet-jupiter-analogue' }, undefined, null, {

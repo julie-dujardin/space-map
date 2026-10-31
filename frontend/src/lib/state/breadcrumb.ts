@@ -19,6 +19,7 @@ import {
 	CAT_DWARF_PLANETS,
 	CAT_STRUCTURE_ACTIVITY,
 	CAT_PLANETS,
+	CAT_CONSTELLATIONS,
 	CAT_STARS,
 	CAT_PROBES,
 	CAT_SATELLITES,
@@ -29,6 +30,8 @@ import {
 	CAT_SURFACE_FEATURES,
 	FEATURE_TYPE_SLUG_PREFIX,
 	isFamilySlug,
+	SKY_CONSTELLATION_SLUG_PREFIX,
+	SKY_CULTURE_SLUG_PREFIX,
 	smallBodyCategory
 } from '$lib/fetch/groups/registry';
 import { categoryLabel, familyLabel } from '$lib/format/group';
@@ -107,7 +110,8 @@ export function parentCrumb(
 	detail: ObjectDetailData | null,
 	groupGlobal: GlobalGroupData | null,
 	featureType: { slug: string; label: string } | null = null,
-	starSystem: { id: number; name: string } | null = null
+	starSystem: { id: number; name: string } | null = null,
+	parentGroupName?: string
 ): Crumb | null {
 	// A surface feature climbs to its type's collection page; its host body is
 	// one of the two cross-ref tiles instead. Falls back to the body while the
@@ -133,6 +137,7 @@ export function parentCrumb(
 				const name = ctx?.getBody(EARTH_ID)?.data.name ?? m.earth();
 				return { label: name, target: { kind: 'focus', id: EARTH_ID, name } };
 			}
+			if (slug === CAT_CONSTELLATIONS) return categoryCrumb(CAT_STARS);
 			// The property collections hang off Structure & Activity, the way the
 			// ft- pages hang off Surface Features.
 			if (isPropertyCollection(slug)) {
@@ -149,6 +154,16 @@ export function parentCrumb(
 			const parent = groupGlobal?.parent_families?.[0];
 			if (!parent) return null;
 			const label = familyLabel(parent);
+			return { label, target: { kind: 'group', slug: parent, name: label } };
+		}
+		// A constellation climbs to its culture, a culture to the Constellations page.
+		if (
+			slug.startsWith(SKY_CONSTELLATION_SLUG_PREFIX) ||
+			slug.startsWith(SKY_CULTURE_SLUG_PREFIX)
+		) {
+			const parent = groupGlobal?.parent_group;
+			if (!parent) return null;
+			const label = parentGroupName ?? familyLabel(parent);
 			return { label, target: { kind: 'group', slug: parent, name: label } };
 		}
 		const appliesTo = groupGlobal?.applies_to;

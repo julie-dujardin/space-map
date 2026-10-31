@@ -1,5 +1,4 @@
 <script lang="ts">
-	import ChevronLeftIcon from '@lucide/svelte/icons/chevron-left';
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 	import CheckIcon from '@lucide/svelte/icons/check';
 	import { untrack, tick, onMount } from 'svelte';
@@ -10,6 +9,7 @@
 	import type { FilterNode, FilterLeaf } from '$lib/search/tree';
 	import { rangeDef } from '$lib/search/ranges';
 	import { hasBound } from '$lib/search/client';
+	import BackPill from './BackPill.svelte';
 	import RangeControl from './RangeControl.svelte';
 
 	let {
@@ -81,14 +81,7 @@
 >
 	<div class="flex items-center gap-1.5 border-b border-border px-2 py-2">
 		{#if !atRoot}
-			<button
-				type="button"
-				class="inline-flex h-[26px] items-center gap-1 rounded-lg bg-accent px-2 text-sm font-medium text-foreground"
-				onclick={() => navigate(path.slice(0, -1))}
-			>
-				<ChevronLeftIcon class="size-4 rtl:rotate-180" />
-				<span class="whitespace-nowrap">{capitalize(current.label)}</span>
-			</button>
+			<BackPill label={capitalize(current.label)} onclick={() => navigate(path.slice(0, -1))} />
 		{:else}
 			<span class="ps-1 text-sm font-semibold text-foreground">{m.search_add_filter()}</span>
 		{/if}

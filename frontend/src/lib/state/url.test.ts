@@ -22,6 +22,7 @@ import { page } from '$app/state';
 import {
 	applyFocus,
 	applyGroup,
+	pageSkyOf,
 	applyNav,
 	applyTab,
 	formatNavEnd,
@@ -755,5 +756,39 @@ describe('a planet in the URL', () => {
 		expect(serializeUrl(view)).toBe(
 			'/x/27424668/b/1/Proxima%20Cen%20b?at=2026-01-15T12:00:00.000Z,45.00000,0.00000,42.430'
 		);
+	});
+});
+
+describe('pageSkyOf', () => {
+	it('draws the IAU culture on a constellation page and aims at the figure', () => {
+		expect(pageSkyOf('sky-orion', true)).toEqual({
+			culture: 'modern_iau',
+			slug: 'sky-orion',
+			opening: true,
+			hidden: false
+		});
+	});
+
+	it('draws the culture of a constellation of another culture', () => {
+		expect(pageSkyOf('sky-horn', false, 'chinese')).toEqual({
+			culture: 'chinese',
+			slug: 'sky-horn',
+			opening: false,
+			hidden: false
+		});
+	});
+
+	it('draws a culture on its page, with nothing to aim at', () => {
+		expect(pageSkyOf('culture-aztec', false)).toEqual({
+			culture: 'aztec',
+			slug: null,
+			opening: false,
+			hidden: false
+		});
+	});
+
+	it('leaves every other page alone', () => {
+		expect(pageSkyOf('star-giant', false)).toBeNull();
+		expect(pageSkyOf(null, false)).toBeNull();
 	});
 });

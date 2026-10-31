@@ -367,7 +367,7 @@ export type { MapLayerId } from '$lib/scene/layers';
 export type { Body, BodyType, OrbitClass } from '$lib/scene/body-view';
 export type { SimClock } from '$lib/scene/state/clock.svelte';
 export type { Control, ControlPosition } from '$lib/scene/controls';
-export type { SceneSettings } from '$lib/scene/settings.svelte';
+export type { PageSky, SceneSettings } from '$lib/scene/settings.svelte';
 export type { Anchor, InertialAnchor, OffsetKm, SurfaceAnchor } from '$lib/scene/extensions/anchor';
 export type { Marker, MarkerOptions } from '$lib/scene/extensions/marker';
 export type { CameraHold, CameraPose } from '$lib/scene/extensions/camera';

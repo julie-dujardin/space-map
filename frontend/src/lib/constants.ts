@@ -33,6 +33,9 @@ export const BODY_COLORS: Record<string, string> = {
 	'naif-2000001': '#9b9087' // Ceres
 };
 
+/** Same stars and lines as the IAU's own charts. */
+export const DEFAULT_SKY_CULTURE = 'modern_iau';
+
 export const DEFAULT_BODY_COLOR = '#cccccc';
 
 /** Fallback colors by broad category, used when a body isn't in BODY_COLORS. */

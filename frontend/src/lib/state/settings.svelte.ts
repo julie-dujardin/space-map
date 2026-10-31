@@ -1,6 +1,7 @@
 import type { Locale } from '$lib/paraglide/runtime.js';
+import { DEFAULT_SKY_CULTURE } from '$lib/constants';
 import { getLocale } from '$lib/host';
-import type { SceneSettings } from '$lib/scene/settings.svelte';
+import type { PageSky, SceneSettings } from '$lib/scene/settings.svelte';
 import type {
 	AtmosphereCalibration,
 	AtmosphereQualityConfig,
@@ -43,6 +44,9 @@ interface SettingValues {
 	showLightingTuner: boolean;
 	showClouds: boolean;
 	showConstellations: boolean;
+	constellationCulture: string;
+	pageSky: PageSky | null;
+	clearSky: boolean;
 	showAtmospheres: boolean;
 	atmosphereQuality: AtmosphereQualityTier;
 	atmosphereAutoTier: ResolvedAtmosphereTier | null;
@@ -87,6 +91,9 @@ const SETTING_SPEC = {
 	showLightingTuner: { default: false, persist: true },
 	showClouds: { default: true, persist: true },
 	showConstellations: { default: false, persist: true },
+	constellationCulture: { default: DEFAULT_SKY_CULTURE, persist: true },
+	pageSky: { default: null, persist: false },
+	clearSky: { default: true, persist: true },
 	showAtmospheres: { default: true, persist: true },
 	atmosphereQuality: { default: 'auto', persist: true },
 	atmosphereAutoTier: { default: null, persist: true },
@@ -159,6 +166,10 @@ class SettingsState implements SceneSettings, SettingValues {
 	showLightingTuner = $state<boolean>(SETTING_SPEC.showLightingTuner.default);
 	showClouds = $state<boolean>(SETTING_SPEC.showClouds.default);
 	showConstellations = $state<boolean>(SETTING_SPEC.showConstellations.default);
+	/** Kept while the layer is off. */
+	constellationCulture = $state<string>(SETTING_SPEC.constellationCulture.default);
+	pageSky = $state.raw<PageSky | null>(SETTING_SPEC.pageSky.default);
+	clearSky = $state<boolean>(SETTING_SPEC.clearSky.default);
 	/** Per-body atmospheric-scattering shells (sky glow, sunset limb). */
 	showAtmospheres = $state<boolean>(SETTING_SPEC.showAtmospheres.default);
 	/** Shell quality tier; 'auto' resolves from device capability. */
@@ -271,6 +282,18 @@ class SettingsState implements SceneSettings, SettingValues {
 
 	setShowConstellations(v: boolean) {
 		this.set('showConstellations', v);
+	}
+
+	setConstellationCulture(key: string) {
+		this.set('constellationCulture', key);
+	}
+
+	setPageSky(sky: PageSky | null) {
+		this.set('pageSky', sky);
+	}
+
+	setClearSky(v: boolean) {
+		this.set('clearSky', v);
 	}
 
 	setShowAtmospheres(v: boolean) {

@@ -2,7 +2,9 @@
  * Re-dispatch wheel/pointer gestures from a CSS2D overlay element onto the
  * canvas so OrbitControls keeps working when the user grabs a label.
  * Pointerdown only forwards once the gesture passes `DRAG_THRESHOLD_PX`, so a
- * tap-and-release still fires the label's own click handler.
+ * tap-and-release still fires the label's own click handler. With `forwardTap`,
+ * a label with no click of its own passes a tap on as well: the canvas picks
+ * from the pointer pair, not from `click`.
  */
 
 import type { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
@@ -11,7 +13,8 @@ const DRAG_THRESHOLD_PX = 3;
 
 export function attachCanvasForwarders(
 	el: HTMLElement | CSS2DObject['element'],
-	canvas: HTMLCanvasElement
+	canvas: HTMLCanvasElement,
+	forwardTap = false
 ): void {
 	el.addEventListener(
 		'wheel',
@@ -43,7 +46,12 @@ export function attachCanvasForwarders(
 				canvas.dispatchEvent(new PointerEvent('pointermove', me));
 			}
 		};
-		const onUp = () => cleanup();
+		const onUp = (ue: PointerEvent) => {
+			cleanup();
+			if (!forwardTap || savedDown.button !== 0) return;
+			canvas.dispatchEvent(new PointerEvent('pointerdown', savedDown));
+			canvas.dispatchEvent(new PointerEvent('pointerup', ue));
+		};
 		const cleanup = () => {
 			window.removeEventListener('pointermove', onMove);
 			window.removeEventListener('pointerup', onUp);

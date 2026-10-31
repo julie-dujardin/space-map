@@ -3,7 +3,12 @@
  *  what renders. */
 
 import { classNameFromSlug, FLAG_SLUG_PREFIX, orbitClassLabel } from '$lib/charts/orbit-zones';
-import { FEATURE_TYPE_SLUG_PREFIX, isFamilySlug } from '$lib/fetch/groups/registry';
+import {
+	FEATURE_TYPE_SLUG_PREFIX,
+	isFamilySlug,
+	SKY_CONSTELLATION_SLUG_PREFIX,
+	SKY_CULTURE_SLUG_PREFIX
+} from '$lib/fetch/groups/registry';
 import { categoryLabel, familyLabel } from '$lib/format/group';
 import { localName } from '$lib/format/name';
 import type { NomenclatureFeature } from '$lib/fetch/nomenclature/fetch';
@@ -70,10 +75,15 @@ export function groupSlugLabel(slug: string): string {
 	if (className != null) return orbitClassLabel(className);
 	if (slug === `${FLAG_SLUG_PREFIX}neo`) return m.neo();
 	if (slug === `${FLAG_SLUG_PREFIX}pha`) return m.pha();
-	// Feature types carry their English name in the slug — a readable stand-in
-	// until the localized bundle lands.
-	if (slug.startsWith(FEATURE_TYPE_SLUG_PREFIX)) {
-		const name = slug.slice(FEATURE_TYPE_SLUG_PREFIX.length).replace(/-/g, ' ');
+	// These carry their English name in the slug — a readable stand-in until the
+	// localized bundle lands.
+	const prefix = [
+		FEATURE_TYPE_SLUG_PREFIX,
+		SKY_CONSTELLATION_SLUG_PREFIX,
+		SKY_CULTURE_SLUG_PREFIX
+	].find((p) => slug.startsWith(p));
+	if (prefix) {
+		const name = slug.slice(prefix.length).replace(/[-_]/g, ' ');
 		return name.charAt(0).toUpperCase() + name.slice(1);
 	}
 	if (isFamilySlug(slug)) return familyLabel(slug);

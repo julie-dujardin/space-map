@@ -14,6 +14,7 @@
 -->
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages.js';
+	import { foldForSearch } from '$lib/format/fold';
 	import CheckIcon from '@lucide/svelte/icons/check';
 	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
 	import RocketIcon from '@lucide/svelte/icons/rocket';
@@ -114,22 +115,14 @@
 		if (open && !isCoarsePointer()) input?.focus();
 	});
 
-	/** Accent-blind, so a French locale's names match an ASCII keyboard. */
-	function fold(text: string): string {
-		return text
-			.normalize('NFD')
-			.replace(/\p{Diacritic}/gu, '')
-			.toLowerCase();
-	}
-
 	// The description too: half the catalogue is named in a language or a series
 	// the reader may not know, and "lunar lander" finds those.
 	function haystack(vehicle: Vehicle): string {
-		return fold(`${vehicleName(vehicle)} ${vehicleDescription(vehicle) ?? ''}`);
+		return foldForSearch(`${vehicleName(vehicle)} ${vehicleDescription(vehicle) ?? ''}`);
 	}
 
 	let shown = $derived.by(() => {
-		const q = fold(query.trim());
+		const q = foldForSearch(query.trim());
 		if (!q) return vehicles;
 		return vehicles.filter((vehicle) => haystack(vehicle).includes(q));
 	});

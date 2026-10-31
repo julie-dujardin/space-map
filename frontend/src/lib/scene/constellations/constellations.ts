@@ -1,5 +1,5 @@
 /**
- * The IAU constellations as lines between stars, with their names. Each line
+ * The figures of one sky culture as lines between stars, with their names. Each line
  * ends on the star's 3D position, so from another star the figures distort as
  * the sky does.
  */
@@ -21,27 +21,33 @@ import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import type { ExtrasolarCredit } from '$lib/fetch/extrasolar/files';
 import {
 	fetchSkyCulture,
-	type SkyCultureFigure,
+	labelOf,
+	type LoadedSkyCulture,
 	type SkyCultureFile
 } from '$lib/fetch/extrasolar/skycultures';
-import { getLocale } from '$lib/host';
+import { DEFAULT_SKY_CULTURE } from '$lib/constants';
+import { getLocale, host } from '$lib/host';
 import {
 	acceptedBodyLabelRects,
 	dimmedHaloRects,
+	isScreenOccluded,
 	type AcceptedRect
 } from '$lib/scene/label/culling';
 import { RetryBackoff } from '$lib/fetch/retry-backoff';
+import { attachCanvasForwarders } from '$lib/scene/label/forward';
+import { onLinkTap } from '$lib/scene/objects/tap-not-drag';
 import { clampToFarGlsl } from '$lib/scene/setup/depth-mode';
-import { sceneSettings } from '$lib/scene/settings.svelte';
+import { sceneSettings, type PageSky } from '$lib/scene/settings.svelte';
 import { STAR_RENDER_ORDER } from '$lib/scene/starfield/starfield';
 import { sceneToTree, treeMatrixElements, treeToScene } from '$lib/scene/starfield/tree';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { SwitchFade } from '$lib/scene/visibility/switch-fade';
+import { liveScreenOccluders } from '$lib/scene/visibility/update';
 import '$lib/scene/label/label.css';
 
-/** Same stars and lines as the IAU's own charts. */
-const CULTURE = 'modern_iau';
 const LINE_COLOUR = new Color(0.16, 0.24, 0.38);
+/** Added on top of the lines of a hovered label's figure. */
+const HOVER_COLOUR = new Color(0.26, 0.32, 0.4);
 /** Float32 would put a line end some AU off a far star, so the lines are
  *  stored from a point this close to the camera. */
 const REBASE_PC = 1e-3;
@@ -52,6 +58,8 @@ const LABEL_HALF_HEIGHT_PX = 7;
 const UNMEASURED_LABEL_PX = 60;
 /** Under this share, a label is not worth a DOM element on screen. */
 const LABEL_MIN_SHARE = 0.02;
+/** Under this share, a label is too faint to take a click from the map. */
+const LABEL_CLICK_SHARE = 0.2;
 
 const NO_CREDITS: readonly ExtrasolarCredit[] = [];
 
@@ -59,10 +67,14 @@ type Vec3 = [number, number, number];
 
 export interface ConstellationLabel {
 	name: string;
+	/** The page of the figure. */
+	slug: string | null;
 	/** pc, in the frame of the render tree. */
 	anchor: Vec3;
 	/** Lines of the figure: where two labels meet, the larger figure keeps its name. */
 	weight: number;
+	/** The figure's first vertex in `positions`. */
+	firstVertex: number;
 }
 
 /** A label's place on screen. `shown` is the answer of {@link cullLabels}. */
@@ -72,6 +84,8 @@ export interface LabelBox {
 	top: number;
 	bottom: number;
 	inView: boolean;
+	/** A body stands in front of the label. */
+	occluded: boolean;
 	shown: boolean;
 }
 
@@ -79,11 +93,6 @@ export interface ConstellationShape {
 	/** Two points per line, in the frame of the render tree. */
 	positions: Float64Array;
 	labels: ConstellationLabel[];
-}
-
-function labelOf(figure: SkyCultureFigure, locale: string): string {
-	const name = figure.names[0];
-	return figure.labels?.[locale] ?? name?.native ?? name?.english ?? figure.id;
 }
 
 /** The middle of the stars as the Sun sees them, at their mean distance: a
@@ -118,14 +127,20 @@ function largestPart(lines: readonly (readonly [Vec3, Vec3])[]): Vec3[] {
 	return [...parts.reduce((a, b) => (b.size > a.size ? b : a))];
 }
 
-/** The lines and labels of a culture's constellations. A line to a member
- *  with no position is left out. */
+function placedMembers(file: SkyCultureFile, indexes: readonly number[]): Vec3[] {
+	return indexes.map((index) => file.members[index].position).filter((star) => star !== undefined);
+}
+
+/** The lines and labels of a culture. A ray helper is a pointer, no figure. A
+ *  line to a member with no position is left out, and a star group has a label
+ *  and no lines. */
 export function constellationShape(file: SkyCultureFile, locale: string): ConstellationShape {
 	const points: number[] = [];
 	const labels: ConstellationLabel[] = [];
 	for (const figure of file.figures) {
-		if (figure.kind !== 'constellation') continue;
+		if (figure.ray_helper) continue;
 		const lines: [Vec3, Vec3][] = [];
+		const firstVertex = points.length / 3;
 		for (const chain of figure.lines) {
 			for (let i = 1; i < chain.length; i++) {
 				const a = file.members[chain[i - 1]].position;
@@ -135,15 +150,25 @@ export function constellationShape(file: SkyCultureFile, locale: string): Conste
 				lines.push([a, b]);
 			}
 		}
-		if (lines.length === 0) continue;
+		const name = labelOf(figure, locale);
+		const stars = lines.length > 0 ? largestPart(lines) : placedMembers(file, figure.group ?? []);
+		if (!name || stars.length === 0) continue;
 		labels.push({
-			name: labelOf(figure, locale),
-			anchor: anchorOf(largestPart(lines)),
-			weight: lines.length
+			name,
+			slug: figure.page ?? null,
+			anchor: anchorOf(stars),
+			weight: lines.length,
+			firstVertex
 		});
 	}
 	labels.sort((a, b) => b.weight - a.weight);
 	return { positions: new Float64Array(points), labels };
+}
+
+/** A label lies past every body, so any corner of its text can reach a limb. */
+function behindBody({ left, right, top, bottom }: LabelBox): boolean {
+	const hides = (x: number, y: number) => isScreenOccluded(x, y, Infinity, '', liveScreenOccluders);
+	return hides(left, top) || hides(right, top) || hides(left, bottom) || hides(right, bottom);
 }
 
 function boxesMeet(a: LabelBox, b: LabelBox): boolean {
@@ -167,7 +192,7 @@ export function cullLabels(
 ): void {
 	for (let i = 0; i < boxes.length; i++) {
 		const box = boxes[i];
-		box.shown = box.inView;
+		box.shown = box.inView && !box.occluded;
 		for (const { rects, count } of bodies) {
 			for (let j = 0; box.shown && j < count; j++) {
 				if (meetsBodyRect(box, rects[j])) box.shown = false;
@@ -179,9 +204,9 @@ export function cullLabels(
 	}
 }
 
-function lineMaterial(): ShaderMaterial {
+function lineMaterial(colour: Color): ShaderMaterial {
 	return new ShaderMaterial({
-		uniforms: { uColour: { value: LINE_COLOUR }, uGain: { value: 0 } },
+		uniforms: { uColour: { value: colour }, uGain: { value: 0 } },
 		vertexShader: /* glsl */ `
 void main() {
 	gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
@@ -204,33 +229,91 @@ void main() {
 	});
 }
 
-function makeLabel(name: string, mapLayer: number): CSS2DObject {
-	const element = document.createElement('div');
+/** A link where the host has pages. Every label takes the mouse, which lights
+ *  its figure, and hands a drag on to the map. */
+function makeLabel(
+	{ name, slug }: ConstellationLabel,
+	mapLayer: number,
+	canvas: HTMLCanvasElement,
+	onSelect: ConstellationSelect,
+	onHover: (hovered: boolean) => void
+): CSS2DObject {
+	const element = document.createElement('a');
 	element.className = 'scene-constellation-label';
 	element.dir = 'auto';
 	element.textContent = name;
+	element.draggable = false;
+	const href = slug && host().groupHref(slug, name);
+	// With no page, a click belongs to what lies under the label.
+	attachCanvasForwarders(element, canvas, !href);
+	if (slug && href) {
+		element.href = href;
+		element.tabIndex = -1;
+		onLinkTap(element, () => onSelect(slug, name));
+	}
+	// A touch has no hover: its enter and leave wrap a tap.
+	element.addEventListener('pointerenter', (event) => {
+		if (event.pointerType !== 'touch') onHover(true);
+	});
+	element.addEventListener('pointerleave', () => onHover(false));
 	const object = new CSS2DObject(element);
 	object.layers.set(mapLayer);
 	return object;
 }
 
+interface ConstellationLabelState {
+	object: CSS2DObject;
+	slug: string | null;
+	anchor: Vec3;
+	firstVertex: number;
+	/** Vertices of the figure's lines. */
+	vertices: number;
+	width: number;
+	box: LabelBox;
+}
+
+export type ConstellationSelect = (slug: string, name: string) => void;
+/** Turn the camera to a direction of the sky, or back to the focus with null. */
+export type ConstellationAim = (direction: Vector3 | null, instant: boolean) => void;
+
+/** Whether `page` has a turn to start now. A turn replaces a running flight,
+ *  so it waits for the camera to land. */
+export function pageAimDue(
+	page: PageSky,
+	aimed: string | null,
+	shown: string | null,
+	flying: boolean
+): boolean {
+	return !!page.slug && !page.hidden && page.slug !== aimed && page.culture === shown && !flying;
+}
+
 export class ConstellationSystem {
 	private readonly lines = new Group();
 	private readonly names = new Group();
-	private readonly material = lineMaterial();
+	private readonly material = lineMaterial(LINE_COLOUR);
 	private readonly geometry = new BufferGeometry();
+	/** The lines of the hovered figure, a range of the same vertices. */
+	private readonly hoverMaterial = lineMaterial(HOVER_COLOUR);
+	private readonly hoverGeometry = new BufferGeometry();
+	private readonly hoverLines = new LineSegments(this.hoverGeometry, this.hoverMaterial);
 	private readonly fade = new SwitchFade(false);
 	private readonly matrix: number[] = [];
 	private positions: Float64Array = new Float64Array(0);
 	private readonly origin: Vec3 = [Infinity, 0, 0];
 	private readonly direction = new Vector3();
-	private labels: { object: CSS2DObject; anchor: Vec3; width: number; box: LabelBox }[] = [];
+	private labels: ConstellationLabelState[] = [];
+	private hovered: ConstellationLabelState | null = null;
 	private boxes: LabelBox[] = [];
 	private readonly forward = new Vector3();
 	private readonly retry: RetryBackoff<string>;
 	private credits: readonly ExtrasolarCredit[] = [];
-	private loaded = false;
-	private loading = false;
+	/** The culture on show, and the one on its way: only the newest pick lands. */
+	private shown: string | null = null;
+	private pending: string | null = null;
+	/** The constellation the camera was last asked to turn to. */
+	private aimed: string | null = null;
+	/** The camera is turned away from the focus for a page. */
+	private turned = false;
 	private labelOpacity = '';
 	private lastFrameMs = 0;
 	private disposed = false;
@@ -239,7 +322,11 @@ export class ConstellationSystem {
 		private readonly ctx: ContextManager,
 		private readonly scene: Scene,
 		private readonly mapLayer: number,
-		private readonly invalidate: () => void
+		private readonly invalidate: () => void,
+		private readonly canvas: HTMLCanvasElement,
+		private readonly onSelect: ConstellationSelect,
+		private readonly aim: ConstellationAim,
+		private readonly flying: () => boolean
 	) {
 		this.retry = new RetryBackoff<string>(invalidate);
 		this.lines.name = 'constellations';
@@ -251,7 +338,11 @@ export class ConstellationSystem {
 		segments.frustumCulled = false;
 		segments.renderOrder = STAR_RENDER_ORDER + 1;
 		segments.layers.set(mapLayer);
-		this.lines.add(segments);
+		this.hoverLines.frustumCulled = false;
+		this.hoverLines.renderOrder = segments.renderOrder + 1;
+		this.hoverLines.layers.set(mapLayer);
+		this.hoverLines.visible = false;
+		this.lines.add(segments, this.hoverLines);
 		scene.add(this.lines, this.names);
 	}
 
@@ -259,39 +350,117 @@ export class ConstellationSystem {
 		return this.fade.fading;
 	}
 
-	private wanted(): boolean {
+	wanted(): boolean {
 		const settings = sceneSettings();
 		// The sky is the skybox near the Sun and the starfield past it.
 		const sky = this.ctx.layers.isVisible('stars') || this.ctx.layers.isVisible('starfield');
-		return settings.showConstellations && settings.viewMode !== 'immersive' && sky;
+		const page = settings.pageSky;
+		const on = settings.showConstellations || (!!page && !page.hidden);
+		return on && settings.viewMode !== 'immersive' && sky;
 	}
 
-	private async load(): Promise<void> {
-		this.loading = true;
+	/** Follow the page in view: turn to its constellation once the figures are
+	 *  in and the camera has landed, and back to the focus when the reader
+	 *  leaves the sky pages. With no sky to see, the camera stays, and a later
+	 *  dawn does not move it. */
+	private followPage(camera: PerspectiveCamera, focus: Vec3, gain: number): void {
+		const page = sceneSettings().pageSky;
+		if (!page) {
+			if (this.turned) this.aim(null, false);
+			this.turned = false;
+			this.aimed = null;
+			return;
+		}
+		if (!page.slug) this.aimed = null;
+		if (!pageAimDue(page, this.aimed, this.shown, this.flying())) return;
+		const label = this.labels.find(({ slug }) => slug === page.slug);
+		if (!label) return;
+		this.aimed = page.slug;
+		if (gain <= 0 || !this.wanted()) return;
+		const [cx, cy, cz] = sceneToTree(
+			camera.position.x + focus[0],
+			camera.position.y + focus[1],
+			camera.position.z + focus[2]
+		);
+		const [x, y, z] = label.anchor;
+		this.aim(treeToScene(x - cx, y - cy, z - cz, this.direction).normalize(), page.opening);
+		this.turned = true;
+	}
+
+	private request(key: string): void {
+		if (key === this.shown) this.pending = null;
+		else if (key !== this.pending && !this.retry.waiting(key)) void this.load(key);
+	}
+
+	private async load(key: string): Promise<void> {
+		this.pending = key;
 		try {
-			const culture = await fetchSkyCulture(CULTURE);
-			this.loaded = true;
-			if (!culture || this.disposed) return;
-			const shape = constellationShape(culture.file, getLocale());
-			this.positions = shape.positions;
-			const attribute = new BufferAttribute(new Float32Array(shape.positions.length), 3);
-			this.geometry.setAttribute('position', attribute.setUsage(DynamicDrawUsage));
-			this.labels = shape.labels.map(({ name, anchor }) => ({
-				object: makeLabel(name, this.mapLayer),
-				anchor,
-				width: 0,
-				box: { left: 0, right: 0, top: 0, bottom: 0, inView: false, shown: false }
-			}));
-			this.boxes = this.labels.map((label) => label.box);
-			for (const { object } of this.labels) this.names.add(object);
-			this.credits = culture.credits;
-			this.invalidate();
+			const culture = await fetchSkyCulture(key);
+			if (key !== this.pending || this.disposed) return;
+			this.show(culture, key);
 		} catch (err) {
 			console.warn('[constellations] the figures did not load:', err);
-			this.retry.fail(CULTURE);
+			this.retry.fail(key);
 		} finally {
-			this.loading = false;
+			if (key === this.pending) this.pending = null;
 		}
+	}
+
+	private show(culture: LoadedSkyCulture | null, key: string): void {
+		this.shown = key;
+		for (const { object } of this.labels) {
+			object.removeFromParent();
+			object.element.remove();
+		}
+		const shape = culture
+			? constellationShape(culture.file, getLocale())
+			: { positions: new Float64Array(0), labels: [] };
+		this.positions = shape.positions;
+		// Frees the old buffer: a size change needs a new one.
+		this.geometry.dispose();
+		this.hoverGeometry.dispose();
+		const attribute = new BufferAttribute(new Float32Array(shape.positions.length), 3);
+		this.geometry.setAttribute('position', attribute.setUsage(DynamicDrawUsage));
+		this.hoverGeometry.setAttribute('position', attribute);
+		this.setHovered(null);
+		// The new buffer holds zeros until it is rebased.
+		this.origin[0] = Infinity;
+		this.labelOpacity = '';
+		this.labels = shape.labels.map((label) => {
+			const state: ConstellationLabelState = {
+				object: makeLabel(label, this.mapLayer, this.canvas, this.onSelect, (hovered) => {
+					if (hovered) this.setHovered(state);
+					else if (this.hovered === state) this.setHovered(null);
+				}),
+				slug: label.slug,
+				anchor: label.anchor,
+				firstVertex: label.firstVertex,
+				vertices: 2 * label.weight,
+				width: 0,
+				box: {
+					left: 0,
+					right: 0,
+					top: 0,
+					bottom: 0,
+					inView: false,
+					occluded: false,
+					shown: false
+				}
+			};
+			return state;
+		});
+		this.boxes = this.labels.map((label) => label.box);
+		for (const { object } of this.labels) this.names.add(object);
+		this.credits = culture?.credits ?? NO_CREDITS;
+		this.invalidate();
+	}
+
+	private setHovered(label: ConstellationLabelState | null): void {
+		if (label === this.hovered) return;
+		this.hovered = label;
+		this.hoverLines.visible = label !== null;
+		if (label) this.hoverGeometry.setDrawRange(label.firstVertex, label.vertices);
+		this.invalidate();
 	}
 
 	private rebase(x: number, y: number, z: number): void {
@@ -320,8 +489,14 @@ export class ConstellationSystem {
 		const dtMs = this.lastFrameMs ? Math.min(nowMs - this.lastFrameMs, MAX_STEP_MS) : 0;
 		this.lastFrameMs = nowMs;
 		const wanted = this.wanted();
-		if (wanted && !this.loaded && !this.loading && !this.retry.waiting(CULTURE)) void this.load();
-		const ready = this.labels.length > 0;
+		const settings = sceneSettings();
+		if (wanted) {
+			this.request(
+				settings.pageSky?.culture ?? settings.constellationCulture ?? DEFAULT_SKY_CULTURE
+			);
+		}
+		this.followPage(camera, focus, gain);
+		const ready = this.labels.length > 0 || this.positions.length > 0;
 		this.fade.step(wanted && ready, dtMs);
 		const share = this.fade.share;
 		if (share === 0 && !this.lines.visible) return;
@@ -335,6 +510,7 @@ export class ConstellationSystem {
 
 		this.lines.visible = drawn;
 		this.material.uniforms.uGain.value = share * gain;
+		this.hoverMaterial.uniforms.uGain.value = share * gain;
 		if (drawn) {
 			const [ox, oy, oz] = this.origin;
 			if (Math.hypot(cx - ox, cy - oy, cz - oz) > REBASE_PC) this.rebase(cx, cy, cz);
@@ -346,11 +522,18 @@ export class ConstellationSystem {
 
 		const labelShare = this.ctx.layers.isVisible('labels') ? share * gain : 0;
 		this.names.visible = labelShare >= LABEL_MIN_SHARE;
-		if (!this.names.visible) return;
+		if (!this.names.visible) {
+			this.setHovered(null);
+			return;
+		}
 		const opacity = labelShare.toFixed(2);
 		if (opacity !== this.labelOpacity) {
 			this.labelOpacity = opacity;
-			for (const { object } of this.labels) object.element.style.opacity = opacity;
+			const pointerEvents = labelShare < LABEL_CLICK_SHARE ? 'none' : '';
+			for (const { object } of this.labels) {
+				object.element.style.opacity = opacity;
+				object.element.style.pointerEvents = pointerEvents;
+			}
 		}
 		// Inside the depth range, or the label pass drops them.
 		const reach = Math.sqrt(camera.near * camera.far);
@@ -373,12 +556,15 @@ export class ConstellationSystem {
 			box.right = x + halfWidth;
 			box.top = y - LABEL_HALF_HEIGHT_PX;
 			box.bottom = y + LABEL_HALF_HEIGHT_PX;
+			box.occluded = behindBody(box);
 		}
 		cullLabels(this.boxes, [acceptedBodyLabelRects, dimmedHaloRects]);
 		for (const { object, box, width } of this.labels) {
 			// Laid out once whatever it meets, or a hidden label is never measured.
-			object.visible = box.shown || (box.inView && width === 0);
+			object.visible = box.shown || (box.inView && !box.occluded && width === 0);
 		}
+		// A hidden element sends no leave event.
+		if (this.hovered && !this.hovered.box.shown) this.setHovered(null);
 	}
 
 	dispose(): void {
@@ -387,6 +573,8 @@ export class ConstellationSystem {
 		for (const { object } of this.labels) object.element.remove();
 		this.geometry.dispose();
 		this.material.dispose();
+		this.hoverGeometry.dispose();
+		this.hoverMaterial.dispose();
 		this.lines.removeFromParent();
 		this.names.removeFromParent();
 	}

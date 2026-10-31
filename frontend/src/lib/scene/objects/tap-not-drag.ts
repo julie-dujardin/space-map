@@ -6,6 +6,8 @@
  * stops firing as soon as the pointer leaves an element this small.
  */
 
+import { isModifiedClick } from '$lib/modified-click';
+
 /** How far the pointer may travel and still count as a tap. */
 const TAP_SLOP_PX = 3;
 
@@ -29,5 +31,18 @@ export function onTapNotDrag(
 		const dx = event.clientX - downX;
 		const dy = event.clientY - downY;
 		if (dx * dx + dy * dy <= slopPx * slopPx) handler(event);
+	});
+}
+
+/**
+ * `onTapNotDrag` for a label that is a link: a modified click stays the
+ * browser's, and a drag never follows the `href`.
+ */
+export function onLinkTap(el: HTMLAnchorElement, handler: () => void): void {
+	onTapNotDrag(el, (event) => {
+		if (!isModifiedClick(event)) handler();
+	});
+	el.addEventListener('click', (event) => {
+		if (!isModifiedClick(event)) event.preventDefault();
 	});
 }

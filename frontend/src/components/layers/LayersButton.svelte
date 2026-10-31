@@ -6,5 +6,7 @@
 </script>
 
 <OverlayMenuButton title={m.layers_title()} Icon={LayersIcon}>
-	<LayersMenu />
+	{#snippet children({ coverDone })}
+		<LayersMenu onPicked={coverDone} />
+	{/snippet}
 </OverlayMenuButton>

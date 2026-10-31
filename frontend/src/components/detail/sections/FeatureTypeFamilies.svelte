@@ -14,12 +14,13 @@
 		families: FeatureFamily[];
 		/** Localized type chips, keyed on by slug for names + counts. */
 		childGroups: ChildGroupEntry[];
+		/** The feature types' heading by default. */
+		heading?: string;
+		/** Chips shown per family before the overflow toggle. Enough for the
+		 *  shape of a family at a glance; the rest are one click away. */
+		collapsedTo?: number;
 	}
-	let { families, childGroups }: Props = $props();
-
-	/** Chips shown per family before the overflow toggle. Enough for the shape
-	 *  of a family at a glance; the rest are one click away. */
-	const COLLAPSED = 3;
+	let { families, childGroups, heading, collapsedTo = 3 }: Props = $props();
 
 	// Warm for endogenic/impact, cool for the water/wind/ice terms, neutral for
 	// terrain, violet for the human-named odd one out — the ramp groups the groups.
@@ -64,20 +65,20 @@
 
 {#if rows.length > 0}
 	<div class="flex flex-col gap-1">
-		<h3 class="text-sm font-medium">{groupTypeLabelPlural('feature_type')}</h3>
+		<h3 class="text-sm font-medium">{heading ?? groupTypeLabelPlural('feature_type')}</h3>
 		<div class="border-border/60 border-t"></div>
 		<div class="flex flex-col gap-2.5 pt-1.5">
 			{#each rows as family (family.key)}
 				{@const open = expanded.has(family.key)}
-				{@const hidden = family.chips.length - COLLAPSED}
-				{@const chips = open ? family.chips : family.chips.slice(0, COLLAPSED)}
+				{@const hidden = family.chips.length - collapsedTo}
+				{@const chips = open ? family.chips : family.chips.slice(0, collapsedTo)}
 				<div class="flex flex-col gap-1.5">
 					<div class="flex items-baseline gap-1.5">
 						<span
 							class="inline-block size-1.5 rounded-full {FAMILY_DOT[family.key] ?? 'bg-zinc-400'}"
 						></span>
 						<h4 class="text-xs font-medium">
-							{FAMILY_NAME[family.key]?.() ?? family.key}
+							{family.name ?? FAMILY_NAME[family.key]?.() ?? family.key}
 						</h4>
 						<span class="text-muted-foreground text-[10px] tabular-nums">
 							{formatCompactNumber(family.n)}

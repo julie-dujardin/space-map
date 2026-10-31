@@ -16,7 +16,11 @@
 	import type { ExtrasolarRecord } from '$lib/fetch/extrasolar/lookup';
 	import type { Planet } from '$lib/fetch/extrasolar/planets';
 	import { isStarSystem } from '$lib/fetch/extrasolar/systems';
-	import { CAT_SOLAR_SYSTEM, STAR_FAMILY_SLUG_PREFIX } from '$lib/fetch/groups/registry';
+	import {
+		CAT_CONSTELLATIONS,
+		CAT_SOLAR_SYSTEM,
+		STAR_FAMILY_SLUG_PREFIX
+	} from '$lib/fetch/groups/registry';
 	import { ObjectType, type OrbitalElements, type PositionedBody } from '$lib/types/objects';
 	import { moonHost } from '$lib/state/breadcrumb';
 	import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
@@ -93,6 +97,7 @@
 		)
 	);
 	let familyTiles = $state.raw<FamilyLink[]>([]);
+	let isStarPage = $derived(!!star);
 	$effect(() => {
 		const row = star && !isStarSystem(star) ? star.metadata : null;
 		const record = planet;
@@ -177,11 +182,17 @@
 			<FamilyTile {link} />
 		{/each}
 	</div>
-{:else if familyTiles.length}
+{:else if familyTiles.length || isStarPage}
 	<div class="grid grid-cols-2 gap-2">
 		{#each familyTiles as link (link.slug)}
-			<FamilyTile {link} class={familyTiles.length === 1 ? 'col-span-2' : ''} />
+			<FamilyTile {link} class={familyTiles.length === 1 && !isStarPage ? 'col-span-2' : ''} />
 		{/each}
+		{#if isStarPage}
+			<BodyCategoryTile
+				slug={CAT_CONSTELLATIONS}
+				class={familyTiles.length === 1 ? '' : 'col-span-2'}
+			/>
+		{/if}
 	</div>
 {:else if orbitClass}
 	<SmallBodyGroupLinks {orbitClass} flag={smallBodyFlag} />

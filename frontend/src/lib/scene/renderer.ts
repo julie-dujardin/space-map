@@ -354,6 +354,8 @@ export class SceneRenderer {
 		orbitFly: false,
 		arcOrbit: false,
 		cameraStaysOnBody: false,
+		leavesAim: false,
+		aim: null,
 		focusStartTime: 0,
 		focusDurationMs: FOCUS_DURATION_MS
 	};
@@ -597,7 +599,11 @@ export class SceneRenderer {
 			ctx,
 			this.scene,
 			SceneRenderer.MAP_LAYER,
-			this.invalidate
+			this.invalidate,
+			canvas,
+			(slug, name) => this.callbacks.onConstellationSelect?.(slug, name),
+			(direction, instant) => this.aimAt(direction, instant),
+			() => this.focus.camOriginWorld !== null
 		);
 
 		// OrbitControls — target always at origin
@@ -867,6 +873,37 @@ export class SceneRenderer {
 			this.renderer.domElement.clientWidth,
 			this.renderer.domElement.clientHeight
 		);
+	}
+
+	/** Turn the camera to a direction of the sky, or back to the focus with
+	 *  null. The camera stays where it is, and stays put when the focused body or
+	 *  its parent stands in the way: the sky is hidden there. */
+	private aimAt(direction: Vector3 | null, instant: boolean): void {
+		if (!direction) {
+			this.focusController.endAim();
+			return;
+		}
+		const focused = this.focusController.current;
+		const parentId = focused && collisionParentId(focused.data.parentId);
+		const parent = parentId ? this.ctx.getBody(parentId) : undefined;
+		if ([focused, parent].some((body) => body && this.hides(body, direction))) return;
+		this.disarmLimits();
+		this.focusController.aimAt(direction, instant);
+	}
+
+	/** Whether `body` stands on the line from the camera along `direction`. */
+	private hides(body: PositionedBody, direction: Vector3): boolean {
+		const where = this.placeOf(body);
+		if (!where || body.data.radiusKm <= 0) return false;
+		const [x, y, z] = this.focusController.cameraTruePos();
+		const [dx, dy, dz] = [where[0] - x, where[1] - y, where[2] - z];
+		const along = dx * direction.x + dy * direction.y + dz * direction.z;
+		const off = Math.hypot(
+			dx - along * direction.x,
+			dy - along * direction.y,
+			dz - along * direction.z
+		);
+		return along > 0 && off < kmToScene(body.data.radiusKm);
 	}
 
 	/** Look at a place on the drawn trajectory (transfer frame, same as the path)
@@ -1250,6 +1287,8 @@ export class SceneRenderer {
 		this.updateTravelCraftSystem();
 		this.updateSystemShare(renderedDtMs);
 		this.ctx.visibility.updateCamera(distance, this.sceneJd);
+		this.ctx.visibility.clearSky =
+			(sceneSettings().clearSky ?? true) && this.constellations.wanted();
 		this.ctx.visibility.stepZones(renderedDtMs);
 		this.updateTightFar(distance);
 
@@ -2176,6 +2215,7 @@ export class SceneRenderer {
 		this.focus.orbitFly = false;
 		this.focus.arcOrbit = false;
 		this.focus.cameraStaysOnBody = false;
+		this.focus.aim = null;
 	}
 
 	setHeldPose(pose: CameraPose): void {

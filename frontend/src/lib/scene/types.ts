@@ -300,6 +300,8 @@ export interface Callbacks {
 		lon: number,
 		diameterM: number
 	): void;
+	/** Click on a constellation's name: `slug` is its collection page. */
+	onConstellationSelect?(slug: string, name: string): void;
 }
 
 /** A camera pose around the focused body: body-fixed latitude/longitude and

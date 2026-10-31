@@ -26,6 +26,7 @@ import { buildTrails } from '$lib/scene/objects/body/bulk';
 import { minCameraDistance } from '$lib/scene/visibility/camera-limits';
 import {
 	FOCUS_DURATION_MS,
+	prepareAim,
 	prepareFlyToCamera,
 	prepareFocusTarget,
 	type FocusState
@@ -262,12 +263,46 @@ export class FocusController {
 		callbacks.onCameraPosition?.(spherical.latitude, spherical.longitude, spherical.distance);
 	}
 
+	/** Turn the camera to `direction` from where it stands, keeping the focus.
+	 *  The camera orbits a point as far off as the body is, so a drag and a zoom
+	 *  keep their feel. */
+	aimAt(direction: Vector3, instant: boolean): void {
+		const { focus, camera } = this.deps;
+		const reach = camera.position.length();
+		prepareAim(
+			focus,
+			[
+				camera.position.x + direction.x * reach,
+				camera.position.y + direction.y * reach,
+				camera.position.z + direction.z * reach
+			],
+			camera,
+			this.cameraTruePos(),
+			instant
+		);
+	}
+
+	/** Turn the camera back to the focused body. */
+	endAim(): void {
+		const { focus, camera } = this.deps;
+		if (!focus.aim) return;
+		prepareFocusTarget(
+			focus,
+			[...focus.focusTargetWorld],
+			camera,
+			this.cameraTruePos(),
+			undefined,
+			sceneSettings().resolvedReducedMotion
+		);
+	}
+
 	/** Click → emit + fly. Re-clicking the focused body re-emits without moving the camera.
 	 *  The only way a reader changes focus, so it is where a host's restriction on
 	 *  what may be focused is applied; the programmatic moves go round it. */
 	handleFocus(body: PositionedBody): void {
 		if (this.readerFocusFilter && !this.readerFocusFilter(body)) return;
-		if (this.focusedBody?.data.id === body.data.id) {
+		// A camera turned away from its body turns back to it.
+		if (this.focusedBody?.data.id === body.data.id && !this.deps.focus.aim) {
 			this.deps.callbacks.onFocusChange(body);
 			return;
 		}

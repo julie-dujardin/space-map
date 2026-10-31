@@ -202,7 +202,8 @@
 			data,
 			groupDetail?.global ?? null,
 			surface.featureType,
-			starSystem.root
+			starSystem.root,
+			groupDetail?.localized?.parent_group_name
 		)
 	);
 

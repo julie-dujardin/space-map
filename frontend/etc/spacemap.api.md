@@ -632,6 +632,7 @@ export interface Host {
 	bodyHref: (id: string, name: string) => string;
 	dataUrl: string;
 	extrasolarUrl: string;
+	groupHref: (slug: string, name: string) => string;
 	imagesUrl: string;
 	liveUrl: string;
 	locale: () => string;
@@ -780,6 +781,7 @@ export const MAP_LAYERS: readonly [
 export interface MapEvents {
 	camera: (view: CameraState) => void;
 	clock: (e: ClockState) => void;
+	constellationselect: (e: { slug: string; name: string }) => void;
 	// (undocumented)
 	contextlost: () => void;
 	// (undocumented)
@@ -960,6 +962,14 @@ export interface OutOfRangeNotice {
 		| null;
 	// (undocumented)
 	topic: 'out-of-range';
+}
+
+// @public
+export interface PageSky {
+	culture: string;
+	hidden: boolean;
+	opening: boolean;
+	slug: string | null;
 }
 
 // @public
@@ -1231,12 +1241,15 @@ export interface SceneSettings {
 	atmosphereCalibration: AtmosphereCalibration | null;
 	// (undocumented)
 	atmosphereQuality: AtmosphereQualityTier;
+	clearSky?: boolean;
+	constellationCulture?: string;
 	// (undocumented)
 	highAmbient: boolean;
 	// (undocumented)
 	maxPartsPerZone: number;
 	// (undocumented)
 	overexposeRings: boolean;
+	pageSky?: PageSky | null;
 	// (undocumented)
 	realisticLighting: boolean;
 	// (undocumented)
@@ -1249,7 +1262,7 @@ export interface SceneSettings {
 	// (undocumented)
 	showClouds: boolean;
 	// (undocumented)
-	showConstellations: boolean;
+	showConstellations?: boolean;
 	// (undocumented)
 	showDisplacement: boolean;
 	// (undocumented)

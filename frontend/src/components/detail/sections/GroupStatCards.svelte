@@ -12,6 +12,7 @@
 		CAT_DWARF_PLANETS,
 		CAT_MOONS,
 		CAT_PLANETS,
+		CAT_CONSTELLATIONS,
 		CAT_STARS,
 		CAT_PROBES,
 		CAT_RING_SYSTEMS,
@@ -482,6 +483,8 @@
 				];
 			case CAT_STARS:
 				return [stars(m.group_stat_stars(), g.member_count), classifiedShare(g), largestStar(g)];
+			case CAT_CONSTELLATIONS:
+				return [members(g, m.group_type_plural_sky_culture())];
 			case CAT_PLANETS:
 				return planetsStats(g);
 			case CAT_DWARF_PLANETS:
@@ -633,6 +636,10 @@
 						m.tooltip_group_stat_estimated_planets()
 					)
 				];
+			case 'sky_constellation':
+				return [stars(m.group_stat_stars(), g.member_count)];
+			case 'sky_culture':
+				return [count(m.group_stat_figures(), g.member_count)];
 		}
 	}
 

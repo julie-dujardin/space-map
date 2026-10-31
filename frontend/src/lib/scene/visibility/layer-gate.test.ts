@@ -3,6 +3,7 @@ import { ObjectType, type BodyData, type PositionedBody } from '$lib/types/objec
 import { OrbitalSource } from '$lib/fetch/position/format';
 import { AU_SCALE } from '$lib/math/units';
 import { BodyIndex } from '$lib/scene/state/bodies.svelte';
+import type { SmallBodyFilter } from '$lib/fetch/groups/registry';
 import { LayerSet } from '$lib/scene/layers';
 import { VisibilityController } from './controller.svelte';
 import { VISIBILITY } from './thresholds';
@@ -49,7 +50,13 @@ function mkBody(
 	};
 }
 
-function buildScene(layers: LayerSet) {
+interface GroupFilters {
+	satellites?: ReadonlySet<string>;
+	smallBody?: SmallBodyFilter;
+	types?: ReadonlySet<ObjectType>;
+}
+
+function buildScene(layers: LayerSet, filters: GroupFilters = {}) {
 	const bodies = new BodyIndex();
 	bodies.addBodies([
 		mkBody({ id: SUN, name: 'Sun', objectType: ObjectType.STAR }),
@@ -66,9 +73,10 @@ function buildScene(layers: LayerSet) {
 	const vis = new VisibilityController(
 		bodies,
 		() => null,
-		() => null,
-		() => null,
-		() => layers
+		() => filters.satellites ?? null,
+		() => filters.smallBody ?? null,
+		() => layers,
+		() => filters.types ?? null
 	);
 	vis.updateViewport(954);
 	vis.setFocused(bodies.bodiesById.get(EARTH)!);
@@ -141,6 +149,60 @@ describe('point clouds under a hidden layer', () => {
 	it('go with the spacecraft', () => {
 		const off = buildScene(new LayerSet({ spacecraft: false }));
 		expect(off.vis.isSpacecraftGroupVisible('naif-0')).toBe(false);
+	});
+});
+
+describe('a cleared sky', () => {
+	const ZONE_CLASS = 'MBA';
+	const ZONE = `small_bodies/${ZONE_CLASS}`;
+
+	it('fades the asteroid and Earth satellite clouds, and no other', () => {
+		const { vis } = buildScene(new LayerSet());
+		vis.updateCamera(0.5 * AU_SCALE, 2451545);
+		vis.stepZones(16);
+		const asteroids = vis.asteroidGroupShare(ZONE);
+		expect(asteroids).toBeGreaterThan(0);
+		vis.clearSky = true;
+		vis.stepZones(150);
+		expect(vis.fading).toBe(true);
+		expect(vis.asteroidGroupShare(ZONE)).toBeGreaterThan(0);
+		expect(vis.asteroidGroupShare(ZONE)).toBeLessThan(asteroids);
+		vis.stepZones(150);
+		expect(vis.asteroidGroupShare(ZONE)).toBe(0);
+		expect(vis.spacecraftGroupShare(EARTH)).toBe(0);
+		expect(vis.spacecraftGroupShare(SUN)).toBeGreaterThan(0);
+	});
+
+	it('keeps the clouds the open group page is about', () => {
+		const cleared = (filters: GroupFilters, au = 0.002) => {
+			const { vis } = buildScene(new LayerSet(), filters);
+			vis.updateCamera(au * AU_SCALE, 2451545);
+			vis.clearSky = true;
+			vis.stepZones(16);
+			vis.stepZones(300);
+			vis.stepZones(300);
+			return vis;
+		};
+		const asteroids = { smallBody: { kind: 'class', className: ZONE_CLASS } } as const;
+		expect(cleared(asteroids, 0.5).asteroidGroupShare(ZONE)).toBeGreaterThan(0);
+		expect(cleared(asteroids).spacecraftGroupShare(EARTH)).toBe(0);
+		const satellites = { satellites: new Set(['1']) };
+		expect(cleared(satellites).spacecraftGroupShare(EARTH)).toBeGreaterThan(0);
+		expect(cleared(satellites, 0.5).asteroidGroupShare(ZONE)).toBe(0);
+		const debris = cleared({ types: new Set([ObjectType.DEBRIS]) });
+		expect(debris.spacecraftGroupShare(EARTH)).toBeGreaterThan(0);
+	});
+
+	it('leaves the layers alone and comes back', () => {
+		const layers = new LayerSet();
+		const { vis } = buildScene(layers);
+		vis.clearSky = true;
+		vis.stepZones(16);
+		vis.stepZones(300);
+		expect(layers.isVisible('asteroids')).toBe(true);
+		vis.clearSky = false;
+		vis.stepZones(300);
+		expect(vis.spacecraftGroupShare(EARTH)).toBeGreaterThan(0);
 	});
 });
 

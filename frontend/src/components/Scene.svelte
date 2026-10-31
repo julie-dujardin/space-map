@@ -56,6 +56,7 @@
 			lon: number,
 			diameterM: number
 		) => void;
+		onConstellationSelect?: (slug: string, name: string) => void;
 	}
 
 	let {
@@ -64,7 +65,8 @@
 		onFocusChange,
 		onArrival,
 		onUserPromotedChange,
-		onFeatureSelect
+		onFeatureSelect,
+		onConstellationSelect
 	}: Props = $props();
 
 	const appState = getContext<AppState>('appState');
@@ -131,6 +133,7 @@
 			map.on('featureselect', ({ bodyId, featureId, lat, lon, diameterM }) =>
 				onFeatureSelect?.(bodyId, featureId, lat, lon, diameterM)
 			),
+			map.on('constellationselect', ({ slug, name }) => onConstellationSelect?.(slug, name)),
 			map.on('notice', showNotice),
 			map.on('noticedismiss', dismissNotice)
 		];

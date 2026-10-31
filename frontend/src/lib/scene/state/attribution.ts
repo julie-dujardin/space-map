@@ -70,6 +70,9 @@ export function focusedModelCredit(ctx: ContextManager): ModelCredit | undefined
 	return focusedAtFullSize ? ctx.credits.model.get(focusedBodyId) : undefined;
 }
 
+/** The authors of a culture with no named people: the bar already says Stellarium. */
+export const STELLARIUM_TEAM = "Stellarium's team";
+
 export interface AttributionChips {
 	/** Where the positions come from. */
 	orbits: string[];
@@ -77,7 +80,8 @@ export interface AttributionChips {
 	imagery: string[];
 	/** The catalogues whose licence asks for credit, once stars have drawn. */
 	stars: string[];
-	/** Who drew the constellation lines and placed their stars, while they draw. */
+	/** Who drew the culture's lines, with its authors, and who placed their
+	 *  stars, while they draw. */
 	constellations: string[];
 }
 
@@ -104,8 +108,17 @@ export function attributionChips(
 
 	const stars = [...new Set(credits.stars.filter((c) => c.license).map((c) => c.organisation))];
 
+	// An embed has no popover, so its bar is the only place for the authors.
 	const constellations = [
-		...new Set(credits.constellations.filter((c) => c.license).map((c) => c.organisation))
+		...new Set(
+			credits.constellations
+				.filter((c) => c.license)
+				.map((c) =>
+					c.authors && c.authors[0] !== STELLARIUM_TEAM
+						? `${c.organisation} (${c.authors.join(', ')})`
+						: c.organisation
+				)
+		)
 	];
 
 	return { orbits, imagery: [...organisations].sort(), stars, constellations };

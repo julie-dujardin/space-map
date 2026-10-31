@@ -129,12 +129,13 @@ export class MembersState {
 		this.memberDescriptions = $derived(
 			d.isGroupMode() ? d.groupDetail()?.localized?.notable_member_descriptions : undefined
 		);
-		// Search has no family members and no exoplanets. These pages list their baked members.
-		const isFamily = $derived(
-			d.groupDetail()?.global?.type === 'star_family' ||
-				d.groupDetail()?.global?.type === 'planet_family'
-		);
-		const bakedOnly = $derived(isFamily || d.cat().planets || d.cat().stars);
+		// Search has no family members, no figure stars and no exoplanets. These
+		// pages list their baked members.
+		const bakedType = $derived.by(() => {
+			const type = d.groupDetail()?.global?.type;
+			return type === 'star_family' || type === 'planet_family' || type === 'sky_constellation';
+		});
+		const bakedOnly = $derived(bakedType || d.cat().planets || d.cat().stars);
 		this.memberTotal = $derived(
 			d.isGroupMode()
 				? bakedOnly

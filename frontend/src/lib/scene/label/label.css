@@ -8,7 +8,34 @@
 	color: #8fa3c4;
 	font-size: 12px;
 	letter-spacing: 0.04em;
+	text-decoration: none; /* it's an <a> */
 	text-shadow: 0 0 3px #000;
+}
+
+.scene-constellation-label[href] {
+	pointer-events: auto;
+	cursor: pointer;
+	touch-action: none; /* see .scene-label */
+}
+
+/* A mouse lights a figure from any label; a finger has nothing to do on one with no page. */
+@media (hover: hover) {
+	.scene-constellation-label {
+		pointer-events: auto;
+	}
+}
+
+.scene-constellation-label:hover {
+	color: #d6e0f2;
+}
+
+/* A finger needs more than a 12px line; the culling box stays the text's. */
+@media (pointer: coarse) {
+	.scene-constellation-label[href]::after {
+		content: '';
+		position: absolute;
+		inset: -10px;
+	}
 }
 
 .scene-label {

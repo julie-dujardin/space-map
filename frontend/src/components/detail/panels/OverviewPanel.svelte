@@ -10,6 +10,7 @@
 	import FeatureProperties from '../sections/FeatureProperties.svelte';
 	import ObjectLinks from '../sections/ObjectLinks.svelte';
 	import SourcesFooter, { type Source as CitedSource } from '../sections/SourcesFooter.svelte';
+	import { cultureSource } from '../sections/culture-credits';
 	import MemberStrip from '../members/MemberStrip.svelte';
 	import BodyCrossRefs from './overview/BodyCrossRefs.svelte';
 	import SystemDiscovery from '../sections/SystemDiscovery.svelte';
@@ -27,8 +28,10 @@
 	import type { LineupHero } from '../charts/lineup-hero.svelte';
 	import type { PlanetarySystemState } from '../charts/planetary-system.svelte';
 	import * as m from '$lib/paraglide/messages.js';
+	import { getLocale } from '$lib/paraglide/runtime.js';
 	import StatCardRow from '../sections/kit/StatCardRow.svelte';
 	import StarSections from '../sections/star/StarSections.svelte';
+	import StarConstellations from '../sections/star/StarConstellations.svelte';
 	import SystemStars from '../sections/star/SystemStars.svelte';
 	import Discovery from '../sections/Discovery.svelte';
 	import {
@@ -54,7 +57,11 @@
 		starCredits
 	} from '$lib/credits/star-sources';
 	import type { ExtrasolarRecord } from '$lib/fetch/extrasolar/lookup';
-	import { fetchExtrasolarMetadata, type ExtrasolarCredit } from '$lib/fetch/extrasolar/files';
+	import {
+		extrasolarAllowed,
+		fetchExtrasolarMetadata,
+		type ExtrasolarCredit
+	} from '$lib/fetch/extrasolar/files';
 	import { planetCatalogue, type PlanetSystem } from '$lib/fetch/extrasolar/planets';
 	import { systemNode } from '$lib/fetch/extrasolar/systems';
 	import { nodePlanetCount, systemHosts, type StarSystem } from '$lib/state/star-system';
@@ -232,6 +239,14 @@
 	// they back the mass chart and the tiles rather than one body's panel, the
 	// papers every dose on the Radiation page is read off, and the published
 	// inventory both Solar System mass charts are drawn from.
+	// A culture's own text, where it has no article in the reader's language.
+	let cultureText = $derived.by(() => {
+		const text = groupDetail?.global?.culture_text;
+		if (!text || data?.localized?.wikipedia?.extract) return undefined;
+		return extrasolarAllowed(text) ? text : undefined;
+	});
+	let translatedText = $derived(cultureText?.translations?.[getLocale()]);
+	let figureCredits = $state.raw<CitedSource[]>([]);
 	let groupWorkCredits = $derived.by<CitedSource[]>(() => {
 		const out: CitedSource[] = [
 			...(groupDetail?.global?.ring_sources ?? []),
@@ -245,6 +260,22 @@
 		out.push(...lineup.overviewCredits.shapeWorks);
 		// A star's values come from the catalogues its records name, or from
 		// the papers its object entry cites; a planet's from those its file names.
+		if (cultureText) {
+			const { credit } = cultureText;
+			out.push(
+				cultureSource(credit, m.source_culture_text_note({ license: credit.license ?? '' }))
+			);
+			const translators = cultureText.translation_credit;
+			if (translatedText && translators) {
+				out.push({
+					key: translators.source,
+					label: [translators.organisation, translators.name].join(', '),
+					url: translators.source,
+					note: m.source_culture_text_note({ license: translators.license ?? '' })
+				});
+			}
+		}
+		out.push(...figureCredits);
 		if (star) {
 			const nodes = system ? [...system.nodes.values()] : citedNodes;
 			out.push(...starCredits(star, data?.global?.references, nodes));
@@ -315,8 +346,9 @@
 			/>
 		{/if}
 		<ObjectDescription
-			extract={data?.localized?.wikipedia?.extract}
+			extract={data?.localized?.wikipedia?.extract ?? translatedText ?? cultureText?.text}
 			wikipediaUrl={data?.localized?.wikipedia?.url}
+			lang={cultureText && !translatedText ? 'en' : undefined}
 		/>
 		{#if !isGroupMode}
 			<BodyCrossRefs
@@ -373,6 +405,7 @@
 				localized={data?.localized ?? null}
 				shown={systemRefs}
 			/>
+			<StarConstellations id={star.id} onCredits={(credits) => (figureCredits = credits)} />
 		{:else if planet}
 			<PlanetSections
 				sections={planetSections(planet, {
@@ -384,7 +417,14 @@
 		{:else if body}
 			<BodySections {body} {data} orbitElements={drawerOrbitElements} {parentBody} jd={sampledJd} />
 		{:else if groupSlug !== null}
-			<GroupOverviewSections slug={groupSlug} {cat} {groupDetail} {members} {active} />
+			<GroupOverviewSections
+				slug={groupSlug}
+				{cat}
+				{groupDetail}
+				{members}
+				{active}
+				onFigureCredits={(credits) => (figureCredits = credits)}
+			/>
 		{/if}
 		<ObjectLinks
 			global={data?.global ?? null}

@@ -252,6 +252,8 @@ export interface MapEvents {
 	camera: (view: CameraState) => void;
 	/** A nomenclature label was clicked; carries what a fly-to needs. */
 	featureselect: (e: FeatureSelect) => void;
+	/** A constellation's name was clicked; `slug` is its collection page. */
+	constellationselect: (e: { slug: string; name: string }) => void;
 	/** User-promoted bodies that can be cleared (the focused one excluded). */
 	userpromoted: (count: number) => void;
 	contextlost: () => void;
@@ -295,6 +297,9 @@ const SETTING_SINKS: ReadonlyArray<(r: SceneRenderer, s: SceneSettings) => void>
 	(r, s) => r.setHaloDebugVisible(s.showHaloDebug),
 	(r, s) => {
 		void s.showConstellations;
+		void s.constellationCulture;
+		void s.pageSky;
+		void s.clearSky;
 		r.invalidate();
 	},
 	// A recalibration can move the render tier.
@@ -393,6 +398,7 @@ export class SpaceMap {
 		focuschange: new Set(),
 		camera: new Set(),
 		featureselect: new Set(),
+		constellationselect: new Set(),
 		userpromoted: new Set(),
 		contextlost: new Set(),
 		contextrestored: new Set(),
@@ -814,7 +820,8 @@ export class SpaceMap {
 			},
 			onUserPromotedChange: (count) => this.emit('userpromoted', count),
 			onFeatureSelect: (bodyId, featureId, lat, lon, diameterM) =>
-				this.emit('featureselect', { bodyId, featureId, lat, lon, diameterM })
+				this.emit('featureselect', { bodyId, featureId, lat, lon, diameterM }),
+			onConstellationSelect: (slug, name) => this.emit('constellationselect', { slug, name })
 		};
 	}
 

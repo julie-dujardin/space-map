@@ -61,6 +61,8 @@ export interface Host {
 	messages: CoreMessages;
 	/** Link target of a body's scene label. */
 	bodyHref: (id: string, name: string) => string;
+	/** Link target of a collection page's scene label. */
+	groupHref: (slug: string, name: string) => string;
 	/** How far down the `distribution` ladder this embed may draw surface maps,
 	 *  panoramas, craft models and stars (docs/export-format/textures.md). `open` is
 	 *  what anyone may serve, `non-commercial` adds works whose licence bars
@@ -119,6 +121,7 @@ const DEFAULT_HOST: Host = {
 	},
 	// A bare embed has no pages to link to, so labels stay put.
 	bodyHref: () => '',
+	groupHref: () => '',
 	textures: 'open'
 };
 

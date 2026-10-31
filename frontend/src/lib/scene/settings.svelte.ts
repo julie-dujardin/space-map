@@ -1,3 +1,4 @@
+import { DEFAULT_SKY_CULTURE } from '$lib/constants';
 import type {
 	AtmosphereCalibration,
 	AtmosphereQualityConfig,
@@ -5,17 +6,39 @@ import type {
 	ResolvedAtmosphereTier
 } from './objects/surface/atmosphere-quality';
 
+/** The sky of a page. It leaves the reader's own layer settings alone. */
+export interface PageSky {
+	/** The culture to draw. */
+	culture: string;
+	/** The constellation to aim at. */
+	slug: string | null;
+	/** Aim at once: the page opened the map. */
+	opening: boolean;
+	/** The reader turned the layer off on this page. */
+	hidden: boolean;
+}
+
 /**
  * The display settings the scene reads. The app's persisted store satisfies
  * this structurally; an embed passes its own or takes the default. One per
  * page, registered through {@link setSceneSettings}: the tier and quality
  * helpers run deep in material code with no map instance at hand.
+ *
+ * A field added after a release is optional, so a host's own object stays
+ * valid. {@link defaultSceneSettings} shows the default of each.
  */
 export interface SceneSettings {
 	resolvedReducedMotion: boolean;
 	viewMode: 'map' | 'immersive';
 	showClouds: boolean;
-	showConstellations: boolean;
+	showConstellations?: boolean;
+	/** Key of the sky culture the constellation layer draws. */
+	constellationCulture?: string;
+	/** What a constellation or culture page shows of the sky, for that view. */
+	pageSky?: PageSky | null;
+	/** The constellation layer hides the clouds of asteroids, comets and Earth
+	 *  satellites, which bury its faint figures. */
+	clearSky?: boolean;
 	showAtmospheres: boolean;
 	atmosphereQuality: AtmosphereQualityTier;
 	atmosphereAutoTier: ResolvedAtmosphereTier | null;
@@ -67,6 +90,9 @@ export function defaultSceneSettings(): SceneSettings {
 		viewMode: 'map',
 		showClouds: true,
 		showConstellations: false,
+		constellationCulture: DEFAULT_SKY_CULTURE,
+		pageSky: null,
+		clearSky: true,
 		showAtmospheres: true,
 		atmosphereQuality: 'auto',
 		atmosphereAutoTier: null,

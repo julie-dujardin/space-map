@@ -101,9 +101,10 @@
 	import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 	import { watchDataVersion } from '$lib/fetch/version-check';
 	import { fetchGroupDetail } from '$lib/fetch/groups/details';
+	import { fetchGroupIndex } from '$lib/fetch/groups/registry';
 	import { isModelBearing } from '$lib/scene/objects/body/model';
 	import { MISSION_SLUG_PREFIX } from '$lib/fetch/groups/registry';
-	import { urlTypeFromId } from '$lib/state/url';
+	import { isSkyPage, pageSkyOf, urlTypeFromId } from '$lib/state/url';
 	import { getLocale } from '$lib/paraglide/runtime.js';
 	import * as m from '$lib/paraglide/messages.js';
 	import { loadProgress } from '$lib/scene/state/load-progress.svelte';
@@ -903,7 +904,10 @@
 				if (ctx.loading) ctx.fail(e);
 				else console.error('[map] the opening view failed:', e);
 			})
-			.finally(() => (viewOpened = true));
+			.finally(() => {
+				viewOpened = true;
+				cameraPlaced = true;
+			});
 	});
 
 	async function openInitialView(): Promise<void> {
@@ -1008,6 +1012,32 @@
 		appState.view.type === UrlType.Group && appState.view.groupSlug ? appState.view.groupSlug : null
 	);
 	$effect(() => applyGroupFilter(groupSlug));
+
+	// A sky page shows its sky for as long as it is in view. It waits for the
+	// opening view, which places the camera.
+	let cameraPlaced = $state(false);
+	let skyOpening = true;
+	$effect(() => {
+		if (!cameraPlaced) return;
+		const slug = groupSlug;
+		const opening = skyOpening;
+		skyOpening = false;
+		if (!slug || !isSkyPage(slug)) {
+			settings.setPageSky(null);
+			return;
+		}
+		let left = false;
+		void fetchGroupIndex()
+			.catch(() => null)
+			.then((index) => {
+				if (!left) settings.setPageSky(pageSkyOf(slug, opening, index?.[slug]?.culture));
+			});
+		return () => {
+			left = true;
+		};
+	});
+	// The setting outlives this map, and the next one must not open on it.
+	$effect(() => () => settings.setPageSky(null));
 
 	function applyGroupFilter(slug: string | null): void {
 		const name = untrack(() => appState.view.name) || (slug ?? '');
@@ -1157,6 +1187,7 @@
 						// so the click feels instant instead of waiting on it.
 						map.focusOnFeature(bodyId, fid, lat, lon, d, f.name, 'pan');
 					}}
+					onConstellationSelect={(slug, name) => appState.setGroup(slug, name)}
 					onUserPromotedChange={(count) => (userPromotedCount = count)}
 				/>
 			</div>

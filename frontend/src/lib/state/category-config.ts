@@ -2,6 +2,7 @@
  *  table instead of a dozen scattered `slug === CAT_*` derivations. */
 
 import {
+	CAT_CONSTELLATIONS,
 	CAT_STARS,
 	CAT_PLANETS,
 	CAT_MOONS,
@@ -89,8 +90,8 @@ const NONE: CategoryConfig = {
 };
 
 const BY_SLUG: Record<string, Partial<CategoryConfig>> = {
+	[CAT_STARS]: { stars: true, crossRefs: true },
 	// The sibling links are the Solar System's, so they sit on its tab.
-	[CAT_STARS]: { stars: true },
 	[CAT_PLANETS]: { planets: true, lineup: true },
 	[CAT_MOONS]: { moons: true, lineup: true, crossRefs: true },
 	[CAT_RING_SYSTEMS]: { ringSystems: true, membersShownInFull: true },
@@ -104,6 +105,7 @@ const BY_SLUG: Record<string, Partial<CategoryConfig>> = {
 	[CAT_SATELLITE_SYSTEMS]: { satelliteSystems: true, membersShownInFull: true },
 	[CAT_ASTEROIDS]: { smallBody: true, sphereLineup: true, crossRefs: true },
 	[CAT_COMETS]: { smallBody: true, sphereLineup: true, crossRefs: true },
+	[CAT_CONSTELLATIONS]: { crossRefs: true },
 	[CAT_SATELLITES]: { crossRefs: true },
 	[CAT_DEBRIS]: { crossRefs: true },
 	[CAT_PROBES]: { crossRefs: true },
