@@ -1,7 +1,11 @@
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages.js';
 	import { withoutRefs } from '$lib/format/entity-refs';
-	import type { GlobalObjectData, LocalizedObjectData } from '$lib/fetch/objects/object-data';
+	import type {
+		EntityRef,
+		GlobalObjectData,
+		LocalizedObjectData
+	} from '$lib/fetch/objects/object-data';
 	import { earliestDate, formatIsoDate, sameYearDate } from '$lib/format/date';
 	import Section from './kit/Section.svelte';
 	import Row from './kit/Row.svelte';
@@ -10,9 +14,11 @@
 	interface Props {
 		global: GlobalObjectData | null;
 		localized: LocalizedObjectData | null;
+		/** What another part of the panel names, so that "Part of" leaves it out. */
+		shown?: readonly EntityRef[];
 	}
 
-	let { global, localized }: Props = $props();
+	let { global, localized, shown = [] }: Props = $props();
 
 	let isSpacecraft = $derived(global?.type === 'spacecraft' || global?.type === 'debris');
 
@@ -33,7 +39,9 @@
 	let discoverers = $derived(localized?.discoverers);
 	let discoverySite = $derived(localized?.discovery_site);
 	let asteroidFamily = $derived(localized?.asteroid_family);
-	let partOf = $derived(withoutRefs(localized?.part_of, asteroidFamily ? [asteroidFamily] : []));
+	let partOf = $derived(
+		withoutRefs(localized?.part_of, asteroidFamily ? [asteroidFamily, ...shown] : shown)
+	);
 	let namedAfter = $derived(localized?.named_after);
 
 	let johnstonDate = $derived(discoveryDate ? undefined : johnston?.discovery_date);

@@ -1,6 +1,7 @@
 /** One-level "parent" crumb for the drawer header: each focusable resolves to
  *  at most one ancestor (moon→planet, small body→zone, sat→constellation/class,
- *  planet/group→category, category→Solar System root, feature→body). */
+ *  planet→Solar System, star→its star system, group→category, category→Solar
+ *  System root, feature→body). */
 
 import * as m from '$lib/paraglide/messages.js';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
@@ -32,7 +33,7 @@ import {
 } from '$lib/fetch/groups/registry';
 import { categoryLabel, familyLabel } from '$lib/format/group';
 import { classifyEarthOrbit, classNameFromSlug, orbitClassLabel } from '$lib/charts/orbit-zones';
-import { isPropertyCollection, solarSystemTab } from './category-config';
+import { isPropertyCollection } from './category-config';
 import type { Focusable } from './focusable';
 import { urlTypeFromId } from './url';
 import { UrlType, type DrawerTab } from './view';
@@ -70,7 +71,7 @@ export type CrumbTarget =
 			moveCamera?: boolean;
 			tab?: Exclude<DrawerTab, 'overview'>;
 	  }
-	| { kind: 'group'; slug: string; name: string; tab?: Exclude<DrawerTab, 'overview'> }
+	| { kind: 'group'; slug: string; name: string }
 	// Stays on this object and only changes tab — what a tab promoted out of the
 	// bar puts in the crumb slot to get back to the object it belongs to.
 	| { kind: 'tab'; tab: DrawerTab }
@@ -95,10 +96,9 @@ function classGroup(className: string): Crumb {
 	};
 }
 
-/** A category page, opened on `tab` when one is given. */
-function categoryCrumb(slug: string, tab?: Exclude<DrawerTab, 'overview'>): Crumb {
+function categoryCrumb(slug: string): Crumb {
 	const label = categoryLabel(slug);
-	return { label, target: { kind: 'group', slug, name: label, tab } };
+	return { label, target: { kind: 'group', slug, name: label } };
 }
 
 export function parentCrumb(
@@ -106,7 +106,8 @@ export function parentCrumb(
 	ctx: ContextManager | undefined,
 	detail: ObjectDetailData | null,
 	groupGlobal: GlobalGroupData | null,
-	featureType: { slug: string; label: string } | null = null
+	featureType: { slug: string; label: string } | null = null,
+	starSystem: { id: number; name: string } | null = null
 ): Crumb | null {
 	// A surface feature climbs to its type's collection page; its host body is
 	// one of the two cross-ref tiles instead. Falls back to the body while the
@@ -168,8 +169,13 @@ export function parentCrumb(
 		return null;
 	}
 
-	// A star has no page above it yet; a planet climbs to its star.
-	if (focusable.kind === 'star') return null;
+	// A star or an inner node climbs to the root of its system; a planet climbs
+	// to its star.
+	if (focusable.kind === 'star') {
+		if (!starSystem) return null;
+		const { id, name } = starSystem;
+		return { label: name, target: { kind: 'focus', id: extrasolarObjectId(id), name } };
+	}
 	if (focusable.kind === 'planet') {
 		const host = focusable.anchor.hostRecord;
 		const name = localName(host) ?? String(host.id);
@@ -182,10 +188,9 @@ export function parentCrumb(
 	// reachable via the body page's cross-ref tile.
 	if (data.objectType === ObjectType.DWARF_PLANET) return categoryCrumb(CAT_DWARF_PLANETS);
 
-	// Planets → the Solar System tab of Planets; the Sun → the Solar System root.
-	if (data.objectType === ObjectType.PLANET)
-		return categoryCrumb(CAT_PLANETS, solarSystemTab(CAT_PLANETS));
-	if (data.objectType === ObjectType.STAR) return categoryCrumb(CAT_SOLAR_SYSTEM);
+	// The Sun and its planets climb to the page of their system.
+	if (data.objectType === ObjectType.PLANET || data.objectType === ObjectType.STAR)
+		return categoryCrumb(CAT_SOLAR_SYSTEM);
 
 	// A planetary system → the collection of systems; its own primary is the
 	// first cross-ref tile instead. The Solar System barycenter is that

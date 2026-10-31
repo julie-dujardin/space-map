@@ -207,6 +207,13 @@ export function formatDays(days: number): string {
 	return joinParts({ value: sigFigures(days, ROUNDED), unit: daySymbol() });
 }
 
+/** A period in days, or in years from {@link PERIOD_YEARS_FROM} days. */
+export function formatPeriod(days: number, digits = ROUNDED): string {
+	return days >= PERIOD_YEARS_FROM
+		? joinParts({ value: sigFigures(days / DAYS_PER_YEAR, digits), unit: durationSymbol('year') })
+		: joinParts({ value: sigFigures(days, digits), unit: daySymbol() });
+}
+
 const CLASS_LABELS: Record<string, () => string> = {
 	planet: m.exoplanet_class_planet,
 	'brown dwarf': m.exoplanet_class_brown_dwarf,
@@ -428,16 +435,7 @@ export function planetStats(planet: Planet): Stat[][] {
 		period !== null
 			? {
 					label: m.orbital_period(),
-					value: bounded(
-						planet,
-						'period',
-						period >= PERIOD_YEARS_FROM
-							? joinParts({
-									value: sigFigures(period / DAYS_PER_YEAR, ROUNDED),
-									unit: durationSymbol('year')
-								})
-							: formatDays(period)
-					),
+					value: bounded(planet, 'period', formatPeriod(period)),
 					note: qualifier(planet, 'period')
 				}
 			: null
@@ -455,7 +453,11 @@ function julian(planet: Planet, name: string, note?: string): Omit<PlanetRow, 'l
 	if (jd === null) return null;
 	const up = num(planet, `${name}_error_upper`);
 	const low = num(planet, `${name}_error_lower`);
-	const error = Math.max(up ?? 0, low ?? 0);
+	return { ...formatJulianDay(jd, Math.max(up ?? 0, low ?? 0)), note };
+}
+
+/** A Julian day at its published digits, as a value and its calendar date. */
+export function formatJulianDay(jd: number, error = 0): { value: string; tooltip: string } {
 	const published = Math.max(fractionDigits(jd), fractionDigits(error));
 	const decimals = error > 0 ? Math.min(errorDecimals(error), published) : published;
 	const format = (v: number) =>
@@ -465,7 +467,7 @@ function julian(planet: Planet, name: string, note?: string): Omit<PlanetRow, 'l
 			useGrouping: false
 		}).format(v);
 	const value = error > 0 ? `${format(jd)} ±\u00a0${format(error)}` : format(jd);
-	return { value: ltrIsolate(value), tooltip: formatJulianDate(jd), note };
+	return { value: ltrIsolate(value), tooltip: formatJulianDate(jd) };
 }
 
 function timeRow(label: string, time: Omit<PlanetRow, 'label'> | null): PlanetRow | null {

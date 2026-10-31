@@ -651,3 +651,39 @@ describe.skipIf(!HAS_EXPORT)("a planet host's catalogue rows from the real expor
 		expect(starAliases(lich.record)).not.toContain(lich.record.metadata.name);
 	});
 });
+
+describe('the links of a star system', () => {
+	const withIds = (ids: [string, string, string][]): ExtrasolarRecord => {
+		const star = pointSourceRecord([]);
+		const crossIds = ids.map(([catalogue, release, catalogueId]) => ({
+			catalogue,
+			release,
+			catalogueId
+		}));
+		return { ...star, metadata: { ...star.metadata, crossIds } };
+	};
+
+	it('hides the claims that key an ID, and names the catalogues', () => {
+		const shown = starIdentifiers(
+			withIds([
+				['star-system', 'member', 'gaia/dr3/2133476355197071616 Kepler-16'],
+				['star-system', 'primary', 'hip/2007/37279 0'],
+				['star-system', 'simbad', '3396059'],
+				['star-system', 'el-badry', '1+2'],
+				['star-system', 'msc', '14396-6050 AB'],
+				['star-system', 'wds', '14396-6050']
+			])
+		);
+		expect(shown.map((r) => [r.label, r.value])).toEqual([
+			['MSC', '14396-6050 AB'],
+			['WDS', '14396-6050']
+		]);
+	});
+});
+
+describe('the class of a star system', () => {
+	it('reads in words', () => {
+		expect(starClassLabel('binary star')).toBe('Binary star');
+		expect(starClassLabel('multiple star')).toBe('Multiple star');
+	});
+});

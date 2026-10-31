@@ -225,6 +225,7 @@
 	"search_no_results": "Brak dopasowań",
 	"search_secondary_orbiting": "{type} obiektu {parent}",
 	"search_secondary_planet_host": "{type}, {planets}",
+	"search_secondary_in_system": "{type} w układzie {system}",
 	"search_secondary_feature_on": "{type} na obiekcie {parent}",
 	"search_clear": "Wyczyść",
 	"search_clear_all": "Wyczyść wszystko",
@@ -875,6 +876,8 @@
 	"type_planet": "planeta",
 	"type_spacecraft": "statek kosmiczny",
 	"type_star": "gwiazda",
+	"type_binary_star": "gwiazda podwójna",
+	"type_multiple_star": "gwiazda wielokrotna",
 	"type_brown_dwarf": "brązowy karzeł",
 	"type_sub_brown_dwarf": "podbrązowy karzeł",
 	"type_white_dwarf": "biały karzeł",
@@ -1380,6 +1383,27 @@
 	"star_class_star": "Gwiazda",
 	"star_class_pulsar": "Pulsar",
 	"star_class_white_dwarf": "Biały karzeł",
+	"star_class_binary_star": "Gwiazda podwójna",
+	"star_class_multiple_star": "Gwiazda wielokrotna",
+	"system_stars": "Gwiazdy",
+	"system_member_primary": "Gwiazda główna",
+	"system_member_companion": "Gwiazda towarzysząca",
+	"system_row_pair": "Para",
+	"system_row_partner": "Partner orbitalny",
+	"system_orbit_centre": "Środek orbity",
+	"system_row_either_node": "Długość jednego z węzłów",
+	"system_star_count": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} gwiazda",
+				"countPlural=few": "{count} gwiazdy",
+				"countPlural=many": "{count} gwiazd",
+				"countPlural=other": "{count} gwiazdy"
+			}
+		}
+	],
 	"star_stat_distance": "Odległość",
 	"star_stat_temperature": "Temperatura",
 	"star_stat_spectral_type": "Typ widmowy",
@@ -1495,6 +1519,7 @@
 	"source_magellanic_clouds_name": "Obłoki Magellana",
 	"source_literature_name": "Opublikowany artykuł",
 	"source_star_systems_name": "Katalogi układów gwiazdowych",
+	"source_planet_catalogues_name": "Katalogi planet",
 	"source_nasa_exoplanet_archive_name": "NASA Exoplanet Archive",
 	"source_exoplanet_eu_name": "exoplanet.eu",
 	"source_open_exoplanet_catalogue_name": "Open Exoplanet Catalogue",

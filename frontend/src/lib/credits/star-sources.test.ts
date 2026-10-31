@@ -10,8 +10,10 @@ import {
 } from '$lib/fetch/extrasolar/__fixtures__/export';
 import { pointSourceRecord, valueColumns } from '$lib/fetch/extrasolar/__fixtures__/record';
 import type { PlanetSystem } from '$lib/fetch/extrasolar/planets';
+import { member, pairOrbit, systemNodeOf } from '$lib/fetch/extrasolar/__fixtures__/system-node';
 import {
 	CREDIT_PAGES,
+	citationCredits,
 	localizedStarCredit,
 	planetCredits,
 	starCredits,
@@ -219,7 +221,9 @@ describe.skipIf(!HAS_EXPORT)('star credits from the real export', () => {
 	it('finds a credit in the export for each catalogue', () => {
 		const sources = exportMetadata().credits.map((c) => c.source);
 		for (const page of Object.values(CREDIT_PAGES)) {
-			expect(sources.filter((s) => s.includes(page))).toHaveLength(1);
+			// ORB6's page is under the WDS's.
+			const pages = page === CREDIT_PAGES.wds ? 2 : 1;
+			expect(sources.filter((s) => s.includes(page))).toHaveLength(pages);
 		}
 	});
 
@@ -280,5 +284,70 @@ describe.skipIf(!HAS_EXPORT)('planet credits from the real export', () => {
 		expect(starCredits(lich.record).map((c) => c.label)).toContain(
 			'NASA Exoplanet Archive, Planetary Systems Composite Parameters'
 		);
+	});
+});
+
+describe('the credits of a star system', () => {
+	const credits: ExtrasolarCredit[] = [
+		['WDS', 'https://www.astro.gsu.edu/wds/'],
+		['MSC', 'http://www.ctio.noirlab.edu/~atokovin/stars/'],
+		['ORB6', 'https://www.astro.gsu.edu/wds/orb6.html'],
+		['SBX', 'https://astro.ulb.ac.be/sbx/'],
+		['El-Badry', 'https://doi.org/10.5281/zenodo.4435257'],
+		['Metallicity', 'https://doi.org/10.5281/zenodo.7945154']
+	].map(([name, source]) => ({ name, source, organisation: '', license: null }) as never);
+	const record = (columns: Record<string, string>, node = false) => {
+		const star = pointSourceRecord(valueColumns(columns), credits);
+		return node
+			? { ...star, rows: new Map([...star.rows, ['system', star.rows.get('point-source')!]]) }
+			: star;
+	};
+
+	it('credits the trees and the sources of the elements a panel shows', () => {
+		const node = systemNodeOf(1, {
+			sources: ['wds', 'el-badry-2021'],
+			members: [member(2, { source: 'msc' })],
+			orbit: pairOrbit({ periodSource: 'orb6', semiMajorAxisSource: 'sbx' })
+		});
+		const labels = starCredits(record({}), undefined, [node]).map((c) => c.label);
+		expect(labels).toEqual(expect.arrayContaining(['WDS', 'MSC', 'ORB6', 'SBX', 'El-Badry']));
+		expect(starCredits(record({}), undefined, [systemNodeOf(1, { sources: ['wds'] })])).toEqual([
+			expect.objectContaining({ label: 'WDS' })
+		]);
+	});
+
+	it('leaves out a metallicity on a node, which shows none', () => {
+		const columns = { xgboost_source: 'andrae-2023' };
+		expect(starCredits(record(columns)).map((c) => c.label)).toEqual(['Metallicity']);
+		expect(starCredits(record(columns, true))).toEqual([]);
+	});
+
+	it('cites a work by its title, else by its key, linked when it has a link', () => {
+		const out = citationCredits([
+			{
+				source: 'msc',
+				reference: 'x',
+				short: 'Doyle et al. 2011',
+				title: 'Title',
+				url: 'https://a'
+			},
+			{ source: 'orb6', reference: 'Krv2017', short: null, title: null, url: null },
+			{ source: 'sbx', reference: 'y', short: null, title: null, url: 'https://a' }
+		]);
+		expect(out).toEqual([
+			{ key: 'https://a', label: 'Title', url: 'https://a', note: 'Doyle et al. 2011' },
+			{ key: 'Krv2017', label: 'Krv2017', url: undefined, note: undefined }
+		]);
+	});
+
+	it('names a work by a later citation with a title, in the place of the first', () => {
+		const out = citationCredits([
+			{ source: 'sbx', reference: 'y', short: null, title: null, url: 'https://a' },
+			{ source: 'orb6', reference: 'Krv2017', short: null, title: null, url: null },
+			{ source: 'msc', reference: 'x', short: 'One', title: 'Title', url: 'https://a' },
+			{ source: 'msc', reference: 'z', short: 'Two', title: 'Other', url: 'https://a' }
+		]);
+		expect(out.map((work) => work.label)).toEqual(['Title', 'Krv2017']);
+		expect(out[0].note).toBe('One');
 	});
 });

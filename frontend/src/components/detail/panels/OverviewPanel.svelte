@@ -29,8 +29,15 @@
 	import * as m from '$lib/paraglide/messages.js';
 	import StatCardRow from '../sections/kit/StatCardRow.svelte';
 	import StarSections from '../sections/star/StarSections.svelte';
+	import SystemStars from '../sections/star/SystemStars.svelte';
 	import Discovery from '../sections/Discovery.svelte';
-	import { starAliases, starIdentifiers, starStats } from '../sections/star/star-rows';
+	import {
+		starAliases,
+		starIdentifiers,
+		starSections,
+		starStats
+	} from '../sections/star/star-rows';
+	import { systemSections, systemStats } from '../sections/star/system-rows';
 	import PlanetSections from '../sections/planet/PlanetSections.svelte';
 	import {
 		planetAliases,
@@ -39,10 +46,18 @@
 		planetStats
 	} from '../sections/planet/planet-rows';
 	import PlanetList from '../members/PlanetList.svelte';
-	import { planetCatalogueCredits, planetCredits, starCredits } from '$lib/credits/star-sources';
+	import SystemPlanets from '../members/SystemPlanets.svelte';
+	import {
+		citationCredits,
+		planetCatalogueCredits,
+		planetCredits,
+		starCredits
+	} from '$lib/credits/star-sources';
 	import type { ExtrasolarRecord } from '$lib/fetch/extrasolar/lookup';
 	import { fetchExtrasolarMetadata, type ExtrasolarCredit } from '$lib/fetch/extrasolar/files';
 	import { planetCatalogue, type PlanetSystem } from '$lib/fetch/extrasolar/planets';
+	import { systemNode } from '$lib/fetch/extrasolar/systems';
+	import { nodePlanetCount, systemHosts, type StarSystem } from '$lib/state/star-system';
 	import type { PlanetAnchor } from '$lib/types/objects';
 
 	type FocusFeatureEntry = Extract<Focusable, { kind: 'feature' }>['feature'];
@@ -73,6 +88,8 @@
 		star?: ExtrasolarRecord | null;
 		/** A planet of the extrasolar catalogue, which has none either. */
 		planet?: PlanetAnchor | null;
+		/** The star system of `star`, once it loads. */
+		system?: StarSystem | null;
 	}
 
 	let {
@@ -92,7 +109,8 @@
 		active = true,
 		actions,
 		star = null,
-		planet = null
+		planet = null,
+		system = null
 	}: Props = $props();
 
 	let data = $derived(load.data);
@@ -102,9 +120,27 @@
 	);
 	let linkAliases = $derived(star ? starAliases(star) : planet ? planetAliases(planet.planet) : []);
 
+	// The System row of a record is that of a node that holds stars, or of a held star.
+	let systemRow = $derived(star ? systemNode(star) : null);
+	let node = $derived(systemRow?.star ? null : systemRow);
+	let systemPlanets = $derived(system && node ? systemHosts(system, node.id) : []);
+	// A held star's page has no list of the system, so the other hosts stay on it.
+	let listsStars = $derived(system !== null && !systemRow?.star);
+	// The names of the system, so that Wikidata's "Part of" does not repeat them.
+	let systemRefs = $derived(
+		system ? [...system.nodes.keys()].map((id) => ({ name: system.names.get(id) ?? '' })) : []
+	);
+	// A held star cites its own values and the orbit of its pair, a node its orbit.
+	let citedNodes = $derived.by(() => {
+		const held = systemRow?.star ? systemRow : null;
+		const pair = held && held.parent !== null ? system?.nodes.get(held.parent) : null;
+		return [systemRow, pair].filter((n) => !!n);
+	});
+
 	// A star's system file lists its planets. The export metadata names the
 	// catalogues behind a planet, and behind the charts of the Planets page.
 	let hostSystem = $state.raw<PlanetSystem | null>(null);
+	let planetCount = $derived(node ? nodePlanetCount(system, hostSystem, node.id) : 0);
 	let exportCredits = $state.raw<readonly ExtrasolarCredit[]>([]);
 	$effect(() => {
 		const id = star?.id ?? null;
@@ -209,7 +245,15 @@
 		out.push(...lineup.overviewCredits.shapeWorks);
 		// A star's values come from the catalogues its records name, or from
 		// the papers its object entry cites; a planet's from those its file names.
-		if (star) out.push(...starCredits(star, data?.global?.references));
+		if (star) {
+			const nodes = system ? [...system.nodes.values()] : citedNodes;
+			out.push(...starCredits(star, data?.global?.references, nodes));
+			out.push(
+				...citationCredits(
+					citedNodes.flatMap((n) => [...(n.orbit?.references ?? []), ...(n.star?.references ?? [])])
+				)
+			);
+		}
 		if (planet) out.push(...planetCredits(planet.planet, exportCredits));
 		if (cat.planets) out.push(...planetCatalogueCredits(exportCredits));
 		if (cat.solarSystem)
@@ -251,7 +295,7 @@
 			<FeatureStatCards {feature} detail={load.featureDetail} />
 		{:else if star}
 			<div class="flex flex-col gap-2">
-				{#each starStats(star) as stats, i (i)}
+				{#each systemRow ? systemStats(star, systemRow, planetCount) : starStats(star) as stats, i (i)}
 					<StatCardRow {stats} />
 				{/each}
 			</div>
@@ -292,8 +336,13 @@
 		{#if planetarySystem.discoveryHistogram}
 			<SystemDiscovery histogram={planetarySystem.discoveryHistogram} />
 		{/if}
-		{#if star && hostSystem}
-			<PlanetList system={hostSystem} hostId={star.id} />
+		{#if star && system && listsStars}
+			<SystemStars {system} {node} star={star.id} />
+		{/if}
+		{#if system && node}
+			<SystemPlanets hosts={systemPlanets} pageId={node.id} />
+		{:else if star && hostSystem}
+			<PlanetList system={hostSystem} hostId={star.id} others={!listsStars} />
 		{/if}
 		{#each overviewStrips as strip (strip.heading)}
 			<MemberStrip
@@ -315,8 +364,15 @@
 				hostName={body?.data.name ?? undefined}
 			/>
 		{:else if star}
-			<StarSections record={star} localized={data?.localized ?? null} />
-			<Discovery global={data?.global ?? null} localized={data?.localized ?? null} />
+			<StarSections
+				sections={systemRow ? systemSections(star, systemRow, system) : starSections(star)}
+				localized={data?.localized ?? null}
+			/>
+			<Discovery
+				global={data?.global ?? null}
+				localized={data?.localized ?? null}
+				shown={systemRefs}
+			/>
 		{:else if planet}
 			<PlanetSections
 				sections={planetSections(planet, {

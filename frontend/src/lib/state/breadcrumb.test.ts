@@ -9,8 +9,10 @@ import { configureHost } from '$lib/host';
 import { PROPERTY_COLLECTION_SLUGS } from './category-config';
 import { parentCrumb } from './breadcrumb';
 import {
+	CAT_DWARF_PLANETS,
 	CAT_PLANETS,
 	CAT_SATELLITE_SYSTEMS,
+	CAT_SOLAR_SYSTEM,
 	CAT_SURFACE_FEATURES
 } from '$lib/fetch/groups/registry';
 import { ObjectType } from '$lib/types/objects';
@@ -112,7 +114,7 @@ describe('parentCrumb: planet families', () => {
 		} as never);
 		expect(crumb).toEqual({
 			label: 'Planets',
-			target: { kind: 'group', slug: CAT_PLANETS, name: 'Planets', tab: undefined }
+			target: { kind: 'group', slug: CAT_PLANETS, name: 'Planets' }
 		});
 	});
 
@@ -122,17 +124,55 @@ describe('parentCrumb: planet families', () => {
 });
 
 describe('parentCrumb: the planets of the Solar System', () => {
-	it('climbs from a planet to the Solar System tab of the Planets page', () => {
+	it('climbs from a planet to the Solar System page', () => {
 		const jupiter = {
 			kind: 'body',
 			body: { data: { id: 'naif-599', name: 'Jupiter', objectType: ObjectType.PLANET } }
 		} as never;
 		expect(parentCrumb(jupiter, undefined, null, null)?.target).toEqual({
 			kind: 'group',
-			slug: CAT_PLANETS,
-			name: 'Planets',
-			tab: 'solar-system'
+			slug: CAT_SOLAR_SYSTEM,
+			name: 'Solar System'
 		});
+	});
+
+	it('climbs from the Sun to the Solar System page', () => {
+		const sun = {
+			kind: 'body',
+			body: { data: { id: 'naif-10', name: 'Sun', objectType: ObjectType.STAR } }
+		} as never;
+		expect(parentCrumb(sun, undefined, null, null)?.target).toMatchObject({
+			slug: CAT_SOLAR_SYSTEM
+		});
+	});
+
+	it('keeps a dwarf planet on its category', () => {
+		const pluto = {
+			kind: 'body',
+			body: { data: { id: 'naif-999', name: 'Pluto', objectType: ObjectType.DWARF_PLANET } }
+		} as never;
+		expect(parentCrumb(pluto, undefined, null, null)?.target).toMatchObject({
+			slug: CAT_DWARF_PLANETS
+		});
+	});
+});
+
+describe('parentCrumb: the stars of a star system', () => {
+	const toliman = { kind: 'star', record: { id: 564339647 } } as never;
+
+	it('climbs from a star to the root of its system', () => {
+		const crumb = parentCrumb(toliman, undefined, null, null, null, {
+			id: 597894079,
+			name: 'Alpha Centauri'
+		});
+		expect(crumb).toEqual({
+			label: 'Alpha Centauri',
+			target: { kind: 'focus', id: 'x-597894079', name: 'Alpha Centauri' }
+		});
+	});
+
+	it('has no crumb for a star in no system, or a root', () => {
+		expect(parentCrumb(toliman, undefined, null, null)).toBeNull();
 	});
 });
 

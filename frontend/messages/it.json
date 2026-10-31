@@ -225,6 +225,7 @@
 	"search_no_results": "Nessuna corrispondenza",
 	"search_secondary_orbiting": "{type} di {parent}",
 	"search_secondary_planet_host": "{type} con {planets}",
+	"search_secondary_in_system": "{type} in {system}",
 	"search_secondary_feature_on": "{type} su {parent}",
 	"search_clear": "Cancella",
 	"search_clear_all": "Cancella tutto",
@@ -856,6 +857,8 @@
 	"type_planet": "pianeta",
 	"type_spacecraft": "veicolo spaziale",
 	"type_star": "stella",
+	"type_binary_star": "stella binaria",
+	"type_multiple_star": "stella multipla",
 	"type_brown_dwarf": "nana bruna",
 	"type_sub_brown_dwarf": "nana sub-bruna",
 	"type_white_dwarf": "nana bianca",
@@ -1360,6 +1363,26 @@
 	"star_class_star": "Stella",
 	"star_class_pulsar": "Pulsar",
 	"star_class_white_dwarf": "Nana bianca",
+	"star_class_binary_star": "Stella binaria",
+	"star_class_multiple_star": "Stella multipla",
+	"system_stars": "Stelle",
+	"system_member_primary": "Stella primaria",
+	"system_member_companion": "Stella compagna",
+	"system_row_pair": "Coppia",
+	"system_row_partner": "Compagna d’orbita",
+	"system_orbit_centre": "Centro dell’orbita",
+	"system_row_either_node": "Longitudine di uno dei nodi",
+	"system_star_count": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} stella",
+				"countPlural=many": "{count} stelle",
+				"countPlural=other": "{count} stelle"
+			}
+		}
+	],
 	"star_stat_distance": "Distanza",
 	"star_stat_temperature": "Temperatura",
 	"star_stat_spectral_type": "Tipo spettrale",
@@ -1474,6 +1497,7 @@
 	"source_magellanic_clouds_name": "Nubi di Magellano",
 	"source_literature_name": "Articolo pubblicato",
 	"source_star_systems_name": "Cataloghi di sistemi stellari",
+	"source_planet_catalogues_name": "Cataloghi di pianeti",
 	"source_nasa_exoplanet_archive_name": "NASA Exoplanet Archive",
 	"source_exoplanet_eu_name": "exoplanet.eu",
 	"source_open_exoplanet_catalogue_name": "Open Exoplanet Catalogue",

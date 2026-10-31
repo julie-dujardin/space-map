@@ -16,7 +16,8 @@
 	export interface Source {
 		key: string;
 		label: string;
-		url: string;
+		/** Absent for a work that the export gives no link for. */
+		url?: string;
 		/** A few words on what this one contributed. Providers carry their own;
 		 *  a cited work ships one next to its title. */
 		note?: string;
@@ -80,10 +81,11 @@
 		};
 		// A cited work keeps its note: the parenthetical its title ends in is the
 		// journal, which says nothing about what this body took from the paper.
-		const addWork = (work: CitedWork) => {
-			if (seen.has(work.url)) return;
-			seen.add(work.url);
-			out.push({ key: work.url, label: work.title, url: work.url, note: work.note });
+		const addWork = (work: Omit<CitedWork, 'url'> & { url?: string }) => {
+			const key = work.url ?? work.title;
+			if (seen.has(key)) return;
+			seen.add(key);
+			out.push({ key, label: work.title, url: work.url, note: work.note });
 		};
 		// A spin pole comes from the PCK (planets, moons, the handful of visited
 		// asteroids), from DAMIT's lightcurve inversion, or — for the small bodies

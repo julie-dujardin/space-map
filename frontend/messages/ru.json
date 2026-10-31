@@ -224,6 +224,7 @@
 	"search_no_results": "Ничего не найдено",
 	"search_secondary_orbiting": "{type}: {parent}",
 	"search_secondary_planet_host": "{type}, {planets}",
+	"search_secondary_in_system": "{type} в системе {system}",
 	"search_secondary_feature_on": "{type} — {parent}",
 	"search_clear": "Очистить",
 	"search_clear_all": "Очистить всё",
@@ -809,6 +810,8 @@
 	"type_planet": "планета",
 	"type_spacecraft": "космический аппарат",
 	"type_star": "звезда",
+	"type_binary_star": "двойная звезда",
+	"type_multiple_star": "кратная звезда",
 	"type_brown_dwarf": "коричневый карлик",
 	"type_sub_brown_dwarf": "субкоричневый карлик",
 	"type_white_dwarf": "белый карлик",
@@ -1391,6 +1394,27 @@
 	"star_class_star": "Звезда",
 	"star_class_pulsar": "Пульсар",
 	"star_class_white_dwarf": "Белый карлик",
+	"star_class_binary_star": "Двойная звезда",
+	"star_class_multiple_star": "Кратная звезда",
+	"system_stars": "Звёзды",
+	"system_member_primary": "Главная звезда",
+	"system_member_companion": "Звезда-компаньон",
+	"system_row_pair": "Пара",
+	"system_row_partner": "Партнёр по орбите",
+	"system_orbit_centre": "Центр орбиты",
+	"system_row_either_node": "Долгота одного из узлов",
+	"system_star_count": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} звезда",
+				"countPlural=few": "{count} звезды",
+				"countPlural=many": "{count} звёзд",
+				"countPlural=other": "{count} звезды"
+			}
+		}
+	],
 	"star_stat_distance": "Расстояние",
 	"star_stat_temperature": "Температура",
 	"star_stat_spectral_type": "Спектральный класс",
@@ -1506,6 +1530,7 @@
 	"source_magellanic_clouds_name": "Магеллановы Облака",
 	"source_literature_name": "Опубликованная статья",
 	"source_star_systems_name": "Каталоги звёздных систем",
+	"source_planet_catalogues_name": "Каталоги планет",
 	"source_nasa_exoplanet_archive_name": "NASA Exoplanet Archive",
 	"source_exoplanet_eu_name": "exoplanet.eu",
 	"source_open_exoplanet_catalogue_name": "Open Exoplanet Catalogue",

@@ -14,6 +14,7 @@ import {
 } from '$lib/fetch/extrasolar/files';
 import {
 	LITERATURE,
+	SYSTEM_SLUG,
 	astrometricOrbit,
 	homeRow,
 	starDistance,
@@ -21,6 +22,7 @@ import {
 	type StarDistance
 } from '$lib/fetch/extrasolar/lookup';
 import type { Planet } from '$lib/fetch/extrasolar/planets';
+import type { SystemCitation, SystemNode } from '$lib/fetch/extrasolar/systems';
 import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
 
 const SOURCE_NAMES: Record<string, () => string> = {
@@ -52,6 +54,14 @@ const SOURCE_NAMES: Record<string, () => string> = {
 	'rybizki-2022': m.source_rybizki_2022_name,
 	'star-systems': m.source_star_systems_name,
 	[LITERATURE]: m.source_literature_name,
+	msc: m.source_msc_name,
+	wds: m.source_wds_name,
+	orb6: m.source_orb6_name,
+	sbx: m.source_sbx_name,
+	'el-badry-2021': m.source_el_badry_name,
+	'gaia-dr3-orbits': m.source_gaia_dr3_nss_name,
+	'planet-catalogues': m.source_planet_catalogues_name,
+	'simbad-type': m.source_simbad_name,
 	'nasa-exoplanet-archive': m.source_nasa_exoplanet_archive_name,
 	'exoplanet-eu': m.source_exoplanet_eu_name,
 	'open-exoplanet-catalogue': m.source_open_exoplanet_catalogue_name,
@@ -90,6 +100,12 @@ export const CREDIT_PAGES = {
 	exoplanetEu: '//exoplanet.eu/',
 	openExoplanetCatalogue: '/OpenExoplanetCatalogue/',
 	nameExoWorlds: '//nameexoworlds.iau.org/',
+	// ORB6's page is under the WDS's. The export lists the WDS first.
+	wds: 'astro.gsu.edu/wds/',
+	orb6: '/wds/orb6',
+	msc: 'atokovin/stars/',
+	sbx: '/sbx/',
+	elBadry: '/zenodo.4435257',
 	literature: '/constants/stars/literature.py',
 	starNames: '/star-names/'
 } as const;
@@ -116,6 +132,40 @@ const SOURCE_PAGES: Partial<Record<string, CreditPage>> = {
 	'iau-nameexoworlds': 'nameExoWorlds'
 };
 
+/** The credits of what a System row names as its source. */
+const SYSTEM_PAGES: Partial<Record<string, CreditPage[]>> = {
+	msc: ['msc'],
+	wds: ['wds'],
+	orb6: ['orb6'],
+	sbx: ['sbx'],
+	'el-badry-2021': ['elBadry'],
+	simbad: ['simbad'],
+	'simbad-type': ['simbad'],
+	'gaia-dr3-orbits': ['orbits'],
+	'open-exoplanet-catalogue': ['openExoplanetCatalogue'],
+	'planet-catalogues': ['nasaExoplanetArchive', 'exoplanetEu', 'openExoplanetCatalogue']
+};
+
+/** The sources a System row names. */
+function systemSources({ sources, members, orbit, star }: SystemNode): (string | null)[] {
+	return [
+		...sources,
+		...members.map((member) => member.source),
+		orbit?.massRatioSource ?? null,
+		orbit?.periodSource ?? null,
+		orbit?.semiMajorAxisSource ?? null,
+		orbit?.eccentricitySource ?? null,
+		orbit?.inclinationSource ?? null,
+		orbit?.nodeSource ?? null,
+		orbit?.argPeriastronSource ?? null,
+		orbit?.epochSource ?? null,
+		star?.massSource ?? null,
+		star?.radiusSource ?? null,
+		star?.teffSource ?? null,
+		star?.spectralTypeSource ?? null
+	];
+}
+
 /** The LMC is at 49.6 kpc and the SMC at 62.4 kpc. */
 const SMC_BEYOND_PC = 56_000;
 
@@ -129,15 +179,33 @@ function distancePage(distance: StarDistance | null): CreditPage | undefined {
 export interface StarCredit {
 	key: string;
 	label: string;
-	url: string;
+	url?: string;
 	note?: string;
 }
 
-/** The credits of the catalogues that gave this record its values, then the
- *  papers that `references` cites for its values from the literature table. */
+/** The works of `citations`, each once, by its first citation with a title. A
+ *  work with no title shows its key. */
+export function citationCredits(citations: readonly SystemCitation[]): StarCredit[] {
+	const works = new Map<string, StarCredit>();
+	const titled = new Set<string>();
+	for (const { reference, short, title, url } of citations) {
+		const label = title ?? reference;
+		if (label === null) continue;
+		const key = url ?? label;
+		if (titled.has(key) || (title === null && works.has(key))) continue;
+		if (title !== null) titled.add(key);
+		works.set(key, { key, label, url: url ?? undefined, note: short ?? undefined });
+	}
+	return [...works.values()];
+}
+
+/** The credits of the catalogues that gave this record its values and `nodes`,
+ *  the System rows its panel shows, then the papers that `references` cites
+ *  for its values from the literature table. */
 export function starCredits(
 	record: ExtrasolarRecord,
-	references?: GlobalObjectData['references']
+	references?: GlobalObjectData['references'],
+	nodes: readonly SystemNode[] = []
 ): StarCredit[] {
 	const pages = new Set<CreditPage | undefined>();
 	const name = record.metadata.nameSource;
@@ -148,6 +216,11 @@ export function starCredits(
 	// A Hipparcos name is a designation from XHIP.
 	else if (name === 'hipparcos-2007') pages.add('xhip');
 	else if (name) pages.add(SOURCE_PAGES[name]);
+	for (const source of nodes.flatMap(systemSources)) {
+		for (const page of SYSTEM_PAGES[source ?? ''] ?? []) pages.add(page);
+	}
+	// A metallicity assumes one star, so a node shows none.
+	const oneStar = !record.rows.has(SYSTEM_SLUG);
 	for (const row of record.rows.values()) {
 		pages.add(SOURCE_PAGES[row.text('astrometry_source') ?? '']);
 		pages.add(SOURCE_PAGES[row.text('host_star_source') ?? '']);
@@ -160,7 +233,7 @@ export function starCredits(
 		if (row.text('hipparcos_photometry_source')) pages.add('hipparcosPhotometry');
 		if (row.text('fidelity_source')) pages.add('fidelity');
 		if (row.text('orbit_source')) pages.add('gaia').add('orbits');
-		if (row.text('xgboost_source')) pages.add('xpMetallicity');
+		if (oneStar && row.text('xgboost_source')) pages.add('xpMetallicity');
 		// PASTEL, the GCVS and ATNF join by SIMBAD ids, LAMOST by its M-star catalogue.
 		if (row.text('pastel_source')) pages.add('pastel').add('simbad');
 		if (row.text('apogee_source')) pages.add('apogee');
@@ -168,7 +241,7 @@ export function starCredits(
 		if (row.text('gcvs_source')) pages.add('gcvs').add('simbad');
 		if (row.text('spicy_source')) pages.add('spicy');
 		if (row.text('atnf_source')) pages.add('atnf').add('simbad');
-		if (row.text('xhip_metallicity_source')) pages.add('xhip');
+		if (oneStar && row.text('xhip_metallicity_source')) pages.add('xhip');
 	}
 	const out = creditsOf(pages, record.credits);
 	const papers = distance?.source === LITERATURE ? (references?.distance ?? []) : [];

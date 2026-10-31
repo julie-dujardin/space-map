@@ -110,6 +110,32 @@ describe('endpoint search', () => {
 
 	afterEach(() => configureHost({}));
 
+	it('says which system a star is in, ahead of its description', () => {
+		const object = {
+			...HOST.object,
+			planets: undefined,
+			system_id: 'x-1',
+			system_name: 'Kepler-16'
+		};
+		expect(secondaryText(toHit({ ...HOST, object }), resolve)).toBe('star in Kepler-16');
+		const described = toHit({ ...HOST, object, description_en: 'A dwarf star' });
+		expect(secondaryText(described, resolve)).toBe('star in Kepler-16 · A dwarf star');
+	});
+
+	it('counts the stars of a system, with its planets', () => {
+		const object = { ...HOST.object, type: 'binary_star', planets: undefined, stars: 2 };
+		expect(secondaryText(toHit({ ...HOST, object }), resolve)).toBe('binary star · 2 stars');
+		const hosts = { ...object, planets: 1 };
+		expect(secondaryText(toHit({ ...HOST, object: hosts }), resolve)).toBe(
+			'binary star · 2 stars · 1 planet'
+		);
+	});
+
+	it('leaves the line of a star in no system, and of a system with no name', () => {
+		const object = { ...HOST.object, system_id: 'x-1', system_name: null };
+		expect(secondaryText(toHit({ ...HOST, object }), resolve)).toBe('star with 3 planets');
+	});
+
 	it('leaves out every extrasolar class before the result limit, but the Sun', async () => {
 		search.mockResolvedValue({ hits: [sun, HOST, PLANET] });
 

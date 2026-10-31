@@ -225,6 +225,7 @@
 	"search_no_results": "אין התאמות",
 	"search_secondary_orbiting": "{type} של {parent}",
 	"search_secondary_planet_host": "{type} עם {planets}",
+	"search_secondary_in_system": "{type} במערכת {system}",
 	"search_secondary_feature_on": "{type} על {parent}",
 	"search_clear": "ניקוי",
 	"search_clear_all": "ניקוי הכול",
@@ -875,6 +876,8 @@
 	"type_planet": "כוכב לכת",
 	"type_spacecraft": "חללית",
 	"type_star": "כוכב",
+	"type_binary_star": "כוכב כפול",
+	"type_multiple_star": "כוכב מרובה",
 	"type_brown_dwarf": "ננס חום",
 	"type_sub_brown_dwarf": "ננס תת-חום",
 	"type_white_dwarf": "ננס לבן",
@@ -1380,6 +1383,27 @@
 	"star_class_star": "כוכב",
 	"star_class_pulsar": "פולסר",
 	"star_class_white_dwarf": "ננס לבן",
+	"star_class_binary_star": "כוכב כפול",
+	"star_class_multiple_star": "כוכב מרובה",
+	"system_stars": "כוכבים",
+	"system_member_primary": "הכוכב הראשי",
+	"system_member_companion": "כוכב נלווה",
+	"system_row_pair": "זוג",
+	"system_row_partner": "בן הזוג במסלול",
+	"system_orbit_centre": "מרכז המסלול",
+	"system_row_either_node": "אורך אחד הצמתים",
+	"system_star_count": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "כוכב אחד",
+				"countPlural=two": "שני כוכבים",
+				"countPlural=many": "{count} כוכבים",
+				"countPlural=other": "{count} כוכבים"
+			}
+		}
+	],
 	"star_stat_distance": "מרחק",
 	"star_stat_temperature": "טמפרטורה",
 	"star_stat_spectral_type": "סוג ספקטרלי",
@@ -1495,6 +1519,7 @@
 	"source_magellanic_clouds_name": "ענני מגלן",
 	"source_literature_name": "מאמר שפורסם",
 	"source_star_systems_name": "קטלוגים של מערכות כוכבים",
+	"source_planet_catalogues_name": "קטלוגי כוכבי לכת",
 	"source_nasa_exoplanet_archive_name": "NASA Exoplanet Archive",
 	"source_exoplanet_eu_name": "exoplanet.eu",
 	"source_open_exoplanet_catalogue_name": "Open Exoplanet Catalogue",

@@ -90,11 +90,27 @@ export interface HitLabelResolvers {
 	featureTypeLabel: (code: string) => string;
 }
 
+/** What a hit says of its star system: the system of a star, the stars of a
+ *  system. */
+function systemFact(hit: SearchHit): string | null {
+	if (hit.kind !== 'object') return null;
+	const type = typeLabel(hit.type);
+	if (hit.system_name) return m.search_secondary_in_system({ type, system: hit.system_name });
+	if (hit.stars === undefined) return null;
+	const stars = m.search_secondary_system({
+		type,
+		stars: m.system_star_count({ count: hit.stars })
+	});
+	return hit.planets ? `${stars} · ${m.exoplanet_planet_count({ count: hit.planets })}` : stars;
+}
+
 /** The line under a result's name: its own description when it has one, else
- *  what it is and what it belongs to. */
+ *  what it is and what it belongs to. A star system's facts lead the line. */
 export function secondaryText(hit: SearchHit, resolve: HitLabelResolvers): string {
 	const desc = localizedDescription(hit, getLocale());
-	if (desc) return desc;
+	const fact = systemFact(hit);
+	if (desc) return fact ? `${fact} · ${desc}` : desc;
+	if (fact) return fact;
 	if (hit.kind === 'feature') {
 		return m.search_secondary_feature_on({
 			type: resolve.featureTypeLabel(hit.feature_type),

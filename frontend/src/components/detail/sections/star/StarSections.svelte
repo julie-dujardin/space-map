@@ -5,18 +5,15 @@
 	import Link from '../kit/Link.svelte';
 	import EntityLinks from '../kit/EntityLinks.svelte';
 	import * as m from '$lib/paraglide/messages.js';
-	import type { ExtrasolarRecord } from '$lib/fetch/extrasolar/lookup';
 	import type { LocalizedObjectData } from '$lib/fetch/objects/object-data';
-	import { starSections } from './star-rows';
+	import type { StarSection } from './star-rows';
 
 	interface Props {
-		record: ExtrasolarRecord;
+		sections: StarSection[];
 		localized: LocalizedObjectData | null;
 	}
 
-	let { record, localized }: Props = $props();
-
-	let sections = $derived(starSections(record));
+	let { sections, localized }: Props = $props();
 </script>
 
 {#each sections as section (section.key)}
@@ -27,7 +24,11 @@
 			</Row>
 		{/if}
 		{#each section.rows as entry, i (`${entry.label}-${i}`)}
-			{#if entry.href}
+			{#if entry.entities}
+				<Row label={entry.label}>
+					<EntityLinks entities={entry.entities} />
+				</Row>
+			{:else if entry.href}
 				<Row label={entry.label}>
 					<Link href={entry.href} external class="tabular-nums">{entry.value}</Link>
 				</Row>
@@ -37,6 +38,7 @@
 					value={entry.value}
 					tooltip={entry.definition}
 					valueTooltip={entry.tooltip}
+					note={entry.note}
 				/>
 			{/if}
 		{/each}

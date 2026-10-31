@@ -15,6 +15,7 @@
 	import { familiesOf, familyLinks, type FamilyLink } from '$lib/fetch/extrasolar/families';
 	import type { ExtrasolarRecord } from '$lib/fetch/extrasolar/lookup';
 	import type { Planet } from '$lib/fetch/extrasolar/planets';
+	import { isStarSystem } from '$lib/fetch/extrasolar/systems';
 	import { CAT_SOLAR_SYSTEM, STAR_FAMILY_SLUG_PREFIX } from '$lib/fetch/groups/registry';
 	import { ObjectType, type OrbitalElements, type PositionedBody } from '$lib/types/objects';
 	import { moonHost } from '$lib/state/breadcrumb';
@@ -93,7 +94,7 @@
 	);
 	let familyTiles = $state.raw<FamilyLink[]>([]);
 	$effect(() => {
-		const row = star?.metadata ?? null;
+		const row = star && !isStarSystem(star) ? star.metadata : null;
 		const record = planet;
 		familyTiles = [];
 		const linksOf = row

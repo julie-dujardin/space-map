@@ -61,10 +61,16 @@ export interface ObjectHit extends BaseHit {
 	magnitude?: number;
 	/** Sortable YYYYMMDD int: discovery/launch/inception. */
 	inception?: number;
-	/** A star of the extrasolar catalogue that has planets. */
+	/** An object of the extrasolar catalogue that has planets or a star system. */
 	extrasolar?: boolean;
 	/** How many planets it has. */
 	planets?: number;
+	/** How many stars the star system has, on a system. */
+	stars?: number;
+	/** The key of the system, on a held star. */
+	system_id?: string;
+	/** The name of the system, on a held star; null when it has none. */
+	system_name?: string | null;
 }
 
 /** A planet of the extrasolar catalogue. `id` is its scene id, `x-<host>-b-<n>`. */

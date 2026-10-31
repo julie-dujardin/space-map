@@ -225,6 +225,7 @@
 	"search_no_results": "Sin coincidencias",
 	"search_secondary_orbiting": "{type} de {parent}",
 	"search_secondary_planet_host": "{type} con {planets}",
+	"search_secondary_in_system": "{type} en {system}",
 	"search_secondary_feature_on": "{type} en {parent}",
 	"search_clear": "Borrar",
 	"search_clear_all": "Borrar todo",
@@ -856,6 +857,8 @@
 	"type_planet": "planeta",
 	"type_spacecraft": "nave espacial",
 	"type_star": "estrella",
+	"type_binary_star": "estrella binaria",
+	"type_multiple_star": "estrella múltiple",
 	"type_brown_dwarf": "enana marrón",
 	"type_sub_brown_dwarf": "enana submarrón",
 	"type_white_dwarf": "enana blanca",
@@ -1360,6 +1363,26 @@
 	"star_class_star": "Estrella",
 	"star_class_pulsar": "Púlsar",
 	"star_class_white_dwarf": "Enana blanca",
+	"star_class_binary_star": "Estrella binaria",
+	"star_class_multiple_star": "Estrella múltiple",
+	"system_stars": "Estrellas",
+	"system_member_primary": "Estrella primaria",
+	"system_member_companion": "Estrella compañera",
+	"system_row_pair": "Pareja",
+	"system_row_partner": "Compañera de órbita",
+	"system_orbit_centre": "Centro de la órbita",
+	"system_row_either_node": "Longitud de uno de los nodos",
+	"system_star_count": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} estrella",
+				"countPlural=many": "{count} estrellas",
+				"countPlural=other": "{count} estrellas"
+			}
+		}
+	],
 	"star_stat_distance": "Distancia",
 	"star_stat_temperature": "Temperatura",
 	"star_stat_spectral_type": "Tipo espectral",
@@ -1474,6 +1497,7 @@
 	"source_magellanic_clouds_name": "Nubes de Magallanes",
 	"source_literature_name": "Artículo publicado",
 	"source_star_systems_name": "Catálogos de sistemas estelares",
+	"source_planet_catalogues_name": "Catálogos de planetas",
 	"source_nasa_exoplanet_archive_name": "NASA Exoplanet Archive",
 	"source_exoplanet_eu_name": "exoplanet.eu",
 	"source_open_exoplanet_catalogue_name": "Open Exoplanet Catalogue",

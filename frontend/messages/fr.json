@@ -215,6 +215,7 @@
 	"search_no_results": "Aucun résultat",
 	"search_secondary_orbiting": "{type} de {parent}",
 	"search_secondary_planet_host": "{type} avec {planets}",
+	"search_secondary_in_system": "{type} dans {system}",
 	"search_secondary_feature_on": "{type} sur {parent}",
 	"search_clear": "Effacer",
 	"search_clear_all": "Tout effacer",
@@ -895,6 +896,8 @@
 	"type_planet": "planète",
 	"type_spacecraft": "engin spatial",
 	"type_star": "étoile",
+	"type_binary_star": "étoile binaire",
+	"type_multiple_star": "étoile multiple",
 	"type_brown_dwarf": "naine brune",
 	"type_sub_brown_dwarf": "naine sous-brune",
 	"type_white_dwarf": "naine blanche",
@@ -1475,6 +1478,26 @@
 	"star_class_star": "Étoile",
 	"star_class_pulsar": "Pulsar",
 	"star_class_white_dwarf": "Naine blanche",
+	"star_class_binary_star": "Étoile binaire",
+	"star_class_multiple_star": "Étoile multiple",
+	"system_stars": "Étoiles",
+	"system_member_primary": "Étoile primaire",
+	"system_member_companion": "Étoile compagne",
+	"system_row_pair": "Paire",
+	"system_row_partner": "Compagnon d’orbite",
+	"system_orbit_centre": "Centre de l’orbite",
+	"system_row_either_node": "Longitude de l’un des nœuds",
+	"system_star_count": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} étoile",
+				"countPlural=many": "{count} étoiles",
+				"countPlural=other": "{count} étoiles"
+			}
+		}
+	],
 	"star_stat_distance": "Distance",
 	"star_stat_temperature": "Température",
 	"star_stat_spectral_type": "Type spectral",
@@ -1589,6 +1612,7 @@
 	"source_magellanic_clouds_name": "Nuages de Magellan",
 	"source_literature_name": "Article publié",
 	"source_star_systems_name": "Catalogues de systèmes stellaires",
+	"source_planet_catalogues_name": "Catalogues de planètes",
 	"source_nasa_exoplanet_archive_name": "NASA Exoplanet Archive",
 	"source_exoplanet_eu_name": "exoplanet.eu",
 	"source_open_exoplanet_catalogue_name": "Open Exoplanet Catalogue",

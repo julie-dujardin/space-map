@@ -225,6 +225,7 @@
 	"search_no_results": "Sem correspondências",
 	"search_secondary_orbiting": "{type} de {parent}",
 	"search_secondary_planet_host": "{type} com {planets}",
+	"search_secondary_in_system": "{type} em {system}",
 	"search_secondary_feature_on": "{type} em {parent}",
 	"search_clear": "Limpar",
 	"search_clear_all": "Limpar tudo",
@@ -856,6 +857,8 @@
 	"type_planet": "planeta",
 	"type_spacecraft": "nave espacial",
 	"type_star": "estrela",
+	"type_binary_star": "estrela binária",
+	"type_multiple_star": "estrela múltipla",
 	"type_brown_dwarf": "anã castanha",
 	"type_sub_brown_dwarf": "anã subcastanha",
 	"type_white_dwarf": "anã branca",
@@ -1360,6 +1363,26 @@
 	"star_class_star": "Estrela",
 	"star_class_pulsar": "Pulsar",
 	"star_class_white_dwarf": "Anã branca",
+	"star_class_binary_star": "Estrela binária",
+	"star_class_multiple_star": "Estrela múltipla",
+	"system_stars": "Estrelas",
+	"system_member_primary": "Estrela primária",
+	"system_member_companion": "Estrela companheira",
+	"system_row_pair": "Par",
+	"system_row_partner": "Companheira de órbita",
+	"system_orbit_centre": "Centro da órbita",
+	"system_row_either_node": "Longitude de um dos nós",
+	"system_star_count": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} estrela",
+				"countPlural=many": "{count} estrelas",
+				"countPlural=other": "{count} estrelas"
+			}
+		}
+	],
 	"star_stat_distance": "Distância",
 	"star_stat_temperature": "Temperatura",
 	"star_stat_spectral_type": "Tipo espectral",
@@ -1474,6 +1497,7 @@
 	"source_magellanic_clouds_name": "Nuvens de Magalhães",
 	"source_literature_name": "Artigo publicado",
 	"source_star_systems_name": "Catálogos de sistemas estelares",
+	"source_planet_catalogues_name": "Catálogos de planetas",
 	"source_nasa_exoplanet_archive_name": "NASA Exoplanet Archive",
 	"source_exoplanet_eu_name": "exoplanet.eu",
 	"source_open_exoplanet_catalogue_name": "Open Exoplanet Catalogue",

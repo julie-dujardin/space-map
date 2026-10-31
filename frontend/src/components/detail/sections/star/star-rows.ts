@@ -36,11 +36,13 @@ import { formatLuminosity, luminosityComparison, SOLAR_LUMINOSITY_W } from '$lib
 import { SOLAR_RADIUS_KM } from '$lib/math/units';
 import type { Stat } from '../kit/StatCard.svelte';
 import { chooseMetallicity, type MetallicityQuantity } from './metallicity';
+import type { EntityRef } from '$lib/fetch/objects/object-data';
+import type { SystemNode } from '$lib/fetch/extrasolar/systems';
 
 export const POINT_SOURCE_SLUG = 'point-source';
 
 /** Light years in one parsec. */
-const PC_LY = PC_AU / 63_241.077;
+export const PC_LY = PC_AU / 63_241.077;
 /** Magnitudes per unit of a flux's relative error. */
 const MAG_PER_FLUX = 2.5 / Math.LN10;
 
@@ -53,6 +55,10 @@ export interface StarRowEntry {
 	tooltip?: string;
 	/** What the quantity is, on the label. */
 	definition?: string;
+	/** A word on how the value was had: assumed, computed. */
+	note?: string;
+	/** Objects, linked, in place of the value. */
+	entities?: EntityRef[];
 }
 
 export interface StarSection {
@@ -65,7 +71,9 @@ const CATALOGUES: Record<string, { label: () => string; prefix?: string }> = {
 	'gaia/dr3': { label: m.star_xid_gaia_dr3, prefix: 'Gaia DR3' },
 	'hip/2007': { label: m.star_xid_hip, prefix: 'HIP' },
 	'hd/1949': { label: m.star_xid_hd, prefix: 'HD' },
-	'iau/wgsn': { label: m.star_xid_iau }
+	'iau/wgsn': { label: m.star_xid_iau },
+	'star-system/msc': { label: m.star_xid_msc },
+	'star-system/wds': { label: m.star_xid_wds }
 };
 
 /** The catalogues that join the Point source row hold their ids in its columns.
@@ -79,15 +87,20 @@ const JOINED_IDS: [column: string, label: () => string, simbad: string | null][]
 	['atnf_name', m.star_xid_atnf, 'PSR ']
 ];
 
-/** Cross-ids not shown. A SIMBAD oid and a NASA Exoplanet Archive row are
- *  internal keys; a literature key and the other planet catalogues' keys
- *  repeat another id or the name of the star. */
+/** Cross-ids not shown. A SIMBAD oid, a NASA Exoplanet Archive row and the
+ *  claim that keeps the ID of a system or a held star are internal keys; a
+ *  literature key and the other planet catalogues' keys repeat another id or
+ *  the name of the star. */
 const HIDDEN_CATALOGUES = new Set([
 	'simbad/oid',
 	'literature/star',
 	'nasa-exoplanet-archive/pscomppars',
 	'exoplanet-eu/catalog',
-	'open-exoplanet-catalogue/systems'
+	'open-exoplanet-catalogue/systems',
+	'star-system/simbad',
+	'star-system/el-badry',
+	'star-system/primary',
+	'star-system/member'
 ]);
 
 const SIMBAD = 'https://simbad.cds.unistra.fr/simbad/sim-id?Ident=';
@@ -137,7 +150,9 @@ const CLASS_LABELS: Record<string, () => string> = {
 	star: m.star_class_star,
 	pulsar: m.star_class_pulsar,
 	'white dwarf': m.star_class_white_dwarf,
-	'brown dwarf': m.exoplanet_class_brown_dwarf
+	'brown dwarf': m.exoplanet_class_brown_dwarf,
+	'binary star': m.star_class_binary_star,
+	'multiple star': m.star_class_multiple_star
 };
 
 /** The class a Metadata row names, in words. */
@@ -145,7 +160,7 @@ export function starClassLabel(cls: string | null): string {
 	return (cls && CLASS_LABELS[cls]?.()) || (cls ?? '');
 }
 
-function units() {
+export function units() {
 	return {
 		mas: m.symbol_milliarcsecond(),
 		masPerYear: m.symbol_milliarcsecond_per_year(),
@@ -163,11 +178,15 @@ function magnitudeError(row: TableRow, fluxOverError: string): number | null {
 }
 
 /** Rows whose value is there; a null value leaves its row out. */
-function rows(entries: (StarRowEntry | null)[]): StarRowEntry[] {
+export function rows(entries: (StarRowEntry | null)[]): StarRowEntry[] {
 	return entries.filter((entry): entry is StarRowEntry => entry !== null);
 }
 
-function row(label: string, value: string | null | undefined, href?: string): StarRowEntry | null {
+export function row(
+	label: string,
+	value: string | null | undefined,
+	href?: string
+): StarRowEntry | null {
 	return value ? { label, value, href } : null;
 }
 
@@ -283,7 +302,7 @@ function temperatureWithBounds(kelvin: number, low: number | null, high: number 
 	return ltrIsolate(`${value} (${formatTemperatureRange(lowK, highK)})`);
 }
 
-function epochLabel(epoch: number): string {
+export function epochLabel(epoch: number): string {
 	return `J${Number.isInteger(epoch) ? epoch.toFixed(1) : String(epoch)}`;
 }
 
@@ -291,11 +310,9 @@ function pointSource(record: ExtrasolarRecord): TableRow | null {
 	return record.rows.get(POINT_SOURCE_SLUG) ?? null;
 }
 
-/** The spectral type that gives the star's families, a catalogue code, as an
- *  LTR isolate. In RTL text the punctuation at its ends ("A0m...", "B8Ia:")
- *  then stays in place. */
-function spectralType(record: ExtrasolarRecord): string | null {
-	const code = record.metadata.spectralType;
+/** A spectral type, a catalogue code, as an LTR isolate. In RTL text the
+ *  punctuation at its ends ("A0m...", "B8Ia:") then stays in place. */
+export function spectralType(code: string | null): string | null {
 	return code ? ltrIsolate(code) : null;
 }
 
@@ -351,6 +368,21 @@ function uncertainty(distance: StarDistance | null): string | undefined {
 		: m.star_distance_uncertain();
 }
 
+/** A distance card. */
+export function distanceStat(pc: number, tooltip?: string): Stat {
+	return {
+		label: m.star_stat_distance(),
+		value: joinParts({ value: sigFigures(pc * PC_LY), unit: units().ly }),
+		tooltip
+	};
+}
+
+/** The distance card of a record with a Point source row. */
+export function pointDistanceStat(ps: TableRow, orbit: TableRow | null): Stat | null {
+	const distance = starDistance(ps, orbit);
+	return distance && distanceStat(distance.pc, uncertainty(distance));
+}
+
 /** The three most useful available facts. */
 export function starStats(record: ExtrasolarRecord): Stat[][] {
 	const ps = pointSource(record);
@@ -375,17 +407,10 @@ export function starStats(record: ExtrasolarRecord): Stat[][] {
 			tooltip: massComparison(mass * SOLAR_MASS_KG)
 		});
 	}
-	const distance = starDistance(ps, astrometricOrbit(record));
-	const uncertain = uncertainty(distance);
-	if (distance !== null) {
-		out.push({
-			label: m.star_stat_distance(),
-			value: joinParts({ value: sigFigures(distance.pc * PC_LY), unit: u.ly }),
-			tooltip: uncertain
-		});
-	}
+	const distance = pointDistanceStat(ps, astrometricOrbit(record));
+	if (distance) out.push(distance);
 	const teff = ps.number('teff_gspphot') ?? ps.number('host_teff');
-	const spType = spectralType(record);
+	const spType = spectralType(record.metadata.spectralType);
 	if (teff !== null) {
 		out.push({
 			label: m.star_stat_temperature(),
@@ -406,13 +431,19 @@ export function starStats(record: ExtrasolarRecord): Stat[][] {
 	return cards.length ? [cards] : [];
 }
 
-/** The sections of rows, in panel order; an empty section is left out. */
-export function starSections(record: ExtrasolarRecord): StarSection[] {
+/** The sections of rows, in panel order; an empty section is left out. The
+ *  point of a `node` holds several stars, so it gives only what is true of the
+ *  point: the fits of its row assume one star. */
+export function starSections(record: ExtrasolarRecord, node?: SystemNode): StarSection[] {
 	const ps = pointSource(record);
 	if (!ps) return [];
-	return pointSourceSections(ps, astrometricOrbit(record), spectralType(record), units()).filter(
-		(section) => section.rows.length > 0
-	);
+	return pointSourceSections(
+		ps,
+		astrometricOrbit(record),
+		spectralType(record.metadata.spectralType),
+		units(),
+		!node
+	).filter((section) => section.rows.length > 0);
 }
 
 /** Significant figures a float32 column holds: 1.4 reads back 1.39999998. */
@@ -466,7 +497,8 @@ function pointSourceSections(
 	ps: TableRow,
 	orbit: TableRow | null,
 	spType: string | null,
-	u: ReturnType<typeof units>
+	u: ReturnType<typeof units>,
+	oneStar: boolean
 ): StarSection[] {
 	const ra = ps.number('ra');
 	const dec = ps.number('dec');
@@ -509,7 +541,7 @@ function pointSourceSections(
 		measured(ps, m.star_row_pm_ra(), 'pmra', 'pmra_error', u.masPerYear),
 		measured(ps, m.star_row_pm_dec(), 'pmdec', 'pmdec_error', u.masPerYear),
 		measured(ps, m.star_row_radial_velocity(), 'radial_velocity', 'radial_velocity_error', u.kms),
-		bounded(ps, m.star_row_distance_photometric(), 'distance_gspphot', u.ly, PC_LY)
+		oneStar ? bounded(ps, m.star_row_distance_photometric(), 'distance_gspphot', u.ly, PC_LY) : null
 	];
 
 	const g = ps.number('phot_g_mean_mag');
@@ -556,10 +588,14 @@ function pointSourceSections(
 			m.star_row_variability(),
 			ps.text('phot_variable_flag') === 'VARIABLE' ? m.star_variable() : null
 		),
-		bounded(ps, m.star_row_extinction_a0(), 'azero_gspphot'),
-		bounded(ps, m.star_row_extinction_g(), 'ag_gspphot'),
-		bounded(ps, m.star_row_reddening(), 'ebpminrp_gspphot'),
-		fitted('correction')
+		...(oneStar
+			? [
+					bounded(ps, m.star_row_extinction_a0(), 'azero_gspphot'),
+					bounded(ps, m.star_row_extinction_g(), 'ag_gspphot'),
+					bounded(ps, m.star_row_reddening(), 'ebpminrp_gspphot'),
+					fitted('correction')
+				]
+			: [])
 	];
 
 	const teff = ps.number('teff_gspphot');
@@ -597,12 +633,14 @@ function pointSourceSections(
 		measured(ps, m.star_row_line_broadening(), 'vbroad', 'vbroad_error', u.kms)
 	];
 
-	const classification = rows([row(m.star_stat_spectral_type(), spType), fitted('stage')]);
+	const classification = oneStar
+		? rows([row(m.star_stat_spectral_type(), spType), fitted('stage')])
+		: [];
 
 	return [
 		{ key: 'classification', title: m.classification(), rows: classification },
 		{ key: 'position', title: m.star_section_position(), rows: rows(position) },
 		{ key: 'brightness', title: m.star_section_brightness(), rows: rows(brightness) },
-		{ key: 'physical', title: m.physical_properties(), rows: rows(physical) }
+		{ key: 'physical', title: m.physical_properties(), rows: oneStar ? rows(physical) : [] }
 	];
 }

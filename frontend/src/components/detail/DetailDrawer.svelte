@@ -65,6 +65,7 @@
 	import { categoryConfig } from '$lib/state/category-config';
 	import { LineupHero } from './charts/lineup-hero.svelte';
 	import { PlanetarySystemState } from './charts/planetary-system.svelte';
+	import { StarSystemLoad } from './state/star-system.svelte';
 	import { MembersState } from './state/members-state.svelte';
 	import { buildLineup, geometryFromMember } from './charts/lineup';
 	import { starClassLabel } from './sections/star/star-rows';
@@ -192,11 +193,23 @@
 		return () => window.removeEventListener('resize', update);
 	});
 
+	const starSystem = new StarSystemLoad(() => star);
+
 	let crumb = $derived(
-		parentCrumb(focusable, ctx, data, groupDetail?.global ?? null, surface.featureType)
+		parentCrumb(
+			focusable,
+			ctx,
+			data,
+			groupDetail?.global ?? null,
+			surface.featureType,
+			starSystem.root
+		)
 	);
 
-	let fallbackName = $derived(focusableFallbackName(focusable));
+	// A star system with no name has the name that its System rows compose.
+	let fallbackName = $derived(
+		(star && starSystem.system?.names.get(star.id)) || focusableFallbackName(focusable)
+	);
 	// A planetary barycenter is the page for its whole system: the primary plus
 	// every moon the scene has under it, drawn as the overview hero.
 	const planetarySystem = new PlanetarySystemState({
@@ -515,6 +528,7 @@
 		actions={showActions ? objectActions : undefined}
 		{star}
 		{planet}
+		system={starSystem.system}
 	/>
 {/snippet}
 
