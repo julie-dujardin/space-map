@@ -38,6 +38,7 @@ from space_map_data.constants.categories import (
     SATELLITE_SYSTEMS_SLUG,
     SATELLITES_SLUG,
     SOLAR_SYSTEM_SLUG,
+    SPACECRAFT_SLUG,
     STRUCTURE_ACTIVITY_SLUG,
     SURFACE_FEATURES_SLUG,
     TECTONICS_SLUG,
@@ -52,6 +53,7 @@ from space_map_data.constants.earth_sats.orbit_class import EarthOrbitClass
 from space_map_data.constants.interior.bodies import INTERIOR_FACTS
 from space_map_data.constants.radiation.environments import RADIATION_ENVIRONMENTS
 from space_map_data.constants.rings.catalog import RING_CATALOGS, catalog_span_km
+from space_map_data.constants.spacecraft.rockets import ROCKET_QIDS
 from space_map_data.export.groups.earth_sat import EarthOrbitClassStats
 from space_map_data.export.groups.membership import GroupSatcatStats
 from space_map_data.export.groups.probe_targets import build_probe_target_chart
@@ -64,7 +66,7 @@ from space_map_data.export.groups.registry import (
 from space_map_data.export.groups.small_body import LargestBody, _notable_members
 from space_map_data.export.groups.stats import GroupExtraStats
 from space_map_data.export.names import Names, ObjectNames
-from space_map_data.export.notable import NotableObject, render_geometry
+from space_map_data.export.notable import CraftModel, NotableObject, render_geometry
 from space_map_data.export.objects import radiation
 from space_map_data.export.objects.activity import collection_row
 from space_map_data.export.objects.atmosphere import limb_profile, pressure_block
@@ -109,6 +111,7 @@ SOLAR_SYSTEM_NOTABLE_COUNT = 24
 TOP_MOONS = 25
 
 _PLANET_TYPES = (ObjectType.planet, ObjectType.dwarf_planet)
+SPACECRAFT_LINEUP = 20
 
 
 @dataclass
@@ -117,6 +120,9 @@ class CategoryData:
         default_factory=dict
     )  # cat slug -> child slugs
     notable_members: dict[str, list[NotableObject]] = field(default_factory=dict)
+    # The Spacecraft lineup: the craft, and the rocket bundles beside them.
+    craft_members: list[NotableObject] = field(default_factory=list)
+    craft_rockets: list[str] = field(default_factory=list)
     member_counts: dict[str, int] = field(default_factory=dict)
     named_counts: dict[str, int] = field(default_factory=dict)  # cat slug -> named n
     discovery_histograms: dict[str, dict[int, int]] = field(
@@ -1311,6 +1317,49 @@ def _probe_members(
     )
 
 
+def _spacecraft_lineup(
+    session: Session,
+    names: ObjectNames,
+    entities: WikidataEntityCache,
+    craft_models: dict[str, CraftModel],
+    radii: dict[int, dict],
+    gms: dict[int, float],
+    poles: dict[int, dict],
+) -> tuple[list[NotableObject], list[str]]:
+    """The craft and the rocket bundles of the Spacecraft lineup: the
+    ``SPACECRAFT_LINEUP`` most-linked of both. A bundle takes one place, so a
+    fleet that shares a bus or the two Voyagers appear once."""
+    rows = (
+        session.query(
+            Object.id, Object.naif_id, Object.wikidata_qid, Object.sitelinks_count
+        )
+        .filter(
+            Object.id.in_(craft_models), Object.object_type == ObjectType.spacecraft
+        )
+        .order_by(Object.sitelinks_count.desc(), Object.id)
+    )
+    by_model: dict[str, tuple] = {}
+    for row in rows:
+        by_model.setdefault(craft_models[row[0]].slug, tuple(row))
+    # Rockets go first on a tie, so the cut does not fall by object id.
+    ranked: list[tuple[int, int, str | tuple]] = []
+    for slug, qid in ROCKET_QIDS.items():
+        if entity := entities.get_referenced(qid):
+            ranked.append((-len(entity["sitelinks"]), 0, slug))
+    for row in by_model.values():
+        ranked.append((-(row[3] or 0), 1, row))
+    ranked.sort(key=lambda r: r[:2])
+    top = [entry for _, _, entry in ranked[:SPACECRAFT_LINEUP]]
+    return (
+        [
+            _body_member(names, *entry[:3], radii=radii, gms=gms, poles=poles)
+            for entry in top
+            if isinstance(entry, tuple)
+        ],
+        [entry for entry in top if isinstance(entry, str)],
+    )
+
+
 def _is_debris_constellation(group_slug: str) -> bool:
     """Whether a ``const-`` group is a breakup cloud rather than a fleet."""
     bare = group_slug.removeprefix(CONSTELLATION_SLUG_PREFIX)
@@ -1331,6 +1380,7 @@ def build_category_data(
     poles: dict[int, dict],
     entities: WikidataEntityCache,
     planet_elements: dict[int, dict],
+    craft_models: dict[str, CraftModel],
 ) -> CategoryData:
     """Assemble category children + planet members + per-category counts.
 
@@ -1433,12 +1483,11 @@ def build_category_data(
         key=lambda slug: (-feature_type_counts[slug], slug),
     )
     children = {
-        # Satellites is reachable under Earth (its real parent), not the root.
-        # Systems and probes lead: what the map is made of, then what we sent
-        # into it; the kinds of body follow.
+        # Systems and spacecraft lead: what the map is made of, then what we
+        # sent into it; the kinds of body follow.
         SOLAR_SYSTEM_SLUG: [
             SATELLITE_SYSTEMS_SLUG,
-            PROBES_SLUG,
+            SPACECRAFT_SLUG,
             PLANETS_SLUG,
             DWARF_PLANETS_SLUG,
             MOONS_SLUG,
@@ -1450,6 +1499,7 @@ def build_category_data(
         ],
         ASTEROIDS_SLUG: asteroids,
         COMETS_SLUG: comets,
+        SPACECRAFT_SLUG: [SATELLITES_SLUG, DEBRIS_SLUG, PROBES_SLUG],
         SATELLITES_SLUG: satellites,
         DEBRIS_SLUG: debris_children,
         SURFACE_FEATURES_SLUG: feature_types,
@@ -1510,6 +1560,7 @@ def build_category_data(
         # tally stays out of the root total.
         RING_SYSTEMS_SLUG: len(ring_members),
         PROBES_SLUG: probes_total,
+        SPACECRAFT_SLUG: satellites_total + debris_total + probes_total,
         # Features aren't objects, so this tally stays out of the root total.
         SURFACE_FEATURES_SLUG: sum(feature_type_counts.values()),
         # Property pages count bodies their own categories already count, so
@@ -1576,6 +1627,8 @@ def build_category_data(
         }
         if hist := _sum_histograms(primary_sat_slugs, per_slug):
             launch_out[cat_slug] = hist
+    if launch_out:
+        launch_out[SPACECRAFT_SLUG] = _merge_histograms(*launch_out.values())
 
     # Category lineup heroes: most prominent asteroids/comets across all orbit
     # classes. Dwarf planets excluded from Asteroids — they keep their own
@@ -1625,6 +1678,7 @@ def build_category_data(
         notable_members[COMETS_SLUG] = comet_notable
     if probe_members:
         notable_members[PROBES_SLUG] = probe_members
+        notable_members[SPACECRAFT_SLUG] = probe_members
     solar_system = _solar_system_members(session, names, star, radii, gms, poles)
     if solar_system:
         notable_members[SOLAR_SYSTEM_SLUG] = solar_system
@@ -1724,9 +1778,14 @@ def build_category_data(
         probes_total,
         len(probe_targets.rows),
     )
+    craft_members, craft_rockets = _spacecraft_lineup(
+        session, names, entities, craft_models, radii, gms, poles
+    )
     return CategoryData(
         children=children,
         notable_members=notable_members,
+        craft_members=craft_members,
+        craft_rockets=craft_rockets,
         member_counts=member_counts_out,
         # Only Asteroids has a meaningful named/total gap (~1.7 % named); the
         # Solar System root and other categories are effectively all-named.
@@ -1764,6 +1823,7 @@ def build_category_data(
             for slug, counts in (
                 (SATELLITES_SLUG, satellite_constellation_counts),
                 (DEBRIS_SLUG, earth_orbit.debris_source_counts),
+                (SPACECRAFT_SLUG, earth_orbit.debris_source_counts),
             )
             if counts
         },

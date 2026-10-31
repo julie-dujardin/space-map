@@ -205,10 +205,8 @@
 			ctx,
 			data,
 			groupDetail?.global ?? null,
-			surface.featureType,
 			starSystem.root,
-			groupDetail?.localized?.parent_group_name,
-			starSystem.rootCategory
+			groupDetail?.localized?.parent_group_name
 		)
 	);
 
@@ -277,6 +275,8 @@
 				: undefined,
 		notableMembers: () => members.notableMembers,
 		solarMembers: () => planetsDetail?.global?.solar_members,
+		craftMembers: () => groupDetail?.global?.craft_members,
+		craftRockets: () => groupDetail?.global?.craft_rockets,
 		probes: () => members.probes,
 		probeNames: () => members.probeNames,
 		memberNames: () => members.memberNames,

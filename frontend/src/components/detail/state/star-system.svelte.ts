@@ -23,9 +23,6 @@ export class StarSystemLoad {
 	/** The categories of the record: a star system, a planetary system, or both
 	 *  for a pair that a planet circles. */
 	readonly categories: string[];
-	/** The category that a root climbs to, when the record is one. A star in a
-	 *  star system climbs to that system instead. */
-	readonly rootCategory: string | null;
 
 	constructor(record: () => ExtrasolarRecord | null) {
 		this.categories = $derived.by(() => {
@@ -35,13 +32,6 @@ export class StarSystemLoad {
 				...(isStarSystem(current) ? [CAT_STAR_SYSTEMS] : []),
 				...(this.hostsPlanets ? [CAT_PLANETARY_SYSTEMS] : [])
 			];
-		});
-		this.rootCategory = $derived.by(() => {
-			const current = record();
-			if (!current) return null;
-			const root = systemRoot(current);
-			if (root === current.id) return CAT_STAR_SYSTEMS;
-			return root === null && this.hostsPlanets ? CAT_PLANETARY_SYSTEMS : null;
 		});
 		$effect(() => {
 			const id = record()?.id ?? null;

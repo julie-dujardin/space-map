@@ -261,6 +261,10 @@ export interface GlobalGroupData {
 	/** Planets only: the eight of the Solar System in heliocentric order, with
 	 *  the lineup fields. Their localized names are in `notable_member_names`. */
 	solar_members?: NotableMemberEntry[];
+	/** Spacecraft page only: the craft of its lineup. */
+	craft_members?: NotableMemberEntry[];
+	/** Spacecraft page only: the rocket bundles of its lineup. */
+	craft_rockets?: string[];
 	/** Planets only: 8. */
 	solar_member_count?: number;
 	/** Planets only: the exoplanets of the IAU class planet. */

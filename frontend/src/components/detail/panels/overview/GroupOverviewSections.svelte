@@ -3,6 +3,7 @@
 	import CategoryCrossRefs from '../../sections/crossref/CategoryCrossRefs.svelte';
 	import CategoryChildTiles from '../../sections/crossref/CategoryChildTiles.svelte';
 	import BodyCategoryTile from '../../sections/crossref/BodyCategoryTile.svelte';
+	import BodyTile from '../../sections/crossref/BodyTile.svelte';
 	import RingSystemTiles from '../../sections/crossref/RingSystemTiles.svelte';
 	import PlanetarySystemTiles from '../../sections/crossref/PlanetarySystemTiles.svelte';
 	import PropertyMemberList from '../../sections/PropertyMemberList.svelte';
@@ -29,11 +30,13 @@
 	import { fetchPickableCultures } from '$lib/fetch/extrasolar/skycultures';
 	import {
 		CAT_CONSTELLATIONS,
-		CAT_PLANETARY_SYSTEMS,
+		CAT_SATELLITES,
+		CAT_SOLAR_SYSTEM,
 		CAT_STARS,
 		CAT_STRUCTURE_ACTIVITY,
 		SKY_CULTURE_SLUG_PREFIX
 	} from '$lib/fetch/groups/registry';
+	import { EARTH_ID } from '$lib/constants';
 	import { PROPERTY_ACCENT, type CategoryConfig } from '$lib/state/category-config';
 	import type { FeatureFamily, GroupDetailData } from '$lib/fetch/groups/details';
 	import type { MembersState } from '../../state/members-state.svelte';
@@ -126,6 +129,12 @@
 {#if cat.crossRefs}
 	<CategoryCrossRefs {slug} />
 {/if}
+{#if cat.spacecraft}
+	<div class="grid grid-cols-2 gap-2">
+		<BodyTile id={EARTH_ID} name={m.earth()} />
+		<BodyCategoryTile slug={CAT_SOLAR_SYSTEM} />
+	</div>
+{/if}
 {#if smallBodyZoneClass}
 	<ZoneCategoryLinks className={smallBodyZoneClass} />
 {/if}
@@ -154,7 +163,7 @@
 	     lies by mass. -->
 	<div class="grid grid-cols-2 gap-2">
 		<BodyCategoryTile slug={CAT_STARS} />
-		<BodyCategoryTile slug={CAT_PLANETARY_SYSTEMS} />
+		<BodyCategoryTile slug={CAT_SOLAR_SYSTEM} />
 	</div>
 	{#if visibleChildGroups.length}
 		<ChildGroups childGroups={visibleChildGroups} />
@@ -183,11 +192,16 @@
 	<CountPerBodyChart entries={probeTargets} title={m.group_targets_title()} names={targetNames} />
 {/if}
 {#if categoryPlot && groupDetail?.global}
-	<GroupOrbitMap global={groupDetail.global} plotOverride={categoryPlot} />
+	<GroupOrbitMap
+		global={groupDetail.global}
+		plotOverride={categoryPlot}
+		seeAll={cat.spacecraft ? CAT_SATELLITES : undefined}
+		title={cat.spacecraft ? m.group_earth_orbit_map() : undefined}
+	/>
 {/if}
 {#if cultureKey}
 	<CultureFigures culture={cultureKey} onCredits={onFigureCredits} />
-{:else if visibleChildGroups.length && !cat.solarSystem && !cat.planets}
+{:else if visibleChildGroups.length && !cat.solarSystem && !cat.planets && !cat.spacecraft}
 	<!-- Surface Features groups its 57 type chips by landform family. -->
 	{#if featureFamilies}
 		<FeatureTypeFamilies families={featureFamilies} childGroups={visibleChildGroups} />

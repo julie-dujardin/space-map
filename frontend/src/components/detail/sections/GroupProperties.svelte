@@ -12,8 +12,9 @@
 	import { fetchEarthMembership } from '$lib/fetch/groups/membership';
 	import { featureTypeDescription } from '$lib/format/feature-type';
 	import { namingOriginLabel } from '$lib/format/naming-origin';
-	import { featureTypeCode } from '$lib/fetch/groups/registry';
+	import { CAT_DEBRIS, CAT_SPACECRAFT, featureTypeCode } from '$lib/fetch/groups/registry';
 	import { SAT_ORBIT_ZONES, CLASS_SLUG_PREFIX, orbitClassLabel } from '$lib/charts/orbit-zones';
+	import SeeAllLink from '../members/SeeAllLink.svelte';
 	import Section from './kit/Section.svelte';
 	import Row from './kit/Row.svelte';
 	import EntityLinks from './kit/EntityLinks.svelte';
@@ -82,6 +83,8 @@
 	let countries = $derived(localized?.country_of_origin ?? []);
 	let launchSites = $derived(localized?.launch_sites ?? []);
 	let constellations = $derived(localized?.constellations ?? []);
+	// Debris comes from breakups and spent rockets as well as from fleets.
+	let debrisSources = $derived(global?.slug === CAT_DEBRIS || global?.slug === CAT_SPACECRAFT);
 	// Satellite buses flown by this group's members (constellations + manufacturers).
 	let busChildGroups = $derived((localized?.child_groups ?? []).filter((c) => c.role === 'bus'));
 
@@ -372,10 +375,15 @@
 
 <PagedBarList
 	entries={constellations}
-	title={m.group_top_constellations()}
-	unit={m.satellites_label()}
+	title={debrisSources ? m.group_top_sources() : m.group_top_constellations()}
+	unit={debrisSources ? m.objects_label() : m.satellites_label()}
 >
 	{#snippet label(c)}
 		{@render groupOrWikipediaLabel(c)}
+	{/snippet}
+	{#snippet action()}
+		{#if global?.slug === CAT_SPACECRAFT}
+			<SeeAllLink slug={CAT_DEBRIS} heading={m.group_top_sources()} />
+		{/if}
 	{/snippet}
 </PagedBarList>

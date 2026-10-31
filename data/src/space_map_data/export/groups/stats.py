@@ -26,6 +26,7 @@ class GroupExtraStats:
     child_group_count: int | None = None
     # Missions and the Probes category: year of the first launch.
     launch_year: int | None = None
+    craft_rockets: list[str] | None = None
     # Missions: "operating" | "lost" | "ended", from the primary craft.
     mission_status: str | None = None
     # Split-comet families: year the parent comet was first observed.

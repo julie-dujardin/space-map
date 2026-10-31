@@ -1,7 +1,6 @@
 /**
- * Cross-navigation for surface features: a feature climbs to its type's
- * collection page (host body is a cross-ref tile instead), and a type page
- * climbs to the Surface Features category.
+ * The breadcrumb tree: a place climbs to a place, a kind climbs to a kind, and
+ * cross-ref tiles link the two.
  */
 
 import { afterEach, describe, expect, it } from 'vitest';
@@ -9,12 +8,23 @@ import { configureHost } from '$lib/host';
 import { PROPERTY_COLLECTION_SLUGS } from './category-config';
 import { parentCrumb } from './breadcrumb';
 import {
+	CAT_ASTEROIDS,
+	CAT_COMETS,
+	CAT_CONSTELLATIONS,
+	CAT_DEBRIS,
 	CAT_DWARF_PLANETS,
+	CAT_MOONS,
 	CAT_PLANETS,
+	CAT_PROBES,
+	CAT_RING_SYSTEMS,
+	CAT_SATELLITES,
 	CAT_SATELLITE_SYSTEMS,
 	CAT_PLANETARY_SYSTEMS,
 	CAT_SOLAR_SYSTEM,
+	CAT_SPACECRAFT,
+	CAT_STARS,
 	CAT_STAR_SYSTEMS,
+	CAT_STRUCTURE_ACTIVITY,
 	CAT_SURFACE_FEATURES
 } from '$lib/fetch/groups/registry';
 import { ObjectType } from '$lib/types/objects';
@@ -30,30 +40,17 @@ function featureFocusable(): Focusable {
 }
 
 describe('parentCrumb: surface features', () => {
-	it('climbs from a feature to its type page', () => {
-		const crumb = parentCrumb(featureFocusable(), undefined, null, null, {
-			slug: 'ft-mons',
-			label: 'Mons'
-		});
+	it('climbs from a feature to the Features tab of its host', () => {
+		const crumb = parentCrumb(featureFocusable(), undefined, null, null);
 		expect(crumb).toEqual({
-			label: 'Mons',
-			target: { kind: 'group', slug: 'ft-mons', name: 'Mons' }
+			label: 'Moon',
+			target: { kind: 'focus', id: 'naif-301', name: 'Moon', tab: 'features' }
 		});
-	});
-
-	it('falls back to the host body while the type slug is still resolving', () => {
-		const crumb = parentCrumb(featureFocusable(), undefined, null, null, null);
-		expect(crumb?.target).toEqual({ kind: 'focus', id: 'naif-301', name: 'Moon' });
 	});
 
 	it('climbs from a type page to the Surface Features category', () => {
 		const crumb = parentCrumb({ kind: 'group', slug: 'ft-mons' }, undefined, null, null);
 		expect(crumb?.target).toMatchObject({ kind: 'group', slug: CAT_SURFACE_FEATURES });
-	});
-
-	it('climbs from the Surface Features category to the Solar System root', () => {
-		const crumb = parentCrumb({ kind: 'group', slug: CAT_SURFACE_FEATURES }, undefined, null, null);
-		expect(crumb?.target).toMatchObject({ kind: 'group', slug: 'cat-solar-system' });
 	});
 
 	it('climbs from every property collection to Structure & Activity, not the root', () => {
@@ -108,7 +105,6 @@ describe('parentCrumb: sky pages', () => {
 			null,
 			{ parent_group: 'culture-modern_iau' } as never,
 			null,
-			null,
 			'Moderne (UAI)'
 		);
 		expect(crumb).toEqual({
@@ -123,8 +119,6 @@ describe('parentCrumb: sky pages', () => {
 			parent_group: 'cat-constellations'
 		} as never);
 		expect(crumb?.target).toMatchObject({ kind: 'group', slug: 'cat-constellations' });
-		const up = parentCrumb({ kind: 'group', slug: 'cat-constellations' }, undefined, null, null);
-		expect(up?.target).toMatchObject({ kind: 'group', slug: 'cat-stars' });
 	});
 });
 
@@ -147,13 +141,75 @@ describe('parentCrumb: planet families', () => {
 			target: { kind: 'group', slug: CAT_PLANETS, name: 'Planets' }
 		});
 	});
+});
 
-	it('climbs from the Planets page to the root, Planetary Systems', () => {
-		const crumb = parentCrumb({ kind: 'group', slug: CAT_PLANETS }, undefined, null, null);
-		expect(crumb?.target).toMatchObject({ kind: 'group', slug: CAT_PLANETARY_SYSTEMS });
-		for (const slug of [CAT_PLANETARY_SYSTEMS, CAT_STAR_SYSTEMS]) {
-			expect(parentCrumb({ kind: 'group', slug }, undefined, null, null)).toBeNull();
+describe('parentCrumb: the category tree', () => {
+	const parentOf = (slug: string) => parentCrumb({ kind: 'group', slug }, undefined, null, null);
+
+	it('has no crumb for a root', () => {
+		for (const slug of [
+			CAT_PLANETARY_SYSTEMS,
+			CAT_STAR_SYSTEMS,
+			CAT_STARS,
+			CAT_CONSTELLATIONS,
+			CAT_SURFACE_FEATURES,
+			CAT_STRUCTURE_ACTIVITY,
+			CAT_SPACECRAFT,
+			CAT_SOLAR_SYSTEM
+		]) {
+			expect(parentOf(slug), slug).toBeNull();
 		}
+	});
+
+	it('climbs from the kinds of body to Planetary Systems', () => {
+		for (const slug of [
+			CAT_PLANETS,
+			CAT_DWARF_PLANETS,
+			CAT_ASTEROIDS,
+			CAT_COMETS,
+			CAT_SATELLITE_SYSTEMS
+		]) {
+			expect(parentOf(slug)?.target, slug).toMatchObject({ slug: CAT_PLANETARY_SYSTEMS });
+		}
+	});
+
+	it('climbs from what orbits a planet to Satellite Systems', () => {
+		for (const slug of [CAT_MOONS, CAT_RING_SYSTEMS]) {
+			expect(parentOf(slug)?.target, slug).toMatchObject({ slug: CAT_SATELLITE_SYSTEMS });
+		}
+	});
+
+	it('climbs from the collections of craft to Spacecraft', () => {
+		for (const slug of [CAT_SATELLITES, CAT_DEBRIS, CAT_PROBES]) {
+			expect(parentOf(slug)?.target, slug).toMatchObject({ slug: CAT_SPACECRAFT });
+		}
+	});
+
+	it('climbs from an orbit zone, a place, to the Solar System', () => {
+		const crumb = parentCrumb({ kind: 'group', slug: 'class-MBA' }, undefined, null, {
+			applies_to: 'small_body'
+		} as never);
+		expect(crumb?.target).toMatchObject({ slug: CAT_SOLAR_SYSTEM });
+	});
+
+	it('keeps NEO and PHA, kinds of asteroid, on Asteroids', () => {
+		const crumb = parentCrumb({ kind: 'group', slug: 'flag-neo' }, undefined, null, {
+			applies_to: 'small_body'
+		} as never);
+		expect(crumb?.target).toMatchObject({ slug: CAT_ASTEROIDS });
+	});
+
+	it('keeps an Earth orbit zone, a kind of satellite, on its category', () => {
+		const crumb = parentCrumb({ kind: 'group', slug: 'class-LEO' }, undefined, null, {
+			applies_to: 'earth_sat',
+			parent_category: CAT_SATELLITES
+		} as never);
+		expect(crumb?.target).toMatchObject({ slug: CAT_SATELLITES });
+	});
+
+	it('keeps a split-comet family, a kind of comet, on Comets', () => {
+		const crumb = parentOf('comet-family-483p');
+		expect(crumb?.target).toMatchObject({ slug: CAT_COMETS });
 	});
 });
 
@@ -180,13 +236,13 @@ describe('parentCrumb: the planets of the Solar System', () => {
 		});
 	});
 
-	it('keeps a dwarf planet on its category', () => {
+	it('climbs from a dwarf planet to the Solar System page', () => {
 		const pluto = {
 			kind: 'body',
 			body: { data: { id: 'naif-999', name: 'Pluto', objectType: ObjectType.DWARF_PLANET } }
 		} as never;
 		expect(parentCrumb(pluto, undefined, null, null)?.target).toMatchObject({
-			slug: CAT_DWARF_PLANETS
+			slug: CAT_SOLAR_SYSTEM
 		});
 	});
 });
@@ -195,7 +251,7 @@ describe('parentCrumb: the stars of a star system', () => {
 	const toliman = { kind: 'star', record: { id: 564339647 } } as never;
 
 	it('climbs from a star to the root of its system', () => {
-		const crumb = parentCrumb(toliman, undefined, null, null, null, {
+		const crumb = parentCrumb(toliman, undefined, null, null, {
 			id: 597894079,
 			name: 'Alpha Centauri'
 		});
@@ -205,36 +261,8 @@ describe('parentCrumb: the stars of a star system', () => {
 		});
 	});
 
-	it('has no crumb for a star in no system with no planets', () => {
+	it('has no crumb for a root or a lone star', () => {
 		expect(parentCrumb(toliman, undefined, null, null)).toBeNull();
-	});
-
-	it('climbs from a root to its category', () => {
-		const crumb = parentCrumb(
-			toliman,
-			undefined,
-			null,
-			null,
-			null,
-			null,
-			undefined,
-			CAT_STAR_SYSTEMS
-		);
-		expect(crumb?.target).toMatchObject({ kind: 'group', slug: CAT_STAR_SYSTEMS });
-	});
-
-	it('keeps a star in a system on its system, over any category', () => {
-		const crumb = parentCrumb(
-			toliman,
-			undefined,
-			null,
-			null,
-			null,
-			{ id: 5, name: 'Alpha Centauri' },
-			undefined,
-			CAT_PLANETARY_SYSTEMS
-		);
-		expect(crumb?.target).toMatchObject({ kind: 'focus', name: 'Alpha Centauri' });
 	});
 });
 
@@ -246,24 +274,14 @@ describe('parentCrumb: planetary systems', () => {
 		} as never;
 	}
 
-	it('climbs from a planetary system to the Planetary Systems collection', () => {
+	it('climbs from a planetary system to the Solar System', () => {
 		const crumb = parentCrumb(barycenter('naif-5'), undefined, null, null);
-		expect(crumb?.target).toMatchObject({ kind: 'group', slug: CAT_SATELLITE_SYSTEMS });
+		expect(crumb?.target).toMatchObject({ kind: 'group', slug: CAT_SOLAR_SYSTEM });
 	});
 
-	it('climbs from the Solar System barycenter to the root', () => {
+	it('climbs from the Solar System barycenter to the Solar System', () => {
 		const crumb = parentCrumb(barycenter('naif-0'), undefined, null, null);
-		expect(crumb?.target).toMatchObject({ kind: 'group', slug: 'cat-solar-system' });
-	});
-
-	it('climbs from the Planetary Systems collection to the root', () => {
-		const crumb = parentCrumb(
-			{ kind: 'group', slug: CAT_SATELLITE_SYSTEMS },
-			undefined,
-			null,
-			null
-		);
-		expect(crumb?.target).toMatchObject({ kind: 'group', slug: 'cat-solar-system' });
+		expect(crumb?.target).toMatchObject({ kind: 'group', slug: CAT_SOLAR_SYSTEM });
 	});
 });
 
@@ -300,6 +318,23 @@ describe('parentCrumb: planets of other stars', () => {
 });
 
 describe('parentCrumb: the pages a body links to', () => {
+	it('climbs from a fragment with no intact parent to its zone, not its family', () => {
+		const fragment = {
+			kind: 'body',
+			body: { data: { id: 'spkid-1', name: 'C/1', objectType: ObjectType.COMET } }
+		} as never;
+		const detail = {
+			global: {
+				fragment_of: { primary_type: 'group', primary_id: 'comet-family-483p', name: '483P' },
+				sbdb: { class: 'JFc' }
+			},
+			localized: {}
+		} as never;
+		expect(parentCrumb(fragment, undefined, detail, null)?.target).toMatchObject({
+			slug: 'class-JFc'
+		});
+	});
+
 	function body(id: string, objectType: ObjectType, parentId = ''): Focusable {
 		return { kind: 'body', body: { data: { id, name: id, objectType, parentId } } } as never;
 	}

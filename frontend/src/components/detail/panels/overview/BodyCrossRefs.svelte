@@ -138,12 +138,7 @@
 	<FragmentOf {fragmentOf} />
 {/if}
 {#if feature && body}
-	<FeatureGroupLinks
-		hostId={body.data.id}
-		hostName={body.data.name ?? undefined}
-		typeSlug={featureType?.slug}
-		typeLabel={featureType?.label}
-	/>
+	<FeatureGroupLinks typeSlug={featureType?.slug} typeLabel={featureType?.label} />
 {:else if isPlanetBody}
 	<PlanetGroupLinks
 		families={data?.global?.planet_families}

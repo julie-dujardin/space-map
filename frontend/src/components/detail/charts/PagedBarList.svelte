@@ -14,8 +14,10 @@
 		unit?: string;
 		label: Snippet<[T]>;
 		pageSize?: number;
+		/** A link beside the title, to the page the list is a sample of. */
+		action?: Snippet;
 	}
-	let { entries, title, unit, label, pageSize = 8 }: Props = $props();
+	let { entries, title, unit, label, pageSize = 8, action }: Props = $props();
 
 	// Bars scale against the whole set, not the page, so pages stay comparable.
 	let maxCount = $derived(entries.length > 0 ? Math.max(...entries.map((e) => e.n)) : 0);
@@ -37,6 +39,7 @@
 					<span class="text-muted-foreground text-[10px] uppercase">{unit}</span>
 				{/if}
 				<ChartPager {page} {pageCount} onpage={(p) => (page = p)} />
+				{@render action?.()}
 			</div>
 		</div>
 		<div class="border-border/60 border-t"></div>

@@ -204,6 +204,7 @@
 	"category_name_satellites": "أقمار اصطناعية",
 	"category_name_debris": "حطام فضائي",
 	"category_name_probes": "مسبارات فضائية",
+	"category_name_spacecraft": "المركبات الفضائية",
 	"category_name_surface_features": "التضاريس السطحية",
 	"category_name_structure_activity": "البنية والنشاط",
 	"category_name_atmospheres": "الأغلفة الجوية",
@@ -322,8 +323,11 @@
 	"group_no_summary": "لا يوجد وصف.",
 	"group_launch_activity": "الجدول الزمني للإطلاق",
 	"group_top_constellations": "أبرز الكوكبات",
+	"group_top_sources": "أكبر المصادر",
+	"group_earth_orbit_map": "خريطة مدارات الأرض",
 	"group_top_launch_sites": "أبرز مواقع الإطلاق",
 	"satellites_label": "أقمار صناعية",
+	"objects_label": "أجسام",
 	"legend_per_year": "سنويًا",
 	"legend_per_n_years": [
 		{

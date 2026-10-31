@@ -17,6 +17,7 @@
 		CAT_STAR_SYSTEMS,
 		CAT_PLANETARY_SYSTEMS,
 		CAT_PROBES,
+		CAT_SPACECRAFT,
 		CAT_RING_SYSTEMS,
 		CAT_SATELLITES,
 		CAT_SURFACE_FEATURES,
@@ -560,6 +561,8 @@
 					count(m.group_stat_missions(), g.child_group_count),
 					year(m.group_stat_launched(), g.launch_year)
 				];
+			case CAT_SPACECRAFT:
+				return [members(g, m.group_stat_objects()), year(m.group_stat_launched(), g.launch_year)];
 			case CAT_SURFACE_FEATURES:
 				return [
 					members(g, m.group_stat_features()),

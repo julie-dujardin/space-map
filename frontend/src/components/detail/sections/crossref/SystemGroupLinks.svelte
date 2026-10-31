@@ -3,6 +3,8 @@
 	// itself, then the pages its own contents live on — the moon list and the ring
 	// catalogue, both hosted on the primary. The barycenter carries none of them.
 	// A system too small for a moon list tiles its moons one by one instead.
+	import { CAT_SATELLITE_SYSTEMS } from '$lib/fetch/groups/registry';
+	import BodyCategoryTile from './BodyCategoryTile.svelte';
 	import BodyTile from './BodyTile.svelte';
 	import RingSystemTile from './RingSystemTile.svelte';
 	import MoonDiscRow from '../../charts/MoonDiscRow.svelte';
@@ -23,9 +25,9 @@
 	}
 	let { primaryId, primaryName, hasMoons, moonDiscs, hasRings }: Props = $props();
 
-	// The primary takes the whole first row — it is the system's subject, and the
-	// rest are parts of it, paired up below; an odd last tile widens rather than
-	// dangling at half width.
+	// The primary and the collection of systems fill the first row; the parts
+	// pair up below, and an odd last tile widens rather than dangling at half
+	// width.
 	let parts = $derived((hasMoons ? 1 : moonDiscs.length) + (hasRings ? 1 : 0));
 	let wideIndex = $derived(parts % 2 === 1 ? parts - 1 : -1);
 	function span(i: number): string {
@@ -34,7 +36,8 @@
 </script>
 
 <div class="grid grid-cols-2 gap-2">
-	<BodyTile id={primaryId} name={primaryName} class="col-span-2" />
+	<BodyTile id={primaryId} name={primaryName} />
+	<BodyCategoryTile slug={CAT_SATELLITE_SYSTEMS} />
 	{#if hasMoons}
 		<BodyTile
 			id={primaryId}

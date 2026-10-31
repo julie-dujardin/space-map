@@ -204,6 +204,7 @@
 	"category_name_satellites": "Спутники",
 	"category_name_debris": "Космический мусор",
 	"category_name_probes": "Космические зонды",
+	"category_name_spacecraft": "Космические аппараты",
 	"category_name_surface_features": "Детали поверхности",
 	"category_name_structure_activity": "Строение и активность",
 	"category_name_atmospheres": "Атмосферы",
@@ -319,8 +320,11 @@
 	"group_no_summary": "Описание отсутствует.",
 	"group_launch_activity": "Хронология запусков",
 	"group_top_constellations": "Основные группировки",
+	"group_top_sources": "Главные источники",
+	"group_earth_orbit_map": "Карта околоземных орбит",
 	"group_top_launch_sites": "Основные стартовые площадки",
 	"satellites_label": "спутников",
+	"objects_label": "объекты",
 	"legend_per_year": "в год",
 	"legend_per_n_years": [
 		{

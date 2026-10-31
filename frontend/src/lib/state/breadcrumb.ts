@@ -1,15 +1,15 @@
-/** One-level "parent" crumb for the drawer header: each focusable resolves to
- *  at most one ancestor (moon→planet, small body→zone, sat→constellation/class,
- *  planet→Solar System, star→its star system, root of a system→its category,
- *  group→category, category→Solar System root, feature→body). */
+/** One-level "parent" crumb for the drawer header. A page keeps its type on the
+ *  way up: a place climbs to a place, a category or group to its parent category,
+ *  and cross-ref tiles link the two. Spacecraft are kinds, not places: their
+ *  position changes with time, and a crumb should not. Several roots have no
+ *  crumb at all. */
 
-import * as m from '$lib/paraglide/messages.js';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { localizeLink, type ObjectDetailData } from '$lib/fetch/objects/object-data';
 import { localName } from '$lib/format/name';
 import type { GlobalGroupData } from '$lib/fetch/groups/details';
 import { ObjectType } from '$lib/types/objects';
-import { SSB_ID, dominantPlanetId } from '$lib/constants';
+import { dominantPlanetId } from '$lib/constants';
 import { extrasolarObjectId } from '$lib/fetch/extrasolar/ids';
 import {
 	CATEGORY_SLUG_PREFIX,
@@ -17,23 +17,22 @@ import {
 	CAT_COMETS,
 	CAT_DEBRIS,
 	CAT_DWARF_PLANETS,
+	CAT_MOONS,
+	CAT_RING_SYSTEMS,
 	CAT_STRUCTURE_ACTIVITY,
 	CAT_PLANETS,
 	CAT_PLANETARY_SYSTEMS,
-	CAT_STAR_SYSTEMS,
-	CAT_CONSTELLATIONS,
-	CAT_STARS,
 	CAT_PROBES,
 	CAT_SATELLITES,
 	CAT_SOLAR_SYSTEM,
 	CAT_SATELLITE_SYSTEMS,
+	CAT_SPACECRAFT,
 	CLASS_SLUG_PREFIX,
 	COMET_FAMILY_SLUG_PREFIX,
 	CAT_SURFACE_FEATURES,
 	FEATURE_TYPE_SLUG_PREFIX,
 	isFamilySlug,
-	SKY_CULTURE_SLUG_PREFIX,
-	smallBodyCategory
+	SKY_CULTURE_SLUG_PREFIX
 } from '$lib/fetch/groups/registry';
 import { categoryLabel, familyLabel } from '$lib/format/group';
 import { classifyEarthOrbit, classNameFromSlug, orbitClassLabel } from '$lib/charts/orbit-zones';
@@ -42,9 +41,19 @@ import type { Focusable } from './focusable';
 import { urlTypeFromId } from './url';
 import { UrlType, type DrawerTab } from './view';
 
-/** Earth's Object.id — parent of the Satellites category. Mirrors EARTH_ID in
- *  data/constants/earth_sats/featured.py. */
-const EARTH_ID = 'naif-399';
+/** The category above a category. One not listed here is a root. */
+const PARENT_CATEGORY: Record<string, string> = {
+	[CAT_PLANETS]: CAT_PLANETARY_SYSTEMS,
+	[CAT_DWARF_PLANETS]: CAT_PLANETARY_SYSTEMS,
+	[CAT_ASTEROIDS]: CAT_PLANETARY_SYSTEMS,
+	[CAT_COMETS]: CAT_PLANETARY_SYSTEMS,
+	[CAT_SATELLITE_SYSTEMS]: CAT_PLANETARY_SYSTEMS,
+	[CAT_MOONS]: CAT_SATELLITE_SYSTEMS,
+	[CAT_RING_SYSTEMS]: CAT_SATELLITE_SYSTEMS,
+	[CAT_SATELLITES]: CAT_SPACECRAFT,
+	[CAT_DEBRIS]: CAT_SPACECRAFT,
+	[CAT_PROBES]: CAT_SPACECRAFT
+};
 
 /** A moon's host page: the planet for a planet's moon (not the barycenter),
  *  else the host body (the asteroid an asteroid moon orbits). The moon's
@@ -110,47 +119,23 @@ export function parentCrumb(
 	ctx: ContextManager | undefined,
 	detail: ObjectDetailData | null,
 	groupGlobal: GlobalGroupData | null,
-	featureType: { slug: string; label: string } | null = null,
 	starSystem: { id: number; name: string } | null = null,
-	parentGroupName?: string,
-	systemCategory: string | null = null
+	parentGroupName?: string
 ): Crumb | null {
-	// A surface feature climbs to its type's collection page; its host body is
-	// one of the two cross-ref tiles instead. Falls back to the body while the
-	// group index (which resolves the type slug) is still in flight.
+	// A surface feature climbs to its host, on the Features tab: its neighbours,
+	// not the body's overview.
 	if (focusable.kind === 'feature') {
-		if (featureType) {
-			return {
-				label: featureType.label,
-				target: { kind: 'group', slug: featureType.slug, name: featureType.label }
-			};
-		}
-		const b = focusable.body.data;
-		return b.name ? { label: b.name, target: { kind: 'focus', id: b.id, name: b.name } } : null;
+		const { id, name } = focusable.body.data;
+		return name ? { label: name, target: { kind: 'focus', id, name, tab: 'features' } } : null;
 	}
-	// Groups climb to their category; categories climb to the Solar System root.
 	if (focusable.kind === 'group') {
 		const slug = focusable.slug;
 		if (slug.startsWith(CATEGORY_SLUG_PREFIX)) {
-			// These reach beyond the Solar System, so each is a root.
-			if (slug === CAT_PLANETARY_SYSTEMS || slug === CAT_STAR_SYSTEMS || slug === CAT_STARS) {
-				return null;
-			}
-			if (slug === CAT_SOLAR_SYSTEM || slug === CAT_PLANETS) {
-				return categoryCrumb(CAT_PLANETARY_SYSTEMS);
-			}
-			// The Earth-orbiter collections' real parent is Earth, not the root.
-			if (slug === CAT_SATELLITES || slug === CAT_DEBRIS) {
-				const name = ctx?.getBody(EARTH_ID)?.data.name ?? m.earth();
-				return { label: name, target: { kind: 'focus', id: EARTH_ID, name } };
-			}
-			if (slug === CAT_CONSTELLATIONS) return categoryCrumb(CAT_STARS);
 			// The property collections hang off Structure & Activity, the way the
 			// ft- pages hang off Surface Features.
-			if (isPropertyCollection(slug)) {
-				return categoryCrumb(CAT_STRUCTURE_ACTIVITY);
-			}
-			return categoryCrumb(CAT_SOLAR_SYSTEM);
+			if (isPropertyCollection(slug)) return categoryCrumb(CAT_STRUCTURE_ACTIVITY);
+			const parent = PARENT_CATEGORY[slug];
+			return parent ? categoryCrumb(parent) : null;
 		}
 		// A split-comet family is always a comet, regardless of orbit class.
 		if (slug.startsWith(COMET_FAMILY_SLUG_PREFIX)) return categoryCrumb(CAT_COMETS);
@@ -171,9 +156,9 @@ export function parentCrumb(
 			return { label, target: { kind: 'group', slug: parent, name: label } };
 		}
 		const appliesTo = groupGlobal?.applies_to;
+		// An orbit zone is a place; NEO and PHA are kinds of asteroid.
 		if (appliesTo === 'small_body') {
-			const cls = classNameFromSlug(slug);
-			return categoryCrumb(cls && smallBodyCategory(cls) === 'comet' ? CAT_COMETS : CAT_ASTEROIDS);
+			return categoryCrumb(classNameFromSlug(slug) ? CAT_SOLAR_SYSTEM : CAT_ASTEROIDS);
 		}
 		// Earth orbiters split between Satellites and Debris; the export resolves
 		// which, since spent stages and breakup clouds look like any other fleet
@@ -188,10 +173,10 @@ export function parentCrumb(
 		return null;
 	}
 
-	// A star or an inner node climbs to the root of its system, and a root to
-	// its category; a planet climbs to its star.
+	// A star or an inner node climbs to the root of its system, which is a root
+	// of the tree; a planet climbs to its star.
 	if (focusable.kind === 'star') {
-		if (!starSystem) return systemCategory ? categoryCrumb(systemCategory) : null;
+		if (!starSystem) return null;
 		const { id, name } = starSystem;
 		return { label: name, target: { kind: 'focus', id: extrasolarObjectId(id), name } };
 	}
@@ -203,19 +188,15 @@ export function parentCrumb(
 
 	const data = focusable.body.data;
 
-	// Dwarf planets climb to their category page; the orbit-class zone stays
-	// reachable via the body page's cross-ref tile.
-	if (data.objectType === ObjectType.DWARF_PLANET) return categoryCrumb(CAT_DWARF_PLANETS);
-
-	// The Sun and its planets climb to the page of their system.
-	if (data.objectType === ObjectType.PLANET || data.objectType === ObjectType.STAR)
+	// The Sun, the planets, the dwarf planets and the planetary systems sit in
+	// the Solar System; their collections are cross-ref tiles.
+	if (
+		data.objectType === ObjectType.STAR ||
+		data.objectType === ObjectType.PLANET ||
+		data.objectType === ObjectType.DWARF_PLANET ||
+		data.objectType === ObjectType.BARYCENTER
+	)
 		return categoryCrumb(CAT_SOLAR_SYSTEM);
-
-	// A planetary system → the collection of systems; its own primary is the
-	// first cross-ref tile instead. The Solar System barycenter is that
-	// system's own centre, so it climbs to the root.
-	if (data.objectType === ObjectType.BARYCENTER)
-		return categoryCrumb(data.id === SSB_ID ? CAT_SOLAR_SYSTEM : CAT_SATELLITE_SYSTEMS);
 
 	// Moon (planetary or small-body) → its host (planet, not the barycenter;
 	// or the host asteroid). Must precede the URL-type branches: small-body
@@ -229,27 +210,23 @@ export function parentCrumb(
 
 	const localized = detail?.localized;
 
-	// Split-comet fragment → its parent comet, or the family group when the
-	// intact body isn't catalogued. Precedes the small-body branch: a fragment
-	// carries a spkid- id and would otherwise resolve to its orbit-class zone.
+	// Split-comet fragment → its parent comet. Precedes the small-body branch: a
+	// fragment carries a spkid- id and would otherwise resolve to its orbit-class
+	// zone. A family is a kind, so a fragment with no intact parent takes the zone
+	// and the family stays on its tile.
 	const fragmentOf =
 		detail?.global?.fragment_of && localizeLink(detail.global.fragment_of, localized);
-	if (fragmentOf) {
-		return fragmentOf.primary_type === 'group'
-			? {
-					label: fragmentOf.name,
-					target: { kind: 'group', slug: fragmentOf.primary_id, name: fragmentOf.name }
-				}
-			: {
-					label: fragmentOf.name,
-					// Parent comet's mesh isn't worth flying to — just select it.
-					target: {
-						kind: 'focus',
-						id: fragmentOf.primary_id,
-						name: fragmentOf.name,
-						moveCamera: false
-					}
-				};
+	if (fragmentOf?.primary_type === 'object') {
+		return {
+			label: fragmentOf.name,
+			// Parent comet's mesh isn't worth flying to — just select it.
+			target: {
+				kind: 'focus',
+				id: fragmentOf.primary_id,
+				name: fragmentOf.name,
+				moveCamera: false
+			}
+		};
 	}
 
 	// A carried craft → the carrier whose position it borrows (Huygens → the

@@ -35,6 +35,7 @@ from space_map_data.constants.categories import (
     PROBES_SLUG,
     RING_SYSTEMS_SLUG,
     SATELLITES_SLUG,
+    SPACECRAFT_SLUG,
     category_tab_key,
 )
 from space_map_data.constants.countries import COUNTRY_SLUG_PREFIX
@@ -93,9 +94,11 @@ _SCHEMATIC_OBJECT_TYPES = frozenset(
     {ObjectType.spacecraft.value, ObjectType.debris.value}
 )
 # `applies_to` covers most groups; browse categories share one value
-# regardless of contents, so the three whose members are craft are named.
+# regardless of contents, so the ones whose members are craft are named.
 _SCHEMATIC_GROUP_CATEGORIES = frozenset({GroupCategory.EARTH_SAT, GroupCategory.PROBE})
-_SCHEMATIC_CATEGORY_SLUGS = frozenset({SATELLITES_SLUG, DEBRIS_SLUG, PROBES_SLUG})
+_SCHEMATIC_CATEGORY_SLUGS = frozenset(
+    {SATELLITES_SLUG, DEBRIS_SLUG, PROBES_SLUG, SPACECRAFT_SLUG}
+)
 # One chart, drawn for several Wikipedias: "Orion_constellation_map-fr.png",
 # "Orion_constellation_map_ru_lite.png", "Orion_constellation_PP3_map_PL.svg".
 _LANGUAGE_CHART = re.compile(

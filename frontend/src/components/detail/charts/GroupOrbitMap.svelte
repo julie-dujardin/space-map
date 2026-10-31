@@ -18,14 +18,18 @@
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import OrbitClassScatter from './OrbitClassScatter.svelte';
 	import EarthOrbitScatter from './EarthOrbitScatter.svelte';
+	import SeeAllLink from '../members/SeeAllLink.svelte';
 	import ZoneChip from '../sections/kit/ZoneChip.svelte';
 
 	interface Props {
 		global: GlobalGroupData | null;
 		/** Category pages force the plot (their slug isn't an orbit class). */
 		plotOverride?: PlotType;
+		/** The category the map is a sample of, for a "see all" link. */
+		seeAll?: string;
+		title?: string;
 	}
-	let { global, plotOverride }: Props = $props();
+	let { global, plotOverride, seeAll, title = m.scatter_membership_title() }: Props = $props();
 
 	const appState = getContext<AppState | undefined>('appState');
 
@@ -72,7 +76,12 @@
 
 {#if global && plotType}
 	<div class="flex flex-col gap-1">
-		<h3 class="text-sm font-medium">{m.scatter_membership_title()}</h3>
+		<div class="flex items-baseline justify-between gap-2">
+			<h3 class="text-sm font-medium">{title}</h3>
+			{#if seeAll}
+				<SeeAllLink slug={seeAll} heading={title} />
+			{/if}
+		</div>
 		<div class="border-border/60 border-t"></div>
 		<div class="pt-1">
 			{#if plotType === 'peri-apo' && satSamples}

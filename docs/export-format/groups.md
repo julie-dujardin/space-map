@@ -13,7 +13,11 @@ former ROCKET `const-` page) with its GCAT launchlog history; `UPPER_STAGE`
 constellations stay `const-`. Earth orbiters split across two category pages by
 object type: working payloads under `cat-satellites`, spent stages and breakup
 fragments under `cat-debris` (whose children are the curated breakup clouds plus
-the `lv-` families). The `class-` orbit zones are shared — they're regions of
+the `lv-` families). `cat-spacecraft` is the parent of both and of `cat-probes`;
+it counts all three, lists the probes as its notable members and repeats
+`cat-debris`'s sources. Its lineup is the 20 most-linked craft and rockets, one
+per model bundle: `craft_members` holds the craft and `craft_rockets` the rocket
+bundles. The `class-` orbit zones are shared — they're regions of
 space, not fleets, so they hold both. An organization
 (`org-<slug>`) is the merged company/agency entity that subsumes the former
 operator and manufacturer roles; its roles are surfaced as tags rather than
@@ -579,7 +583,8 @@ interface GlobalGroupData {
   host_count?: number;          // cat-moons — planet/dwarf hosts that have at least one moon
   child_group_count?: number;   // cat-comets (split families), cat-probes (missions),
                                 // cat-debris (distinct fragment sources)
-  launch_year?: number;         // mission- (its launch), cat-probes (the first probe launch)
+  launch_year?: number;         // mission- (its launch), cat-probes (the first probe launch),
+                                // cat-spacecraft (the first launch of any craft)
   mission_status?: "operating" | "lost" | "ended";  // mission- — the primary craft's curated status
   discovery_year?: number;      // comet-family- — earliest first_obs among the fragments;
                                 // cat-ring-systems — the year the earliest system was found (1610)

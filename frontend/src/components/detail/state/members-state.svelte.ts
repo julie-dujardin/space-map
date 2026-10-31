@@ -3,7 +3,7 @@
  *  overview strip each feeds. */
 
 import { STRIP_CAPACITY } from '../members/MemberStrip.svelte';
-import { fetchGroupIndex } from '$lib/fetch/groups/registry';
+import { CAT_PROBES, CAT_SATELLITES, fetchGroupIndex } from '$lib/fetch/groups/registry';
 import {
 	localizeLink,
 	type NotableMemberEntry,
@@ -136,11 +136,15 @@ export class MembersState {
 			return type === 'star_family' || type === 'planet_family' || type === 'sky_constellation';
 		});
 		const bakedOnly = $derived(bakedType || d.cat().planets || d.cat().stars || d.cat().systems);
+		const childCount = (slug: string) =>
+			d.groupDetail()?.localized?.child_groups?.find((c) => c.primary_id === slug)?.n ?? 0;
 		this.memberTotal = $derived(
 			d.isGroupMode()
 				? bakedOnly
 					? (this.notableMembers?.length ?? 0)
-					: (d.groupDetail()?.global?.member_count ?? 0)
+					: d.cat().spacecraft
+						? childCount(CAT_SATELLITES) + childCount(CAT_PROBES)
+						: (d.groupDetail()?.global?.member_count ?? 0)
 				: (d.data()?.global?.moon_count ?? 0) +
 						(this.satellitesGroup ? this.#satelliteGroupCount : 0)
 		);
@@ -156,7 +160,9 @@ export class MembersState {
 						? m.mission_members_section()
 						: isFigure
 							? m.group_stat_stars()
-							: m.members_notable()
+							: d.cat().spacecraft
+								? m.probes_section()
+								: m.members_notable()
 				: this.satellitesGroup
 					? m.satellites_section()
 					: m.moons_section()
@@ -185,13 +191,17 @@ export class MembersState {
 				!d.cat().membersShownInFull
 		);
 		// Earth's satellites live on their own collection page rather than a tab here.
+		// So is the Spacecraft page's sample of probes.
+		const seeAllGroup = $derived(
+			this.satellitesGroup ?? (d.cat().spacecraft ? CAT_PROBES : undefined)
+		);
 		this.seeAllMembersHref = $derived(
-			this.satellitesGroup
-				? groupHref(d.appState(), this.satellitesGroup, this.membersHeading)
+			seeAllGroup
+				? groupHref(d.appState(), seeAllGroup, this.membersHeading)
 				: tabHref(d.appState(), 'members')
 		);
 		this.seeAllMembers = () => {
-			if (this.satellitesGroup) d.appState()?.setGroup(this.satellitesGroup, this.membersHeading);
+			if (seeAllGroup) d.appState()?.setGroup(seeAllGroup, this.membersHeading);
 			else d.appState().setTab('members');
 		};
 
@@ -263,10 +273,12 @@ export class MembersState {
 			return {
 				members: this.notableMembers,
 				localizedNames: this.memberNames,
-				totalCount: this.memberTotal,
+				// The Spacecraft page's sample is of Probes, not of its own total.
+				totalCount: cat.spacecraft ? childCount(CAT_PROBES) : this.memberTotal,
 				heading: this.membersHeading,
 				seeAllHref: this.seeAllMembersHref,
-				onSeeAll: this.seeAllMembers
+				onSeeAll: this.seeAllMembers,
+				alwaysSeeAll: cat.spacecraft
 			};
 		});
 		this.fragmentsStrip = $derived.by(() => {

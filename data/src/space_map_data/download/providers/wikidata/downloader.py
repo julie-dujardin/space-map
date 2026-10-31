@@ -27,6 +27,7 @@ from space_map_data.constants.planets.families import PLANET_FAMILY_PAGES
 from space_map_data.constants.providers import ID_TYPES, PROVIDERS
 from space_map_data.constants.small_bodies import ORBIT_CLASS_QIDS
 from space_map_data.constants.spacecraft import CATALOGUE as SPACECRAFT_CATALOGUE
+from space_map_data.constants.spacecraft.rockets import ROCKET_QIDS
 from space_map_data.constants.stars.constellations import sky_constellation_pages
 from space_map_data.constants.stars.cultures import sky_culture_name_qids
 from space_map_data.constants.stars.families import STAR_FAMILY_PAGES
@@ -200,6 +201,12 @@ class WikidataDownloader(Downloader):
             referenced_dir,
             limit=None,
             fetch_desc="categories",
+        )
+        self._fetch_entities(
+            set(ROCKET_QIDS.values()),
+            referenced_dir,
+            limit=None,
+            fetch_desc="rockets",
         )
         # IAU planetary quadrangles (Mercury/Mars/Venus). Not reachable via
         # feature claims — features carry quad_code/quad_name from the IAU

@@ -13,7 +13,10 @@
 		CAT_PROBES,
 		CAT_RING_SYSTEMS,
 		CAT_SATELLITES,
-		CAT_STARS
+		CAT_SOLAR_SYSTEM,
+		CAT_STARS,
+		CAT_STRUCTURE_ACTIVITY,
+		CAT_SURFACE_FEATURES
 	} from '$lib/fetch/groups/registry';
 	import BodyCategoryTile from './BodyCategoryTile.svelte';
 
@@ -26,12 +29,17 @@
 	// Sibling categories each page cross-links to, so a visitor can hop between
 	// neighbouring collections. Dwarf planets bridge the planet lineup and the
 	// asteroid/comet small-body pages; moons pair with rings, the other thing a
-	// system holds in orbit, and the systems they belong to; the three spacecraft collections (satellites,
-	// debris, probes) each link to the other two.
+	// system holds in orbit; the three spacecraft collections (satellites,
+	// debris, probes) each link to the other two. A page that left the Solar
+	// System in the breadcrumb tree keeps it here.
 	const SIBLINGS: Record<string, string[]> = {
 		[CAT_PLANETS]: [CAT_DWARF_PLANETS, CAT_MOONS],
 		[CAT_DWARF_PLANETS]: [CAT_PLANETS, CAT_ASTEROIDS],
-		[CAT_MOONS]: [CAT_SATELLITE_SYSTEMS, CAT_RING_SYSTEMS],
+		[CAT_SOLAR_SYSTEM]: [CAT_PLANETARY_SYSTEMS],
+		[CAT_SATELLITE_SYSTEMS]: [CAT_SOLAR_SYSTEM, CAT_MOONS],
+		[CAT_MOONS]: [CAT_SOLAR_SYSTEM, CAT_RING_SYSTEMS],
+		[CAT_SURFACE_FEATURES]: [CAT_SOLAR_SYSTEM, CAT_STRUCTURE_ACTIVITY],
+		[CAT_STRUCTURE_ACTIVITY]: [CAT_SOLAR_SYSTEM, CAT_SURFACE_FEATURES],
 		[CAT_ASTEROIDS]: [CAT_COMETS, CAT_DWARF_PLANETS],
 		[CAT_COMETS]: [CAT_ASTEROIDS, CAT_DWARF_PLANETS],
 		[CAT_STARS]: [CAT_STAR_SYSTEMS, CAT_CONSTELLATIONS],

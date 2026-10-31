@@ -21,7 +21,7 @@ import {
 import { lineupDrawsShapeModel } from '$lib/scene/objects/body/shape-model-policy';
 import type { NotableMemberEntry } from '$lib/fetch/objects/object-data';
 import type { CategoryConfig } from '$lib/state/category-config';
-import { rocketBodies, rocketsCompareHref, rocketsOf } from '$lib/compare/rockets';
+import { ROCKETS, rocketBodies, rocketsCompareHref, rocketsOf } from '$lib/compare/rockets';
 import type { Source as CitedSource } from '../sections/SourcesFooter.svelte';
 import * as m from '$lib/paraglide/messages.js';
 
@@ -29,6 +29,10 @@ import * as m from '$lib/paraglide/messages.js';
 // many times smaller than its largest, so each stays a disc.
 const STAR_PAGE = 5;
 const STAR_BAND_RATIO = 20;
+
+// Rockets and cubesats share a row, so a page holds what one scale can draw.
+const CRAFT_PAGE = 4;
+const CRAFT_BAND_RATIO = 20;
 
 // A small-body zone earns a sphere lineup once enough members carry a measured
 // diameter; below the floor it falls back to the plain member-strip page.
@@ -72,6 +76,9 @@ export interface LineupHeroDeps {
 	notableMembers: () => NotableMemberEntry[] | undefined;
 	/** The Solar System's planets, on the Planets page. */
 	solarMembers: () => NotableMemberEntry[] | undefined;
+	/** The Spacecraft page's lineup: its craft and its rocket bundles. */
+	craftMembers: () => NotableMemberEntry[] | undefined;
+	craftRockets: () => string[] | undefined;
 	/** The probes this page lists — a body's visitors, or a collection's. */
 	probes: () => NotableMemberEntry[] | undefined;
 	probeNames: () => Record<string, string> | undefined;
@@ -148,6 +155,20 @@ export class LineupHero {
 				bandRatio: STAR_BAND_RATIO
 			};
 		});
+		// The best-known craft and rockets, whichever kind they are.
+		const spacecraftRow = $derived.by<LineupHeroSpec | null>(() => {
+			if (!d.cat().spacecraft) return null;
+			const craft = buildLineup(d.craftMembers() ?? [], craftGeometryFromMember, {
+				names: d.memberNames(),
+				descriptions: d.memberDescriptions()
+			});
+			return {
+				bodies: [...this.#rockets, ...craft],
+				ariaLabel: d.fallbackName(),
+				perPage: CRAFT_PAGE,
+				bandRatio: CRAFT_BAND_RATIO
+			};
+		});
 		const smallBodyBodies = $derived(
 			buildLineup(d.notableMembers() ?? [], geometryFromMember, {
 				names: d.memberNames(),
@@ -188,6 +209,7 @@ export class LineupHero {
 		this.hero = $derived.by<LineupHeroSpec | null>(() => {
 			// Before the members: a family that has flown nothing yet still has
 			// its rocket to show.
+			if (spacecraftRow) return spacecraftRow;
 			if (this.#rockets.length > 0)
 				return { bodies: this.#rockets, ariaLabel: d.fallbackName(), perPage: 4 };
 			if (starRow) return starRow;
@@ -259,6 +281,7 @@ export class LineupHero {
 			const members = d.notableMembers();
 			if (!members || members.length === 0 || d.cat().planets) return null;
 			if (d.starLineup()) return starRow;
+			if (spacecraftRow) return spacecraftRow;
 			const spheres = buildLineup(members, geometryFromMember, {
 				names: d.memberNames(),
 				descriptions: d.memberDescriptions()
@@ -344,10 +367,16 @@ export class LineupHero {
 		// Each rocket links to the whole rocket lineup, opened on itself.
 		$effect(() => {
 			const group = d.launchVehicle();
+			const picked = d.craftRockets();
+			const rockets = picked
+				? ROCKETS.filter((r) => picked.includes(r.slug))
+				: group
+					? rocketsOf(group)
+					: null;
 			this.#rockets = [];
-			if (!group) return;
+			if (!rockets) return;
 			let stale = false;
-			rocketBodies(rocketsOf(group), (r) => rocketsCompareHref(r.slug)).then((bodies) => {
+			rocketBodies(rockets, (r) => rocketsCompareHref(r.slug)).then((bodies) => {
 				if (!stale) this.#rockets = bodies;
 			});
 			return () => {

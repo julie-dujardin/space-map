@@ -15,6 +15,7 @@ from space_map_data.constants.categories import (
     PROBES_SLUG,
     SATELLITES_SLUG,
     SOLAR_SYSTEM_SLUG,
+    SPACECRAFT_SLUG,
     STARS_SLUG,
 )
 from space_map_data.constants.earth_sats.constellations import (
@@ -439,6 +440,7 @@ def run_groups_tier(
             poles,
             wikidata_entities,
             planet_elements,
+            craft_models,
         )
         split_comets = _split_comet_groups(session, names)
         launch_vehicle_stats = build_launch_vehicle_stats(session)
@@ -553,6 +555,7 @@ def run_groups_tier(
         solar_planet_counts[SOLAR_SYSTEM_SLUG] = {
             PLANETS_SLUG: len(planets_page.solar_members)
         }
+    extra_member_lists[SPACECRAFT_SLUG] = {"craft_members": category_data.craft_members}
     for slug, median in earth_orbit_stats.median_perigees.items():
         extra_stats.setdefault(slug, GroupExtraStats()).median_perigee_km = median
     for slug, moid in small_body_stats.median_moids.items():
@@ -567,8 +570,12 @@ def run_groups_tier(
     )
     # Same source as the page's launch chart, so the card's year is the year
     # the first bar sits on.
-    if probe_launches := category_data.launch_histograms.get(PROBES_SLUG):
-        extra_stats[PROBES_SLUG].launch_year = min(probe_launches)
+    extra_stats.setdefault(
+        SPACECRAFT_SLUG, GroupExtraStats()
+    ).craft_rockets = category_data.craft_rockets
+    for slug in (PROBES_SLUG, SPACECRAFT_SLUG):
+        if launches := category_data.launch_histograms.get(slug):
+            extra_stats.setdefault(slug, GroupExtraStats()).launch_year = min(launches)
 
     group_probes = build_group_probes(
         session,

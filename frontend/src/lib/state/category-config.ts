@@ -16,6 +16,9 @@ import {
 	CAT_SATELLITES,
 	CAT_DEBRIS,
 	CAT_PROBES,
+	CAT_SPACECRAFT,
+	CAT_STRUCTURE_ACTIVITY,
+	CAT_SURFACE_FEATURES,
 	CAT_RING_SYSTEMS,
 	CAT_ATMOSPHERES,
 	CAT_OCEANS,
@@ -34,6 +37,9 @@ export interface CategoryConfig {
 	/** Every planet, with a tab for the Solar System's eight and one for the
 	 *  exoplanets. */
 	planets: boolean;
+	/** Spacecraft: the page samples Satellites, Space Debris and Probes, and
+	 *  draws every craft and rocket in one lineup. */
+	spacecraft: boolean;
 	/** Star Systems, Planetary Systems: the page lists a few of what it counts,
 	 *  and search has no list of them. */
 	systems: boolean;
@@ -81,6 +87,7 @@ export type PropertyKind =
 const NONE: CategoryConfig = {
 	stars: false,
 	planets: false,
+	spacecraft: false,
 	systems: false,
 	moons: false,
 	dwarfPlanets: false,
@@ -107,16 +114,19 @@ const BY_SLUG: Record<string, Partial<CategoryConfig>> = {
 		membersShownInFull: true,
 		crossRefs: true
 	},
-	[CAT_SOLAR_SYSTEM]: { solarSystem: true },
+	[CAT_SOLAR_SYSTEM]: { solarSystem: true, crossRefs: true },
 	[CAT_STAR_SYSTEMS]: { systems: true, crossRefs: true },
 	[CAT_PLANETARY_SYSTEMS]: { systems: true, crossRefs: true },
-	[CAT_SATELLITE_SYSTEMS]: { satelliteSystems: true, membersShownInFull: true },
+	[CAT_SATELLITE_SYSTEMS]: { satelliteSystems: true, membersShownInFull: true, crossRefs: true },
 	[CAT_ASTEROIDS]: { smallBody: true, sphereLineup: true, crossRefs: true },
 	[CAT_COMETS]: { smallBody: true, sphereLineup: true, crossRefs: true },
 	[CAT_CONSTELLATIONS]: { crossRefs: true },
 	[CAT_SATELLITES]: { crossRefs: true },
 	[CAT_DEBRIS]: { crossRefs: true },
 	[CAT_PROBES]: { crossRefs: true },
+	[CAT_SPACECRAFT]: { spacecraft: true },
+	[CAT_SURFACE_FEATURES]: { crossRefs: true },
+	[CAT_STRUCTURE_ACTIVITY]: { crossRefs: true },
 	// Every member is listed in the overview with its own drawing, so the tab
 	// would repeat the page — the same reason the ring systems have none.
 	[CAT_ATMOSPHERES]: { property: 'atmospheres', membersShownInFull: true },

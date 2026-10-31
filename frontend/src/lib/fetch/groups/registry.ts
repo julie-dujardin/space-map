@@ -99,6 +99,7 @@ export const CAT_COMETS = `${CATEGORY_SLUG_PREFIX}comets`;
 export const CAT_SATELLITES = `${CATEGORY_SLUG_PREFIX}satellites`;
 export const CAT_DEBRIS = `${CATEGORY_SLUG_PREFIX}debris`;
 export const CAT_PROBES = `${CATEGORY_SLUG_PREFIX}probes`;
+export const CAT_SPACECRAFT = `${CATEGORY_SLUG_PREFIX}spacecraft`;
 export const CAT_SURFACE_FEATURES = `${CATEGORY_SLUG_PREFIX}surface-features`;
 export const CAT_STRUCTURE_ACTIVITY = `${CATEGORY_SLUG_PREFIX}structure-activity`;
 export const CAT_ATMOSPHERES = `${CATEGORY_SLUG_PREFIX}atmospheres`;

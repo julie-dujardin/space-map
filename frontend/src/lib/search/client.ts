@@ -469,6 +469,7 @@ const CATEGORY_MEMBER_FILTER: Record<string, string> = {
 	'cat-asteroids':
 		'object.type IN ["asteroid", "asteroid_inner", "asteroid_main_belt", "asteroid_trojan", "asteroid_centaur", "asteroid_tno"]',
 	'cat-comets': 'object.type = "comet"',
+	'cat-spacecraft': 'object.groups IN ["cat-satellites", "cat-probes"]',
 	'cat-solar-system': 'kind = "object"'
 };
 
