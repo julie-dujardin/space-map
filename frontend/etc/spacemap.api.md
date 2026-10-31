@@ -1412,6 +1412,8 @@ export class SpaceMap {
 	getSubsolarPoint(id: string): LonLat | null;
 	// @internal
 	goTo(id: string, options?: GoToOptions): Promise<Arrival>;
+	// @internal
+	haloOnScreen(id: string): boolean;
 	hasTiles(id: string): Promise<boolean>;
 	holdCamera(): CameraHold;
 	// @internal (undocumented)

@@ -221,10 +221,13 @@ describe('haloCarrier', () => {
 		expect(carrier(1, outer, inner)).toBe(2);
 	});
 
-	it('leaves a pair with no drawn orbit, a star and an unknown ID', () => {
+	it('gives a node with no drawn orbit to its primary, having no barycentre', () => {
 		const wide = pair(2, 0);
 		wide.orbit = orbit({ barycentre: 0, period: 2e5 * YEAR });
-		expect(carrier(2, wide)).toBe(2);
+		expect(carrier(2, wide)).toBe(wide.primary);
+	});
+
+	it('leaves a star and an unknown ID', () => {
 		expect(carrier(5, pair(2, 0))).toBe(5);
 		expect(carrier(404, pair(2, 0))).toBe(404);
 	});

@@ -246,7 +246,11 @@
 			const craft = type === UrlType.Probe || type === UrlType.EarthSatellite;
 			const arrival = await map.goTo(id, {
 				// `moveCamera: false` re-anchors the focus with no fly (comet fragments).
-				camera: opts?.moveCamera === false ? 'pan' : 'fly',
+				// A star with its halo in view is in sight already: the view turns to it.
+				camera:
+					opts?.moveCamera === false || (isStarObjectId(id) && map.haloOnScreen(id))
+						? 'pan'
+						: 'fly',
 				// A star with planets, or a planet, frames its planetary system.
 				view: (body) =>
 					ctx.exoplanets.view(body.data.id) ?? {

@@ -8,7 +8,7 @@
  */
 
 import { ExtrasolarStaleError } from '$lib/fetch/extrasolar/files';
-import { extrasolarObjectId } from '$lib/fetch/extrasolar/ids';
+import { extrasolarIdOf, extrasolarObjectId } from '$lib/fetch/extrasolar/ids';
 import { RetryBackoff } from '$lib/fetch/retry-backoff';
 import type { Vec3 } from '$lib/scene/animation/math';
 import type { PromotionRegistry } from '$lib/scene/focus/promotion';
@@ -160,6 +160,12 @@ export class ExoplanetSystems {
 		if (anchor.point === anchor.id) return anchor;
 		const next = this.ctx.getBody(extrasolarObjectId(anchor.point))?.extrasolar;
 		return next && this.pointStar(next);
+	}
+
+	/** The body whose halo stands for the object `id` of a focused star system. */
+	haloBody(id: string): string {
+		const star = extrasolarIdOf(id);
+		return star === null ? id : extrasolarObjectId(this.starSystem.haloOf(star));
 	}
 
 	/** The star that a focused star or planet belongs to. */

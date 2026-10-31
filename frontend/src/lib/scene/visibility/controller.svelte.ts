@@ -467,11 +467,13 @@ export class VisibilityController {
 			return VISIBILITY.FULL;
 		}
 		const isFocused = body.data.id === this.focusedBodyIdPlain;
+		// A star on no orbit has no line to mark it: its halo is all there is.
+		const noLine = isExtrasolar(body) && !body.orbitElements;
 		const tier = computeVisibilityFromRatio(
 			camDistThreeJS / AU_SCALE / refA,
 			this.scaledSystem,
 			FOCUSED_FULL_MULTIPLIER_SUN_ORBITING,
-			isFocused
+			isFocused || noLine
 		);
 		// `refA` is the heliocentric orbit (Pluto borrows its barycenter's ~39 AU
 		// a), so this ratio reaches CLOSE while a small body's disc is still

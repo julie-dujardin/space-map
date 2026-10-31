@@ -369,7 +369,10 @@ export function updateBodyVisibility(
 		// so does the centre of a system in view.
 		const isHeldStar = isFocused || ctx.visibility.isPinned(body.data.id) || centreShare === 1;
 		// A star on a drawn orbit takes the gates of a planet of another star.
-		const onOrbit = isExtrasolar(body) && body.orbitElements !== undefined;
+		// A star on no orbit in a drawn system takes the same tiers, by its distance.
+		const onOrbit =
+			isExtrasolar(body) &&
+			(body.orbitElements !== undefined || body.extrasolar?.pairAxis !== undefined);
 		let zoneShare = 1;
 		let labelThresholdShare = 1;
 		let orbitThresholdShare = 1;

@@ -26,7 +26,7 @@ import {
 	type SystemNode
 } from '$lib/fetch/extrasolar/systems';
 import { RetryBackoff } from '$lib/fetch/retry-backoff';
-import { SOLAR_RADIUS_KM } from '$lib/math/units';
+import { AU_SCALE, SOLAR_RADIUS_KM } from '$lib/math/units';
 import type { Vec3 } from '$lib/scene/animation/math';
 import { putOnOrbit, takeOffOrbit } from '$lib/scene/position/placement';
 import { ensureExtrasolarBody } from '$lib/scene/setup/extrasolar';
@@ -91,6 +91,14 @@ export async function loadStarSystem(root: number): Promise<StarSystemPlan> {
 	const pairs = drawnPairs(nodes);
 	const members = pairs.flatMap(({ node, first, second }) => [node.id, first, second]);
 	return { root, nodes, points, pairs, ids: [...new Set([root, ...points, ...members])] };
+}
+
+/** The points of a system on no drawn orbit, but for the one on its centre
+ *  and those whose own stars draw. */
+function wideStars({ root, nodes, pairs, points }: StarSystemPlan): number[] {
+	const taken = new Set(pairs.flatMap(({ node, first, second }) => [node.id, first, second]));
+	taken.add(haloCarrier(root, nodes, pairs));
+	return points.filter((id) => !taken.has(id));
 }
 
 /** A resolved node has no point, so its stars draw and it does not. */
@@ -200,6 +208,8 @@ export class FocusedStarSystem {
 	private root: number | null = null;
 	/** The plan of `root`, once its rows and bodies are in. */
 	private plan: StarSystemPlan | null = null;
+	/** The stars of `plan` on no drawn orbit and off its centre. */
+	private wide: readonly number[] = [];
 	/** The focused system and the ones that fade out, by root. */
 	private readonly drawn = new Map<number, DrawnSystem>();
 	private near: StarAnchor[] = [];
@@ -241,9 +251,11 @@ export class FocusedStarSystem {
 	}
 
 	/** The share of each body on a drawn orbit that shows its halo, name and
-	 *  line, by object ID. A body with no share is not in the map. */
+	 *  line, by object ID, and 1 for a star on no orbit. A body with no share
+	 *  is not in the map. */
 	get shares(): ReadonlyMap<string, number> {
 		const shares = new Map<string, number>();
+		for (const id of this.wide) shares.set(extrasolarObjectId(id), 1);
 		for (const { pairs } of this.drawn.values()) {
 			for (const { pair, fade } of pairs) {
 				if (fade.share === 0) continue;
@@ -257,6 +269,17 @@ export class FocusedStarSystem {
 	/** The share of the centre of each system in view that shows, by object ID:
 	 *  1, or 0 while the focused body sits on it and its ring stands for both.
 	 *  A node that a star takes over has 0, and its star 1. */
+	/** The ID whose halo stands for `id`: the star that takes over a node, or
+	 *  the root at the node's place, which shows one halo for both. */
+	haloOf(id: number): number {
+		if (!this.plan) return id;
+		const { root, nodes, pairs } = this.plan;
+		const own = haloCarrier(id, nodes, pairs);
+		const centre = haloCarrier(root, nodes, pairs);
+		const [at, centreAt] = [this.star(own)?.scene, this.star(centre)?.scene];
+		return at && centreAt && samePlace(at, centreAt) ? centre : own;
+	}
+
 	get centres(): ReadonlyMap<string, number> {
 		return this.centreShares;
 	}
@@ -267,12 +290,14 @@ export class FocusedStarSystem {
 		if (root !== this.root) {
 			this.root = root;
 			this.plan = null;
+			this.setWide([]);
 			// A body that went past the LRU loads again on the way back.
 			this.asked = false;
 		}
 		if (root !== null) this.ask(root);
 		const plan = this.plan;
 		if (plan && plan.pairs.length > 0 && !this.drawn.has(plan.root)) this.draw(plan);
+		if (plan && this.wide.length === 0) this.setWide(wideStars(plan));
 		for (const system of this.drawn.values()) this.step(system, frame);
 		this.near = this.nearStars(frame.camera);
 		this.centreShares = this.findCentres(frame);
@@ -322,6 +347,22 @@ export class FocusedStarSystem {
 
 	private star(id: number): StarAnchor | undefined {
 		return this.body(id)?.extrasolar;
+	}
+
+	/** A star on no orbit takes its tiers by its distance from the centre. */
+	private setWide(ids: readonly number[]): void {
+		for (const id of this.wide) {
+			const star = this.star(id);
+			if (star) star.pairAxis = undefined;
+		}
+		const centre =
+			this.plan && this.star(haloCarrier(this.plan.root, this.plan.nodes, this.plan.pairs));
+		this.wide = ids.filter((id) => {
+			const [star, from] = [this.star(id), centre?.scene];
+			if (!star?.scene || !from) return false;
+			star.pairAxis = Math.hypot(...star.scene.map((v, k) => v - from[k])) / AU_SCALE;
+			return true;
+		});
 	}
 
 	private draw(plan: StarSystemPlan): void {

@@ -1099,6 +1099,11 @@ export class SpaceMap {
 		return this.settled(0);
 	}
 
+	/** @internal Whether the halo of the object `id` is on screen now. */
+	haloOnScreen(id: string): boolean {
+		return this.renderer?.haloOnScreen(id) ?? false;
+	}
+
 	/** Whether `id` is in the scene, with a place at the date it shows. */
 	private placedNow(id: string): boolean {
 		const body = this.ctx.getBody(id);

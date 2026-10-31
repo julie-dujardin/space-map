@@ -250,7 +250,8 @@ export interface StarAnchor {
 	 *  hand over by it. Absent: all of it. */
 	light?: number;
 	/** Semi-major axis of the pair of a star on a drawn orbit (AU). Both members
-	 *  take their tiers by it, as a page frames them by it. */
+	 *  take their tiers by it, as a page frames them by it. A star of the focused
+	 *  system on no orbit takes its distance from the centre. */
 	pairAxis?: number;
 }
 

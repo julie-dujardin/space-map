@@ -32,7 +32,7 @@ function star(a: number, parentId = PAIR): PositionedBody {
 		validityEnd: Infinity,
 		orbitalSource: OrbitalSource.UNKNOWN
 	};
-	return { data, position: [0, 0, 0] };
+	return { data, orbitElements: data, position: [0, 0, 0] };
 }
 
 function controller(share = 1): VisibilityController {
@@ -79,6 +79,14 @@ describe('a star on a drawn orbit', () => {
 		visibility.setFocused(body);
 		expect(visibility.getPlanetVisibility(body, atRatio(999, 2))).toBe(VISIBILITY.FULL);
 		expect(visibility.getPlanetVisibility(body, atRatio(1001, 2))).toBe(VISIBILITY.HIDE);
+	});
+
+	it('keeps the halo of a star with no orbit line out to the focused tier', () => {
+		const visibility = controller();
+		const onOrbit = star(2);
+		expect(visibility.getPlanetVisibility(onOrbit, atRatio(40, 2))).not.toBe(VISIBILITY.FULL);
+		const noLine = { ...onOrbit, orbitElements: undefined };
+		expect(visibility.getPlanetVisibility(noLine, atRatio(40, 2))).toBe(VISIBILITY.FULL);
 	});
 
 	it('hides with no share of its system, focused or not', () => {

@@ -292,6 +292,14 @@ describe('a star on the barycentre of its pair', () => {
 		return { point, a, b, ctx, plan, system };
 	}
 
+	it('stands in for the halo of the node, and of a node at its place', async () => {
+		const { b, system } = await centred();
+		expect(system.haloOf(POINT)).toBe(HELD_A);
+		expect(system.haloOf(HELD_B)).toBe(HELD_B);
+		b.extrasolar!.scene = [0, 0, 0];
+		expect(system.haloOf(HELD_B)).toBe(HELD_A);
+	});
+
 	it('carries the halo of the system, whichever body is focused', async () => {
 		const { point, a, b, system } = await centred();
 		for (const focused of [point, a, b]) {
@@ -416,6 +424,40 @@ describe('the planets of a focused star', () => {
 		systems.update(frame(other, 100, 16));
 		expect(systems.fading).toBe(true);
 		expect([...use.mock.lastCall![0]]).toEqual([]);
+	});
+});
+
+describe('a star on no drawn orbit', () => {
+	it('shows by its distance from the centre, the primary carrying the system', async () => {
+		const root = {
+			id: ROOT,
+			point: false,
+			depth: 0,
+			primary: 21,
+			distance: 10,
+			orbit: null,
+			members: [
+				{ id: 21, kind: 'star', gMag: null, vMag: null, mass: null },
+				{ id: 22, kind: 'star', gMag: null, vMag: null, mass: null }
+			]
+		} as unknown as SystemNode;
+		const a = body(21, [100, 0, 0]);
+		const b = body(22, [100, 300, 0]);
+		const plan = planOf(new Map([[ROOT, root]]), [21, 22]);
+		const { ctx } = scene([body(ROOT, [100, 0, 0]), a, b], plan);
+		const system = new FocusedStarSystem(ctx, () => {});
+		system.update(frame(a, 1e6));
+		await landed();
+		system.update(frame(a, 1e6));
+		expect(b.extrasolar!.pairAxis).toBeCloseTo(30, 9);
+		expect(system.shares.get('x-22')).toBe(1);
+		expect(system.shares.has('x-21')).toBe(false);
+		expect(system.centres.get(`x-${ROOT}`)).toBe(0);
+		expect(system.centres.get('x-21')).toBe(1);
+
+		system.update(frame(body(9, [0, 0, 0], 0), 1e6));
+		expect(b.extrasolar!.pairAxis).toBeUndefined();
+		expect(system.shares.size).toBe(0);
 	});
 });
 

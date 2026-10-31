@@ -101,7 +101,8 @@ export function framedPair(
 /**
  * The object that carries the halo and name of the node `id`: the node, or the
  * member on the barycentre of the pair that the node frames. That member takes
- * over the node, as the Sun takes over the solar system.
+ * over the node, as the Sun takes over the solar system. With no pair that
+ * draws there is no barycentre, and the primary takes over.
  */
 export function haloCarrier(
 	id: number,
@@ -109,7 +110,8 @@ export function haloCarrier(
 	pairs: readonly DrawnPair[]
 ): number {
 	const pair = framedPair(id, nodes, pairs);
-	return pair?.orbit.barycentre === 0 ? haloCarrier(pair.first, nodes, pairs) : id;
+	if (pair) return pair.orbit.barycentre === 0 ? haloCarrier(pair.first, nodes, pairs) : id;
+	return nodes.get(id)?.primary ?? id;
 }
 
 function flux(mag: number): number {

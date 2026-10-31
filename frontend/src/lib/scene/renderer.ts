@@ -131,6 +131,7 @@ import { OrbitPreviewOverlay, type OrbitPreview } from './objects/travel/orbit-p
 // re-exports Lambert, the porkchop and the vehicle catalogue.
 import { eclipticToScene } from '$lib/math/travel/state';
 import type { TrailBuffer } from '$lib/fetch/position/trail-buffer';
+import { labelScreenRect } from './label/culling';
 import { updatePositions, refreshDeferredTrails } from './position/update-positions';
 import { Placer } from './position/placer';
 import { SSB_POSITION } from './position/placement';
@@ -1071,6 +1072,16 @@ export class SceneRenderer {
 	placeOf(body: PositionedBody): Vec3 | null {
 		this.applyJdUpdate();
 		return this.whereBody(body);
+	}
+
+	/** Whether the halo of the object `id` is on screen. */
+	haloOnScreen(id: string): boolean {
+		const bo = this.bodyObjects.get(this.exoplanetSystems.haloBody(id));
+		if (!bo?.label?.visible) return false;
+		const { clientWidth: width, clientHeight: height } = this.renderer.domElement;
+		const rect = { x: 0, y: 0, left: 0, right: 0, h: 0 };
+		const inFront = labelScreenRect(bo, this.camera, this.focus.focusTruePos, width, height, rect);
+		return inFront && rect.x >= 0 && rect.x <= width && rect.y >= 0 && rect.y <= height;
 	}
 
 	/** Move the camera onto `body`, `distance` away, and leave the focus where
