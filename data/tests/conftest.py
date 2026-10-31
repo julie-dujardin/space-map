@@ -96,6 +96,15 @@ def make_object(**overrides) -> Object:
 
 
 @pytest.fixture(autouse=True)
+def _no_wikidata_downloads(tmp_path, monkeypatch):
+    """Keep every `WikidataEntityCache` off the real downloads, which a running
+    export can stall for minutes."""
+    from space_map_data.export import wikidata
+
+    monkeypatch.setattr(wikidata, "SOURCES_METADATA_DIR", tmp_path / "no-metadata")
+
+
+@pytest.fixture(autouse=True)
 def _isolated_stamp_memo(tmp_path, monkeypatch):
     """Keep content-stamp digests of test files out of the real CACHE_DIR memo."""
     from space_map_data.utils import content_stamp
