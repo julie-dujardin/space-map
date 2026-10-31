@@ -7,11 +7,15 @@ from collections import Counter
 from dataclasses import fields, replace
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import numpy as np
 import pyarrow as pa
 import pyarrow.compute as pc
+import pytest
 
+from space_map_data.extrasolar.exoplanets.catalogues import EU
+from space_map_data.extrasolar.exoplanets.simbad import Simbad
 from space_map_data.extrasolar.registry import Registry
 from space_map_data.extrasolar.systems.assemble import Assembler, Systems, _Node
 from space_map_data.extrasolar.systems.build import build
@@ -32,8 +36,15 @@ from space_map_data.extrasolar.systems.nodes import (
     WDS,
 )
 from space_map_data.extrasolar.systems.pairs import PAIRS, el_badry_pairs, orbit_pairs
-from space_map_data.extrasolar.systems.planets import PLANETS_INPUT
-from space_map_data.extrasolar.systems.prepare import Inputs, vetoed_pairs
+from space_map_data.extrasolar.systems.planets import PLANETS_INPUT, planet_star_ids
+from space_map_data.extrasolar.systems.prepare import (
+    APART,
+    HOST_LEFT,
+    LEAVES,
+    MEMBER,
+    Inputs,
+    vetoed_pairs,
+)
 from space_map_data.extrasolar.systems.reduce import (
     ENTRY,
     GROUP,
@@ -44,9 +55,12 @@ from space_map_data.extrasolar.systems.reduce import (
     Reduced,
     TreeReducer,
 )
-from space_map_data.extrasolar.systems.registry import registry_orbits
+from space_map_data.extrasolar.systems.registry import (
+    RegistryResolver,
+    registry_orbits,
+)
 from space_map_data.extrasolar.systems.report import report_lines, tree_lines
-from space_map_data.extrasolar.systems.resolve import FACTS, Facts
+from space_map_data.extrasolar.systems.resolve import FACTS, MATCH, Facts
 from space_map_data.extrasolar.systems.simbad import read_simbad
 from space_map_data.extrasolar.systems.wds import WdsCatalogue
 from tests.extrasolar.conftest import offset
@@ -669,10 +683,687 @@ class TestSiriusTrap:
         ]
 
 
-class TestPlanets:
-    """A brown dwarf that is a planet leaves the tree; a circumbinary host."""
+SIMBAD_STAR = {"catalogue": "simbad", "release": "oid", "catalogue_id": "7"}
+STAR_ID = ("simbad", "oid", "7")
 
-    def test_brown_dwarf_planet_wins(self):
+
+def record(host: int, class_: str = "brown dwarf", **values) -> dict:
+    """A planet record that is the star of `STAR_ID`."""
+    return {
+        "host": host,
+        "number": 1,
+        "designation": "X b",
+        "class": class_,
+        "star_ids": [SIMBAD_STAR],
+    } | values
+
+
+def on_a_circle(key: int, separation: float, angle: float = 90.0, **values) -> dict:
+    """The facts of a star `separation` arcsec from (10, 0), towards `angle`."""
+    ra, dec = offset(10.0, 0.0, separation, angle)
+    return fact(key, ra, dec, 9.0, **values)
+
+
+class TestBrownDwarfs:
+    """A brown dwarf record stays on its host, and its star in its system."""
+
+    def wds(self, *pairs: dict) -> WdsCatalogue:
+        components = {("1", "A"): wds_component(1, 10.0, 0.0)}
+        for pair in pairs:
+            components["1", pair["secondary"]] = wds_component(None, 9.0, 3.0)
+        return wds_catalogue({"1": list(pairs)}, components)
+
+    def test_it_stays_in_its_tree(self):
+        comp = [
+            msc_comp("1", "A", HIP=1),
+            msc_comp("1", "B", HIP=2),
+            msc_comp("1", "C", HIP=3),
+        ]
+        pairs = [msc_pair("1", "AB", "C", "*"), msc_pair("1", "A", "B", "AB")]
+        resolver = FakeResolver(
+            {
+                ("hip", "2007", "1"): 90,
+                ("hip", "2007", "2"): 91,
+                ("hip", "2007", "3"): 92,
+                STAR_ID: 92,
+            },
+            [fact(k, 10.0, 0.0, 9.0, parallax=10.0) for k in (90, 91, 92)],
+        )
+        systems = build(
+            Inputs(msc=msc_nodes(comp, pairs, []), planets=planets([record(90)])),
+            resolver,
+        )
+        assert shape(systems, 90)[:2] == ("multiple star", 3)
+        assert systems.overlaps["outcome"].to_pylist() == [MEMBER]
+        assert systems.overlaps["key"].to_pylist() == [92]
+        assert systems.overlaps["record"].to_pylist() == [0]
+
+    def test_it_takes_the_component_at_its_place(self):
+        """The match reaches no star that SIMBAD lists with no magnitude. A
+        WDS companion has no proper motion, so its row gives its place from
+        its primary."""
+        resolver = FakeResolver(
+            {("gaia", "dr3", "1"): 90, STAR_ID: 92},
+            [fact(90, 10.0, 0.0, 9.0, parallax=10.0), on_a_circle(92, 2.9)],
+        )
+        pair = wds_pair("A", "B", 2.9, mag1=9.0, mag2=19.0, position_angle=90.0)
+        systems = build(
+            Inputs(wds=self.wds(pair), planets=planets([record(90)])), resolver
+        )
+        assert shape(systems, 90) == ("binary star", 2, [90, 92])
+        star = systems.members.filter(pc.equal(systems.members["key"], 92))
+        assert star["letter"].to_pylist() == ["B"]
+        assert star["v_mag"].to_pylist() == [19.0]
+        counts = systems.counts
+        assert counts[f"{PLANETS}: brown dwarfs that take a component"] == 1
+
+    def test_a_star_at_its_hosts_position_takes_a_near_component(self):
+        """SIMBAD can give a companion the position of its primary."""
+        resolver = FakeResolver(
+            {("gaia", "dr3", "1"): 90, STAR_ID: 92},
+            [fact(90, 10.0, 0.0, 9.0, parallax=10.0), fact(92, 10.0, 0.0, 19.0)],
+        )
+        pair = wds_pair("A", "B", 2.9, mag1=9.0, mag2=19.0, position_angle=90.0)
+        systems = build(
+            Inputs(wds=self.wds(pair), planets=planets([record(90)])), resolver
+        )
+        assert shape(systems, 90) == ("binary star", 2, [90, 92])
+
+    def test_two_records_of_one_star_take_one_component(self):
+        """HD 97334 B and C: one point holds the pair."""
+        resolver = FakeResolver(
+            {("gaia", "dr3", "1"): 90, STAR_ID: 92},
+            [fact(90, 10.0, 0.0, 9.0, parallax=10.0), on_a_circle(92, 2.9)],
+        )
+        pairs = [
+            wds_pair("A", "B", 2.9, mag1=9.0, mag2=19.0, position_angle=90.0),
+            wds_pair("A", "C", 3.5, mag1=9.0, mag2=19.0, position_angle=90.0),
+        ]
+        systems = build(
+            Inputs(
+                wds=self.wds(*pairs),
+                planets=planets([record(90), record(90, number=2)]),
+            ),
+            resolver,
+        )
+        assert shape(systems, 90) == ("multiple star", 3, [90, 92, "entry"])
+        counts = systems.counts
+        assert counts[f"{PLANETS}: brown dwarfs that take a component"] == 1
+
+    def test_a_component_elsewhere_is_another_star(self):
+        resolver = FakeResolver(
+            {("gaia", "dr3", "1"): 90, STAR_ID: 92},
+            [fact(90, 10.0, 0.0, 9.0, parallax=10.0), on_a_circle(92, 52.0)],
+        )
+        pair = wds_pair("A", "B", 2.9, mag1=9.0, mag2=19.0, position_angle=90.0)
+        systems = build(
+            Inputs(wds=self.wds(pair), planets=planets([record(90)])), resolver
+        )
+        assert shape(systems, 90) == ("multiple star", 3, [90, 92, "entry"])
+
+    def test_it_takes_the_pair_it_holds(self):
+        """GJ 1001: the point of B holds Ba and Bb, which the MSC lists."""
+        comp = [msc_comp("1", "A", HIP=1)]
+        pairs = [
+            msc_pair("1", "A", "B", "*", Sep=18.3, Sunit='"', PA=90.0),
+            msc_pair("1", "Ba", "Bb", "B", Sep=0.087, Sunit='"'),
+        ]
+        resolver = FakeResolver(
+            {("hip", "2007", "1"): 90, STAR_ID: 92},
+            [fact(90, 10.0, 0.0, 9.0, parallax=10.0), on_a_circle(92, 18.3)],
+        )
+        systems = build(
+            Inputs(msc=msc_nodes(comp, pairs, []), planets=planets([record(90)])),
+            resolver,
+        )
+        assert shape(systems, 90) == ("multiple star", 3, [90, ("point", 92, 2)])
+
+    def test_a_row_measured_from_another_star_is_not_it(self):
+        """C lies 0.1″ from B, not from the host."""
+        comp = [msc_comp("1", "A", HIP=1)]
+        pairs = [
+            msc_pair("1", "A", "BC", "*", Sep=30.0, Sunit='"', PA=90.0),
+            msc_pair("1", "B", "C", "BC", Sep=0.1, Sunit='"'),
+        ]
+        resolver = FakeResolver(
+            {("hip", "2007", "1"): 90, STAR_ID: 92},
+            [fact(90, 10.0, 0.0, 9.0, parallax=10.0), on_a_circle(92, 1.0)],
+        )
+        systems = build(
+            Inputs(msc=msc_nodes(comp, pairs, []), planets=planets([record(90)])),
+            resolver,
+        )
+        assert systems.counts[f"{PLANETS}: brown dwarfs that take a component"] == 0
+
+    def test_the_host_goes_down_beside_its_brown_dwarf(self):
+        """HD 33632: the MSC puts the host on A, with Aa and Ab under it."""
+        comp = [msc_comp("1", "A", HIP=1)]
+        pairs = [msc_pair("1", "Aa", "Ab", "A", Sep=0.9, Sunit='"', PA=90.0)]
+        pairs.append(msc_pair("1", "A", "B", "*", Sep=30.0, Sunit='"', PA=10.0))
+        comp.append(msc_comp("1", "B", HIP=2))
+        resolver = FakeResolver(
+            {("hip", "2007", "1"): 90, ("hip", "2007", "2"): 91, STAR_ID: 92},
+            [
+                fact(90, 10.0, 0.0, 9.0, parallax=10.0),
+                on_a_circle(91, 30.0, 10.0, parallax=10.0),
+                on_a_circle(92, 0.9),
+            ],
+        )
+        systems = build(
+            Inputs(msc=msc_nodes(comp, pairs, []), planets=planets([record(90)])),
+            resolver,
+        )
+        assert shape(systems, 90) == (
+            "multiple star",
+            3,
+            [91, ("binary star", 2, [90, 92])],
+        )
+
+    def test_it_joins_at_the_top_of_the_tree_of_its_host(self):
+        """No tree places it, so it is a member of the system as a whole."""
+        comp = [msc_comp("1", "A", HIP=1), msc_comp("1", "B", HIP=2)]
+        pairs = [msc_pair("1", "A", "B", "*", Sep=5.0, Sunit='"')]
+        resolver = FakeResolver(
+            {("hip", "2007", "1"): 90, ("hip", "2007", "2"): 91, STAR_ID: 92},
+            [
+                fact(90, 10.0, 0.0, 9.0, parallax=10.0),
+                on_a_circle(91, 5.0, 0.0, parallax=10.0),
+                on_a_circle(92, 200.0),
+            ],
+        )
+        systems = build(
+            Inputs(msc=msc_nodes(comp, pairs, []), planets=planets([record(90)])),
+            resolver,
+        )
+        assert shape(systems, 90) == ("multiple star", 3, [90, 91, 92])
+        star = systems.members.filter(pc.equal(systems.members["key"], 92))
+        assert star["source"].to_pylist() == [None]
+        assert systems.counts[f"{PLANETS}: brown dwarfs that join by their record"] == 1
+
+    def test_a_host_in_no_tree_makes_a_system_with_it(self):
+        resolver = FakeResolver(
+            {("gaia", "dr3", "1"): 90, STAR_ID: 92},
+            [fact(90, 10.0, 0.0, 9.0), on_a_circle(92, 3.5)],
+        )
+        systems = build(Inputs(planets=planets([record(90)])), resolver)
+        assert shape(systems, 90) == ("binary star", 2, [90, 92])
+        root = systems.nodes.filter(pc.equal(systems.nodes["parent"], 0))
+        assert root["primary"].to_pylist() == [90]
+        assert root["sources"].to_pylist() == [[PLANETS]]
+
+    def test_the_host_stays_the_primary(self):
+        """A SIMBAD row with a child lists its own point after it."""
+        index = simbad_index(
+            [
+                simbad_object(6, "HD 1", 10.0, 0.0, v=7.0),
+                simbad_object(7, "HD 1B", 10.0, 0.0),
+            ],
+            [(6, 7)],
+        )
+        resolver = FakeResolver(
+            {("simbad", "oid", "6"): 90, STAR_ID: 92},
+            [fact(90, 10.0, 0.0, 7.0, parallax=10.0), fact(92, 10.0, 0.0, 19.0)],
+        )
+        systems = build(
+            Inputs(
+                simbad=read_simbad(index.stars),
+                simbad_index=index,
+                planets=planets([record(90)]),
+            ),
+            resolver,
+        )
+        root = systems.nodes.filter(pc.equal(systems.nodes["parent"], 0))
+        assert root["primary"].to_pylist() == [90]
+
+    def test_a_pair_of_el_badry_stays_inside_the_new_system(self):
+        """A set of the host and the star alone would cross the pair."""
+        ids = {("gaia", "dr3", "1"): 90, ("gaia", "dr3", "2"): 91, STAR_ID: 92}
+        resolver = FakeResolver(
+            ids,
+            [
+                fact(90, 10.0, 0.0, 9.0, parallax=10.0),
+                on_a_circle(91, 8.0, 0.0, parallax=10.0),
+                on_a_circle(92, 3.5),
+            ],
+        )
+        systems = build(
+            Inputs(
+                el_badry=el_badry([(1, 2, 8.0, 9.0, 12.0)]),
+                planets=planets([record(90)]),
+            ),
+            resolver,
+        )
+        assert shape(systems, 90) == (
+            "multiple star",
+            3,
+            [92, ("binary star", 2, [90, 91])],
+        )
+
+    def test_two_records_of_each_other_make_one_system(self):
+        """2MASS J1450-7841: each is listed as the other's planet."""
+        ids = [
+            {"catalogue": EU, "release": "catalog", "catalogue_id": name}
+            for name in ("X A", "X B")
+        ]
+        resolver = FakeResolver(
+            {(EU, "catalog", "X A"): 90, (EU, "catalog", "X B"): 91},
+            [fact(90, 10.0, 0.0, 9.0), on_a_circle(91, 5.0)],
+        )
+        systems = build(
+            Inputs(
+                planets=planets(
+                    [
+                        record(90, designation="X B", star_ids=[ids[1]]),
+                        record(91, designation="X A", star_ids=[ids[0]]),
+                    ]
+                )
+            ),
+            resolver,
+        )
+        assert shape(systems, 90) == ("binary star", 2, [90, 91])
+        assert systems.overlaps["outcome"].to_pylist() == [MEMBER, MEMBER]
+        root = systems.nodes.filter(pc.equal(systems.nodes["parent"], 0))
+        assert root["primary"].to_pylist() == [90]
+
+    def test_parallaxes_that_disagree_show_a_wrong_id(self):
+        """LHS 5166 b: SIMBAD's Gaia id leads 93° away. The star stays as it
+        is, in its own system."""
+        ids = {("gaia", "dr3", "1"): 90, STAR_ID: 92, ("hip", "2007", "3"): 92}
+        ids[("hip", "2007", "4")] = 93
+        comp = [msc_comp("1", "A", HIP=3), msc_comp("1", "B", HIP=4)]
+        pairs = [msc_pair("1", "A", "B", "*", Sep=5.0, Sunit='"')]
+        resolver = FakeResolver(
+            ids,
+            [
+                fact(90, 10.0, 0.0, 9.0, parallax=50.0),
+                fact(92, 100.0, 40.0, 9.0, parallax=6.0),
+                fact(93, 100.0, 40.0, 9.0, parallax=6.0),
+            ],
+        )
+        systems = build(
+            Inputs(msc=msc_nodes(comp, pairs, []), planets=planets([record(90)])),
+            resolver,
+        )
+        assert systems.overlaps["outcome"].to_pylist() == [APART]
+        assert shape(systems, 92) == ("binary star", 2, [92, 93])
+        assert 90 not in systems.points["key"].to_pylist()
+        assert systems.counts[f"{PLANETS}: brown dwarfs at another distance"] == 1
+
+    def test_a_star_in_another_system_stays_there(self):
+        comp = [
+            msc_comp("1", "A", HIP=1),
+            msc_comp("1", "B", HIP=2),
+            msc_comp("2", "A", HIP=3),
+            msc_comp("2", "B", HIP=4),
+        ]
+        pairs = [
+            msc_pair("1", "A", "B", "*", Sep=5.0, Sunit='"'),
+            msc_pair("2", "A", "B", "*", Sep=5.0, Sunit='"'),
+        ]
+        ids = {("hip", "2007", str(n)): 89 + n for n in (1, 2, 3, 4)}
+        resolver = FakeResolver(
+            ids | {STAR_ID: 92},
+            [
+                fact(90, 10.0, 0.0, 9.0, parallax=10.0),
+                on_a_circle(91, 5.0, 0.0, parallax=10.0),
+                on_a_circle(92, 100.0, parallax=10.0),
+                on_a_circle(93, 105.0, parallax=10.0),
+            ],
+        )
+        systems = build(
+            Inputs(msc=msc_nodes(comp, pairs, []), planets=planets([record(90)])),
+            resolver,
+        )
+        assert shape(systems, 90) == ("binary star", 2, [90, 91])
+        assert shape(systems, 92) == ("binary star", 2, [92, 93])
+        assert systems.counts[f"{PLANETS}: brown dwarfs in another system"] == 1
+
+    def test_a_record_with_no_host_leaves_its_star_out(self):
+        """The ingest gives a host that gets no ID the key 0."""
+        resolver = FakeResolver({STAR_ID: 92}, [on_a_circle(92, 3.5)])
+        systems = build(Inputs(planets=planets([record(0)])), resolver)
+        assert systems.overlaps["outcome"].to_pylist() == [LEAVES]
+        assert systems.points.num_rows == 0
+
+    def test_a_star_inside_the_light_of_its_host_is_no_star_of_its_own(self):
+        """A record links no star to its own host."""
+        index = simbad_index(
+            [
+                simbad_object(6, "HD 1", 10.0, 0.0, v=7.0),
+                simbad_object(5, "HD 1 B", 10.0, 0.0),
+                simbad_object(7, "HD 1 C", 10.0, 0.0, v=9.0),
+            ],
+            [(5, 6), (5, 7)],
+        )
+        resolver = FakeResolver(
+            {("simbad", "oid", "6"): 90, STAR_ID: 92},
+            [
+                fact(90, 10.0, 0.0, 7.0, parallax=10.0),
+                fact(92, 10.0, 0.0, 9.0, "simbad"),
+            ],
+        )
+        systems = build(
+            Inputs(
+                simbad=read_simbad(index.stars),
+                simbad_index=index,
+                planets=planets([record(90)]),
+            ),
+            resolver,
+        )
+        assert systems.absorbed["into"].to_pylist() == [90]
+        assert systems.overlaps.num_rows == 0
+
+    def test_the_star_of_its_own_name(self):
+        """The name of a record reaches the star of that name in its
+        catalogue."""
+        assert planet_star_ids(Simbad(), [(EU, "X B")]) == [(EU, "catalog", "X B")]
+
+    def letters(self, systems: Systems) -> dict[str, int]:
+        members = systems.members
+        return dict(zip(members["letter"].to_pylist(), members["key"].to_pylist()))
+
+    def children_of_a(self, *pairs: dict) -> WdsCatalogue:
+        """Aa and its pairs under A, whose Gaia id is 1."""
+        components = {("1", "A"): wds_component(1, 10.0, 0.0)}
+        for pair in pairs:
+            components["1", pair["secondary"]] = wds_component(None, 9.0, 3.0)
+        return wds_catalogue({"1": list(pairs)}, components)
+
+    def test_the_host_goes_down_only_to_the_first_child(self):
+        """Aa has its own object, so the host stays on A and Ac stays free."""
+        pairs = [
+            wds_pair("Aa", "Ab", 2.9, position_angle=90.0),
+            wds_pair("Aa", "Ac", 40.0, position_angle=10.0),
+        ]
+        catalogue = self.children_of_a(*pairs)
+        catalogue.components["1", "Aa"] = wds_component(5, 10.0, 0.0)
+        resolver = FakeResolver(
+            {("gaia", "dr3", "1"): 90, ("gaia", "dr3", "5"): 95, STAR_ID: 92},
+            [
+                fact(90, 10.0, 0.0, 9.0, parallax=10.0),
+                on_a_circle(95, 1.0, 180.0, parallax=10.0),
+                on_a_circle(92, 2.9),
+            ],
+        )
+        systems = build(Inputs(wds=catalogue, planets=planets([record(90)])), resolver)
+        letters = self.letters(systems)
+        assert letters["Ab"] == 92
+        assert not letters["Ac"]
+
+    def test_a_second_brown_dwarf_takes_the_host_no_further(self):
+        """The host goes down once."""
+        pairs = [
+            wds_pair("Aa", "Ab", 2.9, position_angle=90.0),
+            wds_pair("Aa", "Ac", 20.0, position_angle=90.0),
+            # Nearest the host's magnitude, so a link would hold.
+            wds_pair("Aa", "Ad", 40.0, mag1=14.0, mag2=9.0, position_angle=90.0),
+        ]
+        resolver = FakeResolver(
+            {
+                ("gaia", "dr3", "1"): 90,
+                STAR_ID: 92,
+                ("simbad", "oid", "8"): 93,
+            },
+            [
+                fact(90, 10.0, 0.0, 9.0, parallax=10.0),
+                on_a_circle(92, 2.9),
+                on_a_circle(93, 20.0),
+            ],
+        )
+        second = {"catalogue": "simbad", "release": "oid", "catalogue_id": "8"}
+        systems = build(
+            Inputs(
+                wds=self.children_of_a(*pairs),
+                planets=planets([record(90), record(90, number=2, star_ids=[second])]),
+            ),
+            resolver,
+        )
+        letters = self.letters(systems)
+        assert (letters["Aa"], letters["Ab"], letters["Ac"]) == (90, 92, 93)
+        assert not letters["Ad"]
+
+    @pytest.mark.parametrize("separation", [-1.0, 0.0])
+    def test_a_row_with_no_measure_is_not_it(self, separation):
+        """The WDS gives -1 for no measure and 0 for a pair too close to
+        measure, and neither is a place."""
+        resolver = FakeResolver(
+            {("gaia", "dr3", "1"): 90, STAR_ID: 92},
+            [fact(90, 10.0, 0.0, 9.0, parallax=10.0), on_a_circle(92, 5.0)],
+        )
+        pair = wds_pair("A", "B", separation, mag1=9.0, mag2=19.0)
+        systems = build(
+            Inputs(wds=self.wds(pair), planets=planets([record(90)])), resolver
+        )
+        assert systems.counts[f"{PLANETS}: brown dwarfs that take a component"] == 0
+
+    def test_a_pair_of_el_badry_comes_with_a_star_that_joins(self):
+        """A pair that the group crosses would leave its other star out."""
+        comp = [msc_comp("1", "A", HIP=1), msc_comp("1", "B", HIP=2)]
+        pairs = [msc_pair("1", "A", "B", "*", Sep=5.0, Sunit='"')]
+        resolver = FakeResolver(
+            {
+                ("hip", "2007", "1"): 90,
+                ("hip", "2007", "2"): 91,
+                STAR_ID: 92,
+                ("gaia", "dr3", "92"): 92,
+                ("gaia", "dr3", "93"): 93,
+            },
+            [
+                fact(90, 10.0, 0.0, 9.0, parallax=10.0),
+                on_a_circle(91, 5.0, 0.0, parallax=10.0),
+                on_a_circle(92, 200.0, parallax=10.0),
+                on_a_circle(93, 205.0, parallax=10.0),
+            ],
+        )
+        systems = build(
+            Inputs(
+                msc=msc_nodes(comp, pairs, []),
+                el_badry=el_badry([(92, 93, 5.0, 19.0, 20.0)]),
+                planets=planets([record(90)]),
+            ),
+            resolver,
+        )
+        assert shape(systems, 90) == (
+            "multiple star",
+            4,
+            [90, 91, ("binary star", 2, [92, 93])],
+        )
+
+    def test_a_pair_of_el_badry_comes_with_a_host_that_joins(self):
+        comp = [msc_comp("1", "A", HIP=1), msc_comp("1", "B", HIP=2)]
+        pairs = [msc_pair("1", "A", "B", "*", Sep=5.0, Sunit='"')]
+        resolver = FakeResolver(
+            {
+                ("hip", "2007", "1"): 92,
+                ("hip", "2007", "2"): 93,
+                STAR_ID: 92,
+                ("gaia", "dr3", "90"): 90,
+                ("gaia", "dr3", "91"): 91,
+            },
+            [
+                fact(90, 10.0, 0.0, 9.0, parallax=10.0),
+                on_a_circle(91, 8.0, 0.0, parallax=10.0),
+                on_a_circle(92, 200.0, parallax=10.0),
+                on_a_circle(93, 205.0, parallax=10.0),
+            ],
+        )
+        systems = build(
+            Inputs(
+                msc=msc_nodes(comp, pairs, []),
+                el_badry=el_badry([(90, 91, 8.0, 9.0, 12.0)]),
+                planets=planets([record(90)]),
+            ),
+            resolver,
+        )
+        assert shape(systems, 92) == (
+            "multiple star",
+            4,
+            [92, 93, ("binary star", 2, [90, 91])],
+        )
+
+    def test_a_star_that_leaves_stays_out(self):
+        """One record calls B a planet of A, the other A a brown dwarf of B.
+        B leaves, so A has no host to be a member with."""
+        ids = [
+            {"catalogue": EU, "release": "catalog", "catalogue_id": name}
+            for name in ("X A", "X B")
+        ]
+        resolver = FakeResolver(
+            {(EU, "catalog", "X A"): 90, (EU, "catalog", "X B"): 92},
+            [fact(90, 10.0, 0.0, 9.0), on_a_circle(92, 5.0)],
+        )
+        systems = build(
+            Inputs(
+                planets=planets(
+                    [
+                        record(90, "planet", designation="X B", star_ids=[ids[1]]),
+                        record(92, designation="X A", star_ids=[ids[0]]),
+                    ]
+                )
+            ),
+            resolver,
+        )
+        assert systems.points.num_rows == 0
+        assert systems.overlaps["key"].to_pylist() == [90, 92]
+        assert systems.overlaps["outcome"].to_pylist() == [HOST_LEFT, LEAVES]
+
+    def test_leaving_wins_over_a_membership(self):
+        """Two records reach one star: a planet of one host, a brown dwarf of
+        the other."""
+        resolver = FakeResolver(
+            {STAR_ID: 92},
+            [fact(90, 10.0, 0.0, 9.0), fact(91, 12.0, 0.0, 9.0), on_a_circle(92, 5.0)],
+        )
+        systems = build(
+            Inputs(planets=planets([record(90, "planet"), record(91)])), resolver
+        )
+        assert systems.points.num_rows == 0
+        assert systems.overlaps["outcome"].to_pylist() == [LEAVES, LEAVES]
+
+    def primary(self, systems: Systems) -> list[int]:
+        root = systems.nodes.filter(pc.equal(systems.nodes["parent"], 0))
+        return root["primary"].to_pylist()
+
+    def test_a_host_that_joins_its_brown_dwarf_is_the_primary(self):
+        comp = [msc_comp("1", "A", HIP=1), msc_comp("1", "B", HIP=2)]
+        pairs = [msc_pair("1", "A", "B", "*", Sep=5.0, Sunit='"')]
+        resolver = FakeResolver(
+            {("hip", "2007", "1"): 92, ("hip", "2007", "2"): 93, STAR_ID: 92},
+            [
+                fact(90, 10.0, 0.0, 9.0, parallax=10.0),
+                on_a_circle(92, 3.5, parallax=10.0),
+                on_a_circle(93, 8.0, parallax=10.0),
+            ],
+        )
+        systems = build(
+            Inputs(msc=msc_nodes(comp, pairs, []), planets=planets([record(90)])),
+            resolver,
+        )
+        assert self.primary(systems) == [90]
+
+    def test_a_host_is_the_primary_over_an_inner_pair_too(self):
+        """The brown dwarf is the first star of a pair of the group."""
+        comp = [msc_comp("1", name, HIP=at + 1) for at, name in enumerate("ABC")]
+        pairs = [
+            msc_pair("1", "AB", "C", "*", Sep=20.0, Sunit='"'),
+            msc_pair("1", "A", "B", "AB", Sep=5.0, Sunit='"'),
+        ]
+        ids = {("hip", "2007", str(at + 1)): 92 + at for at in range(3)}
+        resolver = FakeResolver(
+            ids | {STAR_ID: 92},
+            [
+                fact(90, 10.0, 0.0, 9.0, parallax=10.0),
+                on_a_circle(92, 3.5, parallax=10.0),
+                on_a_circle(93, 8.0, parallax=10.0),
+                on_a_circle(94, 20.0, parallax=10.0),
+            ],
+        )
+        systems = build(
+            Inputs(msc=msc_nodes(comp, pairs, []), planets=planets([record(90)])),
+            resolver,
+        )
+        assert self.primary(systems) == [90]
+
+    def test_a_close_type_throws_off_the_parallax(self):
+        """A SIMBAD close pair on the host: no veto, as for the trees."""
+        index = simbad_index([simbad_object(6, "HD 1", 10.0, 0.0, otype="SB*", v=9.0)])
+        resolver = FakeResolver(
+            {("simbad", "oid", "6"): 90, STAR_ID: 92},
+            [
+                fact(90, 10.0, 0.0, 9.0, parallax=50.0),
+                on_a_circle(92, 3.5, parallax=6.0),
+            ],
+        )
+        systems = build(
+            Inputs(simbad_index=index, planets=planets([record(90)])), resolver
+        )
+        assert systems.overlaps["outcome"].to_pylist() == [MEMBER]
+
+    def test_a_gaia_orbit_throws_off_the_parallax(self):
+        orbits = orbit_pairs(
+            pa.table(
+                {
+                    "key": [90],
+                    "nss_solution_type": ["SB1"],
+                    "period": [10.0],
+                    "eccentricity": [0.0],
+                    "m1": [1.0],
+                    "m2": [0.5],
+                }
+            )
+        )
+        resolver = FakeResolver(
+            {STAR_ID: 92},
+            [
+                fact(90, 10.0, 0.0, 9.0, parallax=50.0),
+                on_a_circle(92, 3.5, parallax=6.0),
+            ],
+        )
+        systems = build(Inputs(orbits=orbits, planets=planets([record(90)])), resolver)
+        assert systems.overlaps["outcome"].to_pylist() == [MEMBER]
+
+
+class TestDryRunMatch:
+    """The dry run's match takes the kind of the rows of the ingest."""
+
+    def matched(self, kind: str) -> list[int]:
+        resolver = RegistryResolver(MagicMock(part_regions=lambda _: []))
+        rows = pa.Table.from_pylist(
+            [
+                {
+                    "catalogue_id": "1 B",
+                    "mint": False,
+                    "match_ra": 10.0,
+                    "match_dec": 0.0,
+                    "match_error": 1.0,
+                }
+            ],
+            schema=MATCH,
+        )
+        candidates = pa.table(
+            {
+                "id": [92],
+                "ra": [10.0],
+                "dec": [0.0],
+                "pos_error": [1.0],
+                "size": pa.array([None], pa.float32()),
+                "mag": pa.array([None], pa.float32()),
+                "kind": [kind],
+            }
+        )
+        return resolver._match(rows, candidates).tolist()
+
+    def test_a_star(self):
+        assert self.matched("star") == [92]
+
+    def test_an_unseen_star_is_out_of_its_reach(self):
+        assert self.matched("unseen star") == [0]
+
+
+class TestPlanets:
+    """A planet under the IAU's line leaves the tree; a circumbinary host."""
+
+    def test_a_planet_that_is_a_star_leaves(self):
         comp = [
             msc_comp("1", "A", HIP=1),
             msc_comp("1", "B", HIP=2),
@@ -691,29 +1382,14 @@ class TestPlanets:
         systems = build(
             Inputs(
                 msc=msc_nodes(comp, pairs, []),
-                planets=planets(
-                    [
-                        {
-                            "host": 90,
-                            "number": 1,
-                            "designation": "X b",
-                            "class": "brown dwarf",
-                            "star_ids": [
-                                {
-                                    "catalogue": "simbad",
-                                    "release": "oid",
-                                    "catalogue_id": "7",
-                                }
-                            ],
-                        }
-                    ]
-                ),
+                planets=planets([record(90, "planet")]),
             ),
             resolver,
         )
         assert shape(systems, 90) == ("binary star", 2, [90, 91])
         assert systems.overlaps["key"].to_pylist() == [92]
         assert systems.overlaps["designation"].to_pylist() == ["X b"]
+        assert systems.overlaps["outcome"].to_pylist() == [LEAVES]
 
     def test_circumbinary_host_is_the_pair(self):
         comp = [msc_comp("1", "A", HIP=1), msc_comp("1", "B", HIP=2)]
@@ -808,6 +1484,8 @@ def joined_groups_text() -> str:
             if isinstance(value, Counter)
             else value.tolist()
             if isinstance(value, np.ndarray)
+            else sorted(value)
+            if isinstance(value, frozenset)
             else value.to_pylist()
             for value in (getattr(systems, f.name) for f in fields(Systems))
         ]
@@ -1859,15 +2537,15 @@ class TestOneStarOfTwoSources:
             ],
         )
         comp = [msc_comp(w, "A", HIP=1), msc_comp(w, letter, Vmag=11.0)]
-        pairs = [msc_pair(w, "A", letter, "*", Sep=2.0, Sunit='"')]
+        pairs = [msc_pair(w, "A", letter, "*", Type="V", Sep=1.0, Sunit='"')]
         if with_c:
             comp.append(msc_comp(w, "C", HIP=2))
             pairs = [
                 msc_pair(w, "AB", "C", "*", Sep=30.0, Sunit='"'),
-                msc_pair(w, "A", letter, "AB", Sep=2.0, Sunit='"'),
+                msc_pair(w, "A", letter, "AB", Type="V", Sep=1.0, Sunit='"'),
             ]
         catalogue = wds_catalogue(
-            {w: [wds_pair("A", "B", 0.2, notes="V", mag1=9.0, mag2=11.0)]},
+            {w: [wds_pair("A", "B", 0.25, notes="V", mag1=9.0, mag2=11.0)]},
             {(w, "A"): wds_component(11, 57.8, 26.35)},
         )
         inputs = Inputs(msc=msc_nodes(comp, pairs, []), wds=catalogue)

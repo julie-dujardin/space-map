@@ -51,6 +51,8 @@ from space_map_data.extrasolar.systems.nodes import (
 logger = logging.getLogger(__name__)
 
 EPOCH = 2000.0
+# The kind of a WDS component in the match.
+COMPONENT_KIND = "star"
 # Matches a WDS component to a stored star by position. G of the registry is
 # about 0.3 mag brighter than V of the WDS.
 WDS_MATCHER = PositionMatcher(
@@ -198,16 +200,20 @@ class WdsCatalogue:
             counts[f"pairs {found or 'physical'}"] += 1
             if found == OPTICAL:
                 continue
-            separation = row["sep_last"]
+            separation, first = row["sep_last"], row["sep_first"]
             if separation is not None and separation >= wds.SEPARATION_OVERFLOW:
                 key = (row["wds_id"], row["discoverer"], labels[1])
                 separation = max(overflow.get(key, [separation]))
+                first = None
+            if first is not None and first >= wds.SEPARATION_OVERFLOW:
+                first = None
             pairs[row["wds_id"]].append(
                 {
                     "primary": labels[0],
                     "secondary": labels[1],
                     "discoverer": row["discoverer"],
                     "separation": separation,
+                    "first_separation": first,
                     "position_angle": row["pa_last"],
                     "mag1": row["mag1"],
                     "mag2": row["mag2"],
@@ -375,6 +381,7 @@ class WdsCatalogue:
                 v_mag=mags.get(label),
                 spectral_type=types.get(label),
                 separation=pair.get("separation"),
+                first_separation=pair.get("first_separation"),
                 position_angle=pair.get("position_angle"),
                 known=node.known,
                 evidence=node.evidence,

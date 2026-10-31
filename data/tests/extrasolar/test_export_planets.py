@@ -181,6 +181,12 @@ class TestPlanetFiles:
         assert lucky["elements"].pop("phase") == expected.pop("phase")
         assert lucky["elements"] == pytest.approx(expected)
 
+    def test_the_star_that_a_record_also_is(self, tmp_path, out):
+        rows = [*PLANETS[:1], {**PLANETS[1], "star": 77}, *PLANETS[2:]]
+        built, _, reader = _export(tmp_path, out, rows)
+        assert reader.planet(built.ids[0], 2)["star"] == 77
+        assert reader.planet(built.ids[0], 1)["star"] is None
+
     def test_marks_the_planets_with_an_entry(self, tmp_path, out):
         item = {"catalogue": "wikidata", "release": "qid", "catalogue_id": "Q1"}
         rows = [

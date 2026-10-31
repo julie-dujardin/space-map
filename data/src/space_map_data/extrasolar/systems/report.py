@@ -142,10 +142,12 @@ def report_lines(
     for row in systems.absorbed.slice(0, examples).to_pylist():
         lines.append(f"  {row['key']} into {row['into']}: {row['evidence']}")
     lines.append(f"circumbinary planets: {systems.hosts.num_rows:,}")
-    lines.append(f"planets that are also stars: {systems.overlaps.num_rows:,}")
+    outcomes = Counter(systems.overlaps["outcome"].to_pylist())
+    lines.append(f"planet records that are also stars: {dict(outcomes)}")
     for row in systems.overlaps.slice(0, examples).to_pylist():
         lines.append(
-            f"  {row['designation']} ({row['class']}): star {row['key']} {row['name']}"
+            f"  {row['designation']} ({row['class']}): star {row['key']}"
+            f" {row['name']}, {row['outcome']}"
         )
     for label, key in targets:
         lines.append(f"{label}:")

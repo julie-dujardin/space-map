@@ -11,7 +11,9 @@ region at a time:
 - the ids of the other catalogues come from one pass over every region,
   kept in memory, since they are few;
 - a position match takes the registry positions of the row's region and its
-  neighbours, with WDS_MATCHER. The ingest runs a pass of the engine instead.
+  neighbours, with WDS_MATCHER and the kind of the rows of the ingest, which
+  runs a pass of the engine instead. It reads no stored `wds/component` link,
+  which the pass keeps.
 """
 
 import logging
@@ -35,7 +37,7 @@ from space_map_data.extrasolar.systems.nodes import GAIA_DR3
 from space_map_data.extrasolar.systems.pairs import ORBIT_COLUMNS, PAIRS, orbit_pairs
 from space_map_data.extrasolar.systems.planets import PLANETS_INPUT, planet_star_ids
 from space_map_data.extrasolar.systems.resolve import FACTS
-from space_map_data.extrasolar.systems.wds import WDS_MATCHER
+from space_map_data.extrasolar.systems.wds import COMPONENT_KIND, WDS_MATCHER
 from space_map_data.extrasolar.tables import CROSS_ID
 from space_map_data.utils.arrays import find_sorted, floats
 
@@ -289,7 +291,7 @@ class RegistryResolver:
             row_error=error[pair_row],
             row_size=np.full(pair_row.size, np.nan),
             row_mag=floats(rows, "match_mag")[pair_row],
-            row_kind=pa.nulls(pair_row.size, pa.string()),
+            row_kind=pa.repeat(pa.scalar(COMPONENT_KIND), pair_row.size),
             key_error=floats(candidates, "pos_error")[pair_cand],
             key_size=floats(candidates, "size")[pair_cand],
             key_mag=floats(candidates, "mag")[pair_cand],

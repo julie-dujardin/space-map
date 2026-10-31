@@ -24,7 +24,7 @@ from space_map_data.extrasolar.sources import wikidata
 from space_map_data.extrasolar.sources.distances import REYLE_2021
 from space_map_data.extrasolar.sources.gaia import GAIA_DR3
 from space_map_data.extrasolar.sources.hipparcos import HIPPARCOS
-from space_map_data.extrasolar.sources.simbad import SIMBAD, SimbadList
+from space_map_data.extrasolar.sources.simbad import SIMBAD, UNSEEN, SimbadList
 from space_map_data.extrasolar.systems import assemble, drawn
 from space_map_data.extrasolar.systems import ingest as systems_ingest
 from space_map_data.extrasolar.systems.msc import msc_nodes
@@ -147,6 +147,7 @@ def inputs(
     el_badry: pa.Table | None = None,
     orbits: pa.Table | None = None,
     catalogue_orbits: pa.Table | None = None,
+    spectral_types: tuple[str | None, str | None] = ("G2V", "K1V"),
 ) -> tuple[Inputs, SimbadIndex]:
     comp = [
         msc_comp("14396-6050", "A", HIP=71683),
@@ -159,7 +160,18 @@ def inputs(
         msc_pair("14396-6050", "AB", "C", "*", Sep=131.0, Sunit="'"),
         msc_pair("14396-6050", "A", "B", "AB", Sep=17.5, Sunit='"'),
         msc_pair("00400+1000", "A", "B", "*", Sep=5.3, Sunit='"'),
-        msc_pair("00400+1000", "Aa", "Ab", "A", Sep=8.0, Sunit="m", P=10, Punit="d"),
+        msc_pair(
+            "00400+1000",
+            "Aa",
+            "Ab",
+            "A",
+            Sep=8.0,
+            Sunit="m",
+            P=10,
+            Punit="d",
+            SP1=spectral_types[0],
+            SP2=spectral_types[1],
+        ),
     ]
     index = simbad_index(
         [
@@ -193,12 +205,15 @@ def ingest(
     passes: tuple[tuple[Source, Callable[[IngestRun], pa.Table]], ...] = (),
     items: tuple[StarItem, ...] = (),
     item_simbad: SimbadList | None = None,
+    record: dict | None = None,
+    max_retired: int | None = None,
     **more,
 ) -> tuple[systems_ingest.SystemsExtension, str]:
     """An ingest of `stars`, with a P-type planet of `host`, the SIMBAD rows
     `simbad` (oid → ra, dec, V), the Gaia DR3 rows `gaia`, the rows of
     `passes` and, after the systems, the Wikidata `items`. `item_simbad`
-    stands in for the SIMBAD list of the items. `more` goes to `inputs`."""
+    stands in for the SIMBAD list of the items. `record` replaces values of
+    the planet. `more` goes to `inputs`."""
     with IngestRun.start(root, root / "backup") as run:
         if gaia:
             run.add(GAIA_DR3, [gaia_rows(run, gaia)])
@@ -220,7 +235,8 @@ def ingest(
                 "period": [400.0],
                 "binary_type": [P_TYPE],
                 "star_ids": [None],
-            },
+            }
+            | (record or {}),
             schema=PLANETS_INPUT,
         )
         found, index = inputs(planets, **more)
@@ -233,7 +249,7 @@ def ingest(
             )
             extension.items_placed(lines)
             run.add(wikidata.WIKIDATA, [rows])
-        result = run.commit()
+        result = run.commit(max_retired=max_retired)
     return extension, result.report
 
 
@@ -276,6 +292,7 @@ def simbad_rows(run: IngestRun, objects: dict) -> pa.Table:
             "match_ra": ra,
             "match_dec": dec,
             "match_mag": mag,
+            "match_kind": ["star" if m is not None else UNSEEN for m in mag],
             "match_error": [0.01] * len(oids),
             "ra": ra,
             "dec": dec,
@@ -349,7 +366,8 @@ class TestSystemsIngest:
             assert row["depth"] == system[p1]["depth"] + 1
             assert row["label"] == member["letter"] and row["members"] == []
             assert row["distance"] == system[p1]["distance"] > 0
-            # Their letters make them held stars; the MSC gives no values.
+            # Their spectral types make them held stars.
+            assert row["star"]["spectral_type"] in ("G2V", "K1V")
             assert row["star"]["mass"] is None and row["star"]["references"] == []
         root = system[system[p1]["root"]]
         tree = {entry["id"]: entry for entry in root["tree"]}
@@ -610,14 +628,10 @@ class TestUnmintedObjects:
         registry, _, report, _ = unminted_two
         (a,) = ids_of(registry, ["1009"])
         node = node_of(table(registry, SYSTEM.slug), a)
-        held = sorted(
-            (m["letter"], table_of(m["id"]))
-            for m in node["members"]
-            if m["kind"] == "held star"
-        )
-        # B matches a Gaia row that gets no ID, and C matches nothing. Each has
-        # its letter, so it is a held star.
-        assert held == [("B", SYSTEM_TABLE), ("C", SYSTEM_TABLE)]
+        # B matches a Gaia row that gets no ID, and C matches nothing. A letter
+        # alone earns no ID.
+        lines = sorted((m["letter"], m["kind"], m["id"]) for m in node["members"])
+        assert lines[1:] == [("B", "entry", None), ("C", "entry", None)]
         found = registry.lookup("wds", "component", ["06000+3000 B", "06000+3000 C"])
         assert found.tolist() == [0, 0]
         # Two minted objects of the first pair, and A here.
@@ -628,10 +642,10 @@ class TestUnmintedObjects:
         (a,) = ids_of(registry, ["1008"])
         system = table(registry, SYSTEM.slug)
         node = node_of(system, a)
-        # B holds a Gaia orbit, but its object gets no ID: B is a held star.
-        (entry,) = [m for m in node["members"] if m["kind"] == "held star"]
+        # B holds a Gaia orbit, but its object gets no ID: B is an entry.
+        (entry,) = [m for m in node["members"] if m["kind"] == "entry"]
         assert ("gaia", "dr3", str(GAIA["orbit"])) in entry_ids(entry)
-        assert sorted(m["kind"] for m in node["members"]) == ["held star", "star"]
+        assert sorted(m["kind"] for m in node["members"]) == ["entry", "star"]
         assert system.filter(system["point"])["id"].to_pylist() == ids_of(
             registry, ["1001"]
         )
@@ -666,9 +680,9 @@ class TestUnmintedObjects:
             )
 
         # The El-Badry star has no value of its own; B of the orbit and of
-        # the WDS have their letters.
+        # the WDS have only their letters.
         kinds = sorted(kind for _, _, kind, _ in entries(first))
-        assert kinds == ["entry", "held star", "held star"]
+        assert kinds == ["entry", "entry", "entry"]
         assert entries(second) == entries(first)
 
 
@@ -794,6 +808,93 @@ class TestRunReads:
             resolver = systems_ingest.RunResolver(run, True)
             with pytest.raises(ValueError, match="no links of gcvs/name"):
                 resolver.keys("gcvs", "name", pa.array(["V1"]))
+
+
+class TestLettersAlone:
+    """A held star that a later ingest knows only by its letter."""
+
+    def test_it_retires_and_its_line_stays(self, tmp_path):
+        root = tmp_path / "registry"
+        ingest(root)
+        registry = Registry(root)
+        (p1,) = ids_of(registry, ["1001"])
+        system = {row["id"]: row for row in table(registry, SYSTEM.slug).to_pylist()}
+        retired = [m["id"] for m in system[p1]["members"]]
+        _, report = ingest(root, spectral_types=(None, None), max_retired=2)
+        registry = Registry(root)
+        system = {row["id"]: row for row in table(registry, SYSTEM.slug).to_pylist()}
+        members = system[p1]["members"]
+        assert [(m["letter"], m["kind"], m["id"]) for m in members] == [
+            ("Aa", "entry", None),
+            ("Ab", "entry", None),
+        ]
+        assert not set(retired) & set(system)
+        assert "held star IDs: minted 0, kept 0" in report
+        assert "retired or merged 2" in report
+
+
+class TestBrownDwarfRecord:
+    """CD-35 2722 B, as an ingest sees it: SIMBAD lists it with no magnitude,
+    so the WDS component of B cannot match it by position."""
+
+    W = "04400+2000"
+
+    @pytest.fixture
+    def done(self, tmp_path):
+        root = tmp_path / "registry"
+        b = offset(70.0, 20.0, 2.9, 90.0)
+        extension, report = ingest(
+            root,
+            stars=STARS | {"1010": (70.0, 20.0, 8.0, 10.0, 0.2)},
+            host="1010",
+            record={
+                "designation": ["X b"],
+                "class": ["brown dwarf"],
+                "mass": [33.5],
+                "binary_type": [None],
+                "star_ids": [[dict(zip(CROSS_ID.names, ("simbad", "oid", "7")))]],
+            },
+            simbad={"7": (70.0, 20.0, None)},
+            wds_systems=WDS_SYSTEMS
+            | {
+                self.W: [
+                    wds_pair("A", "B", 2.9, mag1=8.0, mag2=19.0, position_angle=90.0)
+                ]
+            },
+            wds_components=WDS_COMPONENTS
+            | {
+                (self.W, "A"): wds_component(ra=70.0, dec=20.0),
+                (self.W, "B"): wds_component(ra=b[0], dec=b[1]),
+            },
+        )
+        return Registry(root), extension, report
+
+    def test_the_match_does_not_reach_it(self, done):
+        registry, _, _ = done
+        assert registry.lookup("wds", "component", [f"{self.W} B"]).tolist() == [0]
+
+    def test_its_slot_holds_its_star(self, done):
+        registry, _, _ = done
+        (host,) = ids_of(registry, ["1010"])
+        (star,) = registry.lookup("simbad", "oid", ["7"]).tolist()
+        node = node_of(table(registry, SYSTEM.slug), host)
+        assert [(m["letter"], m["kind"], m["id"]) for m in node["members"]] == [
+            ("A", "star", host),
+            ("B", "star", star),
+        ]
+
+    def test_the_two_link_each_other(self, done):
+        registry, extension, report = done
+        (star,) = registry.lookup("simbad", "oid", ["7"]).tolist()
+        assert extension.star(0) == star
+        assert "brown dwarf records linked to their star: 1" in report
+
+    def test_a_planet_of_the_star_goes_to_its_system(self, done):
+        """Its planets go to the file of the system, as the host's."""
+        registry, extension, _ = done
+        (host,) = ids_of(registry, ["1010"])
+        (star,) = registry.lookup("simbad", "oid", ["7"]).tolist()
+        assert extension.root(star) == extension.root(host) != 0
 
 
 class TestSystemObjectBecomesARow:
@@ -1252,8 +1353,8 @@ class TestComponentOnItsPairsPoint:
             assert system[int(key)]["point"] and system[int(key)]["stars"] == 2
             members = system[int(key)]["members"]
             assert [(m["letter"], m["kind"]) for m in members] == [
-                ("A", "held star"),
-                ("B", "held star"),
+                ("A", "entry"),
+                ("B", "entry"),
             ]
             (wds,) = [
                 s for s in registry.ingests[-1]["sources"] if s["catalogue"] == "wds"

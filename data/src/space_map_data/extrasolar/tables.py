@@ -204,6 +204,8 @@ METADATA = TableDef(
         # The root of the ID's star system. Null for a root and for an ID in
         # no system.
         pa.field("system", pa.int64()),
+        # The planet records that the star also is, as "<host>/b/<number>".
+        pa.field("planets", pa.list_(pa.string())),
         pa.field("cross_ids", pa.list_(CROSS_ID)),
         # Bit n is set when data table n has a row for the ID.
         pa.field("mask", pa.uint32()),
@@ -875,7 +877,8 @@ SYSTEM_ORBIT = pa.struct(
     ]
 )
 # The values of a held star, each with its source: solar masses, nominal
-# solar radii, K.
+# solar radii, K. V and G are its member's, in mag: the export reads them for
+# the star families, which should not read every member.
 SYSTEM_STAR = pa.struct(
     [
         pa.field("mass", pa.float32()),
@@ -887,6 +890,8 @@ SYSTEM_STAR = pa.struct(
         pa.field("spectral_type", pa.string()),
         pa.field("spectral_type_source", pa.string()),
         pa.field("references", pa.list_(REFERENCE)),
+        pa.field("v_mag", pa.float32()),
+        pa.field("g_mag", pa.float32()),
     ]
 )
 # A node of a whole system, in the root's row.

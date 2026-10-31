@@ -12,7 +12,8 @@ Files, JSON in gzip:
 - planets/{system}.json.gz: the hosts and the planets of one system, with
   each planet's orbit in the scene's frame (`orbits`), its catalogue values
   and its families (`families`, `families_estimated`). A host and a planet
-  have the names of their pages (`name`, `names`, from `export.names`).
+  have the names of their pages (`name`, `names`, from `export.names`), and
+  a brown dwarf the star that it also is (`star`).
 
 Every file has the token of the section in its `token` field. The token
 hashes each file with 16 zeros in that field, as for the sky cultures.
@@ -81,6 +82,7 @@ EXAMPLES = 10
 
 KEY_COLUMNS = ("host", "number", "system")
 TOP_COLUMNS = (
+    "star",
     "name",
     "name_source",
     "designation",

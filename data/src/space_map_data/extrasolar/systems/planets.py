@@ -10,8 +10,9 @@ ids only: its rows in the catalogues, its Gaia DR3 id, HIP number and SIMBAD
 object.
 
 PLANETS is the planets table as the builder reads it. `star_ids` are the ids
-under which the planet is also a star of a star catalogue: its SIMBAD object
-when that is not of a planet type, and that object's Gaia DR3 id.
+under which the planet is also a star: its SIMBAD object when that is typed a
+brown dwarf, that object's Gaia DR3 id, and the star of its own name in its
+planet catalogue. A catalogue can list two stars as each other's planets.
 """
 
 import gzip
@@ -220,6 +221,7 @@ def planet_star_ids(
     """The star ids of a planet from its (catalogue, name) pairs."""
     found: list[tuple[str, str, str]] = []
     for catalogue, name in names:
+        found.append((catalogue, RELEASE[catalogue], name))
         source, _, table = TABLES[catalogue]
         by = hub.resolved.get((source, table, "planet", name), {})
         for oid in sorted(by.get(provider_names.PRINTED, {})):

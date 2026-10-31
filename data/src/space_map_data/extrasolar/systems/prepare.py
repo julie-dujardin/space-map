@@ -2,11 +2,16 @@
 
 1. Each node of a tree source takes its candidate objects (`resolve`). A WDS
    component with no candidate takes the object of the MSC component of the
-   same WDS id and letter, and the other way round. A WDS component that still
-   has none goes to `Resolver.match` by position. It never takes the object
-   of a node above it, or of another node of its WDS system near it.
-2. A planet that is also a star of a star catalogue stays a planet: its
-   object leaves every tree.
+   same WDS id and letter, and the other way round, when their separations
+   agree. Separations that disagree make them two stars (`Reduced.two_stars`).
+   A WDS component that still has none goes to `Resolver.match` by position.
+   It never takes the object of a node above it, or of another node of its
+   WDS system near it.
+2. A planet record that is also a star of a star catalogue stays a record of
+   its host. Under the IAU's line its object leaves every tree, and no other
+   record brings it back. A brown dwarf is a member of its system too
+   (`Overlap`): its star takes the component of the MSC and the WDS that lies
+   where it lies from its host, and the record and the star link each other.
 3. Each source's trees become groups of points and interiors (`reduce`). El-
    Badry's pairs become groups of two points, and the parallax veto of the
    trees applies to them too. A close pair can throw off the astrometry of a
@@ -15,8 +20,10 @@
    whose companion is a planet is no interior.
 4. A SIMBAD component inside the light of another point joins that point,
    in every source.
-5. The groups merge into one tree per system (`merge`).
-6. Each point takes the interior of its first source. A point that SIMBAD
+5. A brown dwarf that no tree places joins the outermost group of its host,
+   or its host joins its own and goes first. With no group, the two make one.
+6. The groups merge into one tree per system (`merge`).
+7. Each point takes the interior of its first source. A point that SIMBAD
    types as a close pair, with no interior and no companion in its system
    near enough to explain the type, holds two stars.
 """
@@ -30,6 +37,7 @@ import numpy as np
 import pyarrow as pa
 import pyarrow.compute as pc
 
+from space_map_data.extrasolar.exoplanets.iau import BROWN_DWARF
 from space_map_data.extrasolar.sky import position_angle
 from space_map_data.extrasolar.sky import separation as sky_separation
 from space_map_data.extrasolar.sources.hipparcos import to_gaia_epoch
@@ -41,15 +49,19 @@ from space_map_data.extrasolar.systems.nodes import (
     INTERIOR_SOURCES,
     MSC,
     MSC_ID,
+    PLANETS,
+    PROPER_MOTION,
     SIMBAD_OID,
     SIMBAD_TYPE,
     WDS,
     WDS_ID,
 )
-from space_map_data.extrasolar.systems.parallax import parallaxes_disagree
+from space_map_data.extrasolar.systems.parallax import disagree, parallaxes_disagree
 from space_map_data.extrasolar.systems.reduce import (
     POINT,
+    Group,
     Interior,
+    Member,
     Reduced,
     TreeReducer,
 )
@@ -91,6 +103,12 @@ PERIOD_TOLERANCE = 0.05
 # Arcsec, for the position of a WDS component.
 WDS_POSITION_ERROR = 1.0
 VALUE_BLOCK = 1 << 40
+# The largest ratio between an MSC separation and the WDS measures of its
+# letter. An orbit moves a pair, and the MSC can give the semi-major axis.
+MOVING_RATIO = 5.0
+# The same for a pair that the MSC knows only by proper motion. Such a pair
+# shows no orbital motion.
+FIXED_RATIO = 1.5
 
 
 @dataclass
@@ -116,6 +134,22 @@ class Inputs:
     catalogue_stars: pa.Table | None = None
 
 
+# What happens to the star of a planet record.
+LEAVES, MEMBER, APART = "leaves the trees", "member", "at another distance"
+HOST_LEFT = "its host left the trees"
+
+
+@dataclass
+class Overlap:
+    """A planet record that is also a star other than its host."""
+
+    # The row of `Inputs.planets`.
+    record: int
+    host: int
+    key: int
+    outcome: str
+
+
 def _rank(source: str) -> int:
     return INTERIOR_SOURCES.index(source)
 
@@ -127,16 +161,38 @@ def _ids_by_row(table: pa.Table, kind: tuple[str, str]) -> dict[int, str]:
     return dict(zip(rows[picked].tolist(), value.filter(pa.array(picked)).to_pylist()))
 
 
+def separations_agree(
+    separation: float | None,
+    measures: tuple[float | None, float | None],
+    known: list[str] | None,
+) -> bool | None:
+    """Whether an MSC component and a WDS component of one letter can be one
+    star, from the MSC separation and the first and last WDS measures. None
+    when a side has no separation.
+
+    The WDS gives -1 for no measure and 0 for a pair too close to measure.
+    """
+    wds = [value for value in measures if value is not None and value > 0]
+    if not separation or not wds:
+        return None
+    ratio = FIXED_RATIO if known == [PROPER_MOTION] else MOVING_RATIO
+    return min(wds) / ratio <= separation <= max(wds) * ratio
+
+
 def letter_links(
     msc: pa.Table | None,
     wds: pa.Table | None,
     found: dict[str, list[list[tuple[int, int]]]],
+    reduced: Reduced,
 ) -> dict[tuple[str, str, str], tuple[int, int]]:
     """Links between the MSC and WDS components of one WDS id and letter.
 
-    Each takes the other's best candidate as a candidate of its own, below
-    its own ids. A WDS component lends none when its Gaia id is on another
-    letter of its WDS id too.
+    The two catalogues do not share letters, so a link needs the separations
+    to agree (`separations_agree`). A component with no separation links by
+    the letter alone. Each takes the other's best candidate as a candidate of
+    its own, below its own ids. A WDS component lends none when its Gaia id is
+    on another letter of its WDS id too. Ids whose separations disagree go in
+    `reduced.two_stars`, also with no candidate to lend.
     """
     links: dict[tuple[str, str, str], tuple[int, int]] = {}
     if msc is None or wds is None:
@@ -147,17 +203,34 @@ def letter_links(
     systems = wds["system"].to_pylist()
     repeated = Counter((systems[row], value) for row, value in gaia.items())
     msc_by = {text: row for row, text in msc_ids.items()}
+    msc_separation = msc["separation"].to_pylist()
+    msc_known = msc["known"].to_pylist()
+    last = wds["separation"].to_pylist()
+    first = wds["first_separation"].to_pylist()
     for row, text in wds_ids.items():
         other = msc_by.get(text)
         if other is None:
             continue
+        measures = (first[row], last[row])
+        agree = separations_agree(msc_separation[other], measures, msc_known[other])
+        if agree is False:
+            reduced.two_stars.add(text)
+            reduced.counts[f"{WDS}: letter links that the separations refute"] += 1
+            apart = f'MSC {msc_separation[other]}", WDS {first[row]}" to {last[row]}"'
+            reduced.events.append(("letters of two stars", WDS, f"{text}: {apart}"))
+            continue
         mine, theirs = found[WDS][row], found[MSC][other]
-        if theirs:
-            links[(*WDS_ID, text)] = (theirs[0][0], LETTER)
         # A Gaia id on several letters is the light of a close pair.
         source = gaia.get(row)
         shared = source is not None and repeated[(systems[row], source)] > 1
-        if mine and not shared:
+        lent = bool(mine) and not shared
+        if not theirs and not lent:
+            continue
+        if agree is None:
+            reduced.counts[f"{WDS}: letter links with no separation to test"] += 1
+        if theirs:
+            links[(*WDS_ID, text)] = (theirs[0][0], LETTER)
+        if lent:
             links[(*MSC_ID, msc_ids[other])] = (mine[0][0], LETTER)
     return links
 
@@ -253,6 +326,289 @@ def pair_keys(pairs: pa.Table, resolver: Resolver) -> tuple[np.ndarray, np.ndarr
     return out[0], out[1]
 
 
+def planet_overlaps(planets: pa.Table | None, resolver: Resolver) -> list[Overlap]:
+    """The planet records that are also a star other than their host, once per
+    record and star. A record under the IAU's line leaves the trees."""
+    if planets is None or not planets.num_rows:
+        return []
+    rows, catalogue, release, value = flatten_ids(planets, "star_ids")
+    ids = list(zip(catalogue.to_pylist(), release.to_pylist(), value.to_pylist()))
+    wanted: dict[tuple[str, str], set[str]] = defaultdict(set)
+    for c, r, v in ids:
+        wanted[(c, r)].add(v)
+    keys = resolve_ids(resolver, wanted)
+    hosts = planets["host"].to_pylist()
+    classes = planets["class"].to_pylist()
+    found: dict[tuple[int, int], Overlap] = {}
+    for row, item in zip(rows.tolist(), ids):
+        key = keys.get(item)
+        if key and key != hosts[row]:
+            member = classes[row] == BROWN_DWARF and hosts[row]
+            outcome = MEMBER if member else LEAVES
+            found.setdefault((row, key), Overlap(row, hosts[row], key, outcome))
+    return list(found.values())
+
+
+def _leaving(overlaps: list[Overlap], reduced: Reduced) -> frozenset[int]:
+    """The stars that leave the trees. No record brings one back: a star that
+    leaves is no member, and a host that leaves has no members."""
+    dropped = frozenset(item.key for item in overlaps if item.outcome == LEAVES)
+    for item in overlaps:
+        if item.outcome != MEMBER or not dropped & {item.key, item.host}:
+            continue
+        item.outcome = LEAVES if item.key in dropped else HOST_LEFT
+        reduced.counts[f"{PLANETS}: brown dwarfs out with a star that leaves"] += 1
+        reduced.events.append(
+            (
+                "brown dwarf out with a star that leaves",
+                PLANETS,
+                f"{item.key} of {item.host}: {item.outcome}",
+            )
+        )
+    return dropped
+
+
+def _keep_near(
+    overlaps: list[Overlap], facts: Facts, close: frozenset[int], reduced: Reduced
+) -> None:
+    """Parallaxes that clearly disagree show a wrong id: such a star stays as
+    it is, out of its record's system and with no link. A point of `close` can
+    hold a close pair, which throws off its astrometry."""
+    for item in overlaps:
+        host, star = facts.get(item.host), facts.get(item.key)
+        if item.outcome != MEMBER or host is None or star is None:
+            continue
+        if disagree(host, star) and not close & {item.host, item.key}:
+            item.outcome = APART
+            reduced.counts[f"{PLANETS}: brown dwarfs at another distance"] += 1
+            reduced.events.append(
+                (
+                    "brown dwarf at another distance",
+                    PLANETS,
+                    (
+                        f"{star.key} {star.parallax:.3f}"
+                        f" ± {star.parallax_error:.3f} mas, host {host.key}"
+                        f" {host.parallax:.3f} ± {host.parallax_error:.3f} mas"
+                    ),
+                )
+            )
+
+
+def _places_apart(
+    apart: float, towards: float, separation: np.ndarray, angle: np.ndarray
+) -> np.ndarray:
+    """Arcsec between a place and each of `separation` and `angle`, all from
+    one star. The catalogues can swap the two stars of a pair, and with no
+    angle only the separations compare."""
+    turn = np.abs(np.cos(np.radians(angle - towards)))
+    found = apart**2 + separation**2 - 2 * apart * separation * turn
+    return np.where(
+        np.isfinite(angle), np.sqrt(np.maximum(found, 0)), np.abs(apart - separation)
+    )
+
+
+def _from_host(
+    rows: list[int],
+    parent: np.ndarray,
+    found: list[list[tuple[int, int]]],
+    host: int,
+) -> list[int]:
+    """The rows of a system that give their place from the host: their pair's
+    primary holds it, or their parent is its point."""
+    holds = set()
+    first: dict[int, int] = {}
+    for row in rows:
+        first.setdefault(int(parent[row]), row)
+        if any(key == host for key, _ in found[row]):
+            while row >= 0 and row not in holds:
+                holds.add(row)
+                row = int(parent[row])
+    return [
+        row
+        for row in rows
+        if parent[row] >= 0
+        and (
+            first[int(parent[row])] in holds
+            or any(key == host for key, _ in found[int(parent[row])])
+        )
+    ]
+
+
+def member_links(
+    table: pa.Table,
+    kind: tuple[str, str],
+    found: list[list[tuple[int, int]]],
+    overlaps: list[Overlap],
+    facts: Facts,
+    reduced: Reduced,
+) -> dict[tuple[str, str, str], tuple[int, int]]:
+    """The component that each brown dwarf is: the row of a system of its host
+    with no object at or below it that lies nearest, within the match radius.
+
+    A row gives its place from its primary, which holds up for a star that
+    moves, as a WDS companion has no proper motion. A row with no measure
+    gives no place. The match reaches no star that SIMBAD lists with no
+    magnitude, and the record shows that this star belongs here. A row with
+    its object in the host's place takes the host down to its first child
+    when that child is free, so the two are members side by side.
+    """
+    members = [item for item in overlaps if item.outcome == MEMBER]
+    links: dict[tuple[str, str, str], tuple[int, int]] = {}
+    if not members:
+        return links
+    of_key: dict[int, set[str]] = defaultdict(set)
+    rows_of: dict[str, list[int]] = defaultdict(list)
+    parent = table["parent"].to_numpy()
+    held = np.zeros(table.num_rows, bool)
+    for row, (text, items) in enumerate(zip(table["system"].to_pylist(), found)):
+        system = text.split(" ")[0]
+        rows_of[system].append(row)
+        for key, _ in items:
+            of_key[key].add(system)
+        while items and row >= 0 and not held[row]:
+            held[row] = True
+            row = int(parent[row])
+    ids = _ids_by_row(table, kind)
+    labels = table["label"].to_pylist()
+    separation = table["separation"].fill_null(np.nan).to_numpy()
+    angle = table["position_angle"].cast(pa.float64()).fill_null(np.nan).to_numpy()
+    radius = float(WDS_MATCHER.radius(np.array([WDS_POSITION_ERROR]), np.zeros(1))[0])
+    for item in members:
+        host, star = facts.get(item.host), facts.get(item.key)
+        if host is None or star is None:
+            continue
+        apart, towards = offset(host, star)
+        for system in sorted(of_key[item.host] - of_key[item.key]):
+            rows = [r for r in rows_of[system] if r in ids]
+            free = np.array(
+                [
+                    r
+                    for r in _from_host(rows, parent, found, item.host)
+                    if not held[r] and separation[r] > 0
+                ],
+                np.int64,
+            )
+            miss = _places_apart(apart, towards, separation[free], angle[free])
+            near = np.flatnonzero(miss <= radius)
+            if not near.size:
+                continue
+            row = int(free[near[np.argmin(miss[near])]])
+            held[row] = True
+            of_key[item.key].add(system)
+            links[(*kind, ids[row])] = (item.key, POSITION)
+            reduced.counts[f"{PLANETS}: brown dwarfs that take a component"] += 1
+            reduced.events.append(
+                (
+                    "brown dwarf takes a component",
+                    PLANETS,
+                    (
+                        f"{ids[row]} ({labels[row]}, {separation[row]}\u2033) is"
+                        f" {item.key}, {apart:.1f}\u2033 from {item.host}, off by"
+                        f" {miss[near].min():.1f}\u2033"
+                    ),
+                )
+            )
+            above = int(parent[row])
+            first = next(r for r in rows if parent[r] == above)
+            if not held[first] and any(key == item.host for key, _ in found[above]):
+                held[first] = True
+                links[(*kind, ids[first])] = (item.host, POSITION)
+    return links
+
+
+def _outermost(groups: list[Group]) -> Group | None:
+    """The outermost of the groups of a point, in the order of `reduced.groups`,
+    which `merge` keeps: a group that crosses an earlier one leaves."""
+    top = None
+    for group in sorted(groups, key=lambda g: g.rank):
+        if top is None or group.keys >= top.keys:
+            top = group
+    return top
+
+
+def _add_point(group: Group, key: int, partners: set[int], first: bool) -> None:
+    """Add a point to a group. Its El-Badry partners join the group's set, as
+    the pair would cross it and leave them out."""
+    group.keys = group.keys | ({key} | partners) - {0}
+    group.members.insert(0 if first else len(group.members), Member(POINT, key=key))
+
+
+def _host_first(groups: list[Group], host: int, key: int) -> None:
+    """A group's own point comes after its members, but a brown dwarf is not
+    its system's primary."""
+    for group in groups:
+        keys = [m.key if m.kind == POINT else 0 for m in group.members]
+        if host in keys and key in keys and keys.index(key) < keys.index(host):
+            first, second = keys.index(key), keys.index(host)
+            members = group.members
+            members[first], members[second] = members[second], members[first]
+
+
+def join_members(
+    reduced: Reduced,
+    overlaps: list[Overlap],
+    pairs: tuple[np.ndarray, np.ndarray],
+) -> None:
+    """Put each brown dwarf that no tree places in the system of its host. No
+    tree gives it a level, so it joins at the top: a set of its own would
+    cross the sets of the system. `pairs` are the El-Badry pairs that stay."""
+    members = [item for item in overlaps if item.outcome == MEMBER]
+    hosts = {item.host for item in members}
+    wanted = hosts | {item.key for item in members}
+    groups: dict[int, list[Group]] = defaultdict(list)
+    for group in reduced.groups:
+        for key in group.keys & wanted:
+            groups[key].append(group)
+    partners: dict[int, set[int]] = defaultdict(set)
+    first, second = pairs
+    hit = np.isin(first, list(wanted)) | np.isin(second, list(wanted))
+    for a, b in zip(first[hit].tolist(), second[hit].tolist()):
+        partners[a].add(b)
+        partners[b].add(a)
+    for item in members:
+        host, key = item.host, item.key
+        top, own = _outermost(groups[host]), _outermost(groups[key])
+        group = top or own
+        if top is not None and key in top.keys:
+            if key not in hosts:
+                _host_first(groups[key], host, key)
+            continue
+        if group is None:
+            if key in partners[host]:
+                continue
+            group = Group(
+                PLANETS,
+                _rank(PLANETS),
+                f"{host}+{key}",
+                -1,
+                frozenset(({host, key} | partners[host] | partners[key]) - {0}),
+                [Member(POINT, key=host), Member(POINT, key=key)],
+            )
+            reduced.groups.append(group)
+            groups[host].append(group)
+            groups[key].append(group)
+        elif top is not None and own is not None:
+            reduced.counts[f"{PLANETS}: brown dwarfs in another system"] += 1
+            reduced.events.append(
+                (
+                    "brown dwarf in another system",
+                    PLANETS,
+                    (
+                        f"{key} is in {own.source} {own.system}, its host {host}"
+                        f" in {top.source} {top.system}"
+                    ),
+                )
+            )
+            continue
+        else:
+            joining = host if top is None else key
+            # A brown dwarf is not its system's primary.
+            first = joining == host and key not in hosts
+            _add_point(group, joining, partners[joining], first)
+            groups[joining].append(group)
+        reduced.counts[f"{PLANETS}: brown dwarfs that join by their record"] += 1
+
+
 def planet_periods(planets: pa.Table | None) -> dict[int, list[float]]:
     found: dict[int, list[float]] = defaultdict(list)
     if planets is None:
@@ -261,6 +617,10 @@ def planet_periods(planets: pa.Table | None) -> dict[int, list[float]]:
         if host and period:
             found[host].append(period)
     return found
+
+
+def same_period(first: float, second: float) -> bool:
+    return abs(first - second) / max(first, second) < PERIOD_TOLERANCE
 
 
 def orbit_interiors(
@@ -278,7 +638,7 @@ def orbit_interiors(
     planet = np.zeros(keys.size, bool)
     for at in np.flatnonzero(keep).tolist():
         for found in periods.get(int(keys[at]), []):
-            if abs(found - period[at]) / max(found, period[at]) < PERIOD_TOLERANCE:
+            if same_period(found, period[at]):
                 planet[at] = True
     reduced.counts[f"{GAIA_ORBITS}: orbits of no object"] += int((~keep).sum())
     reduced.counts[f"{GAIA_ORBITS}: companions that are listed planets"] += int(
@@ -332,7 +692,8 @@ class Prepared:
     orbit_keys: np.ndarray
     orbit_kept: np.ndarray
     close: dict[int, str]
-    dropped: dict[int, str]
+    dropped: frozenset[int]
+    overlaps: list[Overlap]
     counts: Counter
 
 
@@ -347,31 +708,17 @@ def prepare(inputs: Inputs, resolver: Resolver) -> Prepared:
         counts[f"{table['source'][0].as_py()}: nodes"] = table.num_rows
     index = inputs.simbad_index or SimbadIndex.empty()
 
-    # Planets that are stars of a star catalogue leave the trees.
-    dropped: dict[int, str] = {}
-    if inputs.planets is not None and inputs.planets.num_rows:
-        rows, catalogue, release, value = flatten_ids(inputs.planets, "star_ids")
-        wanted: dict[tuple[str, str], set[str]] = defaultdict(set)
-        for c, r, v in zip(
-            catalogue.to_pylist(), release.to_pylist(), value.to_pylist()
-        ):
-            wanted[(c, r)].add(v)
-        keys = resolve_ids(resolver, wanted)
-        names = inputs.planets["designation"].to_pylist()
-        hosts = inputs.planets["host"].to_pylist()
-        for row, c, r, v in zip(
-            rows.tolist(), catalogue.to_pylist(), release.to_pylist(), value.to_pylist()
-        ):
-            key = keys.get((c, r, v))
-            if key and key != hosts[row]:
-                dropped.setdefault(key, names[row])
+    overlaps = planet_overlaps(inputs.planets, resolver)
 
     by_source = {table["source"][0].as_py(): table for table in trees}
     found_lists, reach_lists = candidates(trees, resolver, index, {})
     found = dict(zip(by_source, found_lists))
     reach = dict(zip(by_source, reach_lists))
+    reduced = Reduced()
     _add_links(
-        trees, found, letter_links(by_source.get(MSC), by_source.get(WDS), found)
+        trees,
+        found,
+        letter_links(by_source.get(MSC), by_source.get(WDS), found, reduced),
     )
     if WDS in by_source:
         rows = match_rows(by_source[WDS], found[WDS])
@@ -393,7 +740,8 @@ def prepare(inputs: Inputs, resolver: Resolver) -> Prepared:
     close = close_type_keys(inputs.simbad_index, resolver)
 
     wanted_keys = {k for items in found.values() for row in items for k, _ in row}
-    wanted_keys |= set(close) | set(dropped)
+    wanted_keys |= set(close)
+    wanted_keys |= {key for item in overlaps for key in (item.host, item.key)}
     if inputs.planets is not None:
         wanted_keys |= set(inputs.planets["host"].to_pylist())
     every = np.unique(
@@ -408,14 +756,20 @@ def prepare(inputs: Inputs, resolver: Resolver) -> Prepared:
     facts = Facts(resolver.facts(every[every != 0]))
     logger.info("systems: facts of %d objects", len(facts))
 
-    reduced = Reduced()
-    dropped_keys = frozenset(dropped)
+    dropped = _leaving(overlaps, reduced)
     periods = planet_periods(inputs.planets)
     orbit_kept = np.zeros(orbit_keys.size, bool)
     if inputs.orbits is not None:
         orbit_kept = orbit_interiors(inputs.orbits, orbit_keys, periods, reduced)
-        orbit_kept &= ~np.isin(orbit_keys, list(dropped_keys))
+        orbit_kept &= ~np.isin(orbit_keys, list(dropped))
     close_keys = np.array(sorted(close), np.int64)
+    close_points = _close_pairs(orbit_keys[orbit_kept], close_keys)
+    _keep_near(overlaps, facts, close_points, reduced)
+    for source, kind in ((MSC, MSC_ID), (WDS, WDS_ID)):
+        if source in by_source:
+            table, rows = by_source[source], found[source]
+            links = member_links(table, kind, rows, overlaps, facts, reduced)
+            _add_links(trees, found, links)
     offsets = []
     block = 0
     for table in trees:
@@ -428,8 +782,8 @@ def prepare(inputs: Inputs, resolver: Resolver) -> Prepared:
             facts,
             block,
             reduced,
-            dropped_keys,
-            _close_pairs(orbit_keys[orbit_kept], close_keys),
+            dropped,
+            close_points,
             reach[source],
         ).run()
         block += VALUE_BLOCK
@@ -438,13 +792,18 @@ def prepare(inputs: Inputs, resolver: Resolver) -> Prepared:
     el_keys = (_mapped(el_keys[0], remap), _mapped(el_keys[1], remap))
     orbit_keys = _mapped(orbit_keys, remap)
     for side in el_keys:
-        side[np.isin(side, list(dropped_keys))] = 0
+        side[np.isin(side, list(dropped))] = 0
+    for item in overlaps:
+        item.host = remap.get(item.host, item.host)
+        item.key = remap.get(item.key, item.key)
+    overlaps = [item for item in overlaps if item.host != item.key]
     exempt = _close_pairs(orbit_keys[orbit_kept], _mapped(close_keys, remap))
     exempt |= {interior.key for interior in reduced.interiors}
     vetoed = vetoed_pairs(facts, *el_keys, exempt)
     counts[f"{EL_BADRY}: pairs that the parallaxes veto"] = int(vetoed.sum())
     if inputs.el_badry is not None:
         _veto_events(facts, inputs.el_badry, el_keys, vetoed, reduced)
+    join_members(reduced, overlaps, (el_keys[0][~vetoed], el_keys[1][~vetoed]))
     sets, origin = _set_table(reduced, inputs.el_badry, el_keys, vetoed, counts)
     counts.update(reduced.counts)
     return Prepared(
@@ -461,6 +820,7 @@ def prepare(inputs: Inputs, resolver: Resolver) -> Prepared:
         orbit_kept,
         close,
         dropped,
+        overlaps,
         counts,
     )
 

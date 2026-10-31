@@ -14,7 +14,9 @@ and is a group:
   member, not the group's. A group's own point beside its members stays a
   member, and its event gives its kind (`groups`).
 - A member that reaches no object is an entry. It is inside its sibling's
-  point when that point cannot split it, else an entry of the group.
+  point when that point cannot split it, else an entry of the group. A
+  member with a period and a visual orbit stays an entry of the group beside
+  a point that holds a pair, so that both orbits can be drawn.
 
 Each member is tested against its primary. A group stands for its main star.
 The main star is the first point down the tree and gives the group its
@@ -178,6 +180,8 @@ class Reduced:
     interiors: list[Interior] = field(default_factory=list)
     absorbed: list[Absorbed] = field(default_factory=list)
     tentative: list[Tentative] = field(default_factory=list)
+    # The component ids that name a star of the MSC and another of the WDS.
+    two_stars: set[str] = field(default_factory=set)
     # (kind, source, text)
     events: list[tuple[str, str, str]] = field(default_factory=list)
     counts: Counter = field(default_factory=Counter)
@@ -275,6 +279,7 @@ class TreeReducer:
         self.label = table["label"].to_pylist()
         self.parent = table["parent"].to_numpy()
         self.separation = table["separation"].to_pylist()
+        self.period = table["period"].to_pylist()
         self.evidence = table["evidence"].to_pylist()
         self.known = table["known"].to_pylist()
         v = table["v_mag"].to_pylist()
@@ -382,7 +387,7 @@ class TreeReducer:
         if not groups and len(keys) == 1:
             (key,) = keys
             point = next(p for p in parts if p.key)
-            apart = [p for p in parts if p.loose and self._split(point, p, parts[0])]
+            apart = [p for p in parts if p.loose and self._beside(point, p, parts[0])]
             if not apart:
                 return _Part(row, key, [leaf for p in parts for leaf in p.leaves])
             inside = [p for p in parts if p not in apart]
@@ -414,6 +419,16 @@ class TreeReducer:
             contrast = self.mag[loose.node] - fact.mag
         apart = self._apart(point, loose, primary)
         return resolves(fact.astrometry, apart, contrast)
+
+    def _beside(self, point: _Part, loose: _Part, primary: _Part) -> bool:
+        """Whether a loose member stays beside the point. A member with a
+        period and a visual orbit stays beside a point that holds a pair, so
+        that both orbits can be drawn."""
+        row = loose.node
+        orbit = self.period[row] is not None and VISUAL_ORBIT in (self.known[row] or ())
+        if orbit and len(point.leaves) > 1:
+            return True
+        return bool(self._split(point, loose, primary))
 
     def _tested(self, row: int, parts: list[_Part], out: Reduced) -> list[_Part]:
         """The members that stay beside the primary `parts[0]`."""

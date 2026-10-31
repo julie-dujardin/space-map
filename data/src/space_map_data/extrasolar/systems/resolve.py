@@ -17,7 +17,8 @@ The candidates of a node are the objects that its ids reach, best first:
 3. its Gaia DR3 id, its rows in the planet catalogues, its HIP and HD
    numbers;
 4. the links that the builder makes itself: a component of the same WDS id
-   and letter in another source, a match by position.
+   and letter in another source, when the separations agree, a match by
+   position.
 In one rank, the object that more of the node's ids reach comes first, so one
 wrong id loses to the others. Then the lower key comes first.
 """

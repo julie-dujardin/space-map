@@ -2,14 +2,20 @@
 
 A held star is an entry of a node: a star with no point of its own, inside
 the node's point or known from a catalogue only. It is a held star, with an
-ID, when a source names it with a component letter or a name (the WDS, the
-MSC, SIMBAD, the planet catalogues, a paper), or when its pair is drawn: an
-ID is for a star that has a name or that we draw. An entry whose only values
-are the masses of its Gaia orbit stays an entry, and its pair keeps the
+ID, when we draw its pair, or when a source gives it a letter or a name and we
+know more of it: a name of its own (SIMBAD, the planet catalogues), a mass, a
+radius, a temperature or a spectral type. A star that is only a letter stays
+an entry: a magnitude or a separation earns no ID. An entry whose only values
+are the masses of its Gaia orbit stays an entry too, and its pair keeps the
 masses. Each value comes from the first source that has it: a paper, OEC, the
 entry's tree source, then the masses of its Gaia orbit. Its letter is the
 source's. A held star of a pair with no letter takes A when it is the
 heavier star, else B, and the other letter when the other member has A or B.
+
+The catalogues do not share letters, so a letter stays with one member of a
+system, an entry too: a star before a node, then the earlier tree source
+(`_letter_order`). The other member gives it up. A held star keeps its claim,
+which reads the source's letter.
 
 A pair is a node of two members. Its orbit is that of its second member
 about its first (`elements`). The orbit sources reach a pair so:
@@ -23,7 +29,20 @@ about its first (`elements`). The orbit sources reach a pair so:
 - literature and Gaia DR3: the point that holds the pair;
 - oec: the OEC ids of the binary's stars on the members, else the point
   of one of its stars.
-An orbit whose secondary is the node's first member is turned round. Through
+The MSC and the WDS share ids, and their separations tell whether an id names
+one star (`Systems.two_stars`). An id of two stars reads the source's own
+catalogue: the MSC its MSC id, ORB6 and SBX their WDS id. A member holds the
+ids of its tree source only, so either catalogue reaches a star that an id
+names. When it stands in both trees, the MSC's member comes first, as in the
+trees, unless only the WDS's is in a pair.
+
+A brown dwarf's pair has no point, so an orbit that names its host reaches the
+pair only at the period of the record: the host can have a companion that we
+do not see.
+
+An orbit whose secondary is the node's first member is turned round, unless
+the other member is not its primary: the MSC calls a pair by the letter of its
+first star, as A,B for A and BC, so the orbit goes on the pair above. Through
 a point, the letters of the orbit's stars and of the members tell this, and
 the stars of a paper or of OEC go to the members by them. With no letters
 that agree, the orbit's primary is the first member.
@@ -61,7 +80,7 @@ from space_map_data.extrasolar.exoplanets.catalogues import OEC
 from space_map_data.extrasolar.exoplanets.table import default_node
 from space_map_data.extrasolar.sources.gaia_orbits import ASTROMETRIC
 from space_map_data.extrasolar.sources.simbad import star_name
-from space_map_data.extrasolar.systems.assemble import ENTRY, Systems
+from space_map_data.extrasolar.systems.assemble import ENTRY, SYSTEM, Systems
 from space_map_data.extrasolar.systems.elements import (
     Elements,
     catalogue_elements,
@@ -75,6 +94,7 @@ from space_map_data.extrasolar.systems.nodes import (
     MSC_ID,
     PLANETS,
     SIMBAD,
+    TREE_SOURCES,
     WDS,
     WDS_ID,
 )
@@ -86,7 +106,7 @@ from space_map_data.extrasolar.systems.orbits import (
     ORBIT_SOURCES,
     SBX,
 )
-from space_map_data.extrasolar.systems.prepare import Inputs
+from space_map_data.extrasolar.systems.prepare import MEMBER, Inputs, same_period
 from space_map_data.extrasolar.systems.resolve import Resolver
 from space_map_data.extrasolar.tables import REFERENCE, SYSTEM_STAR
 
@@ -239,6 +259,33 @@ def _source_letter(entry: dict, labels: Iterable[str | None] = ()) -> str | None
     return found
 
 
+def _letter_order(entry: dict, row: int) -> tuple[bool, int, int]:
+    """Which member of a system keeps a letter that several have, lowest
+    first. A node's letter is that of its main star, so a star goes first.
+    Then the order is the tree sources, then the members."""
+    source = entry["source"]
+    rank = TREE_SOURCES.index(source) if source in TREE_SOURCES else len(TREE_SOURCES)
+    return entry["kind"] == SYSTEM, rank, row
+
+
+def without_letters(members: pa.Table, rows: set[int]) -> pa.Table:
+    """`members` with no letter on `rows`. `inner` goes too, and a `label`
+    that only repeats the letter, because a client reads them as the letter."""
+    keep = np.ones(members.num_rows, bool)
+    keep[list(rows)] = False
+    mask = pa.array(keep)
+    only_letter = pc.equal(members["label"], members["letter"]).fill_null(False)
+    kept = {
+        "letter": mask,
+        "inner": mask,
+        "label": pc.or_(mask, pc.invert(only_letter)),
+    }
+    for name, stays in kept.items():
+        column = pc.if_else(stays, members[name], pa.scalar(None, pa.string()))
+        members = members.set_column(members.schema.get_field_index(name), name, column)
+    return members
+
+
 def _tag(entry: dict, letter: str | None) -> str | None:
     """What names a held star in its node, the same in each ingest: its own
     letter or label, else its side of its Gaia DR3 orbit, else the letter of
@@ -289,6 +336,8 @@ class Drawer:
         self.counts: Counter = Counter()
         nodes = systems.nodes.take(pc.sort_indices(systems.nodes["node"]))
         self.number = nodes["node"].to_numpy()
+        self.parent = nodes["parent"].fill_null(0).to_numpy()
+        self.root = nodes["root"].to_numpy()
         self.ra = nodes["ra"].fill_null(np.nan).to_numpy()
         self.dec = nodes["dec"].fill_null(np.nan).to_numpy()
         self.distance = nodes["distance"].fill_null(np.nan).to_numpy()
@@ -306,18 +355,46 @@ class Drawer:
             for key, number in zip(keys[two].tolist(), self.number[two].tolist())
             if key
         }
+        # The periods of the records of each pair of a host and its brown dwarf.
+        self.record_periods: dict[int, list[float]] = {}
+        self.point_node = self._host_pairs() | self.point_node
         # The points that hold three or more stars.
         self.other_points = set(keys[keys != 0].tolist()) - set(self.point_node)
-        self.by_component = self._member_ids((WDS_ID, MSC_ID))
+        self.msc_members = self._member_ids((MSC_ID,))
+        self.wds_members = self._member_ids((WDS_ID,))
         self.by_node = self._node_ids(nodes)
         self.by_oec = self._member_ids((OEC_STAR,))
         self.oec_of = {row: name for name, row in self.by_oec.items()}
         self.oec_stars: dict[str, dict] = {}
+        # The member rows that give up their letter.
+        self.repeated: set[int] = set()
         stars = inputs.catalogue_stars
         if stars is not None:
             for star in stars.filter(pc.equal(stars["source"], OEC)).to_pylist():
                 if star["label"]:
                     self.oec_stars.setdefault(star["label"], _star(star))
+
+    def _host_pairs(self) -> dict[int, int]:
+        """The pair of each host whose brown dwarf is its partner. An orbit
+        that names the host can be of that pair (`_of_pair`)."""
+        overlaps = self.systems.overlaps
+        records: dict[int, list[dict]] = defaultdict(list)
+        for item in overlaps.filter(pc.equal(overlaps["outcome"], MEMBER)).to_pylist():
+            records[item["key"]].append(item)
+        keys = self.systems.members["key"].to_numpy()
+        found: dict[int, int] = {}
+        for row in np.flatnonzero(np.isin(keys, list(records))).tolist():
+            number = int(self.member_node[row])
+            pair = self.pairs.get(number)
+            if pair is None:
+                continue
+            for item in records[int(keys[row])]:
+                if item["host"] in (keys[pair.first], keys[pair.second]):
+                    found[item["host"]] = number
+                    periods = self.record_periods.setdefault(number, [])
+                    if item["period"]:
+                        periods.append(item["period"])
+        return found
 
     def _member_ids(self, catalogues: tuple[tuple[str, str], ...]) -> dict[str, int]:
         """The member row of each id of these catalogues on a member."""
@@ -366,21 +443,32 @@ class Drawer:
         self.pairs[number].orbits.append(item.flipped() if flipped else item)
         self.counts[f"{item.source}: orbits on a pair"] += 1
 
-    def _by_component(self, text: str) -> tuple[int, int] | None:
+    def _component(self, source: str, text: str) -> int | None:
+        """The member row with the component id `text`, for an orbit source.
+        An id of two stars reads its own catalogue. An id of one star takes
+        the MSC's member, unless only the WDS's is in a pair."""
+        msc, wds = self.msc_members.get(text), self.wds_members.get(text)
+        if text in self.systems.two_stars:
+            return msc if source == MSC else wds
+        if msc is None or (wds is not None and self.member_node[msc] not in self.pairs):
+            return wds
+        return msc
+
+    def _by_component(self, source: str, text: str) -> tuple[int, int] | None:
         """The node of the member that has the id `text`, and its row."""
-        row = self.by_component.get(text)
+        row = self._component(source, text)
         return None if row is None else (int(self.member_node[row]), row)
 
     def _by_letters(
-        self, wds: str, primary: str | None, secondary: str
+        self, source: str, wds: str, primary: str | None, secondary: str
     ) -> tuple[int, bool] | None:
         """A pair whose members have the letters of the two sides, reached by
         the primary's id or by the node's own id, and whether its first
-        member is the secondary."""
-        if not primary:
+        member is the secondary. A letter of two stars tells nothing."""
+        if not primary or f"{wds} {secondary}" in self.systems.two_stars:
             return None
         numbers = []
-        row = self.by_component.get(f"{wds} {primary}")
+        row = self._component(source, f"{wds} {primary}")
         if row is not None:
             numbers.append(int(self.member_node[row]))
         for text in (f"{wds} {primary}{secondary}", wds):
@@ -395,18 +483,57 @@ class Drawer:
                 return number, found[0] == secondary
         return None
 
-    def _on_component(self, item: Elements, text: str) -> bool:
-        """Put the orbit on the pair whose member has the id `text`. False
-        when no member has it."""
-        hit = self._by_component(text)
+    def _heads_another_pair(self, pair: _Pair, row: int, primary: str | None) -> bool:
+        """Whether the member `row`, an orbit's secondary, is the first star
+        of a pair with a star that is not the orbit's primary. The other
+        member can be a pair, as CD."""
+        members = self.systems.members
+        other = members["letter"][pair.second].as_py() or self._letters(pair.second)
+        if row != pair.first or not primary or not other:
+            return False
+        return not (other.startswith(primary) or primary.startswith(other))
+
+    def _pair_above(self, number: int) -> tuple[int, bool] | None:
+        """The pair that holds the node `number`, and whether that node is its
+        first member."""
+        above = int(self.parent[np.searchsorted(self.number, number)])
+        pair = self.pairs.get(above)
+        if pair is None:
+            return None
+        return above, self.systems.members["member"][pair.first].as_py() == number
+
+    def _secondary_pair(
+        self, number: int, pair: _Pair, row: int, primary: str | None, what: str
+    ) -> tuple[int, bool] | None:
+        """The pair of an orbit whose secondary is the member `row` of `pair`,
+        the node `number`, or the pair above when that member heads another
+        pair, and whether its first member is the secondary. None with no
+        pair above. `what` names the count."""
+        if not self._heads_another_pair(pair, row, primary):
+            return number, row == pair.first
+        self.counts[f"{what} of a star that heads a pair"] += 1
+        return self._pair_above(number)
+
+    def _on_component(
+        self, item: Elements, text: str, primary: str | None = None
+    ) -> bool:
+        """Put the orbit on the pair whose member has the id `text`, or on the
+        pair above when that member heads another pair. False when no such
+        pair is there."""
+        hit = self._by_component(item.source, text)
         if hit is None:
             return False
         number, row = hit
         pair = self.pairs.get(number)
         if pair is None:
             self.counts[f"{item.source}: orbits of a node that is no pair"] += 1
-        else:
-            self._add(number, item, row == pair.first)
+            return True
+        found = self._secondary_pair(
+            number, pair, row, primary, f"{item.source}: orbits"
+        )
+        if found is None:
+            return False
+        self._add(found[0], item, found[1])
         return True
 
     def _on_letters(
@@ -414,7 +541,7 @@ class Drawer:
     ) -> bool:
         """Put the orbit on a pair whose members have the letters of its two
         sides."""
-        found = self._by_letters(wds, primary, secondary)
+        found = self._by_letters(item.source, wds, primary, secondary)
         if found is None:
             return False
         self._add(found[0], item, found[1])
@@ -441,6 +568,19 @@ class Drawer:
                 elif key in self.other_points:
                     larger.add(index)
         return found, larger
+
+    def _of_pair(self, number: int, item: Elements) -> bool:
+        """Whether an orbit that names a point is of its pair. The pair of a
+        host and its brown dwarf takes only the orbit of the record's period."""
+        periods = self.record_periods.get(number)
+        if periods is None:
+            return True
+        period = item.period
+        assert period is not None
+        if any(same_period(period, found) for found in periods):
+            return True
+        self.counts[f"{item.source}: orbits of a host at another period"] += 1
+        return False
 
     def match_catalogues(self) -> None:
         table = self.inputs.catalogue_orbits
@@ -472,7 +612,8 @@ class Drawer:
                 primary, letters = "A", "B"
             if source not in (MSC, ORB6, SBX):
                 letters = None
-            if letters and wds and self._on_component(item, f"{wds[0]} {letters}"):
+            text = f"{wds[0]} {letters}" if wds else ""
+            if letters and wds and self._on_component(item, text, primary):
                 continue
             if letters and wds and self._on_letters(item, wds[0], primary, letters):
                 continue
@@ -498,6 +639,8 @@ class Drawer:
             if number is None:
                 where = "a node that is no pair" if at in larger else "pairs in no tree"
                 self.counts[f"{item.source}: orbits of {where}"] += 1
+                continue
+            if not self._of_pair(number, item):
                 continue
             pair, row = self.pairs[number], rows[at]
             two = _two(
@@ -563,19 +706,22 @@ class Drawer:
                 first["primary"],
                 first["secondary"],
             )
-            hit = self._by_component(f"{wds} {secondary}")
-            if hit is not None:
+            hit = self._by_component(MSC, f"{wds} {secondary}")
+            if hit is None:
+                found = self._by_letters(MSC, wds, primary, secondary)
+                if found is None:
+                    self.counts["msc: masses of pairs in no tree"] += 1
+                    continue
+            else:
                 number, row = hit
                 pair = self.pairs.get(number)
                 if pair is None:
                     self.counts["msc: masses of a node that is no pair"] += 1
                     continue
-                flipped = row == pair.first
-            elif (found := self._by_letters(wds, primary, secondary)) is not None:
-                number, flipped = found
-            else:
-                self.counts["msc: masses of pairs in no tree"] += 1
-                continue
+                found = self._secondary_pair(number, pair, row, primary, "msc: masses")
+                if found is None:
+                    continue
+            number, flipped = found
             pair = self.pairs[number]
             if pair.msc_masses is not None:
                 continue
@@ -593,7 +739,7 @@ class Drawer:
         rows = table.take(pa.array(at)).to_pylist()
         for index, key, row in zip(at.tolist(), keys[at].tolist(), rows):
             item = gaia_elements(row, index)
-            if item is None:
+            if item is None or not self._of_pair(self.point_node[int(key)], item):
                 continue
             self._add(self.point_node[int(key)], item, False)
             if row["nss_solution_type"] in ASTROMETRIC:
@@ -769,8 +915,9 @@ class Drawer:
     # Held stars
 
     def held(self, drawn: Iterable[int] = ()) -> pa.Table:
-        """The held stars: the entries that a source names, and the entries
-        of the pairs with these node numbers, which are drawn."""
+        """The held stars: the entries of the pairs with these node numbers,
+        which are drawn, and the entries that a source names and that we know
+        more of."""
         in_drawn = {
             row
             for number in drawn
@@ -780,19 +927,39 @@ class Drawer:
         kinds = members["kind"].to_numpy(zero_copy_only=False)
         rows = np.flatnonzero(kinds == ENTRY)
         part = members.take(pa.array(rows)).select(
-            ["node", "letter", "label", "source", "mass", "spectral_type", "known"]
+            [
+                "node",
+                "letter",
+                "label",
+                "source",
+                "mass",
+                "spectral_type",
+                "known",
+                "v_mag",
+                "g_mag",
+            ]
         )
         gaia = self._gaia_masses()
         out: dict[str, list] = defaultdict(list)
+        # The letters of the entries with no ID, which a page lists too.
+        lines: dict[int, str | None] = {}
         for row, entry in zip(rows.tolist(), part.to_pylist()):
             values = self._values(row, entry, gaia)
             named = values["letter"] is not None or bool(entry["label"])
+            known = any(values[name] is not None for name in STAR_VALUES)
             if not named and row not in in_drawn:
                 self.counts["entries that no source names, in no drawn pair"] += 1
-                if any(values[name] is not None for name in STAR_VALUES):
+                if known:
                     self.counts[
                         "entries that no source names, in no drawn pair, with values"
                     ] += 1
+                continue
+            own = _own_name(entry)
+            if row not in in_drawn and not (known or own):
+                self.counts[
+                    f"entries that are only a letter, of {entry['source']}"
+                ] += 1
+                lines[row] = values["letter"]
                 continue
             tag = _tag(entry, values["letter"])
             if tag is None:
@@ -801,7 +968,7 @@ class Drawer:
             out["number"].append(entry["node"])
             out["tag"].append(tag)
             out["pair_letter"].append(False)
-            out["own_name"].append(_own_name(entry))
+            out["own_name"].append(own)
             for name, value in values.items():
                 out[name].append(value)
             self.counts[f"held stars of {entry['source'] or 'no source'} entries"] += 1
@@ -817,15 +984,47 @@ class Drawer:
                 entry["source"],
             }:
                 self.counts[f"held stars with values from {source}"] += 1
+        self.repeated = self._repeated_letters(
+            lines | dict(zip(out["member"], out["letter"]))
+        )
+        for i, row in enumerate(out["member"]):
+            if row in self.repeated:
+                out["letter"][i] = None
         self._pair_letters(out)
         return pa.table(
             {name: out[name] for name in HELD_STARS.names}, schema=HELD_STARS
         )
 
+    def _repeated_letters(self, letters: dict[int, str | None]) -> set[int]:
+        """The member rows whose letter another member of their system keeps
+        (`_letter_order`). `letters` gives those of the entries."""
+        members = self.systems.members
+        kinds = members["kind"].to_numpy(zero_copy_only=False)
+        lettered = members["letter"].is_valid().to_numpy(zero_copy_only=False)
+        rows = np.flatnonzero(lettered & (kinds != ENTRY))
+        part = members.take(pa.array(rows)).select(["letter", "label", "source"])
+        letters |= zip(rows.tolist(), map(_source_letter, part.to_pylist()))
+        given = {row: text for row, text in letters.items() if text}
+        rows = np.array(list(given), np.int64)
+        part = members.take(pa.array(rows)).select(["node", "kind", "source"])
+        holders: defaultdict[tuple[int, str], list] = defaultdict(list)
+        for row, entry in zip(rows.tolist(), part.to_pylist()):
+            root = self.root[np.searchsorted(self.number, entry["node"])]
+            holders[int(root), given[row]].append(
+                (_letter_order(entry, row), row, entry["kind"])
+            )
+        repeated: set[int] = set()
+        for found in holders.values():
+            for _, row, kind in sorted(found)[1:]:
+                repeated.add(row)
+                self.counts[f"letters given up by {kind} members"] += 1
+        logger.info("systems: %d members give up a letter", len(repeated))
+        return repeated
+
     def _pair_letters(self, out: dict[str, list]) -> None:
-        """A or B for each held star of a pair that no source gives a letter:
-        A for the heavier star, else for the first member, and the other
-        letter when the other member has A or B."""
+        """A or B for each held star of a pair with no letter: A for the
+        heavier star, else for the first member, and the other letter when
+        the other member has A or B."""
         at = {row: i for i, row in enumerate(out["member"])}
         given = list(out["letter"])
         members = self.systems.members
@@ -838,7 +1037,8 @@ class Drawer:
                 theirs, their_mass = given[at[other]], out["mass"][at[other]]
             else:
                 entry = members.slice(other, 1).to_pylist()[0]
-                theirs, their_mass = _source_letter(entry), entry["mass"]
+                their_mass = entry["mass"]
+                theirs = None if other in self.repeated else _source_letter(entry)
             mine = out["mass"][i]
             if theirs in PAIR_LETTERS:
                 letter = PAIR_LETTERS[1 - PAIR_LETTERS.index(theirs)]
@@ -895,11 +1095,13 @@ class Drawer:
             else []
         )
         values["letter"] = _source_letter(entry, [v.get("label") for _, v in given])
+        values["v_mag"], values["g_mag"] = entry["v_mag"], entry["g_mag"]
         return values
 
 
 def draw(systems: Systems, inputs: Inputs, resolver: Resolver) -> Drawn:
-    """The held stars and the orbits of the pairs of `systems`."""
+    """The held stars and the orbits of the pairs of `systems`. The repeated
+    letters leave `systems.members`, after the orbits have used them."""
     drawer = Drawer(systems, inputs, resolver)
     drawer.counts["pairs"] = len(drawer.pairs)
     drawer.match_catalogues()
@@ -913,6 +1115,7 @@ def draw(systems: Systems, inputs: Inputs, resolver: Resolver) -> Drawn:
                 rows.append(found)
     orbits = pa.Table.from_pylist(rows, schema=PAIR_ORBITS)
     held = drawer.held(orbits["number"].to_pylist())
+    systems.members = without_letters(systems.members, drawer.repeated)
     counts = drawer.counts
     centred = orbits["barycentre"].is_valid().to_numpy(zero_copy_only=False)
     counts["pairs drawn about their barycentre"] = int(centred.sum())

@@ -22,8 +22,8 @@
    System, and `system` of Metadata. It sets `distance` on every System
    row, `orbit` on the pairs, with the assumed node of the planets where an
    orbit has none, and `star` on the held stars. It gives the planets
-   extension the host of a circumbinary planet, the root of each host and
-   the node of each drawn pair.
+   extension the host of a circumbinary planet, the root of each host, the
+   node of each drawn pair and the star that a brown dwarf record also is.
 """
 
 import json
@@ -91,11 +91,15 @@ from space_map_data.extrasolar.systems.planets import (
     read_oec_trees,
     read_planet_systems,
 )
-from space_map_data.extrasolar.systems.prepare import Inputs
+from space_map_data.extrasolar.systems.prepare import MEMBER, Inputs
 from space_map_data.extrasolar.systems.registry import gaia_keys, point_facts
 from space_map_data.extrasolar.systems.report import report_lines, target_keys
 from space_map_data.extrasolar.systems.simbad import SimbadIndex, read_simbad
-from space_map_data.extrasolar.systems.wds import WDS_MATCHER, WdsCatalogue
+from space_map_data.extrasolar.systems.wds import (
+    COMPONENT_KIND,
+    WDS_MATCHER,
+    WdsCatalogue,
+)
 from space_map_data.extrasolar.tables import (
     CROSS_ID,
     METADATA,
@@ -122,7 +126,7 @@ WDS_COMPONENTS = Source(
     release="component",
     home=1,
     matcher=WDS_MATCHER,
-    kind="star",
+    kind=COMPONENT_KIND,
 )
 # The nodes and the stars of the systems. The claims link the rows.
 SYSTEMS = Source(
@@ -527,6 +531,8 @@ class Plan:
     # each held star, null for a star with no row.
     drawn: Drawn | None = None
     held_labels: pa.Array = field(default_factory=lambda: pa.array([], pa.string()))
+    # Planet record index → the label of the star that it also is.
+    stars: dict[int, str] = field(default_factory=dict)
 
 
 def _without_letter(name: str) -> str:
@@ -895,6 +901,7 @@ def pass_rows(
             continue
         for record in record_of.get((row["host"], row["designation"]), []):
             hosts[record] = label
+    stars = _record_stars(systems.overlaps, point_keys, point_labels, counts)
     items = pc.list_flatten(claimed)
     is_oid = pc.and_(
         pc.equal(items.field("catalogue"), SYSTEM_CLAIMS),
@@ -937,7 +944,24 @@ def pass_rows(
         counts,
         drawn,
         held_labels,
+        stars,
     )
+
+
+def _record_stars(
+    overlaps: pa.Table, keys: np.ndarray, labels: pa.Array, counts: Counter
+) -> dict[int, str]:
+    """The label of the star of each brown dwarf record that is a member of a
+    system. `keys` are the sorted points."""
+    members = overlaps.filter(pc.equal(overlaps["outcome"], MEMBER))
+    at = find_sorted(keys, members["key"].to_numpy())
+    counts["brown dwarf records with their star in a system"] = int((at >= 0).sum())
+    counts["brown dwarf records with their star in no system"] = int((at < 0).sum())
+    return {
+        record: labels[int(found)].as_py()
+        for record, found in zip(members["record"].to_pylist(), at.tolist())
+        if found >= 0
+    }
 
 
 def _anchors(nodes: pa.Table, resolver: RunResolver) -> np.ndarray:
@@ -1064,11 +1088,11 @@ def held_names(
     that is its pair's or its root's name, as a planet catalogue names the
     primary. Else it is "<root name> <letter>": the letters of the WDS and the
     MSC name the components of the whole system. A letter of its pair (A, B)
-    takes the pair's name. `names` are those of the resolved nodes
-    (`_node_names`); a point has the name of its object. A point that is a
-    root can have the name of its primary ("HQ Tau A"), but its stars are
-    components of the whole system, so they take that name with no
-    component letter at its end ("HQ Tau Aa").
+    takes the pair's name. A star with no letter, in no pair, has no name.
+    `names` are those of the resolved nodes (`_node_names`); a point has the
+    name of its object. A point that is a root can have the name of its
+    primary ("HQ Tau A"), but its stars are components of the whole system,
+    so they take that name with no component letter at its end ("HQ Tau Aa").
     """
     nodes = systems.nodes
     order = np.argsort(nodes["node"].to_numpy(), kind="stable")
@@ -1182,6 +1206,7 @@ class SystemsExtension:
     name: str = "systems"
     sources: tuple[str, ...] = (STAR_SYSTEMS,)
     _hosts: dict[int, int] = field(default_factory=dict)
+    _stars: dict[int, int] = field(default_factory=dict)
     _root_keys: np.ndarray = field(default_factory=lambda: np.zeros(0, np.int64))
     _root_values: np.ndarray = field(default_factory=lambda: np.zeros(0, np.int64))
     # The node on the sky of each drawn pair, by ID.
@@ -1194,6 +1219,10 @@ class SystemsExtension:
     def host(self, record: int) -> int:
         """The ID of the circumbinary host of a planet record, else 0."""
         return self._hosts.get(record, 0)
+
+    def star(self, record: int) -> int:
+        """The ID of the star that a planet record also is, else 0."""
+        return self._stars.get(record, 0)
 
     def root(self, id_: int) -> int:
         """The root of the system of an ID, else 0."""
@@ -1236,6 +1265,11 @@ class SystemsExtension:
             pa.array([self.plan.hosts[r] for r in records], pa.string()), rows
         )
         self._hosts = {r: int(i) for r, i in zip(records, host_ids.tolist()) if i}
+        records = list(self.plan.stars)
+        star_ids = _ids_of(
+            pa.array([self.plan.stars[r] for r in records], pa.string()), rows
+        )
+        self._stars = {r: int(i) for r, i in zip(records, star_ids.tolist()) if i}
         member_ids = np.concatenate(
             [with_held["node"].to_numpy(), points["key"].to_numpy()]
         )
@@ -1288,6 +1322,7 @@ class SystemsExtension:
         lines += [f"pass: {k} {v:,}" for k, v in sorted(plan.counts.items())]
         lines += _engine_lines(self.run)
         lines.append(f"circumbinary hosts: {len(self._hosts):,}")
+        lines.append(f"brown dwarf records linked to their star: {len(self._stars):,}")
         report = "\n".join(lines) + "\n"
         return ExtensionResult(
             parts={},

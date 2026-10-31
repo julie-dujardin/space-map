@@ -12,7 +12,8 @@ The decisions for the ingest:
   listed once: an entry, of a node or inside a point, that is another point,
   or an entry of a node with the WDS component id of an entry inside a
   point, as the WDS and the MSC can give one star inside the point and
-  beside it. A node left with one member is that member;
+  beside it, unless their separations make it two stars. A node left with
+  one member is that member;
 - a composite spectral type of a point that holds one star moves to its
   system, and the point takes its own type from the trees, else none;
 - a point of a resolved system with a position and no distance takes the
@@ -75,6 +76,7 @@ from space_map_data.extrasolar.tables import CROSS_ID
 logger = logging.getLogger(__name__)
 
 BINARY, MULTIPLE = "binary star", "multiple star"
+NODE_CLASSES = (BINARY, MULTIPLE)
 # An entry is a point of its system when they agree, measured from the
 # entry's primary. Each test is a tier, and the best tier wins, then the
 # smaller separation residual, then the smaller magnitude residual:
@@ -196,11 +198,16 @@ HOSTS = pa.schema(
 OVERLAPS = pa.schema(
     [
         ("key", pa.int64()),
+        # The row of `Inputs.planets`.
+        ("record", pa.int64()),
         ("designation", pa.string()),
         ("host", pa.int64()),
         ("class", pa.string()),
         ("mass", pa.float64()),
+        ("period", pa.float64()),
         ("name", pa.string()),
+        # What happens to the star (`prepare.Overlap`).
+        ("outcome", pa.string()),
     ]
 )
 NAMES = pa.schema(
@@ -233,6 +240,8 @@ class Systems:
     # The object of each Gaia DR3 orbit of `Inputs.orbits`. It is 0 for none,
     # and for an orbit of a planet or a companion under 13 MJ: no pair's.
     orbit_keys: np.ndarray = field(default_factory=lambda: np.zeros(0, np.int64))
+    # The component ids that name a star of the MSC and another of the WDS.
+    two_stars: frozenset[str] = frozenset()
 
 
 @dataclass
@@ -620,8 +629,9 @@ class Assembler:
     ) -> list[tuple[str, int, _Node | None, int, str | None]]:
         """Leave out the entries that are a star of the system already: a
         point of the system, or a star inside a point that has the same WDS
-        component id ("03257+0551 A" of the WDS and of the MSC). A point that
-        the entry's source lists is another star."""
+        component id ("03257+0551 A" of the WDS and of the MSC), unless that
+        id names two stars. A point that the entry's source lists is another
+        star."""
         top = node
         while top.parent is not None:
             top = top.parent
@@ -632,10 +642,8 @@ class Assembler:
             if member[0] != ENTRY:
                 kept.append(member)
                 continue
-            point = next(
-                (inside[t] for t in sorted(self._components(member[3])) if t in inside),
-                0,
-            )
+            texts = sorted(self._components(member[3]) - self.p.reduced.two_stars)
+            point = next((inside[text] for text in texts if text in inside), 0)
             if point:
                 self._log_inside(member[3], point)
                 continue
@@ -1105,6 +1113,7 @@ class Assembler:
             events,
             self.counts,
             np.where(self.p.orbit_kept, self.p.orbit_keys, 0),
+            frozenset(self.p.reduced.two_stars),
         )
 
     def _point_table(self) -> pa.Table:
@@ -1325,16 +1334,18 @@ class Assembler:
         planets = self.inputs.planets
         if planets is None:
             return OVERLAPS.empty_table()
-        by_name = {p["designation"]: p for p in planets.to_pylist()}
-        for key, designation_text in sorted(self.p.dropped.items()):
-            planet = by_name.get(designation_text, {})
-            fact = self.facts.get(key)
-            rows["key"].append(key)
-            rows["designation"].append(designation_text)
-            rows["host"].append(planet.get("host"))
-            rows["class"].append(planet.get("class"))
-            rows["mass"].append(planet.get("mass"))
+        for item in sorted(self.p.overlaps, key=lambda o: (o.key, o.record)):
+            planet = planets.slice(item.record, 1).to_pylist()[0]
+            fact = self.facts.get(item.key)
+            rows["key"].append(item.key)
+            rows["record"].append(item.record)
+            rows["designation"].append(planet["designation"])
+            rows["host"].append(item.host)
+            rows["class"].append(planet["class"])
+            rows["mass"].append(planet["mass"])
+            rows["period"].append(planet["period"])
             rows["name"].append(fact.name if fact else None)
+            rows["outcome"].append(item.outcome)
         return pa.table({name: rows[name] for name in OVERLAPS.names}, schema=OVERLAPS)
 
     def _tentative(self, points: pa.Table) -> None:

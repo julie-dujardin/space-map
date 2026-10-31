@@ -3,6 +3,8 @@ stars that the nodes hold."""
 
 from collections import Counter
 from collections.abc import Iterable
+from types import SimpleNamespace
+from typing import Any
 
 import numpy as np
 import pyarrow as pa
@@ -20,7 +22,7 @@ from space_map_data.extrasolar.systems.ingest import (
     held_names,
 )
 from space_map_data.extrasolar.systems.nodes import GAIA_ORBITS
-from space_map_data.extrasolar.systems.prepare import Inputs
+from space_map_data.extrasolar.systems.prepare import LEAVES, MEMBER, Inputs
 from space_map_data.extrasolar.tables import CROSS_ID
 from tests.download.orbit_catalogue_files import MSC_LINES
 from tests.extrasolar.systems_fakes import (
@@ -41,20 +43,16 @@ def _systems(
     points: Iterable[dict] = (),
     names: Iterable[dict] = (),
 ) -> Systems:
-    empty = [
-        schema.empty_table()
-        for schema in (
-            assemble.ABSORBED,
-            assemble.DISTANCES,
-            assemble.HOSTS,
-            assemble.OVERLAPS,
-        )
-    ]
     return Systems(
-        pa.Table.from_pylist(nodes, schema=assemble.NODES),
+        pa.Table.from_pylist(
+            [{"root": node["node"]} | node for node in nodes], schema=assemble.NODES
+        ),
         pa.Table.from_pylist(members, schema=assemble.MEMBERS),
         pa.Table.from_pylist(list(points), schema=assemble.POINTS),
-        *empty,
+        assemble.ABSORBED.empty_table(),
+        assemble.DISTANCES.empty_table(),
+        assemble.HOSTS.empty_table(),
+        assemble.OVERLAPS.empty_table(),
         pa.Table.from_pylist(list(names), schema=assemble.NAMES),
         assemble.EVENTS.empty_table(),
         Counter(),
@@ -504,16 +502,16 @@ def _held(
 
 
 class TestHeldStars:
-    """An entry that a source names, or a member of a drawn pair, is a held
-    star."""
+    """An entry that a source names and that we know more of, or a member of a
+    drawn pair, is a held star."""
 
-    def test_a_name_or_a_letter(self):
+    def test_a_name_or_a_letter_with_a_value(self):
         held, counts = _held(
             [
                 _entry(source=GAIA_ORBITS),
                 _entry(source=GAIA_ORBITS, mass=0.5),
-                _entry(source="wds", letter="B", label="B"),
-                _entry(source="wds", letter="B", label="B"),
+                _entry(source="wds", letter="B", label="B", spectral_type="L4"),
+                _entry(source="wds", letter="B", label="B", mass=0.2),
                 _entry(source="simbad", label="HD 27028A"),
                 _entry(
                     source="planet-catalogues",
@@ -525,7 +523,7 @@ class TestHeldStars:
         rows = held.to_pylist()
         assert [(h["member"], h["tag"], h["letter"], h["own_name"]) for h in rows] == [
             (2, "B", "B", None),
-            (3, "B", "B", None),
+            (3, "B", None, None),
             (4, "HD 27028A", "A", "HD 27028A"),
             (5, "PSR B1620-26", None, "PSR B1620-26"),
         ]
@@ -536,6 +534,33 @@ class TestHeldStars:
             counts["entries that no source names, in no drawn pair, with values"] == 1
         )
         assert counts["held stars that a source names"] == 4
+
+    def test_a_letter_alone_stays_an_entry(self):
+        """A magnitude or a separation earns no ID."""
+        held, counts = _held(
+            [
+                _entry(source="wds", letter="B", label="B", v_mag=9.0, separation=2.0),
+                _entry(source="msc", letter="C", label="C"),
+            ]
+        )
+        assert held.num_rows == 0
+        assert counts["entries that are only a letter, of wds"] == 1
+        assert counts["entries that are only a letter, of msc"] == 1
+
+    def test_a_label_that_gives_no_name_is_a_letter_alone(self):
+        held, _ = _held([_entry(source="simbad", label="Gaia DR3 3794264514053115648")])
+        assert held.num_rows == 0
+
+    def test_a_drawn_pair_needs_no_value(self):
+        """We draw it, so it has an ID."""
+        held, _ = _held(
+            [
+                _entry(source="wds", letter="A", label="A"),
+                _entry(source="wds", letter="B", label="B"),
+            ],
+            (1,),
+        )
+        assert held["letter"].to_pylist() == ["A", "B"]
 
     def test_tags_that_stay_the_same_in_each_ingest(self):
         """The stars of a Gaia orbit by their sides, in either order. Nothing
@@ -557,8 +582,8 @@ class TestHeldStars:
     def test_the_letters_of_the_wds_and_the_msc_as_they_stand(self):
         held, _ = _held(
             [
-                _entry(source="msc", letter="Aab", label="Aab"),
-                _entry(source="wds", letter="S17", label="S17"),
+                _entry(source="msc", letter="Aab", label="Aab", mass=1.0),
+                _entry(source="wds", letter="S17", label="S17", mass=0.5),
             ]
         )
         assert held["letter"].to_pylist() == ["Aab", "S17"]
@@ -639,6 +664,448 @@ class TestHeldStars:
             FakeResolver({}, []),
         )
         assert found.orbits.num_rows == 0 and found.held.num_rows == 0
+
+
+class TestHeldMagnitudes:
+    """The magnitudes of a held star's member go on its values, for the
+    export."""
+
+    def test_they_come_with_it(self):
+        held, _ = _held(
+            [_entry(letter="A", source="msc", mass=1.0, v_mag=7.0, g_mag=6.5)]
+        )
+        assert held["v_mag"].to_pylist() == [7.0]
+        assert held["g_mag"].to_pylist() == [6.5]
+
+    def test_they_earn_no_id(self):
+        held, _ = _held([_entry(letter="A", source="wds", v_mag=7.0, g_mag=6.5)])
+        assert held.num_rows == 0
+
+
+def _system(*members: dict) -> tuple[drawn.Drawer, pa.Table]:
+    """The Drawer and the held stars of root 1, with the node 2 inside it.
+    Each member is a dict of `_entry`."""
+    systems = _systems(
+        [
+            {"node": 1, "key": 0, "ra": 1.0, "dec": 2.0},
+            {"node": 2, "key": 0, "root": 1, "parent": 1, "ra": 1.0, "dec": 2.0},
+        ],
+        list(members),
+    )
+    drawer = drawn.Drawer(systems, Inputs(), FakeResolver({}, []))
+    return drawer, drawer.held(())
+
+
+class TestOneLetter:
+    """A letter stays with one member of a system."""
+
+    B_MSC = _entry(source="msc", letter="B", label="B", spectral_type="M1")
+    B_WDS = _entry(node=2, source="wds", letter="B", label="B", spectral_type="M2")
+
+    def test_a_later_source_gives_it_up(self):
+        _, held = _system(self.B_WDS, self.B_MSC)
+        rows = {h["number"]: h["letter"] for h in held.to_pylist()}
+        assert rows == {1: "B", 2: None}
+
+    def test_the_claim_stays(self):
+        """A claim reads the source's letter, so the ID stays."""
+        _, held = _system(self.B_WDS, self.B_MSC)
+        assert sorted(held["tag"].to_pylist()) == ["B", "B"]
+        assert len(set(zip(held["number"].to_pylist(), held["tag"].to_pylist()))) == 2
+
+    def test_two_systems_can_each_have_it(self):
+        systems = _systems(
+            [{"node": 1, "key": 0}, {"node": 2, "key": 0}],
+            [self.B_MSC, self.B_WDS],
+        )
+        held = drawn.Drawer(systems, Inputs(), FakeResolver({}, [])).held(())
+        assert held["letter"].to_pylist() == ["B", "B"]
+
+    def test_a_star_goes_before_a_node(self):
+        """The letter of a node is that of its main star. An MSC node gives
+        it up to a WDS star, which has a name to lose."""
+        node = _entry(kind=assemble.SYSTEM, source="msc", letter="A", label="A")
+        star = _entry(node=2, source="wds", letter="A", label="A", mass=1.0)
+        drawer, held = _system(node, star)
+        assert held["letter"].to_pylist() == ["A"]
+        assert drawer.repeated == {0}
+
+    def test_a_point_gives_it_up_with_its_label(self):
+        point = _entry(
+            node=2, kind=assemble.STAR, key=5, source="wds", letter="B", label="B"
+        )
+        drawer, _ = _system(self.B_MSC, point)
+        assert drawer.repeated == {1}
+        members = drawn.without_letters(drawer.systems.members, drawer.repeated)
+        assert members["letter"].to_pylist() == ["B", None]
+        assert members["label"].to_pylist() == ["B", None]
+
+    def test_a_label_that_is_a_name_stays(self):
+        name = _entry(source="msc", letter="B", label="B", mass=1.0)
+        other = _entry(node=2, source="simbad", letter="B", label="* ksi UMa B")
+        drawer, held = _system(name, other)
+        members = drawn.without_letters(drawer.systems.members, drawer.repeated)
+        assert members["letter"].to_pylist() == ["B", None]
+        assert members["label"].to_pylist() == ["B", "* ksi UMa B"]
+        assert held["own_name"].to_pylist() == [None, "Xi Ursae Majoris B"]
+
+    def test_inner_goes_with_it(self):
+        star = self.B_WDS | {"inner": "Ba"}
+        drawer, _ = _system(self.B_MSC, star)
+        members = drawn.without_letters(drawer.systems.members, drawer.repeated)
+        assert members["inner"].to_pylist() == [None, None]
+
+    def test_a_star_of_a_pair_takes_a_letter_of_its_pair(self):
+        """The first member of node 2 lost its letter. The other is B."""
+        _, held = _system(
+            self.B_MSC,
+            self.B_WDS | {"mass": 1.0},
+            _entry(node=2, source="wds", letter="Bb", label="Bb", mass=0.5),
+        )
+        rows = {(h["number"], h["tag"]): h for h in held.to_pylist()}
+        star = rows[2, "B"]
+        assert (star["letter"], star["pair_letter"]) == ("A", True)
+
+    def test_a_pair_letter_is_no_source_letter(self):
+        """A star keeps its letter when a pair letter gives another star B."""
+        _, held = _system(
+            _entry(source=GAIA_ORBITS),
+            _entry(source=GAIA_ORBITS, known=["spectroscopic orbit"]),
+            _entry(node=2, source="wds", letter="B", label="B", mass=1.0),
+        )
+        assert held.num_rows == 1
+        assert held["letter"].to_pylist() == ["B"]
+
+    def test_an_entry_with_no_id_keeps_it_or_gives_it_up_too(self):
+        """A page lists the line of an entry, so a letter stays on one line."""
+        letter = _entry(source="msc", letter="B", label="B")
+        drawer, held = _system(letter, self.B_WDS)
+        assert held["member"].to_pylist() == [1]
+        assert held["letter"].to_pylist() == [None]
+        assert drawer.repeated == {1}
+        letter = _entry(node=2, source="wds", letter="B", label="B")
+        drawer, held = _system(self.B_MSC, letter)
+        assert held["letter"].to_pylist() == ["B"]
+        assert drawer.repeated == {1}
+
+    def test_counts_by_kind(self):
+        drawer, _ = _system(self.B_MSC, self.B_WDS)
+        assert drawer.counts["letters given up by entry members"] == 1
+
+
+class TestPairCalledByItsFirstStar:
+    """HD 130948: the MSC gives the orbit of A about BC as A,B."""
+
+    ITEM: Any = SimpleNamespace(source="msc", flipped=lambda: "turned")
+
+    def drawer(self) -> drawn.Drawer:
+        w = "14503+2355"
+        systems = _systems(
+            [{"node": 1, "key": 0, "ra": 1.0, "dec": 2.0}],
+            [
+                _entry(letter="B", ids=_ids(("wds", "id", f"{w} B"))),
+                _entry(letter="C", ids=_ids(("wds", "id", f"{w} C"))),
+            ],
+        )
+        return drawn.Drawer(systems, Inputs(), FakeResolver({}, []))
+
+    def test_the_orbit_of_a_about_it_stays_off(self):
+        drawer = self.drawer()
+        assert not drawer._on_component(self.ITEM, "14503+2355 B", "A")
+        assert drawer.pairs[1].orbits == []
+
+    def test_the_orbit_of_its_own_stars_goes_on(self):
+        drawer = self.drawer()
+        assert drawer._on_component(self.ITEM, "14503+2355 C", "B")
+        assert drawer.pairs[1].orbits == [self.ITEM]
+
+    def test_it_goes_on_the_pair_above(self):
+        w = "14503+2355"
+        systems = _systems(
+            [
+                {"node": 1, "key": 0, "ra": 1.0, "dec": 2.0},
+                {"node": 2, "key": 0, "parent": 1, "root": 1, "ra": 1.0, "dec": 2.0},
+            ],
+            [
+                {"node": 1, "kind": assemble.STAR, "key": 30, "letter": "A"},
+                {"node": 1, "kind": assemble.SYSTEM, "member": 2},
+                _entry(node=2, letter="B", ids=_ids(("wds", "id", f"{w} B"))),
+                _entry(node=2, letter="C"),
+            ],
+        )
+        drawer = drawn.Drawer(systems, Inputs(), FakeResolver({}, []))
+        assert drawer._on_component(self.ITEM, f"{w} B", "A")
+        assert drawer.pairs[1].orbits == [self.ITEM]
+        assert drawer.pairs[2].orbits == []
+
+    def test_a_primary_inside_the_other_member_goes_on(self):
+        """An orbit of B about Ca reaches the pair of B and C, turned."""
+        drawer = self.drawer()
+        assert drawer._on_component(self.ITEM, "14503+2355 B", "Ca")
+        assert drawer.pairs[1].orbits == ["turned"]
+
+    def inner_pair(self, label: str, stars: pa.Table | None = None) -> drawn.Drawer:
+        """(A, (B, `label`)), where `label` is a pair or a star's sub-pair."""
+        w = "14503+2355"
+        systems = _systems(
+            [
+                {"node": 1, "key": 0, "ra": 1.0, "dec": 2.0},
+                {"node": 2, "key": 0, "parent": 1, "root": 1, "ra": 1.0, "dec": 2.0},
+            ],
+            [
+                {"node": 1, "kind": assemble.STAR, "key": 30, "letter": "A"},
+                {"node": 1, "kind": assemble.SYSTEM, "member": 2},
+                _entry(node=2, letter="B", ids=_ids(("wds", "id", f"{w} B"))),
+                {"node": 2, "kind": assemble.SYSTEM, "letter": label, "label": label},
+            ],
+        )
+        return drawn.Drawer(
+            systems, Inputs(catalogue_stars=stars), FakeResolver({}, [])
+        )
+
+    @pytest.mark.parametrize("label", ["CD", "BC", "Cab"])
+    def test_a_sub_pair_beside_it_is_another_pair(self, label):
+        """The label of a sub-pair is no single letter."""
+        drawer = self.inner_pair(label)
+        assert drawer._on_component(self.ITEM, "14503+2355 B", "A")
+        assert drawer.pairs[1].orbits == [self.ITEM]
+        assert drawer.pairs[2].orbits == []
+
+    @pytest.mark.parametrize("label", ["CD", "BC", "Cab"])
+    def test_its_masses_go_on_the_pair_above(self, label):
+        stars = orbits.msc_masses(
+            [
+                msc_pair(
+                    "14503+2355",
+                    "A",
+                    "B",
+                    "*",
+                    Mass1=1.1,
+                    MCode1="v",
+                    Mass2=0.8,
+                    MCode2="v",
+                )
+            ]
+        )
+        drawer = self.inner_pair(label, stars)
+        drawer.match_msc_masses()
+        assert drawer.pairs[1].msc_masses == (pytest.approx(1.1), pytest.approx(0.8))
+        assert drawer.pairs[2].msc_masses is None
+        assert drawer.counts["msc: masses of a star that heads a pair"] == 1
+
+
+class TestTwoStarsOfOneId:
+    """The MSC's B at 0.2″ and the WDS's B at 30″ are two stars of one id."""
+
+    W = "14396-6050"
+    MASSES = ("A", "B", 1.10, "v", 0.88, "v")
+
+    def item(self, source: str) -> Any:
+        return SimpleNamespace(source=source, flipped=lambda: "turned")
+
+    def systems(self, msc_first: bool, two_stars: Iterable[str] = ()) -> Systems:
+        """The pair of each catalogue, `msc_first` for the MSC's as node 1."""
+        top = {"node": 1, "key": 0, "ra": 1.0, "dec": 2.0}
+        inner = {"node": 2, "key": 0, "parent": 1, "root": 1, "ra": 1.0, "dec": 2.0}
+
+        def pair(node: int, catalogue: str) -> list[dict]:
+            return [
+                _entry(
+                    node=node,
+                    letter=letter,
+                    label=letter,
+                    source=catalogue,
+                    ids=_ids((catalogue, "id", f"{self.W} {letter}")),
+                )
+                for letter in "AB"
+            ]
+
+        found = _systems(
+            [top, inner],
+            [
+                *pair(1, "msc" if msc_first else "wds"),
+                *pair(2, "wds" if msc_first else "msc"),
+            ],
+        )
+        found.two_stars = frozenset(f"{self.W} {letter}" for letter in two_stars)
+        return found
+
+    def node_of(self, msc_first: bool, catalogue: str) -> int:
+        return 1 if msc_first == (catalogue == "msc") else 2
+
+    @pytest.mark.parametrize("msc_first", [True, False])
+    @pytest.mark.parametrize(
+        ("source", "catalogue"), [("msc", "msc"), ("orb6", "wds"), ("sbx", "wds")]
+    )
+    def test_an_orbit_takes_the_id_of_its_catalogue(self, msc_first, source, catalogue):
+        systems = self.systems(msc_first, "B")
+        drawer = drawn.Drawer(systems, Inputs(), FakeResolver({}, []))
+        assert drawer._on_component(self.item(source), f"{self.W} B", "A")
+        assert drawer.pairs[self.node_of(msc_first, catalogue)].orbits
+        assert not drawer.pairs[
+            self.node_of(msc_first, "msc" if catalogue == "wds" else "wds")
+        ].orbits
+
+    @pytest.mark.parametrize("msc_first", [True, False])
+    def test_msc_masses_take_the_msc_id(self, msc_first):
+        systems = self.systems(msc_first, "B")
+        stars = msc_masses(self.MASSES)
+        drawer = drawn.Drawer(
+            systems, Inputs(catalogue_stars=stars), FakeResolver({}, [])
+        )
+        drawer.match_msc_masses()
+        assert drawer.pairs[self.node_of(msc_first, "msc")].msc_masses
+        assert not drawer.pairs[self.node_of(msc_first, "wds")].msc_masses
+
+    def lone_msc_pair(self, two_stars: Iterable[str] = ()) -> drawn.Drawer:
+        """The MSC's pair, and no WDS member: a member holds the ids of its
+        tree source only."""
+        systems = alpha_cen()
+        systems.two_stars = frozenset(f"{self.W} {letter}" for letter in two_stars)
+        return drawn.Drawer(systems, Inputs(), FakeResolver({}, []))
+
+    def test_the_other_catalogue_reaches_a_member_of_one_star(self):
+        drawer = self.lone_msc_pair()
+        assert drawer._on_component(self.item("orb6"), f"{self.W} B", "A")
+        assert drawer.pairs[1].orbits
+
+    def test_the_other_catalogue_does_not_reach_a_second_star(self):
+        drawer = self.lone_msc_pair("B")
+        assert not drawer._on_component(self.item("orb6"), f"{self.W} B", "A")
+        assert not drawer.pairs[1].orbits
+
+    def test_letters_do_not_reach_a_second_star(self):
+        drawer = self.lone_msc_pair("B")
+        assert not drawer._on_letters(self.item("orb6"), self.W, "A", "B")
+        assert not drawer.pairs[1].orbits
+
+    def own_member_in_no_pair(self, two_stars: Iterable[str] = ()) -> drawn.Drawer:
+        """The MSC's B in a node of three, the WDS's in a pair."""
+
+        def members(node: int, catalogue: str, letters: str) -> list[dict]:
+            return [
+                _entry(
+                    node=node,
+                    letter=letter,
+                    label=letter,
+                    source=catalogue,
+                    ids=_ids((catalogue, "id", f"{self.W} {letter}")),
+                )
+                for letter in letters
+            ]
+
+        systems = _systems(
+            [
+                {"node": 1, "key": 0, "ra": 1.0, "dec": 2.0},
+                {"node": 2, "key": 0, "parent": 1, "root": 1, "ra": 1.0, "dec": 2.0},
+            ],
+            [*members(1, "msc", "ABC"), *members(2, "wds", "AB")],
+        )
+        systems.two_stars = frozenset(f"{self.W} {letter}" for letter in two_stars)
+        return drawn.Drawer(systems, Inputs(), FakeResolver({}, []))
+
+    @pytest.mark.parametrize("msc_first", [True, False])
+    @pytest.mark.parametrize("source", ["msc", "orb6", "sbx"])
+    def test_one_star_in_both_trees_takes_one_pair(self, msc_first, source):
+        """Each source of one star's orbit goes on one pair, so it is drawn
+        once."""
+        systems = self.systems(msc_first)
+        drawer = drawn.Drawer(systems, Inputs(), FakeResolver({}, []))
+        assert drawer._on_component(self.item(source), f"{self.W} B", "A")
+        assert drawer.pairs[self.node_of(msc_first, "msc")].orbits
+        assert not drawer.pairs[self.node_of(msc_first, "wds")].orbits
+
+    def test_one_star_in_both_trees_takes_its_pair(self):
+        """The two ids name one star, so the orbit goes where it can."""
+        drawer = self.own_member_in_no_pair()
+        assert drawer._on_component(self.item("msc"), f"{self.W} B", "A")
+        assert drawer.pairs[2].orbits
+
+    def test_two_stars_keep_to_their_own_member(self):
+        drawer = self.own_member_in_no_pair("B")
+        assert drawer._on_component(self.item("msc"), f"{self.W} B", "A")
+        assert not drawer.pairs[2].orbits
+        assert drawer.counts["msc: orbits of a node that is no pair"] == 1
+
+
+class TestHostPairs:
+    """An orbit that names a host reaches the pair of the host and its brown
+    dwarf, as it reached the point that held them."""
+
+    def systems(
+        self,
+        *nodes: dict,
+        outcome: str = MEMBER,
+        period: float | None = None,
+        orbit_keys: tuple[int, ...] = (),
+    ) -> Systems:
+        found = _systems(
+            [{"node": 1, "key": 0}, *nodes],
+            [
+                {"node": 1, "kind": assemble.STAR, "key": 30},
+                {"node": 1, "kind": assemble.STAR, "key": 40},
+            ],
+            orbit_keys,
+        )
+        found.overlaps = pa.Table.from_pylist(
+            [{"key": 40, "host": 30, "outcome": outcome, "period": period}],
+            schema=assemble.OVERLAPS,
+        )
+        return found
+
+    def catalogue_orbit(self, period: float, record: float | None) -> list:
+        """The periods on the pair after an SBX orbit of the host."""
+        row = dict.fromkeys(orbits.ORBITS.names) | {
+            "source": orbits.SBX,
+            "system": "1",
+            "period": period,
+            "ids": _ids(("hip", "2007", "1")),
+        }
+        inputs = Inputs(
+            catalogue_orbits=pa.Table.from_pylist([row], schema=orbits.ORBITS)
+        )
+        drawer = drawn.Drawer(
+            self.systems(period=record),
+            inputs,
+            FakeResolver({("hip", "2007", "1"): 30}, []),
+        )
+        drawer.match_catalogues()
+        return [item.period for item in drawer.pairs[1].orbits]
+
+    def gaia_orbit(self, record: float | None) -> list:
+        orbit = dict(KEPLER_16_GAIA)
+        drawer = drawn.Drawer(
+            self.systems(period=record, orbit_keys=(30,)),
+            Inputs(orbit_elements=pa.Table.from_pylist([orbit])),
+            FakeResolver({}, []),
+        )
+        drawer.match_gaia()
+        return [item.period for item in drawer.pairs[1].orbits]
+
+    def test_the_pair_of_the_host(self):
+        drawer = drawn.Drawer(self.systems(), Inputs(), FakeResolver({}, []))
+        assert drawer.point_node == {30: 1}
+
+    def test_a_star_that_left_is_no_partner(self):
+        systems = self.systems(outcome=LEAVES)
+        assert drawn.Drawer(systems, Inputs(), FakeResolver({}, [])).point_node == {}
+
+    def test_the_orbit_at_the_period_of_the_record(self):
+        assert self.catalogue_orbit(1000.0, 1040.0) == [1000.0]
+
+    def test_an_orbit_at_another_period_is_of_another_companion(self):
+        """A 5-day orbit of the host is no orbit of a wide brown dwarf."""
+        assert self.catalogue_orbit(5.0, 1000.0) == []
+
+    def test_a_record_with_no_period_shows_no_orbit(self):
+        assert self.catalogue_orbit(5.0, None) == []
+
+    def test_a_gaia_orbit_at_the_period_of_the_record(self):
+        period = KEPLER_16_GAIA["period"]
+        assert self.gaia_orbit(period) == [pytest.approx(period)]
+
+    def test_a_gaia_orbit_at_another_period(self):
+        assert self.gaia_orbit(5000.0) == []
 
 
 class TestHeldClaims:

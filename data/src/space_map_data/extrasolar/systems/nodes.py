@@ -96,6 +96,8 @@ NODES = pa.schema(
         ("mass", pa.float32()),
         # The orbit in the group, from the group's primary: arcsec, deg, d.
         ("separation", pa.float64()),
+        # The first measure of a WDS pair. `separation` is its last.
+        ("first_separation", pa.float64()),
         ("position_angle", pa.float32()),
         ("period", pa.float64()),
         ("eccentricity", pa.float32()),

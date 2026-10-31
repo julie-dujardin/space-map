@@ -1,6 +1,6 @@
 """Tests for engine extensions and the exoplanet ingest through the engine."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import cast
 
 import numpy as np
@@ -352,9 +352,13 @@ class StarSystems:
     """Star systems with no circumbinary host, and the root of some IDs."""
 
     roots: dict[int, int]
+    stars: dict[int, int] = field(default_factory=dict)
 
     def host(self, record: int) -> int:
         return 0
+
+    def star(self, record: int) -> int:
+        return self.stars.get(record, 0)
 
     def root(self, id_: int) -> int:
         return self.roots.get(id_, 0)
@@ -376,6 +380,26 @@ class TestStarSystemRoots:
             r["host"]: r["system"] for r in table_rows(root, "planets").to_pylist()
         }
         assert planets[delta_a] == system and planets[delta_b] == system
+
+    def test_a_brown_dwarf_and_its_star_link_each_other(self, root, backup, tmp_path):
+        """The record stays on its host. It names its star, and the star's
+        Metadata row names the record."""
+        inputs = downloads().write(tmp_path / "one")
+        ingest(root, backup, inputs)
+        (star,) = Registry(root).lookup("gaia", "dr3", ["505"])
+        ingest(
+            root,
+            backup,
+            inputs,
+            systems=StarSystems({}, {0: int(star)}),
+        )
+        rows = table_rows(root, "planets").to_pylist()
+        (record,) = [row for row in rows if row["star"] is not None]
+        assert record["star"] == star and record["host"] != star
+        meta = {row["id"]: row for row in table_rows(root, "metadata").to_pylist()}
+        path = f"{record['host']}/b/{record['number']}"
+        assert meta[int(star)]["planets"] == [path]
+        assert meta[record["host"]]["planets"] is None
 
 
 class TestExoplanetIngest:

@@ -215,6 +215,7 @@ def wds_pair(
     pm1: tuple[float | None, float | None] = (None, None),
     pm2: tuple[float | None, float | None] = (None, None),
     position_angle: float | None = None,
+    first_separation: float | None = None,
 ) -> dict:
     found, known = wds_source.evidence(notes, pm1, pm2)
     return {
@@ -222,6 +223,7 @@ def wds_pair(
         "secondary": secondary,
         "discoverer": "TST   1",
         "separation": separation,
+        "first_separation": first_separation,
         "position_angle": position_angle,
         "mag1": mag1,
         "mag2": mag2,
