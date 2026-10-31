@@ -3,6 +3,8 @@
 See docs/stellar-qids.md for lookup scope and sources.
 """
 
+SKY_CONSTELLATION_SLUG_PREFIX = "sky-"
+
 MODERN_IAU_CONSTELLATIONS: dict[str, tuple[str, ...]] = {
     "andromeda": ("Q9256",),
     "antlia": ("Q10481",),
@@ -265,3 +267,192 @@ CONSTELLATION_PAGES: dict[str, dict[str, tuple[str, ...]]] = {
     "modern-iau": MODERN_IAU_CONSTELLATIONS,
     "western-historical": WESTERN_HISTORICAL_CONSTELLATIONS,
 }
+
+# Each mansion: its number, and its figure number in `CHINESE_NUMBERED`.
+CHINESE_MANSIONS: dict[str, tuple[int, int]] = {
+    "horn": (1, 9),
+    "neck": (2, 11),
+    "root": (3, 4),
+    "room": (4, 6),
+    "heart": (5, 26),
+    "tail": (6, 24),
+    "winnowing-basket": (7, 8),
+    "dipper": (8, 5),
+    "ox": (9, 16),
+    "girl": (10, 17),
+    "emptiness": (11, 28),
+    "roof": (12, 23),
+    "encampment": (13, 18),
+    "wall": (14, 2),
+    "legs": (15, 12),
+    "bond": (16, 14),
+    "stomach": (17, 25),
+    "hairy-head": (18, 15),
+    "net": (19, 1),
+    "turtle-beak": (20, 34),
+    "three-stars": (21, 3),
+    "well": (22, 10),
+    "ghost": (23, 7),
+    "willow": (24, 13),
+    "star": (25, 27),
+    "extended-net": (26, 30),
+    "wings": (27, 29),
+    "chariot": (28, 31),
+}
+# Figure IDs "CON <key> 001", "AST <key> 001".
+CHINESE_NUMBERED = {
+    "chinese": "CON",
+    "chinese_manchu": "AST",
+    "modern_chinese": "AST",
+}
+# Figure ID "CON <key> 01A": the mansion's number. An edition can name it its
+# own way (Southern Dipper for Dipper), so the number decides, not the name.
+CHINESE_CHART_EDITIONS = (
+    "chinese_chenzhuo",
+    "chinese_song_dynasty",
+    "chinese_xianglin",
+    "chinese_yuan_dynasty",
+    "japanese",
+    "korean",
+)
+
+# Each nakshatra: its figure ID in `indian`, and its number in `indian_nakshatras`.
+NAKSHATRA_FIGURES: dict[str, tuple[str, int]] = {
+    "ashvini": ("Aśv", 1),
+    "bharani": ("Bhar", 2),
+    "krittika": ("Kṛt", 3),
+    "rohini": ("Roh", 4),
+    "mrigashirsha": ("Mṛg", 5),
+    "ardra": ("Ārd", 6),
+    "punarvasu": ("PVas", 7),
+    "pushya": ("Puṣ", 8),
+    "ashlesha": ("Aśl", 9),
+    "magha": ("Magh", 10),
+    "purva-phalguni": ("PPhā", 11),
+    "uttara-phalguni": ("UPhā", 12),
+    "hasta": ("Hasta", 13),
+    "chitra": ("Chitr", 14),
+    "svati": ("Svā", 15),
+    "vishakha": ("Viś", 16),
+    "anuradha": ("Anur", 17),
+    "jyeshtha": ("Jyeṣ", 18),
+    "mula": ("Mūl", 19),
+    "purva-ashadha": ("PAṣ", 20),
+    "uttara-ashadha": ("UAṣ", 21),
+    "shravana": ("Śra", 22),
+    "dhanishta": ("Dhani", 23),
+    "shatabhisha": ("Śata", 24),
+    "purva-bhadrapada": ("PBhā", 25),
+    "uttara-bhadrapada": ("UBhā", 26),
+    "revati": ("Rev", 27),
+}
+
+WESTERN_HISTORICAL_FIGURES: dict[str, dict[str, tuple[str, ...]]] = {
+    "antinous": {"dien": ("CON Dien Aql2",), "ruelle": ("CON Ruelle Aql2",)},
+    "argo-navis": {
+        "arabic_al-sufi": ("CON arabic_al-sufi Arg",),
+        "dien": ("CON Dien CarPupVel",),
+        "greek_almagest": ("CON greek_almagest Arg",),
+        "greek_farnese": ("CON greek_farnese Arg",),
+        "greek_leidenAratea": ("CON greek_leidenAratea Arg",),
+        "ruelle": ("CON Ruelle CarPupVel",),
+    },
+    "cerberus": {
+        "dien": ("CON Dien Cer", "CON Dien Cer_eq"),
+        "ruelle": ("CON Ruelle Cer",),
+    },
+    "musca-borealis": {"dien": ("CON Dien MuB",), "ruelle": ("CON Ruelle MuB",)},
+    "quadrans-muralis": {"modern": ("AST modern QuM",)},
+}
+
+# Stellarium gives two figures of `japanese` this ID: the name tells them apart.
+MISNUMBERED_FIGURES = {("japanese", "Tail"): "tail"}
+
+# Their figures with the Latin name of an IAU constellation are that
+# constellation, in one chart or the other ("Aquarius (eq)").
+IAU_NAMED_CULTURES = frozenset({"dien", "ruelle"})
+EQUATORIAL_CHART = " (eq)"
+
+# Wikidata labels that do not work as a page's name; an empty value drops one.
+SKY_PAGE_NAME_FIXES: dict[str, dict[str, str]] = {
+    "mula": {"zh": ""},
+    "musca-borealis": {"fr": "Mouche boréale"},
+    "quadrans-muralis": {"fr": "Quadrant mural"},
+}
+
+# What a nakshatra's article shows of its astrological symbol: not of the sky.
+SKY_PAGE_PICTURES_LEFT_OUT = frozenset(
+    {
+        "AEW_diamond_solo_white.gif",
+        "Ankus_(elephand_goad).svg",
+        "Chariot_(PSF).jpg",
+        "CobraWoodcut.jpg",
+        "Cogotas-II_(empuñadura_de_espada)-Segunda_Edad_del_Hierro.jpg",
+        "Coral3.JPG",
+        "Gray904.png",
+        "Hun_bow.jpg",
+        "JKRUK_20070725_El-kolo_garncarskie.jpg",
+        "Male_red_deer_(Cervus_elaphus),_Munich,_Germany_-_20060530.jpg",
+        "Nelumno_nucifera_open_flower_-_botanic_garden_adelaide.jpg",
+        "NikkoCaparisonedHorse5423.jpg",
+        "Picture_of_a_ram,_1569_by_Jost_Amman.jpg",
+        "PolynesianRatNZ.jpg",
+        "Polymixia_nobilis.jpg",
+        "Smellie_twins.jpg",
+        "Vaca_N&B.jpg",
+        "Z_Camelopardalis_GALEX.jpg",
+    }
+)
+
+# The culture each page sits under. The IAU pages are not here.
+SKY_PAGE_CULTURES: dict[str, str] = {
+    **dict.fromkeys(CHINESE_MANSIONS, "chinese"),
+    **dict.fromkeys(NAKSHATRA_FIGURES, "indian_nakshatras"),
+    "antinous": "ruelle",
+    "argo-navis": "greek_almagest",
+    "cerberus": "ruelle",
+    "musca-borealis": "ruelle",
+    "quadrans-muralis": "modern",
+}
+# `modern` has no page of its own: a page drawn on it sits under this culture.
+UNPAGED_CULTURE_PARENTS = {"modern": "modern_iau"}
+
+
+def sky_page_culture(slug: str) -> str | None:
+    """The culture of a group slug of another culture than the IAU's."""
+    return SKY_PAGE_CULTURES.get(slug.removeprefix(SKY_CONSTELLATION_SLUG_PREFIX))
+
+
+def sky_constellation_pages() -> dict[str, str]:
+    """The QID of each constellation page, by slug. A QID with no figure has none."""
+    tables = (
+        CHINESE_CONSTELLATIONS,
+        INDIAN_NAKSHATRA_CONSTELLATIONS,
+        WESTERN_HISTORICAL_CONSTELLATIONS,
+    )
+    pages = {slug: qids[0] for slug, qids in MODERN_IAU_CONSTELLATIONS.items()}
+    for table in tables:
+        pages |= {
+            slug: qids[0] for slug, qids in table.items() if slug in SKY_PAGE_CULTURES
+        }
+    return pages
+
+
+def sky_figure_pages() -> dict[str, dict[str, str]]:
+    """The page of each figure that the tables match, by culture and figure ID."""
+    pages: dict[str, dict[str, str]] = {}
+    for slug, (mansion, number) in CHINESE_MANSIONS.items():
+        for key, kind in CHINESE_NUMBERED.items():
+            pages.setdefault(key, {})[f"{kind} {key} {number:03d}"] = slug
+        for key in CHINESE_CHART_EDITIONS:
+            pages.setdefault(key, {})[f"CON {key} {mansion:02d}A"] = slug
+    for slug, (figure, number) in NAKSHATRA_FIGURES.items():
+        indian = pages.setdefault("indian", {})
+        indian[f"CON indian {figure}"] = indian[f"AST indian {figure}"] = slug
+        pages.setdefault("indian_nakshatras", {})[
+            f"CON indian_nakshatras Naks{number:02d}"
+        ] = slug
+    for slug, figures in WESTERN_HISTORICAL_FIGURES.items():
+        for key, ids in figures.items():
+            pages.setdefault(key, {}).update(dict.fromkeys(ids, slug))
+    return pages

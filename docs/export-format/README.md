@@ -32,7 +32,7 @@ v1/
   attitude/{probe_id}/{N}.bin.gz                  probe orientation keyframe streams (ATTI format)
   objects/__global__/{bucket}.json.gz             global object details, hash-bucketed
   objects/{lang}/{bucket}.json.gz                 localized details, hash-bucketed
-  groups/__index__.json                           (not gzipped) slug → {type, applies_to, member count}
+  groups/__index__.json                           (not gzipped) slug → {type, applies_to, member count, culture of a sky page}
   groups/__global__/{bucket}.json.gz              global group details, hash-bucketed
   groups/{lang}/{bucket}.json.gz                  localized group details, hash-bucketed
   groups/__orbit_samples__.json.gz                small-body orbit-class scatter samples

@@ -7,6 +7,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from space_map_data.constants.stars import constellations
+from space_map_data.constants.stars import cultures as cultures_table
 from space_map_data.export.extrasolar import render, skycultures
 from space_map_data.export.extrasolar.build import ExportRefused, export_extrasolar
 from space_map_data.export.extrasolar.reader import ExportReader, NodeInfo
@@ -14,7 +16,9 @@ from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.extrasolar.ids import cell_of
 from space_map_data.extrasolar.registry import Registry
 from space_map_data.extrasolar.sky import region_of
+from space_map_data.skycultures import translations
 from space_map_data.skycultures.licences import NON_COMMERCIAL, UNDECIDED
+from space_map_data.skycultures.translations import Catalogues
 from tests.extrasolar.export_registry import star, write_registry
 from tests.extrasolar.test_export import _expected_position
 
@@ -122,6 +126,8 @@ iau_labels = skycultures.iau_labels
 def _no_wikidata(monkeypatch):
     """An export would read the real Wikidata items."""
     monkeypatch.setattr(skycultures, "iau_labels", lambda _: {})
+    monkeypatch.setattr(skycultures, "page_labels", lambda _: {})
+    monkeypatch.setattr(translations, "load", lambda *_: Catalogues())
 
 
 @pytest.fixture
@@ -214,7 +220,8 @@ class TestMetadata:
         assert (test["members"], test["positioned"], test["unresolved"]) == (7, 3, 2)
         assert other["distribution"] == UNDECIDED
         assert other["flags"] == ["no-licence"]
-        assert report["skycultures"]["files"] == 3
+        assert entry["star_figures"] == "skycultures/stars/{shard}.json.gz"
+        assert report["skycultures"]["files"] == 3 + skycultures.STAR_SHARDS
 
     def test_every_file_has_the_token(self, exported):
         reader, _, _ = exported
@@ -351,7 +358,7 @@ class TestSelect:
         assert report["skycultures_left_out"] == [
             "bucur/Test: Stellarium has the key Test"
         ]
-        assert sorted(p.name for p in (out / "v1/x/skycultures").iterdir()) == [
+        assert sorted(p.name for p in (out / "v1/x/skycultures").glob("*.gz")) == [
             "common_star_names.json.gz",
             "other.json.gz",
             "test.json.gz",
@@ -408,13 +415,15 @@ class TestIauConstellations:
             ],
             "asterisms": [{"id": f"AST {key} Yyy", "lines": [[1, 3]]}],
         }
-        content, _ = skycultures.layout(_record("stellarium", key, culture), IAU_LABELS)
+        record = _record("stellarium", key, culture)
+        content, _ = skycultures.layout(record, skycultures.Naming(IAU_LABELS))
         return content
 
     def test_a_modern_constellation_has_its_abbreviation_and_labels(self):
         boo, *_ = self._laid_out("modern_iau")["figures"]
         assert boo["iau"] == "Boo"
         assert boo["labels"] == {"en": "Boötes", "fr": "Bouvier"}
+        assert boo["page"] == "sky-bootes"
 
     def test_a_constellation_with_no_label_keeps_its_abbreviation(self):
         _, unknown, _ = self._laid_out("modern_iau")["figures"]
@@ -427,6 +436,17 @@ class TestIauConstellations:
 
     def test_another_culture_gets_neither(self):
         boo, *_ = self._laid_out("romanian")["figures"]
+        assert "iau" not in boo
+        assert "labels" not in boo
+        assert "page" not in boo
+
+    def test_modern_chinese_is_the_88_with_labels(self):
+        boo, *_ = self._laid_out("modern_chinese")["figures"]
+        assert boo["iau"] == "Boo"
+        assert boo["labels"]["fr"] == "Bouvier"
+
+    def test_journey_to_the_west_has_figures_of_its_own(self):
+        boo, *_ = self._laid_out("modern_journey_to_the_west")["figures"]
         assert "iau" not in boo
         assert "labels" not in boo
 
@@ -456,3 +476,270 @@ class TestIauConstellations:
     def test_each_iau_constellation_has_a_polish_name(self):
         names = skycultures.POLISH_CONSTELLATION_NAMES
         assert set(names) == set(skycultures.MODERN_IAU_CONSTELLATIONS)
+
+
+class Named(WikidataEntityCache):
+    def __init__(self, labels: dict[str, str]) -> None:
+        self.labels = labels
+
+    def get_referenced(self, qid):
+        return {"labels": self.labels}
+
+
+class TestPickerTable:
+    """The table of the culture picker, which is kept by hand."""
+
+    def test_each_culture_is_in_a_region_or_left_out(self):
+        regions = cultures_table.SKY_CULTURE_REGIONS
+        picked = [key for group in regions.values() for key in group]
+        assert len(regions) == 18
+        assert len(picked) == len(set(picked)) == 96
+        assert not set(picked) & cultures_table.UNPICKED_SKY_CULTURES
+
+    def test_each_name_is_a_page_of_the_tables(self):
+        assert cultures_table.sky_culture_name_qids()
+
+    def test_a_culture_left_out_has_no_group(self):
+        assert skycultures.culture_group("modern_st") is None
+        assert skycultures.culture_group("modern_chinese") == "modern"
+
+    def test_a_culture_outside_the_table_is_logged(self, caplog):
+        assert skycultures.culture_group("new_key") is None
+        assert "new_key" in caplog.text
+
+
+class TestCultureLabels:
+    """The name of a culture in the reader's language."""
+
+    def test_a_title_note_goes_and_the_case_comes_up(self):
+        labels = skycultures.culture_labels(
+            "gond", "Gond", Named({"fr": "gonds (peuple)", "en": "Gondi people"})
+        )
+        assert labels == {"fr": "Gonds"}
+
+    def test_an_edition_stays_as_published(self):
+        labels = skycultures.culture_labels(
+            "greek_almagest", "Greek (Almagest)", Named({"fr": "Grecs"})
+        )
+        assert labels == {"fr": "Grecs (Almagest)"}
+
+    def test_a_fix_wins_over_wikidata(self):
+        labels = skycultures.culture_labels(
+            "sami", "Sami", Named({"es": "imperio lapón"})
+        )
+        assert labels["es"] == "Samis"
+
+    def test_no_match_keeps_the_english_name(self):
+        assert skycultures.culture_labels("dien", "Dien", Named({"fr": "x"})) == {}
+
+    def test_a_label_equal_to_the_name_is_left_out(self):
+        assert skycultures.culture_labels("gond", "Gond", Named({"de": "Gond"})) == {}
+
+    def test_the_table_fills_a_gap(self):
+        labels = skycultures.culture_labels("modern_iau", "Modern (IAU)", Named({}))
+        assert labels["pt"] == "Moderna (UAI)"
+
+    def test_stellarium_wins_over_wikidata(self):
+        labels = skycultures.culture_labels(
+            "gond", "Gond", Named({"fr": "Gonds", "de": "Gondi"}), {"gond": {"fr": "x"}}
+        )
+        assert labels == {"fr": "x", "de": "Gondi"}
+
+    def test_an_edition_reads_the_culture_it_belongs_to(self):
+        labels = skycultures.culture_labels(
+            "chinese_xianglin",
+            "Chinese Xianglin Star Chart",
+            Named({"fr": "Chinois", "de": "Chinesen"}),
+            {"chinese": {"fr": "Chinoise"}},
+        )
+        assert labels["fr"] == "Chinoise (Xianglin)"
+        assert labels["de"] == "Chinesen (Xianglin)"
+
+    def test_the_novel_follows_the_word_for_modern(self):
+        labels = skycultures.culture_labels(
+            "modern_journey_to_the_west",
+            "Modern (Journey to the West)",
+            Named({"ja": "西遊記", "de": "Die Reise"}),
+        )
+        assert labels == {"ja": "現代 (西遊記)"}
+
+
+class TestTranslatedCultures:
+    """Stellarium's names of its cultures."""
+
+    def _names(self, key: str, name: str, value: str) -> dict:
+        record = _record("stellarium", key, {})
+        record["name"] = name
+        catalogue = Catalogues({"fr": {(None, name): value}})
+        return skycultures.translated_cultures([record], catalogue)[key]
+
+    def test_a_value_is_cleaned(self):
+        assert self._names("x", "X", " grecque. ") == {"fr": "Grecque"}
+
+    def test_a_fix_wins(self):
+        assert self._names("norse", "Norse", "Scandinave")["fr"] == "Norrois"
+
+    def test_a_value_left_out_is_gone(self):
+        names = skycultures.translated_cultures(
+            [{**_record("stellarium", "boorong", {}), "name": "Boorong"}],
+            Catalogues({"it": {(None, "Boorong"): "Aborigeni"}}),
+        )
+        assert names["boorong"] == {}
+
+    def test_bucur_has_none(self):
+        assert (
+            skycultures.translated_cultures([_record("bucur", "x", {})], Catalogues())
+            == {}
+        )
+
+
+class TestFigureNames:
+    """Stellarium's names of figures, and the pages of the figures."""
+
+    naming = skycultures.Naming(
+        {"orion": {"en": "Orion", "fr": "Orion FR"}},
+        {"horn": {"en": "Horn", "zh": "角宿", "fr": "Corne WD", "de": "Horn DE"}},
+        Catalogues(
+            {
+                "fr": {(None, "Net"): "Filet", (None, "Horn"): "Corne"},
+                "zh": {(None, "Other"): "毕宿"},
+                "de": {("ctx", "Net"): "Netz"},
+            }
+        ),
+    )
+
+    def _figure(self, key, name, dataset="stellarium", flags=(), **figure) -> dict:
+        record = _record(dataset, key, {"constellations": [{"lines": [], **figure}]})
+        record["licence"]["flags"] = list(flags)
+        return skycultures.layout({**record}, self.naming)[0]["figures"][0] | {
+            "name": name
+        }
+
+    def _named(self, key, name, **rest) -> dict:
+        record_rest = {k: rest.pop(k) for k in ("dataset", "flags") if k in rest}
+        return self._figure(
+            key, name, common_name=name, id=rest.pop("id", "CON x 1"), **record_rest
+        )
+
+    def test_a_figure_reads_the_entry_of_its_context(self):
+        figure = self._named("anutan", {"english": "Net", "context": "ctx"})
+        assert figure["labels"] == {"de": "Netz"}
+
+    def test_a_context_does_not_fall_back_on_the_plain_entry(self):
+        figure = self._named("anutan", {"english": "Horn", "context": "ctx"})
+        assert "labels" not in figure
+
+    def test_a_value_equal_to_a_native_name_is_left_out(self):
+        figure = self._named("anutan", {"english": "Other", "native": "毕宿"})
+        assert "labels" not in figure
+
+    @pytest.mark.parametrize("flag", ["no-derivatives", "no-licence", "tk-labels"])
+    def test_a_culture_with_terms_stays_untranslated(self, flag):
+        figure = self._named("anutan", {"english": "Net"}, flags=[flag])
+        assert "labels" not in figure
+
+    def test_bucur_has_no_translations(self):
+        figure = self._named("gond", {"english": "Net"}, dataset="bucur")
+        assert "labels" not in figure
+
+    def test_a_page_fills_a_gap_and_keeps_its_native_name(self):
+        figure = self._named(
+            "chinese", {"english": "Horn", "native": "角宿"}, id="CON chinese 009"
+        )
+        assert figure["page"] == "sky-horn"
+        assert figure["labels"] == {"zh": "角宿", "fr": "Corne", "de": "Horn DE"}
+
+    def test_a_page_stays_on_a_culture_with_no_translations(self):
+        figure = self._named(
+            "chinese",
+            {"english": "Horn"},
+            id="CON chinese 009",
+            flags=["no-derivatives"],
+        )
+        assert figure["labels"]["fr"] == "Corne WD"
+
+    def test_a_misnumbered_figure_goes_by_its_name(self):
+        figure = self._named("japanese", {"english": "Tail"}, id="CON japanese 05A")
+        assert figure["page"] == "sky-tail"
+
+    @pytest.mark.parametrize("english", ["Orion", "Orion (eq)"])
+    def test_a_chart_of_french_figures_links_by_latin_name(self, english):
+        figure = self._named(
+            "dien", {"english": english, "native": "x"}, dataset="bucur"
+        )
+        assert figure["page"] == "sky-orion"
+        assert figure["labels"]["fr"] == "Orion FR"
+
+    def test_another_name_in_such_a_chart_has_no_page(self):
+        figure = self._named("nicobars", {"english": "Orion"}, dataset="bucur")
+        assert "page" not in figure
+
+
+class TestSkyFigurePages:
+    """Each QID with figures, and the tables they read."""
+
+    def test_each_mansion_is_in_nine_cultures(self):
+        pages = constellations.sky_figure_pages()
+        for key in (
+            *constellations.CHINESE_NUMBERED,
+            *constellations.CHINESE_CHART_EDITIONS,
+        ):
+            assert len(set(pages[key].values())) == 28
+
+    def test_each_nakshatra_is_in_both_indian_cultures(self):
+        pages = constellations.sky_figure_pages()
+        assert len(set(pages["indian"].values())) == 27
+        assert len(set(pages["indian_nakshatras"].values())) == 27
+
+    def test_each_page_has_a_culture_and_a_qid(self):
+        pages = constellations.sky_constellation_pages()
+        assert len(pages) == 88 + 28 + 27 + 5
+        assert set(constellations.SKY_PAGE_CULTURES) <= set(pages)
+
+    def test_a_symbol_with_no_figure_has_no_page(self):
+        assert "azure-dragon" not in constellations.sky_constellation_pages()
+
+    def test_slugs_do_not_meet(self):
+        tables = constellations.CONSTELLATION_PAGES.values()
+        assert sum(map(len, tables)) == len({s for t in tables for s in t})
+
+
+def test_a_star_shard_lists_each_figure_of_a_star_by_culture():
+    star_id = 2 * skycultures.STAR_SHARDS + 5
+    contents = [
+        {
+            "key": "modern_iau",
+            "members": [
+                {"id": star_id},
+                {"id": 1},
+                {"ref": "M 42", "reason": "deep-sky"},
+            ],
+            "figures": [
+                {
+                    "names": [{"native": "Orion", "IPA": "x"}],
+                    "labels": {"fr": "Orion"},
+                    "page": "sky-orion",
+                    "lines": [[0, 1], [1, 2]],
+                },
+                {"names": [], "lines": [[0, 1]], "ray_helper": True},
+            ],
+        },
+        {
+            "key": "aztec",
+            "members": [{"id": star_id}],
+            "figures": [{"names": [{"english": "Fire"}], "lines": [], "group": [0]}],
+        },
+    ]
+    shards = skycultures.star_shards(contents)
+    assert len(shards) == skycultures.STAR_SHARDS
+    assert shards[5]["stars"][str(star_id)] == {
+        "modern_iau": [
+            {
+                "names": [{"native": "Orion"}],
+                "labels": {"fr": "Orion"},
+                "page": "sky-orion",
+            }
+        ],
+        "aztec": [{"names": [{"english": "Fire"}]}],
+    }
+    assert list(shards[1]["stars"]) == ["1"]

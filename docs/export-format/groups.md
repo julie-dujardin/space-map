@@ -2,10 +2,12 @@
 
 Aggregation entities behind `/g/<slug>` pages (constellations, launch vehicles,
 organizations, launch sites, countries, orbit classes, small-body flags, IAU
-surface-feature types, star families and planet families).
+surface-feature types, star families, planet families, the constellations of
+the sky and the sky cultures). The group type `constellation` is a satellite
+fleet; a constellation of the sky is `sky_constellation`.
 Every group type's slug carries a type prefix (`const-`, `lv-`, `org-`, `site-`,
 `bus-`, `country-`, `class-`, `flag-`, `cat-`, `comet-family-`, `ft-`, `star-`,
-`planet-`) so slugs never collide across types and a slug's type is
+`planet-`, `sky-`, `culture-`) so slugs never collide across types and a slug's type is
 recognizable on sight. A launch vehicle (`lv-<slug>`) merges a rocket's spent stages tracked in orbit (the
 former ROCKET `const-` page) with its GCAT launchlog history; `UPPER_STAGE`
 constellations stay `const-`. Earth orbiters split across two category pages by
@@ -30,10 +32,11 @@ Small, **ungzipped** map written once. Loaded eagerly to validate
 
 ```typescript
 interface GroupIndexEntry {
-  type: GroupType;            // "constellation" | "launch_vehicle" | "organization" | "launch_site" | "bus" | "country" | "orbit_class" | "small_body_flag" | "split_comet" | "mission" | "feature_type" | "star_family" | "planet_family"
+  type: GroupType;            // "constellation" | "launch_vehicle" | "organization" | "launch_site" | "bus" | "country" | "orbit_class" | "small_body_flag" | "split_comet" | "mission" | "feature_type" | "star_family" | "planet_family" | "sky_constellation" | "sky_culture"
   applies_to: GroupCategory;  // "earth_sat" | "small_body" | "probe" | "category" | "surface_feature" | "star" | "planet"
   n: number;                  // member count (surface features on a feature_type group, stars on a star_family group, planets on a planet_family group)
   code?: string;              // feature_type groups only: the 2-letter IAU descriptor code (slug ↔ code without a duplicated table)
+  culture?: string;           // a sky_constellation page outside the IAU's 88: the key of the culture it draws
 }
 // File body: Record<slug, GroupIndexEntry>
 ```
@@ -476,6 +479,55 @@ interface GlobalGroupData {
   published_planet_count?: number;  // planets that measured values put in the family; on cat-planets, planets with a published family
   estimated_planet_count?: number;  // the other planets, whose family needs an estimate; on cat-planets, planets with only estimated families
 
+  // Constellations of the sky (sky-<slug>, from `sky_constellation_pages` in
+  // `constants/stars/constellations.py`): the 88 of the IAU, and the Chinese
+  // mansions, the nakshatras and the historical Western constellations that
+  // have a figure in a culture. A page has the text, the description and the
+  // pictures of its Wikidata item. `notable_members` lists the stars of its
+  // figure in the served file of its culture, the stars with the most sitelinks
+  // first, and member_count counts them. Each has an extrasolar ID: a line end
+  // with none is left out. No search reaches these members, so the Members tab
+  // shows this list.
+  // The culture is `modern_iau`, or else `SKY_PAGE_CULTURES`: the `culture` of
+  // `__index__.json`. A client draws that culture while the page is open, and
+  // it can be one that the picker leaves out.
+  // The localized `name` is the figure's `labels` (extrasolar.md): for an IAU
+  // page the curated `POLISH_CONSTELLATION_NAMES` in `pl`, else the Wikidata
+  // label; for another page Stellarium's name, else the Wikidata label. There
+  // is no `group_name_` message. A client gets the slug from the figure's
+  // `page`. A star's `iau_constellation` links to the page (objects.md).
+  // A page goes into the search index only with a Wikipedia extract in the
+  // base locale. `applies_to` is `star`, and a page filters nothing on the map.
+  parent_group?: string;  // the page above: `culture-<key>` of its culture on a sky- page (`modern` has no page, so `culture-modern_iau`), `cat-constellations` on a culture- page
+
+  // Sky cultures (culture-<key>, one per culture of the picker,
+  // `SKY_CULTURE_REGIONS` in `constants/stars/cultures.py`). member_count is the
+  // culture's figures, `figures` in extrasolar.md. The localized `name` is the
+  // picker's. A culture's sky- pages are its `child_groups`,
+  // and `cat-constellations` has the culture pages. A culture in
+  // `SKY_CULTURE_ARTICLES` has the item of that article; another has no item.
+  // Every culture page goes into the search index, with or without a Wikipedia
+  // extract. A sky- page goes in only with an extract in the base locale.
+  culture_text?: {
+    text: string;      // the start of the source's own introduction, in English, with no markup; "\n" between paragraphs
+    distribution: "open" | "non-commercial";  // the licence's tier of the text. The culture's data has its own tier in extrasolar.md
+    credit: ExtrasolarCredit;                 // as `credit` in extrasolar.md; `license` is the source's licence
+    // The same text by site language: Stellarium's translation of the
+    // introduction (`stellarium-skycultures-descriptions`, zh_CN for zh, pt and
+    // never pt_BR for pt). An entry translates the whole introduction, so a
+    // language is here only when `text` holds whole paragraphs, and the entry
+    // has as many paragraphs as the source and is not 1.5 times longer: an
+    // entry can be older than the English. A culture flagged no-derivatives,
+    // no-licence or tk-labels has none.
+    translations?: Record<string, string>;
+    translation_credit?: ExtrasolarCredit;    // with `translations`
+  };
+
+  // Constellations (`cat-constellations`): the sky cultures as `child_groups`,
+  // `modern_iau` first. member_count counts them. Its parent in the breadcrumb
+  // is `cat-stars`. A client groups them by `group` of `skycultures` in
+  // extrasolar.md, as the layer's picker does.
+
   // Planets (`cat-planets`) only: every planet, the eight of the Solar
   // System and every served exoplanet of the IAU class `planet` (dwarf
   // planets are `cat-dwarf-planets`; brown dwarfs are in no category).
@@ -806,6 +858,7 @@ tier.
 ```typescript
 interface LocalizedGroupData {
   name?: string;                      // Localized Wikidata label. Categories use a hand-set plural; orbit_class groups omit it (frontend uses `orbit_class_<NAME>` i18n keys, keeping IMB/MBA/OMB distinct). A mission page and a split-comet page have the names that the probes and the fragments that link to them carry (`mission`, `fragment_of` in objects.md), in every language.
+  parent_group_name?: string;         // Sky constellation pages: the localized name of `parent_group`, which the app has no message for
   description?: string;
   wikipedia?: { extract?: string; description?: string; url?: string };
   operators?: EntityRef[];            // Constellation operators (constants, not Wikidata P137); link to /g/org-<slug>

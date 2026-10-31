@@ -27,7 +27,8 @@ from space_map_data.constants.planets.families import PLANET_FAMILY_PAGES
 from space_map_data.constants.providers import ID_TYPES, PROVIDERS
 from space_map_data.constants.small_bodies import ORBIT_CLASS_QIDS
 from space_map_data.constants.spacecraft import CATALOGUE as SPACECRAFT_CATALOGUE
-from space_map_data.constants.stars.constellations import MODERN_IAU_CONSTELLATIONS
+from space_map_data.constants.stars.constellations import sky_constellation_pages
+from space_map_data.constants.stars.cultures import sky_culture_name_qids
 from space_map_data.constants.stars.families import STAR_FAMILY_PAGES
 from space_map_data.constants.wikidata_topics import topic_page_qids
 from space_map_data.download.downloader import Downloader
@@ -155,12 +156,19 @@ class WikidataDownloader(Downloader):
             limit=None,
             fetch_desc="earth-sat catalogs",
         )
-        # The sky-culture export names the IAU constellations from these.
+        # The sky-culture export names the constellation pages from these.
         self._fetch_entities(
-            {qid for qids in MODERN_IAU_CONSTELLATIONS.values() for qid in qids},
+            set(sky_constellation_pages().values()),
             referenced_dir,
             limit=None,
-            fetch_desc="IAU constellations",
+            fetch_desc="sky constellations",
+        )
+        # The culture picker names the sky cultures from these.
+        self._fetch_entities(
+            sky_culture_name_qids(),
+            referenced_dir,
+            limit=None,
+            fetch_desc="sky-culture names",
         )
         # Orbit-class group QIDs (small-body + earth-sat zones). Group bundles
         # and the Wikipedia downloader resolve group QIDs from referenced/.

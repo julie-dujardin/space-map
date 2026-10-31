@@ -2,8 +2,9 @@
 
 Every group type's ``/g/`` slug carries a prefix
 (``const-``/``org-``/``site-``/``country-``/``class-``/``flag-``/``cat-``/
-``bus-``/``comet-family-``/``ft-``/``star-``/``planet-``) so the same entity can appear in
-multiple roles without slug collisions and a slug's type is recognizable on sight.
+``bus-``/``comet-family-``/``ft-``/``star-``/``planet-``/``sky-``/``culture-``) so
+the same entity can appear in multiple roles without slug collisions and a slug's
+type is recognizable on sight.
 """
 
 from dataclasses import dataclass
@@ -40,6 +41,16 @@ from space_map_data.constants.nomenclature.feature_types import (
 )
 from space_map_data.constants.planets import families as planet_families
 from space_map_data.constants.small_bodies import ORBIT_CLASS_QIDS
+from space_map_data.constants.stars.constellations import (
+    SKY_CONSTELLATION_SLUG_PREFIX,
+    sky_constellation_pages,
+)
+from space_map_data.constants.stars.cultures import (
+    SKY_CULTURE_ARTICLES,
+    SKY_CULTURE_REGIONS,
+    SKY_CULTURE_SLUG_PREFIX,
+    sky_culture_page,
+)
 from space_map_data.constants.stars.families import (
     FAMILY_SLUG_PREFIX,
     ROOT_FAMILY,
@@ -78,6 +89,10 @@ class GroupType(StrEnum):
     STAR_FAMILY = "star_family"
     # One page per planet family of the extrasolar export.
     PLANET_FAMILY = "planet_family"
+    # One page per IAU constellation. `CONSTELLATION` is a satellite fleet.
+    SKY_CONSTELLATION = "sky_constellation"
+    # One page per sky culture of the picker.
+    SKY_CULTURE = "sky_culture"
 
 
 # Wikidata labels these lower case ("low Earth orbit", "hot Jupiter"). A name
@@ -270,6 +285,29 @@ def _build_groups() -> tuple[Group, ...]:
         )
         for family, qids in planet_families.PLANET_FAMILY_PAGES.items()
     )
+    sky_constellations = tuple(
+        Group(
+            slug=f"{SKY_CONSTELLATION_SLUG_PREFIX}{slug}",
+            type=GroupType.SKY_CONSTELLATION,
+            applies_to=GroupCategory.STAR,
+            wikidata_qid=qid,
+        )
+        for slug, qid in sky_constellation_pages().items()
+    )
+    sky_cultures = tuple(
+        Group(
+            slug=f"{SKY_CULTURE_SLUG_PREFIX}{key}",
+            type=GroupType.SKY_CULTURE,
+            applies_to=GroupCategory.STAR,
+            wikidata_qid=(
+                sky_culture_page(SKY_CULTURE_ARTICLES[key])
+                if key in SKY_CULTURE_ARTICLES
+                else None
+            ),
+        )
+        for cultures in SKY_CULTURE_REGIONS.values()
+        for key in cultures
+    )
     return (
         constellations
         + launch_vehicles
@@ -284,6 +322,8 @@ def _build_groups() -> tuple[Group, ...]:
         + feature_types
         + star_families
         + planet_family_groups
+        + sky_constellations
+        + sky_cultures
     )
 
 

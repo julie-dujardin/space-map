@@ -22,6 +22,7 @@ from space_map_data.constants.earth_sats.constellations import (
     CONSTELLATION_SLUG_PREFIX,
     ConstellationSpec,
 )
+from space_map_data.export.extrasolar.skycultures import sky_constellation_names
 from space_map_data.export.groups.bundles import write_group_bundles
 from space_map_data.export.groups.categories import (
     build_category_data,
@@ -63,6 +64,7 @@ from space_map_data.export.groups.registry import (
     GroupCategory,
     GroupType,
 )
+from space_map_data.export.groups.sky_pages import build_sky_pages
 from space_map_data.export.groups.small_body import (
     _exported_sbdb_filter,
     build_small_body_group_stats,
@@ -469,6 +471,7 @@ def run_groups_tier(
         ),
     )
     planets_page = planet_families.planets
+    sky_pages = build_sky_pages(star_objects or [], names)
 
     # Each constellation lists the buses its members fly, most-used first; the
     # chip count is the within-constellation tally, not the bus's global total.
@@ -483,6 +486,7 @@ def run_groups_tier(
     extra_member_counts.update(feature_types.member_counts)
     extra_member_counts.update(star_families.member_counts)
     extra_member_counts.update(planet_families.member_counts)
+    extra_member_counts.update(sky_pages.member_counts)
     extra_named_counts = dict(small_body_stats.named_counts)
     extra_named_counts.update(category_data.named_counts)
     extra_notable_members = dict(small_body_stats.notable_members)
@@ -492,6 +496,7 @@ def run_groups_tier(
     extra_notable_members.update(feature_types.notable_members)
     extra_notable_members.update(star_families.notable_members)
     extra_notable_members.update(planet_families.notable_members)
+    extra_notable_members.update(sky_pages.notable_members)
     extra_notable_members.update(
         _earth_zone_notable_members(earth_orbit_stats, wikidata_entities)
     )
@@ -526,6 +531,7 @@ def run_groups_tier(
         **missions.extra_stats,
         **star_families.extra_stats,
         **planet_families.extra_stats,
+        **sky_pages.extra_stats,
     }
     # The Planets page lists every planet. It also lists its Solar System
     # planets on their own, and the Solar System page's tile counts only those.
@@ -615,13 +621,19 @@ def run_groups_tier(
             **constellation_bus_children,
             **star_families.children,
             **planet_families.children,
+            **sky_pages.children,
         },
         child_counts_by_group={
             **build.constellation_bus_counts,
             **solar_planet_counts,
         },
         extra_groups=(*split_comets.groups, *missions.groups),
-        extra_group_names={**split_comets.names, **missions.names},
+        extra_group_names={
+            **split_comets.names,
+            **missions.names,
+            **sky_constellation_names(wikidata_entities, sky_pages.page_labels),
+            **sky_pages.names,
+        },
         launch_vehicle_stats=launch_vehicle_stats,
         launch_site_stats=launch_site_stats,
         feature_type_stats=feature_types.stats,

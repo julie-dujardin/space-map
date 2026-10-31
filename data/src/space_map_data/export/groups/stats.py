@@ -44,6 +44,8 @@ class GroupExtraStats:
     ring_sources: list[dict] | None = None
     # Split-comet families: parent perihelion distance, in AU.
     perihelion_au: float | None = None
+    # Sky cultures: the page's text, as {text, distribution, credit}.
+    culture_text: dict | None = None
     # Atmospheres: how many kinds of envelope the members between them are —
     # the `atmosphere_type` vocabulary in use, from an exosphere to a stellar
     # atmosphere. The chart below plots pressure, so it says nothing about this.

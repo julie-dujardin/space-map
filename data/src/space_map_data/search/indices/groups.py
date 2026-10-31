@@ -16,8 +16,10 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
-from space_map_data.constants.providers import LANGUAGES
+from space_map_data.constants.providers import BASE_LOCALE, LANGUAGES
+from space_map_data.export.groups.registry import GroupType
 from space_map_data.export.images import pick_thumbnail
+from space_map_data.export.objects.stars import has_description
 
 from .base import group_pk
 
@@ -45,6 +47,9 @@ def _load_bundles(
     return global_by_slug, localized
 
 
+_NEED_A_BLURB = frozenset({GroupType.SKY_CONSTELLATION})
+
+
 def build_group_documents(export_dir: Path) -> Iterator[dict[str, Any]]:
     groups_dir = export_dir / "v1" / "groups"
     if not groups_dir.exists():
@@ -55,6 +60,12 @@ def build_group_documents(export_dir: Path) -> Iterator[dict[str, Any]]:
     logger.info("Indexing %d groups", len(global_by_slug))
 
     for slug, g in global_by_slug.items():
+        # A blurb says that readers care for a constellation, as for a star. A
+        # culture is a category: it is worth finding as it is.
+        if g["type"] in _NEED_A_BLURB and not has_description(
+            localized.get(BASE_LOCALE, {}).get(slug)
+        ):
+            continue
         # Canonical name = English wikidata label, falling back to slug so
         # the doc is always renderable.
         canonical = (localized.get("en", {}).get(slug, {}) or {}).get("name") or slug

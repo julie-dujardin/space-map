@@ -15,6 +15,7 @@ import orjson
 from space_map_data.constants.categories import (
     CATEGORY_BY_SLUG,
     CATEGORY_TAB_PAGES,
+    CONSTELLATIONS_SLUG,
     DEBRIS_SLUG,
     SATELLITES_SLUG,
     category_tab_key,
@@ -48,6 +49,14 @@ from space_map_data.constants.nomenclature.feature_types import (
     FEATURE_TYPES,
 )
 from space_map_data.constants.providers import LANGUAGES
+from space_map_data.constants.stars.constellations import (
+    UNPAGED_CULTURE_PARENTS,
+    sky_page_culture,
+)
+from space_map_data.constants.stars.cultures import (
+    IAU_SKY_CULTURE,
+    SKY_CULTURE_SLUG_PREFIX,
+)
 from space_map_data.export.groups import planet_family, star_family
 from space_map_data.export.groups.feature_type import FeatureTypeStats
 from space_map_data.export.groups.launch_site import LaunchSiteStats
@@ -111,6 +120,18 @@ _CATEGORY_TOP_CONSTELLATIONS = 40
 
 
 _FLAG_PHA_SLUG = f"{SMALL_BODY_FLAG_SLUG_PREFIX}pha"
+
+
+def _sky_page_parent(group: Group) -> str | None:
+    """The page above a constellation or culture page."""
+    if group.type is GroupType.SKY_CULTURE:
+        return CONSTELLATIONS_SLUG
+    if group.type is not GroupType.SKY_CONSTELLATION:
+        return None
+    key = sky_page_culture(group.slug) or IAU_SKY_CULTURE
+    return f"{SKY_CULTURE_SLUG_PREFIX}{UNPAGED_CULTURE_PARENTS.get(key, key)}"
+
+
 # The breadcrumb of a family page climbs its parent families.
 _FAMILY_PAGES = {
     GroupType.STAR_FAMILY: star_family.PAGES,
@@ -263,6 +284,8 @@ def _build_global(
         parents := pages.parent_slugs(group.slug)
     ):
         data["parent_families"] = parents
+    if parent_group := _sky_page_parent(group):
+        data["parent_group"] = parent_group
     if group.wikidata_qid:
         data["wikidata_qid"] = group.wikidata_qid
     # Wikidata prominence — the catalog index's cross-kind ranking tiebreaker,
@@ -545,13 +568,22 @@ def _build_localized(
     ft_stats: FeatureTypeStats | None = None,
     site_stats: LaunchSiteStats | None = None,
     body_names: dict[str, Names] | None = None,
+    group_names: dict[str, Names] | None = None,
 ) -> dict:
     data: dict = {}
     if name := _group_name(group, lang, wikidata_entities, page_names):
         data["name"] = name
+    parent_names = (group_names or {}).get(_sky_page_parent(group) or "")
+    if parent_names:
+        data["parent_group_name"] = parent_names.get(lang)
     if group.wikidata_qid:
         wd = _group_entity(group, wikidata_entities)
-        if wd and (desc := wd["descriptions"].get(lang)):
+        # A culture borrows its article, and the item describes the article.
+        if (
+            wd
+            and group.type is not GroupType.SKY_CULTURE
+            and (desc := wd["descriptions"].get(lang))
+        ):
             data["description"] = desc
     summary = wiki_summaries.get(lang)
     if summary:
@@ -577,7 +609,7 @@ def _build_localized(
                 if country_refs:
                     data["country_of_origin"] = country_refs
         instance_qids = extracted.get("instance_of")
-        if instance_qids:
+        if instance_qids and group.type is not GroupType.SKY_CULTURE:
             instance_refs = [
                 r.to_dict()
                 for qid in instance_qids
@@ -606,7 +638,12 @@ def _build_localized(
             data["constellations"] = constellations
     if child_slugs:
         child_groups = _child_group_refs(
-            child_slugs, lang, wikidata_entities, member_counts, child_counts
+            child_slugs,
+            lang,
+            wikidata_entities,
+            member_counts,
+            child_counts,
+            group_names,
         )
         if child_groups:
             data["child_groups"] = child_groups
@@ -691,6 +728,7 @@ def _child_group_refs(
     wikidata_entities: WikidataEntityCache,
     member_counts: dict[str, int],
     child_counts: dict[str, int] | None = None,
+    group_names: dict[str, Names] | None = None,
 ) -> list[dict]:
     """Child-group links for a parent page, with localized names + counts.
 
@@ -703,7 +741,8 @@ def _child_group_refs(
         child = GROUP_BY_SLUG.get(slug)
         if child is None:
             continue
-        name = _group_name(child, lang, wikidata_entities) or slug
+        page_names = (group_names or {}).get(slug)
+        name = _group_name(child, lang, wikidata_entities, page_names) or slug
         n = member_counts.get(slug, 0)
         if child_counts is not None and slug in child_counts:
             n = child_counts[slug]
@@ -1123,6 +1162,7 @@ def write_group_bundles(
                 ft_stats,
                 (launch_site_stats or {}).get(group.slug),
                 body_names,
+                extra_group_names,
             )
             member_names = _gallery_subject_names(galleries, subjects, lang)
             if members:
@@ -1186,6 +1226,7 @@ def write_group_bundles(
             # (member search filter, feature → type link) off the index it
             # already loads instead of duplicating the 57-entry table.
             **({"code": code} if (code := FEATURE_TYPE_CODE_BY_SLUG.get(slug)) else {}),
+            **({"culture": key} if (key := sky_page_culture(slug)) else {}),
         }
         for slug, data in global_by_slug.items()
     }

@@ -217,9 +217,9 @@ def _collect_group_name_labels(
     """Return {lang: {group_name_<slug>: label}}, deduped by QID.
 
     Dedup-by-QID keeps a single label when groups of different types share a
-    Wikidata entity. Country, orbit-class and feature-type groups are
-    skipped: each resolves its name from elsewhere already (ISO code,
-    ``orbit_class_<NAME>``, ``feature_type_label_<stem>``).
+    Wikidata entity. Country, orbit-class, feature-type and sky page groups are
+    skipped: each resolves its name from elsewhere already (ISO
+    code, ``orbit_class_<NAME>``, ``feature_type_label_<stem>``, the bundle).
     """
     result: dict[str, dict[str, str]] = {lang: {} for lang in LANGUAGES}
     base = result[BASE_LOCALE]
@@ -235,6 +235,9 @@ def _collect_group_name_labels(
             # would duplicate it from a worse source (uncapitalized labels,
             # disambiguation parentheticals, raw slugs for the QID-less codes).
             GroupType.FEATURE_TYPE,
+            # Names in the app's JS, which no synchronous label needs.
+            GroupType.SKY_CONSTELLATION,
+            GroupType.SKY_CULTURE,
         ):
             continue
         if group.wikidata_qid and group.wikidata_qid in seen_qids:

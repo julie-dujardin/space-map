@@ -14,6 +14,9 @@ All files share one directory. A Bucur culture that has the key of a
 Stellarium culture, or that is a copy of one under another key, is left out,
 and `select` logs why.
 
+`STAR_SHARDS` more files give the figures of each star, so that a star's page
+reads no culture file. A shard is whole: a client filters the cultures it shows.
+
 A file is JSON in gzip. Its `token` field holds the token of the table. The
 token hashes each file with 16 zeros in that field, as a container token
 hashes a payload with a zero token.
@@ -24,38 +27,71 @@ import hashlib
 import html
 import json
 import logging
+import re
 import unicodedata
-from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
+from collections.abc import Iterable, Iterator, Mapping
+from dataclasses import dataclass, field
 from itertools import pairwise
 from pathlib import Path
 from urllib.parse import quote
 
 import numpy as np
 
-from space_map_data.constants.providers import LANGUAGES
+from space_map_data.constants.providers import BASE_LOCALE, LANGUAGES
 from space_map_data.constants.stars.constellations import (
+    EQUATORIAL_CHART,
+    IAU_NAMED_CULTURES,
+    MISNUMBERED_FIGURES,
     MODERN_IAU_CONSTELLATIONS,
     POLISH_CONSTELLATION_NAMES,
+    SKY_CONSTELLATION_SLUG_PREFIX,
+    SKY_PAGE_NAME_FIXES,
+    sky_constellation_pages,
+    sky_figure_pages,
+)
+from space_map_data.constants.stars.cultures import (
+    SKY_CULTURE_LABEL_PREFIXES,
+    SKY_CULTURE_LABELS,
+    SKY_CULTURE_NAME_FIXES,
+    SKY_CULTURE_NAMES_LEFT_OUT,
+    SKY_CULTURE_REGIONS,
+    SKY_PAGE_LABEL_FIXES,
+    UNPICKED_SKY_CULTURES,
+    sky_culture_page,
 )
 from space_map_data.export.extrasolar import container, render
 from space_map_data.export.extrasolar.container import Written
 from space_map_data.export.extrasolar.skyculture_authors import AUTHORS
+from space_map_data.export.names import Names
 from space_map_data.export.wikidata import WikidataEntityCache, entity_label
 from space_map_data.extrasolar.ids import cell_of
 from space_map_data.extrasolar.registry import Registry
 from space_map_data.extrasolar.sky import region_of
+from space_map_data.skycultures import translations
 from space_map_data.skycultures.build import COMMON_NAMES, INDEX_FILE
-from space_map_data.skycultures.licences import NON_COMMERCIAL, OPEN, UNDECIDED
+from space_map_data.skycultures.licences import (
+    NO_DERIVATIVES,
+    NO_LICENCE,
+    NON_COMMERCIAL,
+    OPEN,
+    TK_LABELS,
+    UNDECIDED,
+)
+from space_map_data.skycultures.translations import Catalogues
 from space_map_data.utils.paths import DERIVED_SKYCULTURES_DIR
 
 logger = logging.getLogger(__name__)
 
 TABLE = "skycultures"
 STELLARIUM = "stellarium"
+# A translation is an adaptation, which a CC ND licence forbids to share; a
+# culture with no licence grants nothing; Traditional Knowledge labels add terms
+# of their own. These cultures keep the names they publish.
+UNTRANSLATED_FLAGS = frozenset({NO_DERIVATIVES, NO_LICENCE, TK_LABELS})
 # Their constellations are the 88 of the IAU; a figure ID ends in the
-# abbreviation and the source has no field for it.
-IAU_CULTURES = frozenset({"modern", "modern_iau", "modern_st"})
+# abbreviation and the source has no field for it. `modern_journey_to_the_west`
+# has those IDs too, but it draws figures of its own over them.
+IAU_CULTURES = frozenset({"modern", "modern_iau", "modern_st", "modern_chinese"})
 # A Bucur culture is a copy of a Stellarium one when they share at least
 # SAME_SEGMENTS of their line segments (Jaccard), and the Stellarium one has
 # at least SAME_NAMES of the Bucur figure names.
@@ -66,6 +102,14 @@ CULTURES_DIR = DERIVED_SKYCULTURES_DIR
 ZERO_TOKEN = "0" * container.TOKEN_SIZE
 # The name fields a figure or a star name keeps.
 NAME_FIELDS = ("native", "english", "pronounce", "transliteration", "IPA")
+# The name fields that a label reads.
+LABEL_NAME_FIELDS = ("native", "english", "pronounce")
+# Few enough for a star's page to read a small part of the index.
+STAR_SHARDS = 64
+# What a Wikidata title adds to a name to tell it from a namesake.
+TITLE_NOTE = re.compile(r"\s*\([^)]*\)$")
+# Wikidata's Polish labels of constellations are article titles.
+POLISH_TITLE = "Gwiazdozbiór "
 # The tiers from the most open; an unknown tier is never served.
 LADDER = (OPEN, NON_COMMERCIAL, "site-only")
 DATASET_URLS = {
@@ -93,12 +137,22 @@ CREDITS = (
         "source": "https://github.com/doinab/constellation-lines",
         "license": "CC BY-SA",
     },
+    {
+        "name": "Stellarium sky culture translations",
+        "organisation": "Stellarium translators",
+        "source": "https://github.com/Stellarium/stellarium/tree/master/po/stellarium-skycultures",
+        "license": "GPL-2.0",
+    },
     SIMBAD,
 )
 
 
 def path_of(key: str) -> str:
     return f"{TABLE}/{key}.json.gz"
+
+
+def star_path(shard: int | str) -> str:
+    return f"{TABLE}/stars/{shard}.json.gz"
 
 
 def segments(record: dict) -> set[frozenset]:
@@ -122,9 +176,9 @@ def figure_names(record: dict) -> set[str]:
         for figure in record["culture"].get(kind, []):
             names = figure.get("names") or [figure.get("common_name") or {}]
             for name in names:
-                for field in ("english", "native"):
-                    if isinstance(name.get(field), str) and name[field].strip():
-                        found.add(name[field].strip().casefold())
+                for kind in ("english", "native"):
+                    if isinstance(name.get(kind), str) and name[kind].strip():
+                        found.add(name[kind].strip().casefold())
     return found
 
 
@@ -263,13 +317,179 @@ def iau_labels(wikidata: WikidataEntityCache) -> dict[str, dict[str, str]]:
     return labels
 
 
+def page_labels(wikidata: WikidataEntityCache) -> dict[str, dict[str, str]]:
+    """The name of each page of another culture in each site language, by slug."""
+    labels: dict[str, dict[str, str]] = {}
+    for slug, qid in sky_constellation_pages().items():
+        if slug in MODERN_IAU_CONSTELLATIONS:
+            continue
+        entity = wikidata.get_referenced(qid)
+        if entity is None:
+            logger.warning("sky cultures: no Wikidata item %s for %s", qid, slug)
+            continue
+        # Not `entity_label`: its English fallback is a page title.
+        found = {lang: entity["labels"].get(lang) for lang in LANGUAGES}
+        found |= SKY_PAGE_NAME_FIXES.get(slug, {})
+        # A page needs a base name, and `mul` is no page title.
+        found[BASE_LOCALE] = found[BASE_LOCALE] or entity_label(entity, BASE_LOCALE)
+        if not found[BASE_LOCALE]:
+            logger.warning("sky cultures: no %s label on %s", BASE_LOCALE, qid)
+            continue
+        labels[slug] = {
+            lang: TITLE_NOTE.sub("", label).removeprefix(POLISH_TITLE)
+            for lang, label in found.items()
+            if label
+        }
+    return labels
+
+
+def sky_constellation_names(
+    wikidata: WikidataEntityCache, home_labels: Mapping[str, dict[str, str]]
+) -> dict[str, Names]:
+    """The names of each constellation page, by group slug: its label on the
+    map. A page of another culture reads the labels of its figure, in
+    `home_labels` by group slug."""
+    names = {
+        f"{SKY_CONSTELLATION_SLUG_PREFIX}{slug}": Names(found[BASE_LOCALE], found)
+        for slug, found in iau_labels(wikidata).items()
+    }
+    for slug, found in page_labels(wikidata).items():
+        group = f"{SKY_CONSTELLATION_SLUG_PREFIX}{slug}"
+        names[group] = Names(found[BASE_LOCALE], home_labels.get(group, found))
+    return names
+
+
+def _capitalised(value: str) -> str:
+    value = value.rstrip(".")
+    return value[0].upper() + value[1:]
+
+
+def translated_cultures(
+    records: Iterable[dict], catalogues: Catalogues
+) -> dict[str, dict[str, str]]:
+    """Stellarium's name of each of its cultures in each language, by key."""
+    names = {}
+    for record in records:
+        if record["dataset"] != STELLARIUM:
+            continue
+        key = record["key"]
+        left_out = SKY_CULTURE_NAMES_LEFT_OUT.get(key, ())
+        names[key] = {
+            lang: _capitalised(value)
+            for lang, value in catalogues.labels(record["name"]).items()
+            if lang not in left_out
+        } | SKY_CULTURE_NAME_FIXES.get(key, {})
+    return names
+
+
+def _edition_root(slug: str, translated: Mapping[str, dict[str, str]]) -> dict:
+    """The translated names of the culture that an edition of `slug` belongs to."""
+    for cultures in SKY_CULTURE_REGIONS.values():
+        for key, page in cultures.items():
+            if page == (slug,) and key in translated:
+                return translated[key]
+    return {}
+
+
+def culture_labels(
+    key: str,
+    name: str,
+    wikidata: WikidataEntityCache,
+    translated: Mapping[str, dict[str, str]] | None = None,
+) -> dict:
+    """The name of a culture in each site language that has one of its own:
+    Stellarium's, and the table's or Wikidata's in a gap. A language with none,
+    and English, read the dataset's `name`."""
+    translated = translated or {}
+    labels = dict(SKY_CULTURE_LABELS.get(key, {}))
+    page = next(
+        (c[key] for c in SKY_CULTURE_REGIONS.values() if c.get(key)),
+        None,
+    )
+    entity = None
+    if page is not None and key not in SKY_CULTURE_LABELS:
+        entity = wikidata.get_referenced(sky_culture_page(page[0]))
+        if entity is None:
+            logger.warning("sky cultures: no Wikidata item for %s", page[0])
+    if entity is not None and page is not None:
+        slug, *edition = page
+        fixes = SKY_PAGE_LABEL_FIXES.get(slug, {})
+        prefixes = SKY_CULTURE_LABEL_PREFIXES.get(key)
+        root = _edition_root(slug, translated) if edition else {}
+        for lang in LANGUAGES:
+            # Not `entity_label`: its English fallback is a page title.
+            label = root.get(lang) or fixes.get(lang) or entity["labels"].get(lang)
+            if lang == BASE_LOCALE or not label:
+                continue
+            label = TITLE_NOTE.sub("", label)
+            label = label[0].upper() + label[1:]
+            if prefixes is not None:
+                if lang not in prefixes:
+                    continue
+                label = f"{prefixes[lang]} ({label})"
+            labels[lang] = f"{label} ({edition[0]})" if edition else label
+    labels |= translated.get(key, {})
+    return {lang: label for lang, label in labels.items() if label != name}
+
+
+def culture_group(key: str) -> str | None:
+    """The region group of a culture, or None when the picker leaves it out."""
+    for group, cultures in SKY_CULTURE_REGIONS.items():
+        if key in cultures:
+            return group
+    if key not in UNPICKED_SKY_CULTURES:
+        logger.warning("sky cultures: %s has no region, so no picker shows it", key)
+    return None
+
+
+@dataclass
+class Naming:
+    """What names the figures of a culture."""
+
+    # The labels of each IAU constellation, by slug of the table.
+    iau: Mapping[str, dict[str, str]]
+    # The labels of each page of another culture, by slug.
+    pages: Mapping[str, dict[str, str]] = field(default_factory=dict)
+    figures: Catalogues = field(default_factory=Catalogues)
+
+
+def _group_slug(slug: str) -> str:
+    return f"{SKY_CONSTELLATION_SLUG_PREFIX}{slug}"
+
+
+def _iau_page(key: str, kind: str, name: dict, naming: Naming) -> str | None:
+    """The IAU constellation that a figure is, as a slug of the table."""
+    if kind != "constellation":
+        return None
+    if key in IAU_CULTURES:
+        slug = iau_slug(name.get("native", ""))
+    elif key in IAU_NAMED_CULTURES:
+        slug = iau_slug(name.get("english", "").removesuffix(EQUATORIAL_CHART))
+    else:
+        return None
+    return slug if slug in naming.iau else None
+
+
+def _translations(record: dict, name: dict, naming: Naming) -> dict:
+    """Stellarium's names of a figure, by language. See `UNTRANSLATED_FLAGS`."""
+    english = name.get("english")
+    if (
+        record["dataset"] != STELLARIUM
+        or not english
+        or UNTRANSLATED_FLAGS & set(record["licence"]["flags"])
+    ):
+        return {}
+    return naming.figures.labels(english, name.get("context"))
+
+
 def _figure(
+    record: dict,
     figure: dict,
     kind: str,
     members: Members,
-    labels: Mapping[str, dict[str, str]] | None,
+    naming: Naming,
+    pages: Mapping[str, str],
 ) -> dict:
-    """`labels` is given when the figure is an IAU constellation."""
     names = figure.get("names") or (
         [figure["common_name"]] if "common_name" in figure else []
     )
@@ -281,24 +501,40 @@ def _figure(
         out["group"] = [members.add(point) for point in figure["group"]]
     if "IAU" in figure:
         out["iau"] = figure["IAU"]
-    if labels is not None:
+    key, name = record["key"], names[0] if names else {}
+    if key in IAU_CULTURES and kind == "constellation":
         out["iau"] = figure["id"].rsplit(" ", 1)[-1]
-        native = names[0].get("native", "") if names else ""
-        translated = labels.get(iau_slug(native))
-        if translated:
-            out["labels"] = translated
+    if iau := _iau_page(key, kind, name, naming):
+        out["page"] = _group_slug(iau)
+        out["labels"] = naming.iau[iau]
+    elif page := MISNUMBERED_FIGURES.get((key, name.get("english"))) or pages.get(
+        figure["id"]
+    ):
+        out["page"] = _group_slug(page)
+        found = _translations(record, name, naming)
+        labels = naming.pages.get(page, {}) | found
+        labels.pop(BASE_LOCALE, None)
+        if labels:
+            out["labels"] = labels
+    else:
+        # A page needs a name in each language; a label needs only to add one.
+        own = {n.get("native") for n in names}
+        found = _translations(record, name, naming)
+        labels = {k: v for k, v in found.items() if v not in own}
+        if labels:
+            out["labels"] = labels
     if figure.get("is_ray_helper"):
         out["ray_helper"] = True
     return out
 
 
-def layout(record: dict, labels: Mapping[str, dict[str, str]]) -> tuple[dict, Members]:
+def layout(record: dict, naming: Naming) -> tuple[dict, Members]:
     """The file content of a matched culture, without positions."""
     culture = record["culture"]
     members = Members()
-    iau = labels if record["key"] in IAU_CULTURES else None
+    pages = sky_figure_pages().get(record["key"], {})
     figures = [
-        _figure(figure, kind, members, iau if kind == "constellation" else None)
+        _figure(record, figure, kind, members, naming, pages)
         for key, kind in (
             ("constellations", "constellation"),
             ("asterisms", "asterism"),
@@ -343,6 +579,40 @@ def positions(registry: Registry, ids: Iterable[int]) -> dict[int, list[float]]:
     return found
 
 
+def figure_star_ids(members: list[dict], figure: dict) -> Iterator[int]:
+    """The extrasolar IDs of a figure's stars in the order of its lines, then
+    its group. A star on two lines comes twice."""
+    points = [p for chain in figure["lines"] for p in chain]
+    for point in (*points, *figure.get("group", ())):
+        if "id" in members[point]:
+            yield members[point]["id"]
+
+
+def star_shards(contents: Iterable[dict]) -> list[dict]:
+    """The shard contents: for each star, its figures by culture key."""
+    shards: list[dict] = [
+        {"token": ZERO_TOKEN, "stars": {}} for _ in range(STAR_SHARDS)
+    ]
+    for content in contents:
+        for figure in content["figures"]:
+            if figure.get("ray_helper"):
+                continue
+            entry = {
+                "names": [
+                    kept
+                    for name in figure["names"]
+                    if (kept := {k: name[k] for k in LABEL_NAME_FIELDS if k in name})
+                ]
+            }
+            entry |= {k: figure[k] for k in ("labels", "page") if k in figure}
+            for id_ in sorted(set(figure_star_ids(content["members"], figure))):
+                stars = shards[id_ % STAR_SHARDS]["stars"]
+                stars.setdefault(str(id_), {}).setdefault(content["key"], []).append(
+                    entry
+                )
+    return shards
+
+
 def _letters(text: str) -> str:
     return "".join(ch for ch in text.casefold() if ch.isalnum())
 
@@ -382,13 +652,13 @@ class Result:
     left_out: list[str]
 
 
-def _entry(record: dict, content: dict, path: str) -> dict:
-    licence = record["licence"]
+def culture_credit(record: dict) -> dict:
+    """The credit of a culture, in the shape of the export's `credits`."""
     parts = [
         p["licence"]
         if p["applies_to"] == "all"
         else f"{p['licence']} ({p['applies_to']})"
-        for p in licence["parts"]
+        for p in record["licence"]["parts"]
     ]
     stellarium = record["dataset"] == STELLARIUM
     # A Stellarium culture is a directory, a Bucur culture one file.
@@ -405,6 +675,18 @@ def _entry(record: dict, content: dict, path: str) -> dict:
     names = authors(record)
     if names:
         credit["authors"] = names
+    return credit
+
+
+def _entry(
+    record: dict,
+    content: dict,
+    path: str,
+    wikidata: WikidataEntityCache,
+    translated: Mapping[str, dict[str, str]],
+) -> dict:
+    licence = record["licence"]
+    credit = culture_credit(record)
     members = content["members"]
     return {
         "dataset": record["dataset"],
@@ -412,6 +694,8 @@ def _entry(record: dict, content: dict, path: str) -> dict:
         "name": record["name"],
         "region": record["region"],
         "subregion": record.get("subregion"),
+        "group": culture_group(record["key"]),
+        "labels": culture_labels(record["key"], record["name"], wikidata, translated),
         "packaged": record["packaged"],
         "fallback_to_international_names": bool(
             record["culture"].get("fallback_to_international_names")
@@ -454,8 +738,13 @@ def build(
         (cultures_dir / "stellarium" / f"{COMMON_NAMES}.json").read_text()
     )
 
-    labels = iau_labels(wikidata)
-    laid_out = [layout(record, labels) for record in (*records, common)]
+    naming = Naming(
+        iau_labels(wikidata),
+        page_labels(wikidata),
+        translations.load(translations.FIGURES),
+    )
+    translated = translated_cultures(records, translations.load(translations.CULTURES))
+    laid_out = [layout(record, naming) for record in (*records, common)]
     ids = {id_ for _, members in laid_out for id_ in members.ids()}
     logger.info("sky cultures: positions of %d stars", len(ids))
     found = positions(registry, ids)
@@ -472,26 +761,34 @@ def build(
     logger.debug("sky cultures: stars that the tree does not draw: %s", unplaced)
 
     paths = [path_of(c["key"]) for c in contents]
-    digests = [hashlib.sha256(_payload(c)).digest() for c in contents]
+    shards = star_shards(contents)
+    files = [
+        *zip(paths, contents),
+        *((star_path(n), shard) for n, shard in enumerate(shards)),
+    ]
+    digests = [hashlib.sha256(_payload(content)).digest() for _, content in files]
     token = container.token_of(
-        [Written(path, digest, 0, 0) for path, digest in zip(paths, digests)]
+        [Written(path, digest, 0, 0) for (path, _), digest in zip(files, digests)]
     )
     written = []
-    for path, digest, content in zip(paths, digests, contents):
+    for (path, content), digest in zip(files, digests):
         content["token"] = token
         data = gzip.compress(_payload(content), compresslevel=9, mtime=0)
         target = out / path
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(data)
-        written.append(Written(path, digest, len(content["members"]), len(data)))
+        rows = len(content.get("members", content.get("stars")))
+        written.append(Written(path, digest, rows, len(data)))
 
     cultures = [
-        _entry(record, content, path)
+        _entry(record, content, path, wikidata, translated)
         for record, content, path in zip(records, contents, paths)
     ]
     entry = {
         "token": token,
         "file": path_of("{key}"),
+        "star_figures": star_path("{shard}"),
+        "star_shards": STAR_SHARDS,
         "international_names": paths[-1],
         "international_names_distribution": combined(
             common["licence"]["distribution"], NON_COMMERCIAL

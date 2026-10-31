@@ -9,7 +9,14 @@ namesakes, languages, countries and disambiguation pages.
 These are standalone QID constants following the existing tuple-valued topic
 format. Constellations use `culture -> constellation -> tuple[QID, ...]`; the
 other tables use `slug -> tuple[QID, ...]`. The tables are not registered in
-`TOPIC_PAGE_TABLES`. The family slugs are the star families of the extrasolar
+`TOPIC_PAGE_TABLES`. Each constellation of `MODERN_IAU_CONSTELLATIONS`, and each
+row of the other three tables that has a figure in a culture, has a
+`/g/sky-<slug>` page ([groups.md](export-format/groups.md)), so the group
+registry fetches its article and pictures. Each culture of the picker has a
+`/g/culture-<key>` page; `SKY_CULTURE_ARTICLES` names the few that read an article
+of `SKY_TRADITION_PAGES`, and the others read their own text. A page never reads
+an article of `SKY_CULTURE_PEOPLE_PAGES`. The
+family slugs are the star families of the extrasolar
 export ([extrasolar.md](export-format/extrasolar.md), "Families"), and each
 has a `/g/star-<family>` page ([groups.md](export-format/groups.md)) on the
 first QID of its tuple; the other slugs name research subjects and are not
@@ -17,9 +24,9 @@ dataset IDs.
 
 | File under `data/src/space_map_data/constants/stars/` | Contents |
 | --- | --- |
-| `constellations.py` | 88 IAU, five historical Western, 32 Chinese and 27 Indian constellation topics |
+| `constellations.py` | 88 IAU, five historical Western, 32 Chinese and 27 Indian constellation topics, and the figures each matches |
 | `families.py` | 49 star families, with the root `classification`: their QIDs and the rules that tag a star |
-| `cultures.py` | 14 sky-tradition topics and 75 cultural-group QIDs |
+| `cultures.py` | 15 sky-tradition topics and 75 cultural-group QIDs; the region groups of the culture picker |
 
 The modern constellation set follows the [IAU list](https://www.iau.org/IAU/Astronomy-FAQs/Constellations.aspx).
 Historical Western entries are Argo Navis, Antinous, Cerberus, Musca Borealis
@@ -29,6 +36,23 @@ The Chinese table contains all 28 lunar mansions and the four directional
 figures. Wikidata has 343 items classed as Chinese constellations, but most have
 no English label and its inventory extends well beyond the coherent mansion
 system represented here. The Indian table contains all 27 canonical nakshatras.
+
+A QID is matched to figures in `constellations.py`, and never through Wikidata.
+A mansion is the figure with its number in nine cultures: `chinese`,
+`chinese_manchu`, `modern_chinese` and, by their chart numbers, `chinese_chenzhuo`,
+`chinese_song_dynasty`, `chinese_xianglin`, `chinese_yuan_dynasty`, `japanese` and
+`korean`. An edition can name a mansion its own way (Southern Dipper for Dipper,
+Leading Ox for Ox). Its page sits under `chinese`. A nakshatra is a figure of
+`indian` and of `indian_nakshatras`, and its page sits under `indian_nakshatras`.
+The historical Western constellations are figures of `greek_almagest`,
+`greek_farnese`, `greek_leidenAratea`, `arabic_al-sufi`, `dien`, `ruelle` and
+`modern`. Argo Navis sits under `greek_almagest`, Quadrans Muralis under `modern`,
+and the others under `ruelle`.
+
+The four directional figures have no figure in any culture, so they have no page.
+The 27 lunar mansions of `tibetan` are not matched: their stars differ from the
+nakshatras' and nothing in the culture gives the correspondence. `greek_almagest`'s
+Eagle with Antinoos is Aquila and Antinous as one figure, so it links to neither.
 
 The stellar entries overlap: luminosity classes, spectral types, evolution,
 variability and remnants are useful topics, not a proposed family hierarchy.
@@ -63,6 +87,13 @@ Some names need further research before dataset matching:
 - Al-Sufi, MUL.APIN, Dendera, Almagest, Farnese, Leiden Aratea, Chinese chart
   editions, Ruanui, Dien, Ruelle and modern chart variants remain distinct source
   editions; no equivalence to a broad culture or tradition is asserted here.
+
+`SKY_CULTURE_REGIONS` in `cultures.py` uses these slugs only as the name of a
+culture in the picker where Stellarium has no translation, with a people's label
+where no tradition item fits. That use asserts no equivalence either, and the
+names above that do not resolve keep their English name. `journey-to-the-west` is
+the novel ([Q70784](https://www.wikidata.org/wiki/Q70784)): it names
+`modern_journey_to_the_west` in the languages Stellarium leaves out.
 
 Absence means no exact item was verified in this search, not that Wikidata has
 no such item. To inspect any stored QID, open `https://www.wikidata.org/wiki/<QID>`.

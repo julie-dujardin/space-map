@@ -17,6 +17,8 @@ Exports read these caches instead of re-walking sources.
 
 import json
 import logging
+import re
+import unicodedata
 from collections import Counter, defaultdict
 from collections.abc import Container, Sequence
 from datetime import UTC, datetime
@@ -38,9 +40,11 @@ from space_map_data.constants.categories import (
 from space_map_data.constants.countries import COUNTRY_SLUG_PREFIX
 from space_map_data.constants.interior.wikidata import INTERIOR_PAGES
 from space_map_data.constants.rings.wikidata import RING_SYSTEM_PAGES
+from space_map_data.constants.stars.constellations import SKY_PAGE_PICTURES_LEFT_OUT
 from space_map_data.export.groups.registry import (
     GROUPS,
     GroupCategory,
+    GroupType,
 )
 from space_map_data.export.objects.missions import mission_items
 from space_map_data.export.objects.stars import PlanetObject, read_extrasolar_objects
@@ -92,6 +96,11 @@ _SCHEMATIC_OBJECT_TYPES = frozenset(
 # regardless of contents, so the three whose members are craft are named.
 _SCHEMATIC_GROUP_CATEGORIES = frozenset({GroupCategory.EARTH_SAT, GroupCategory.PROBE})
 _SCHEMATIC_CATEGORY_SLUGS = frozenset({SATELLITES_SLUG, DEBRIS_SLUG, PROBES_SLUG})
+# One chart, drawn for several Wikipedias: "Orion_constellation_map-fr.png",
+# "Orion_constellation_map_ru_lite.png", "Orion_constellation_PP3_map_PL.svg".
+_LANGUAGE_CHART = re.compile(
+    r"^(?P<base>.+_constellation)(?:_PP3)?_map(?:-fr|_ru(?:_lite)?|_PL)\.(?:png|svg)$"
+)
 
 
 def ingest() -> None:
@@ -191,6 +200,7 @@ def ingest() -> None:
     _merge_manual_extras(ring_images, gallery="rings")
     _write_cache(RING_IMAGES_PATH, "ring_systems", ring_images)
     _fill_ring_systems(group_selections, ring_images)
+    _drop_language_charts(group_selections)
     # Atmosphere and interior articles: one shelf each on the body's Images tab.
     _write_cache(
         TOPIC_IMAGES_PATH,
@@ -199,6 +209,44 @@ def ingest() -> None:
     )
     _write_cache(GROUP_IMAGES_PATH, "groups", group_selections)
     _log_written(GROUP_IMAGES_PATH, "groups", group_selections, groups)
+
+
+def _chart_key(name: str) -> str:
+    """How two chart names compare: the same chart comes as "Bootes" and
+    "Boötes", as "Ursa_major" and "Ursa_Major"."""
+    return (
+        unicodedata.normalize("NFKD", name)
+        .encode("ascii", "ignore")
+        .decode()
+        .casefold()
+    )
+
+
+def without_language_charts(images: list[dict]) -> list[dict]:
+    """`images` without a chart that is also there under its unmarked name."""
+    files = {_chart_key(image["file"]) for image in images}
+
+    def is_copy(file: str) -> bool:
+        found = _LANGUAGE_CHART.match(file)
+        if found is None:
+            return False
+        base = _chart_key(found["base"])
+        return f"{base}_map.svg" in files or f"{base}_map.png" in files
+
+    return [image for image in images if not is_copy(image["file"])]
+
+
+def _drop_language_charts(selections: dict[str, list[dict]]) -> None:
+    """Keep one chart per constellation page."""
+    for group in GROUPS:
+        if group.type is GroupType.SKY_CONSTELLATION and group.slug in selections:
+            selections[group.slug] = without_language_charts(
+                [
+                    image
+                    for image in selections[group.slug]
+                    if image["file"] not in SKY_PAGE_PICTURES_LEFT_OUT
+                ]
+            )
 
 
 # A picture that more stars or planets share shows a constellation, a

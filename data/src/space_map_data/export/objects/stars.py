@@ -51,6 +51,7 @@ from space_map_data.export.names import (
 from space_map_data.export.objects.wikidata_claims import (
     STAR_ENTITY_REF_CLAIMS,
     STAR_GLOBAL_CLAIMS,
+    attach_sky_constellation_group_link,
     extract_claims,
     make_body_entityref,
     resolve_entity_ref,
@@ -387,7 +388,10 @@ def _ref(
     page = pages.get(qid)
     if page is None:
         ref = resolve_entity_ref(qid, lang, entities)
-        return ref.to_dict() if ref else None
+        if ref is None:
+            return None
+        attach_sky_constellation_group_link(ref, qid, lang)
+        return ref.to_dict()
     return make_body_entityref(page.obj_id, page.names.get(lang)).to_dict()
 
 

@@ -10,6 +10,11 @@ from space_map_data.constants.earth_sats.launch_vehicles import (
     LAUNCH_VEHICLE_SLUG_PREFIX,
     launch_vehicle_slug_for_qid,
 )
+from space_map_data.constants.stars.constellations import (
+    MODERN_IAU_CONSTELLATIONS,
+    POLISH_CONSTELLATION_NAMES,
+    SKY_CONSTELLATION_SLUG_PREFIX,
+)
 from space_map_data.export.names import Names, ObjectNames
 from space_map_data.export.quantities import UnitConverter
 from space_map_data.export.wikidata import (
@@ -22,6 +27,10 @@ from space_map_data.export.wikidata import (
 )
 
 logger = logging.getLogger(__name__)
+
+_SKY_CONSTELLATION_BY_QID = {
+    qid: slug for slug, (qid,) in MODERN_IAU_CONSTELLATIONS.items()
+}
 
 
 @dataclass
@@ -437,6 +446,18 @@ def attach_country_group_link(ref: EntityRef, qid: str) -> None:
         return
     ref.primary_type = "group"
     ref.primary_id = f"{COUNTRY_SLUG_PREFIX}{country.slug}"
+
+
+def attach_sky_constellation_group_link(ref: EntityRef, qid: str, lang: str) -> None:
+    """If ``qid`` is an IAU constellation, point the ref at its /g/sky-<slug>
+    page, under the name that page takes."""
+    slug = _SKY_CONSTELLATION_BY_QID.get(qid)
+    if slug is None:
+        return
+    ref.primary_type = "group"
+    ref.primary_id = f"{SKY_CONSTELLATION_SLUG_PREFIX}{slug}"
+    if lang == "pl":
+        ref.name = POLISH_CONSTELLATION_NAMES[slug]
 
 
 def attach_launch_vehicle_group_link(ref: EntityRef, qid: str) -> None:

@@ -21,6 +21,7 @@ v1/x/
   mw/node/{name}.bin.gz                  Milky Way render nodes
   mw/id/{name}.bin.gz                    the ID column of each render node
   skycultures/{key}.json.gz              a sky culture: figures, members and star names
+  skycultures/stars/{shard}.json.gz      the figures of each star, in every culture
   planets/index.json.gz                  every planet host: its system, planet numbers, place and outer orbit
   planets/{key}.json.gz                  one planetary system: its hosts and planets, with orbits in the scene's frame
   systems/index.json.gz                  the star systems that a page draws up close, with their held stars
@@ -524,7 +525,13 @@ A file is gzip around one JSON object:
   - a star: `id` is its extrasolar ID, and `position` its position in parsecs, in the frame of the render tree (ICRS axes, origin at the barycentre, J2016.0), as float64. The position is the one that the tree build computes for the star, from the same code over the same rows, so a line ends on the rendered star: it is the float64 value that the node stores as the node's centre plus a float32 offset. A star that the tree does not draw has an `id` and no `position`: a star with no distance (no 5σ parallax and no `distance`), a flagged star that neither Hipparcos nor SIMBAD saw, or a star with no magnitude (see the render tree). A named Gaia source without a 5σ parallax (`gaia-dr3-named`) has an `id`, and the tree draws it when it has a `distance`.
   - an object with no ID: `ref` as the source writes it, `reason` (below), and `designation` for a deep-sky object or a planet. A line that passes through it keeps its index, so no line is cut; a client skips the segments to a member without a position.
   - a point of the sky that a Stellarium figure gives in place of a star: `ra_hours` and `dec` (degrees) as published. It has no distance.
-- **`figures`.** `kind` is `constellation` or `asterism`. `names` lists the names of the figure, each with the fields that the source gives of `native` (in the culture's script), `english`, `pronounce`, `transliteration` and `IPA`. `lines` is a list of chains; each chain is a list of member indexes, joined in order. A Bucur figure can have `group`, member indexes of a star group with no lines, and `iau`, the IAU constellation that holds a figure whose stars are not known. In `modern`, `modern_iau` and `modern_st`, each constellation has `iau`, its IAU abbreviation, and `labels`, its Wikidata name by site language. A Stellarium asterism with `ray_helper` is a line that helps find stars (a pointer), which Stellarium draws apart from the figures.
+- **`figures`.** `kind` is `constellation` or `asterism`. `names` lists the names of the figure, each with the fields that the source gives of `native` (in the culture's script), `english`, `pronounce`, `transliteration` and `IPA`. `lines` is a list of chains; each chain is a list of member indexes, joined in order. A Bucur figure can have `group`, member indexes of a star group with no lines, and `iau`, the IAU constellation that holds a figure whose stars are not known. In `modern`, `modern_iau`, `modern_st` and `modern_chinese`, each constellation has `iau`, its IAU abbreviation. `modern_journey_to_the_west` has the IDs of the 88, but draws figures of its own, so it has no `iau`.
+
+  `page` is the slug of the figure's `/g/sky-<slug>` page ([groups.md](groups.md)). The constellations of those four cultures have one by their Latin `native` name, and the figures of `dien` and `ruelle` by their Latin `english` name, with `(eq)` on the second chart of a constellation. A Chinese mansion, a nakshatra and a historical Western constellation have one by figure ID (`sky_figure_pages` in `constants/stars/constellations.py`). `iau` alone names no page: a Bucur figure can lie inside the constellation that it names.
+
+  `labels` is the name of the figure by site language, in the languages that have one. A figure with an IAU page has the Wikidata name, and `en`. Another figure of a Stellarium culture has Stellarium's translation, found as Stellarium finds it: by the name's `english` and its `context` (msgid and msgctxt in the `stellarium-skycultures` catalogue, `zh_CN` for `zh`, `pt` and never `pt_BR` for `pt`). A value equal to the English or a native name is left out, and so is one in `WRONG_SENSE` (`skycultures/translations.py`). A culture flagged `no-derivatives`, `no-licence` or `tk-labels` has no translations: a translation is an adaptation of the culture's names. A figure with a page fills its gaps from the Wikidata label of the page, and keeps a value equal to a native name, as the page reads it. A client shows a native name in the reader's script first, then `labels`, then the English name.
+
+  A Stellarium asterism with `ray_helper` is a line that helps find stars (a pointer), which Stellarium draws apart from the figures.
 - **`names`.** The star names of the culture: `member` is a member index, and `names` lists its names with the same fields as a figure's.
 
 | `reason` | |
@@ -538,6 +545,22 @@ A file is gzip around one JSON object:
 | `unknown-designation` | a designation of no known form |
 
 The matching runs at ingest: the `extrasolar` target of `space-map-ingest` ends with it, and `--targets skycultures` runs it alone. A HIP number goes through the registry's `hip/2007` catalogue ids and a Gaia DR3 source_id through `gaia/dr3`. Bucur names stars by SIMBAD identifier; SIMBAD gives the star's HIP number, else its Gaia DR3 or HD number, else the HIP number of the star system that holds it.
+
+A star's page reads the figures of the star from one small file, and no culture file. There are `star_shards` of them, at the pattern `star_figures` with `shard` = the star's ID modulo `star_shards`:
+
+```json
+{
+  "token": "495f0eea0c17aae7",
+  "stars": {
+    "22821649": {
+      "modern_iau": [{ "names": [{ "native": "Orion", "english": "Hunter" }], "labels": { "fr": "Orion" }, "page": "sky-orion" }],
+      "aztec": [{ "names": [{ "english": "The New fire" }] }]
+    }
+  }
+}
+```
+
+Each star that a figure's lines or `group` use has its figures by culture key, in the culture's order, with `names` (`native`, `english` and `pronounce` only), and `labels` and `page` as in a culture file. No ray helper is here. The shards hold all cultures: a client leaves out what it does not show, by `group` and `distribution` of the table. A star that is in no figure is in no shard. In the export of 2026-10-31, 3,824 stars are in 33,927 figure memberships, and a shard is 10 to 32 KB, 1.4 MB in all.
 
 The token of `skycultures` covers all its files: SHA-256 over each file's path, a zero byte and the SHA-256 of its JSON with `token` set to 16 zeros (`"0000000000000000"`), as for the containers. Each file's `token` field holds the token; a client checks it as it checks a container header.
 
@@ -795,6 +818,8 @@ The token of `systems` is the SHA-256 of the file's path, a zero byte and the SH
   "skycultures": {
     "token": "495f0eea0c17aae7",
     "file": "skycultures/{key}.json.gz",
+    "star_figures": "skycultures/stars/{shard}.json.gz",
+    "star_shards": 64,
     "international_names": "skycultures/common_star_names.json.gz",
     "international_names_distribution": "non-commercial",
     "units": "pc",
@@ -807,6 +832,8 @@ The token of `systems` is the SHA-256 of the file's path, a zero byte and the SH
         "name": "Modern (Chinese)",
         "region": "Eastern Asia",
         "subregion": null,
+        "group": "modern",
+        "labels": { "fr": "Moderne (chinoise)", "…": "…" },
         "packaged": true,
         "fallback_to_international_names": false,
         "file": "skycultures/modern_chinese.json.gz",
@@ -865,10 +892,12 @@ The token of `systems` is the SHA-256 of the file's path, a zero byte and the SH
 - `credits`: each source with `name`, `organisation`, `source` (URL), and `license`, `attribution` and `citation` when known: Gaia DR3, Rybizki et al. 2022, the binary orbits and masses of Arenou et al. 2023, Andrae, Rix & Chandra 2023, PASTEL, SIMBAD, APOGEE DR17, the LAMOST DR10 M dwarfs of Zhang et al. 2025, the LAMOST DR10 catalogue of M stars, GCVS 5.1, SPICY, the ATNF Pulsar Catalogue with the reference and URL that it asks for, Hipparcos I/311 and I/239, XHIP V/137D, the distance catalogues (Reylé et al. 2021, the UltracoolSheet, Hunt & Reffert 2024, the LMC and SMC distances of Pietrzyński et al. 2019 and Graczyk et al. 2020, Bailer-Jones et al. 2021), the star system catalogues (the Washington Double Star Catalog with the acknowledgement it asks for, Tokovinin's Multiple Star Catalogue, the wide binaries of El-Badry, Rix & Heintz 2021; the orbit catalogues ORB6, with the WDS acknowledgement, and SBX, CC BY 4.0), one credit for the papers of the literature table (its `source` is the table in the repo; each star's object entry cites its own papers), the IAU Catalog of Star Names, Wikidata; with planets also the NASA Exoplanet Archive (its acknowledgement, and the DOI of Planetary Systems Composite Parameters, 10.26133/NEA13), exoplanet.eu (CC BY 4.0), the Open Exoplanet Catalogue (MIT) and the IAU's NameExoWorlds. The planet catalogues also fill the host rows of Point source and Metadata, so their credits are in this list. Each catalogue has one credit, and its `source` names it.
 - `planets`: absent when the registry has no planets table. `index` and `system` (a pattern with `{key}`) are paths. `systems`, `hosts` and `planets` count the system files, the hosts with planets and the planets. `frame` is the frame of the positions, `elements_frame` that of the elements. `families` lists the planet families in the order of the planet records' lists, as the star families are listed: `wikidata` holds the topic items of the family, `parents` the slugs of the families that contain it (empty on a family without a parent), `published` and `estimated` count the served planets with the family in `families` and in `families_estimated`. `distribution` is `non-commercial`: the host positions come from Gaia DR3.
 - `systems`: the systems index. `index` is its path; `systems` and `held` count its systems and held stars.
-- `skycultures`: absent when the export had no matched cultures. `file` is the path pattern, and `cultures` lists each culture with its file:
+- `skycultures`: absent when the export had no matched cultures. `file` is the path pattern, `star_figures` and `star_shards` lead to the figures of a star (Sky cultures, above), and `cultures` lists each culture with its file:
   - `licence`: the licence of the culture's data and illustrations as it states it (`applies_to` is `all`, `data` or `illustrations`; the files hold no illustrations yet), and the tier that this licence alone allows. A culture that states no licence has no parts and the tier `non-commercial`, with the flag `no-licence`. A statement that the ingest cannot read gives the tier `undecided`, which no client may serve.
   - `distribution`: the tier of the file, the strictest of the culture's licence and of Gaia DR3 (`non-commercial`), because the positions come from Gaia. `undecided` stays `undecided`.
   - `flags`: `no-derivatives` (a CC ND licence: only unchanged copies), `non-commercial` (a CC NC licence or a Traditional Knowledge NC label), `tk-labels` (Traditional Knowledge labels add terms to the licence), `no-licence` (the culture states no licence, so it is non-commercial), `unknown-licence`.
+  - `group`: the region group of the culture picker, from `SKY_CULTURE_REGIONS` in `constants/stars/cultures.py`: `modern`, `northern-africa`, `southern-africa`, `northern-america`, `central-america`, `south-america`, `eastern-asia`, `northern-asia`, `south-eastern-asia`, `southern-asia`, `western-asia`, `eastern-europe`, `northern-europe`, `southern-europe`, `western-europe`, `australasia`, `melanesia` or `polynesia`. `region` and `subregion` keep the words of the dataset. `null` on a culture that a picker leaves out (`modern`, `modern_hlad`, `modern_rey`, `modern_st`, `modern_sternenkarten`: western near-copies of `modern_iau`).
+  - `labels`: the name of the culture by site language, for the languages that have one of their own. The others, and English, read `name`. A Stellarium culture has Stellarium's translation (`stellarium-skycultures-descriptions`), fixed by hand where it does not work (`SKY_CULTURE_NAME_FIXES`). A gap, and each Bucur culture, reads the hand table `SKY_CULTURE_LABELS` or a Wikidata label, fixed by hand where one does not work as a name; an edition reads the translated name of its culture, then its edition; a culture with no matching item has none. A people's label names the culture only: it does not make that item the culture's astronomy.
   - `packaged`: false for a culture that Stellarium leaves out of its standard package.
   - `credit`: the culture's own credit: its source at the pinned commit, its licence, and for Stellarium `authors`, the plain names of the people that the culture's description names as its makers, with no Markdown, addresses or links.
   - `figures`, `members`, `positioned` (members with a position) and `unresolved` (members with no ID, sky points left out).

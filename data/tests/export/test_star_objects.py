@@ -233,7 +233,8 @@ class TestStarEntries:
             "part_of": [hamal],
             "iau_constellation": {
                 "name": "Canis Major",
-                "wikipedia": "https://en.wikipedia.org/wiki/Canis%20Major",
+                "primary_type": "group",
+                "primary_id": "sky-canis-major",
             },
             "wikipedia": {"extract": "Sirius is…", "url": "https://en…"},
         }
@@ -241,7 +242,11 @@ class TestStarEntries:
             "name": "Сириус",
             "instance_of": [{"name": "двойная звезда"}],
             "part_of": [hamal],
-            "iau_constellation": {"name": "Большой Пёс"},
+            "iau_constellation": {
+                "name": "Большой Пёс",
+                "primary_type": "group",
+                "primary_id": "sky-canis-major",
+            },
         }
         assert localized["de"]["x-22137869"] == {
             "aliases": ["Hundsstern"],

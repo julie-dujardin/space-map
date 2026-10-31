@@ -435,3 +435,32 @@ class TestMergeManualExtras:
         rings: dict[str, list[dict]] = {}
         image_selection._merge_manual_extras(rings, gallery="rings")
         assert rings == {}
+
+
+class TestLanguageCharts:
+    @staticmethod
+    def _kept(*files: str) -> list[str]:
+        images = [{"file": file, "kind": "photo"} for file in files]
+        return [i["file"] for i in image_selection.without_language_charts(images)]
+
+    def test_a_marked_chart_goes_when_the_base_chart_is_there(self):
+        assert self._kept(
+            "OrionCC.jpg",
+            "Orion_constellation_map-fr.png",
+            "Orion_constellation_map_ru_lite.png",
+            "Orion_constellation_map.svg",
+            "Orion_constellation_PP3_map_PL.svg",
+        ) == ["OrionCC.jpg", "Orion_constellation_map.svg"]
+
+    def test_the_base_chart_may_differ_in_case_and_accents(self):
+        assert self._kept(
+            "Bootes_constellation_map-fr.png", "Boötes_constellation_map.svg"
+        ) == ["Boötes_constellation_map.svg"]
+
+    def test_a_marked_chart_stays_without_a_base_chart(self):
+        files = ("Mensa_constellation_map-fr.png", "Mensa_IAU.svg")
+        assert self._kept(*files) == list(files)
+
+    def test_a_chart_in_another_colour_is_no_language(self):
+        files = ("Ara_constellation_map.svg", "Ara_constellation_map-blue.png")
+        assert self._kept(*files) == list(files)
