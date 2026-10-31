@@ -1,6 +1,7 @@
 import * as m from '$lib/paraglide/messages.js';
 import { getLocale } from '$lib/paraglide/runtime.js';
 import {
+	formatCompactNumber,
 	formatQuantity,
 	formatUnit,
 	joinParts,
@@ -36,6 +37,11 @@ export function formatKm(value: number): string {
 		return formatQuantity({ value: value * 1000, unit: 'metre' }, true);
 	}
 	return formatQuantity({ value, unit: 'kilometre' }, true);
+}
+
+/** A span too long for a stat box as it stands: "1.97B km". */
+export function formatCompactKm(value: number): string {
+	return joinParts({ value: formatCompactNumber(value), unit: formatUnit('kilometre', true) });
 }
 
 /**

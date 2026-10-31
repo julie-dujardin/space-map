@@ -33,7 +33,7 @@
 	import { applyFeature, serializeUrl } from '$lib/state/url';
 	import { focusClick, focusHref, groupClick, groupHref } from '$lib/state/focus-link';
 	import { isModifiedClick } from '$lib/modified-click';
-	import { formatDistance } from '$lib/format/distance';
+	import { formatCompactKm, formatDistance } from '$lib/format/distance';
 	import { SOLAR_RADIUS_KM } from '$lib/math/units';
 	import { EARTH_RADIUS_KM } from '$lib/math/units';
 	import { EARTH_ID } from '$lib/constants';
@@ -140,12 +140,7 @@
 		if (!largest || !appState) return null;
 		return {
 			label: m.group_stat_largest(),
-			// Compact, because the answer is billions of km and a card is a third
-			// of the drawer.
-			value: joinParts({
-				value: formatCompactNumber(2 * largest.radius_sun * SOLAR_RADIUS_KM),
-				unit: formatUnit('kilometre', true)
-			}),
+			value: formatCompactKm(2 * largest.radius_sun * SOLAR_RADIUS_KM),
 			tooltip: `${bodyName(largest)} — ${m.tooltip_star_vs_sun({ ratio: formatNumber(Math.round(largest.radius_sun)) })}`,
 			...planetLink(largest)
 		};
@@ -279,10 +274,7 @@
 			label: m.group_stat_widest(),
 			// Compact, because the answer is millions of km wide and a card is a
 			// third of the drawer.
-			value: joinParts({
-				value: formatCompactNumber(widest.span_km),
-				unit: formatUnit('kilometre', true)
-			}),
+			value: formatCompactKm(widest.span_km),
 			tooltip: `${m.tooltip_group_stat_widest()} — ${name}`,
 			href: focusHref(appState, widest.primary_id, name, 'rings'),
 			onClick: focusClick(focusObject, widest.primary_id, name, { tab: 'rings' })

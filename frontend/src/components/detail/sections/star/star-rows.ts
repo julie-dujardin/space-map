@@ -30,6 +30,7 @@ import {
 	sigFigures
 } from '$lib/format/quantities';
 import { ltrIsolate } from '$lib/format/bidi';
+import { formatCompactKm } from '$lib/format/distance';
 import { formatTemperature, formatTemperatureRange } from '$lib/format/temperature';
 import { formatMass, massComparison, SOLAR_MASS_KG, sizeComparison } from '$lib/format/mass';
 import { formatLuminosity, luminosityComparison, SOLAR_LUMINOSITY_W } from '$lib/format/light';
@@ -403,7 +404,6 @@ export function pointDistanceStat(ps: TableRow, orbit: TableRow | null): Stat | 
 export function starStats(record: ExtrasolarRecord): Stat[][] {
 	const ps = pointSource(record);
 	if (!ps) return [];
-	const u = units();
 	const out: (Stat | null)[] = [];
 	const radius =
 		ps.number('radius_flame') ??
@@ -414,7 +414,7 @@ export function starStats(record: ExtrasolarRecord): Stat[][] {
 	if (radius !== null) {
 		out.push({
 			label: m.diameter(),
-			value: joinParts({ value: sigFigures(2 * radius * SOLAR_RADIUS_KM), unit: u.km }),
+			value: formatCompactKm(2 * radius * SOLAR_RADIUS_KM),
 			tooltip: sizeComparison(radius * SOLAR_RADIUS_KM)
 		});
 	} else if (mass !== null) {

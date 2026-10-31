@@ -518,7 +518,7 @@ describe("a star's FLAME values", () => {
 		expect(section(dwarf, 'classification')).toEqual({ 'Evolutionary stage': 'Main sequence' });
 		expect(section(dwarf, 'brightness')['Bolometric correction']).toBe('-0.05');
 		expect(cards(dwarf)).toEqual([
-			['Diameter', '1,250,000 km'],
+			['Diameter', '1.25M km'],
 			['Distance', '32.6 ly'],
 			['Temperature', expect.any(String)]
 		]);
@@ -542,7 +542,7 @@ describe("a star's FLAME values", () => {
 			'Luminosity',
 			'Gravitational redshift'
 		]);
-		expect(cards(giant)[0]).toEqual(['Diameter', '1,250,000 km']);
+		expect(cards(giant)[0]).toEqual(['Diameter', '1.25M km']);
 		const kept = section({ ...giant, mass_flame: 1.5, flags_flame: '11' }, 'classification');
 		expect(kept['Evolutionary stage']).toBe('Red giant');
 	});

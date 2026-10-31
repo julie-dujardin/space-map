@@ -18,6 +18,7 @@ import type { EntityRef } from '$lib/fetch/objects/object-data';
 import { ltrIsolate } from '$lib/format/bidi';
 import { formatDeclination, formatRightAscension } from '$lib/format/star';
 import { formatMass, massComparison, SOLAR_MASS_KG, sizeComparison } from '$lib/format/mass';
+import { formatCompactKm } from '$lib/format/distance';
 import { formatUnit, joinParts, sigFigures } from '$lib/format/quantities';
 import { formatTemperature } from '$lib/format/temperature';
 import { SOLAR_RADIUS_KM } from '$lib/math/units';
@@ -79,7 +80,7 @@ function massCard(star: HeldStarValues): Stat | null {
 }
 
 function diameterValue(radius: number): string {
-	return joinParts({ value: sigFigures(2 * radius * SOLAR_RADIUS_KM), unit: units().km });
+	return formatCompactKm(2 * radius * SOLAR_RADIUS_KM);
 }
 
 function heldStarStats(node: SystemNode, star: HeldStarValues): (Stat | null)[] {
