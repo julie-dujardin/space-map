@@ -590,8 +590,8 @@
 	"star_plot_sample": "{count} 個の恒星の無作為標本",
 	"group_stat_planets": "惑星",
 	"group_stat_exoplanets": "太陽系外惑星",
+	"group_stat_first_found": "最初の発見",
 	"group_stat_families": "種類",
-	"group_stat_most_massive": "最大質量",
 	"group_stat_estimated": "推定",
 	"group_stat_estimated_planets": "推定",
 	"group_stat_decayed": "落下済み",
@@ -1525,7 +1525,10 @@
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],
 			"selectors": ["countPlural"],
-			"match": { "countPlural=one": "恒星 {count} 個", "countPlural=other": "恒星 {count} 個" }
+			"match": {
+				"countPlural=one": "恒星 {count} 個",
+				"countPlural=other": "恒星 {count} 個"
+			}
 		}
 	],
 	"star_stat_distance": "距離",

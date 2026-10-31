@@ -267,9 +267,8 @@ export interface GlobalGroupData {
 	exoplanet_count?: number;
 	/** Planets only: the largest measured radius of any planet. */
 	largest_planet?: PlanetRecord & { radius_earth: number };
-	/** Planets only: the largest measured mass of any planet. A minimum mass
-	 *  (m sin i) is a lower bound. */
-	most_massive_planet?: PlanetRecord & { mass_earth: number; mass_kind: 'true' | 'minimum' };
+	/** Planets only: the exoplanet with the earliest discovery year. */
+	first_exoplanet?: PlanetRecord & { discovery_year: number };
 	/** Planets only: planet families with at least one planet. */
 	planet_family_count?: number;
 	/** Moons category: distinct planet/dwarf hosts that have a moon. */
@@ -431,7 +430,7 @@ export interface LocalizedGroupData {
 	/** Object.id → localized body label: the `feature_bodies` rows on an ft-
 	 *  page, `moon_counts` on the Moons category, `probe_targets` on the Probes
 	 *  category, the body of `largest_body`, the planets of `largest_planet`
-	 *  and `most_massive_planet`, and the targets each row of a collection's
+	 *  and `first_exoplanet`, and the targets each row of a collection's
 	 *  `probes` list names. */
 	body_names?: Record<string, string>;
 	/** Feature-type pages: the name of `largest_feature` in this language,

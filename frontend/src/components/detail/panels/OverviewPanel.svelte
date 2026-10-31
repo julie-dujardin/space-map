@@ -406,7 +406,6 @@
 		{:else if star}
 			<StarSections
 				sections={systemRow ? systemSections(star, systemRow, system) : starSections(star)}
-				localized={data?.localized ?? null}
 			/>
 			<Discovery
 				global={data?.global ?? null}

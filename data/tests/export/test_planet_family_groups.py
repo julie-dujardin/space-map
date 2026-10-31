@@ -408,8 +408,8 @@ class TestPlanetsPage:
         )
         assert "diameter_km" not in entries[4]
 
-    def test_largest_and_most_massive(self, page):
-        """The largest measured value with error bars within 10% of it: planet
+    def test_largest(self, page):
+        """The largest measured radius with error bars within 10% of it: planet
         0 2 has a larger radius, ±25%."""
         ids, groups = page
         assert groups.planets.stats.largest_planet == {
@@ -418,18 +418,47 @@ class TestPlanetsPage:
             "name": "Near b",
             "radius_earth": 16.81,
         }
-        assert groups.planets.stats.most_massive_planet == {
+        # The page localizes the cards by these names.
+        first = groups.planets.stats.first_exoplanet["primary_id"]
+        assert groups.planets.card_names.keys() == {_id(ids[0], 1), first}
+
+    def test_first_exoplanet(self, session):
+        """The earliest year, an entry in a tie, and no Solar System planet."""
+
+        def planet(object_id: str, year: str | None, **fields) -> planet_family._Planet:
+            return planet_family._Planet(
+                object_id=object_id,
+                names=Names(object_id),
+                qid=None,
+                families=(),
+                estimated_only=False,
+                distance=None,
+                mass=(None, None),
+                radius=(None, None),
+                axis=(None, None),
+                first_obs=year,
+                **fields,
+            )
+
+        found = planet_family._first_exoplanet(
+            [
+                planet("naif-399", "1000", body=_body("naif-399", "Q399", "Earth")),
+                planet("x-1-b-1", None),
+                planet("x-2-b-1", "1992"),
+                planet("x-3-b-1", "1992", entry=True),
+                planet("x-4-b-1", "1995", entry=True),
+            ],
+            ObjectNames(_entities({}), session),
+        )
+        assert found is not None
+        card, page = found
+        assert card == {
             "primary_type": "object",
-            "primary_id": _id(ids[0], 3),
-            "name": "Near d",
-            "mass_earth": 3814.0,
-            "mass_kind": "true",
+            "primary_id": "x-3-b-1",
+            "name": "x-3-b-1",
+            "discovery_year": 1992,
         }
-        # The page localizes the two cards by these names.
-        assert groups.planets.card_names == {
-            _id(ids[0], 1): Names("Near b"),
-            _id(ids[0], 3): Names("Near d"),
-        }
+        assert page == Names("x-3-b-1")
 
     def test_a_card_has_the_names_of_the_planets_page(self, session):
         planet = planet_family._Planet(
@@ -439,8 +468,8 @@ class TestPlanetsPage:
             families=(),
             estimated_only=False,
             distance=1.3,
-            mass=(1.07, planet_family.MEASURED),
-            radius=(None, None),
+            mass=(None, None),
+            radius=(1.07, planet_family.MEASURED),
             axis=(None, None),
             entry=True,
         )
@@ -451,7 +480,7 @@ class TestPlanetsPage:
             [StarObject(1, "Proxima Centauri", "Q2")],
             [PlanetObject(1, 1, "Proxima Cen b", "Q1", ("Proxima Cen b",), "b")],
         )
-        found = planet_family._largest([planet], "mass", lambda p: p.mass, names)
+        found = planet_family._largest([planet], names)
         assert found is not None
         card, page = found
         assert card["name"] == page.name == "Proxima Centauri b"

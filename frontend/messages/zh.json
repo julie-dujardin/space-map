@@ -1402,7 +1402,10 @@
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],
 			"selectors": ["countPlural"],
-			"match": { "countPlural=one": "{count} 颗恒星", "countPlural=other": "{count} 颗恒星" }
+			"match": {
+				"countPlural=one": "{count} 颗恒星",
+				"countPlural=other": "{count} 颗恒星"
+			}
 		}
 	],
 	"star_stat_distance": "距离",
@@ -1812,8 +1815,8 @@
 	"star_plot_sample": "随机抽样 {count} 颗恒星",
 	"group_stat_planets": "行星",
 	"group_stat_exoplanets": "系外行星",
+	"group_stat_first_found": "首次发现",
 	"group_stat_families": "类型",
-	"group_stat_most_massive": "质量最大",
 	"group_stat_estimated": "估计",
 	"group_stat_estimated_planets": "估计",
 	"group_stat_decayed": "已再入",

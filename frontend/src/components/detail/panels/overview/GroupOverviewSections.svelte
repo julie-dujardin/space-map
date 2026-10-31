@@ -2,6 +2,7 @@
 	import ZoneCategoryLinks from '../../sections/crossref/ZoneCategoryLinks.svelte';
 	import CategoryCrossRefs from '../../sections/crossref/CategoryCrossRefs.svelte';
 	import CategoryChildTiles from '../../sections/crossref/CategoryChildTiles.svelte';
+	import BodyCategoryTile from '../../sections/crossref/BodyCategoryTile.svelte';
 	import RingSystemTiles from '../../sections/crossref/RingSystemTiles.svelte';
 	import PlanetarySystemTiles from '../../sections/crossref/PlanetarySystemTiles.svelte';
 	import PropertyMemberList from '../../sections/PropertyMemberList.svelte';
@@ -28,6 +29,7 @@
 	import { fetchPickableCultures } from '$lib/fetch/extrasolar/skycultures';
 	import {
 		CAT_CONSTELLATIONS,
+		CAT_STARS,
 		CAT_STRUCTURE_ACTIVITY,
 		SKY_CULTURE_SLUG_PREFIX
 	} from '$lib/fetch/groups/registry';
@@ -147,7 +149,9 @@
 	<chart.component members={notableMembers} localizedNames={memberNames} {...chart.extra?.()} />
 {/if}
 {#if cat.planets}
-	<!-- The planet families, then where every planet lies by mass. -->
+	<!-- Stars, for the exoplanets; the planet families, then where every planet
+	     lies by mass. -->
+	<BodyCategoryTile slug={CAT_STARS} />
 	{#if visibleChildGroups.length}
 		<ChildGroups childGroups={visibleChildGroups} />
 	{/if}

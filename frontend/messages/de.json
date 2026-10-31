@@ -1401,7 +1401,10 @@
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],
 			"selectors": ["countPlural"],
-			"match": { "countPlural=one": "{count} Stern", "countPlural=other": "{count} Sterne" }
+			"match": {
+				"countPlural=one": "{count} Stern",
+				"countPlural=other": "{count} Sterne"
+			}
 		}
 	],
 	"star_stat_distance": "Entfernung",
@@ -1875,8 +1878,8 @@
 	"star_plot_sample": "Zufallsstichprobe von {count} Sternen",
 	"group_stat_planets": "Planeten",
 	"group_stat_exoplanets": "Exoplaneten",
+	"group_stat_first_found": "Erste Entdeckung",
 	"group_stat_families": "Familien",
-	"group_stat_most_massive": "Massereichster",
 	"group_stat_estimated": "Geschätzt",
 	"group_stat_estimated_planets": "Geschätzt",
 	"group_stat_decayed": "Verglüht",

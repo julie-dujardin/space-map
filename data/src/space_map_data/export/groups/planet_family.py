@@ -50,10 +50,7 @@ from space_map_data.export.names import Names, ObjectNames
 from space_map_data.export.notable import NotableObject
 from space_map_data.export.objects.stars import PREFIX
 from space_map_data.export.wikidata import WikidataEntityCache
-from space_map_data.extrasolar.exoplanets.catalogues import (
-    MINIMUM_MASS,
-    TRUE_MASS,
-)
+from space_map_data.extrasolar.exoplanets.catalogues import MINIMUM_MASS
 from space_map_data.extrasolar.exoplanets.iau import PLANET
 from space_map_data.extrasolar.exoplanets.wikidata import planet_qid
 from space_map_data.utils.paths import EXTRASOLAR_DIR
@@ -149,14 +146,12 @@ class _Planet:
     entry: bool = False
     # A Solar System planet's category member.
     body: NotableObject | None = None
-    # The kind of a measured mass: true or minimum.
-    mass_kind: str | None = None
     # The diameter of a measured radius, else None.
     diameter_km: float | None = None
     # The discovery year, as YYYY.
     first_obs: str | None = None
-    # The values that a card can show: "mass", "radius".
-    precise: frozenset[str] = frozenset()
+    # A card can show its radius.
+    precise_radius: bool = False
 
 
 def build_planet_family_groups(
@@ -255,23 +250,17 @@ def _planet(
         axis=_plotted(record, "semi_major_axis"),
         entry=entry,
         body=body,
-        mass_kind={MEASURED: TRUE_MASS, MINIMUM: MINIMUM_MASS}.get(mass[1]),
         diameter_km=_round(diameter) if how == MEASURED else None,
         first_obs=None if year is None else str(year),
-        precise=frozenset(
-            name
-            for name in ("mass", "radius")
-            if body is not None or _precise(record, name)
-        ),
+        precise_radius=body is not None or _precise_radius(record),
     )
 
 
-def _precise(record: dict, name: str) -> bool:
-    """Whether both error bars of the value `name` are within CARD_PRECISION
-    of it."""
+def _precise_radius(record: dict) -> bool:
+    """Whether both error bars of the radius are within CARD_PRECISION of it."""
     values = record["values"]
-    value = values.get(name)
-    errors = (values.get(f"{name}_error_upper"), values.get(f"{name}_error_lower"))
+    value = values.get("radius")
+    errors = (values.get("radius_error_upper"), values.get("radius_error_lower"))
     return value is not None and all(
         e is not None and e <= CARD_PRECISION * value for e in errors
     )
@@ -411,22 +400,15 @@ def _planets_page(
     )
     card_names: dict[str, Names] = {}
     # A wide error bar can hide a disk's glow (HD 100546 b, radius ±42%).
-    largest = _largest(
-        [p for p in planets if "radius" in p.precise],
-        "radius",
-        lambda p: p.radius,
-        names,
-    )
+    largest = _largest([p for p in planets if p.precise_radius], names)
     if largest is not None:
         card, page = largest
         stats.largest_planet = card
         card_names[card["primary_id"]] = page
-    heaviest = _largest(
-        [p for p in planets if "mass" in p.precise], "mass", lambda p: p.mass, names
-    )
-    if heaviest is not None:
-        card, page = heaviest
-        stats.most_massive_planet = card
+    first = _first_exoplanet(planets, names)
+    if first is not None:
+        card, page = first
+        stats.first_exoplanet = card
         card_names[card["primary_id"]] = page
     return PlanetsPage(
         member_count=len(planets),
@@ -441,26 +423,43 @@ def _planets_page(
     )
 
 
-def _largest(
-    planets: list[_Planet], name: str, value, names: ObjectNames
-) -> tuple[dict, Names] | None:
-    """The planet with the largest measured `name`, as {primary_type,
-    primary_id, name, <name>_earth}, and the names of its page. A minimum mass
-    is measured, and a mass names its kind."""
-    found = [p for p in planets if value(p)[1] in (MEASURED, MINIMUM)]
+def _largest(planets: list[_Planet], names: ObjectNames) -> tuple[dict, Names] | None:
+    """The planet with the largest measured radius, as {primary_type,
+    primary_id, name, radius_earth}, and the names of its page."""
+    found = [p for p in planets if p.radius[1] == MEASURED]
     if not found:
         return None
-    best = max(found, key=lambda p: (value(p)[0], p.object_id))
+    best = max(found, key=lambda p: (p.radius[0], p.object_id))
     page = _names(best, names)
-    out = {
+    return {
         "primary_type": "object",
         "primary_id": best.object_id,
         "name": page.name,
-        f"{name}_earth": _round(value(best)[0]),
-    }
-    if name == "mass":
-        out["mass_kind"] = best.mass_kind
-    return out, page
+        "radius_earth": _round(best.radius[0]),
+    }, page
+
+
+def _first_exoplanet(
+    planets: list[_Planet], names: ObjectNames
+) -> tuple[dict, Names] | None:
+    """The exoplanet with the earliest discovery year, as {primary_type,
+    primary_id, name, discovery_year}, and the names of its page. In a tie, a
+    planet with an object entry goes first."""
+    found = [
+        (int(p.first_obs), not p.entry, p.object_id, p)
+        for p in planets
+        if p.body is None and p.first_obs is not None
+    ]
+    if not found:
+        return None
+    year, _, _, best = min(found)
+    page = _names(best, names)
+    return {
+        "primary_type": "object",
+        "primary_id": best.object_id,
+        "name": page.name,
+        "discovery_year": year,
+    }, page
 
 
 def _round(x: float | None) -> float | None:

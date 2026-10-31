@@ -3,7 +3,7 @@
 	import { sortNames } from '$lib/format/name';
 	import * as m from '$lib/paraglide/messages.js';
 	import StatCardRow from './kit/StatCardRow.svelte';
-	import type { Stat } from './kit/StatCard.svelte';
+	import type { Stat, StatSize } from './kit/StatCard.svelte';
 	import type { GlobalGroupData, LocalizedGroupData } from '$lib/fetch/groups/details';
 	import {
 		CAT_ASTEROIDS,
@@ -32,7 +32,6 @@
 	import { focusClick, focusHref, groupClick, groupHref } from '$lib/state/focus-link';
 	import { isModifiedClick } from '$lib/modified-click';
 	import { formatDistance } from '$lib/format/distance';
-	import { EARTH_MASS_KG, formatMass, massComparison } from '$lib/format/mass';
 	import { SOLAR_RADIUS_KM } from '$lib/math/units';
 	import { EARTH_RADIUS_KM } from '$lib/math/units';
 	import { EARTH_ID } from '$lib/constants';
@@ -237,33 +236,26 @@
 		};
 	}
 
-	/** A minimum mass is a lower bound, and the tooltip says so. */
-	function mostMassivePlanet(g: GlobalGroupData): Stat | null {
-		const heaviest = g.most_massive_planet;
-		if (!heaviest || !appState) return null;
-		const kg = heaviest.mass_earth * EARTH_MASS_KG;
-		const tooltip = [
-			bodyName(heaviest),
-			heaviest.mass_kind === 'minimum' ? m.planet_plot_legend_minimum() : undefined,
-			massComparison(kg)
-		].filter(Boolean);
+	function firstExoplanet(g: GlobalGroupData): Stat | null {
+		const first = g.first_exoplanet;
+		if (!first || !appState) return null;
 		return {
-			label: m.group_stat_most_massive(),
-			value: formatMass(kg),
-			tooltip: tooltip.join(' — '),
-			...planetLink(heaviest)
+			label: m.group_stat_first_found(),
+			value: String(first.discovery_year),
+			tooltip: bodyName(first),
+			...planetLink(first)
 		};
 	}
 
 	/** The Planets page: every planet on the overview, then a card set per tab. */
 	function planetsStats(g: GlobalGroupData): (Stat | null)[] {
 		if (tab === 'solar-system') return [largestBody(g), count(m.group_stat_moons(), g.moon_total)];
-		if (tab === 'exoplanets') return [count(m.group_stat_exoplanets(), g.exoplanet_count)];
+		if (tab === 'exoplanets')
+			return [count(m.group_stat_exoplanets(), g.exoplanet_count), firstExoplanet(g)];
 		return [
 			members(g, m.group_stat_planets()),
 			count(m.group_stat_families(), g.planet_family_count),
-			largestPlanet(g),
-			mostMassivePlanet(g)
+			largestPlanet(g)
 		];
 	}
 
@@ -650,14 +642,16 @@
 			.slice(0, MAX_CARDS);
 	});
 	let rows = $derived(stats.length > ROW ? [stats.slice(0, 2), stats.slice(2)] : [stats]);
+	// A six-figure size and its unit do not fit a third of the drawer at lg.
+	let size = $derived<StatSize>(global?.slug === CAT_PLANETS && !tab ? 'md' : 'lg');
 </script>
 
 {#if rows.length > 1}
 	<div class="flex flex-col gap-2">
 		{#each rows as row, i (i)}
-			<StatCardRow stats={row} size="lg" />
+			<StatCardRow stats={row} {size} />
 		{/each}
 	</div>
 {:else}
-	<StatCardRow {stats} size="lg" />
+	<StatCardRow {stats} {size} />
 {/if}

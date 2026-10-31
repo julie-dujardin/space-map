@@ -134,9 +134,9 @@ class GroupExtraStats:
     # Planets category: the planet with the largest measured radius, as
     # {primary_type, primary_id, name, radius_earth}.
     largest_planet: dict | None = None
-    # Planets category: the planet with the largest measured mass, true or
-    # minimum, as {primary_type, primary_id, name, mass_earth, mass_kind}.
-    most_massive_planet: dict | None = None
+    # Planets category: the exoplanet found first, as {primary_type, primary_id,
+    # name, discovery_year}.
+    first_exoplanet: dict | None = None
     # Planets category: the planet families that have planets.
     planet_family_count: int | None = None
 

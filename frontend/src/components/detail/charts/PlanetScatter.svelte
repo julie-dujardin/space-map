@@ -6,6 +6,7 @@
 	import { getContext } from 'svelte';
 	import { scaleLog } from 'd3-scale';
 	import * as m from '$lib/paraglide/messages.js';
+	import { ltrIsolate } from '$lib/format/bidi';
 	import { formatNumber, formatUnit, joinParts, sigFigures, ucfirst } from '$lib/format/quantities';
 	import {
 		logDomain,
@@ -146,14 +147,18 @@
 	});
 	let tipName = $derived(hit?.kind === 'solar' ? solar[hit.index]?.name : undefined);
 
+	function vsEarth(ratio: number): string {
+		return m.earth_times({ value: ltrIsolate(sigFigures(ratio)) });
+	}
+
 	/** The rows of the tooltip, label and value, in axis order. */
 	let tipRows = $derived.by<[string, string][]>(() => {
 		if (!tipPoint || !hit) return [];
 		const massLabel = hit.kind === 'minimum' ? m.planet_plot_legend_minimum() : m.exoplanet_mass();
 		if (kind === 'radius') {
 			return [
-				[massLabel, sigFigures(tipPoint.x)],
-				[ucfirst(m.property_name_radius()), sigFigures(tipPoint.y)]
+				[massLabel, vsEarth(tipPoint.x)],
+				[ucfirst(m.property_name_radius()), vsEarth(tipPoint.y)]
 			];
 		}
 		return [
@@ -161,7 +166,7 @@
 				m.semi_major_axis(),
 				joinParts({ value: sigFigures(tipPoint.x), unit: formatUnit('astronomical_unit', true) })
 			],
-			[massLabel, sigFigures(tipPoint.y)]
+			[massLabel, vsEarth(tipPoint.y)]
 		];
 	});
 </script>

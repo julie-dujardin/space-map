@@ -508,8 +508,8 @@
 	"star_plot_sample": "Random sample of {count} stars",
 	"group_stat_planets": "Planets",
 	"group_stat_exoplanets": "Exoplanets",
+	"group_stat_first_found": "First found",
 	"group_stat_families": "Families",
-	"group_stat_most_massive": "Most massive",
 	"group_stat_estimated": "Estimated",
 	"group_stat_estimated_planets": "Estimated",
 	"group_stat_decayed": "Decayed",
@@ -1578,7 +1578,10 @@
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],
 			"selectors": ["countPlural"],
-			"match": { "countPlural=one": "{count} star", "countPlural=other": "{count} stars" }
+			"match": {
+				"countPlural=one": "{count} star",
+				"countPlural=other": "{count} stars"
+			}
 		}
 	],
 	"star_stat_distance": "Distance",
