@@ -156,6 +156,8 @@ export interface NotableMemberEntry {
 	/** Group slug for entries that route to a group page instead of an object —
 	 *  e.g. a featured constellation (Starlink) in Earth's Satellites strip. */
 	group?: string;
+	/** With `group`: a figure of that culture, which the row opens. */
+	figure?: string;
 	/** IAU feature id for entries that route to a surface feature (feature-type
 	 *  group members); `id` then holds the host body. Localized-name overrides
 	 *  key on `<id>:<feature_id>`. */
@@ -296,7 +298,7 @@ export function memberEntryKey(e: NotableMemberEntry): string {
 	if (e.feature_id != null) return `${e.id}:${e.feature_id}`;
 	// The name backstops entries with no page of their own (bare-name probe
 	// targets), so two of them never share a key.
-	return e.group ?? e.id ?? e.name;
+	return (e.figure && `${e.group}/${e.figure}`) ?? e.group ?? e.id ?? e.name;
 }
 
 /** One rate-stable spin span's baseline, subtracted before encoding so

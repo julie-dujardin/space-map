@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from space_map_data.constants.providers import BASE_LOCALE, LANGUAGES
+from space_map_data.constants.stars.cultures import SKY_CULTURE_SLUG_PREFIX
 from space_map_data.export.groups.registry import GroupType
 from space_map_data.export.images import pick_thumbnail
 from space_map_data.export.objects.stars import has_description
@@ -66,6 +67,10 @@ def build_group_documents(export_dir: Path) -> Iterator[dict[str, Any]]:
             localized.get(BASE_LOCALE, {}).get(slug)
         ):
             continue
+        # A constellation key has no URL: its document opens its home figure.
+        home = g.get("home_figure")
+        if g["type"] in _NEED_A_BLURB and home is None:
+            continue
         # Canonical name = English wikidata label, falling back to slug so
         # the doc is always renderable.
         canonical = (localized.get("en", {}).get(slug, {}) or {}).get("name") or slug
@@ -77,6 +82,14 @@ def build_group_documents(export_dir: Path) -> Iterator[dict[str, Any]]:
             # along for frontend routing.
             "group": {
                 "slug": slug,
+                **(
+                    {
+                        "culture": f"{SKY_CULTURE_SLUG_PREFIX}{home['culture']}",
+                        "figure": home["figure"],
+                    }
+                    if home
+                    else {}
+                ),
                 "type": g["type"],
                 "applies_to": g["applies_to"],
                 "member_count": g.get("member_count", 0),

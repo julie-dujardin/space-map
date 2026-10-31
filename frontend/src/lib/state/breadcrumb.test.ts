@@ -99,12 +99,12 @@ describe('parentCrumb: star families', () => {
 });
 
 describe('parentCrumb: sky pages', () => {
-	it('climbs from a constellation to its culture, by its exported name', () => {
+	it('climbs from a figure to its culture, by the name of the culture', () => {
 		const crumb = parentCrumb(
-			{ kind: 'group', slug: 'sky-orion' },
+			{ kind: 'group', slug: 'culture-modern_iau', figure: 'Ori' },
 			undefined,
 			null,
-			{ slug: 'sky-orion', parent_group: 'culture-modern_iau' } as never,
+			{ parent_group: 'culture-modern_iau' } as never,
 			null,
 			null,
 			'Moderne (UAI)'

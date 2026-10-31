@@ -183,6 +183,7 @@ class TestStarEntries:
                 StarObject(9, "Alpha Centauri", "Q4", object_type="multiple_star"),
             ],
             entities,
+            homes={"sky-canis-major": {"culture": "modern_iau", "figure": "CMa"}},
         )
         # Each star entity is read once.
         assert cast(_Entities, entities).star_reads == ["Q1", "Q2", "Q3", "Q4"]
@@ -234,7 +235,9 @@ class TestStarEntries:
             "iau_constellation": {
                 "name": "Canis Major",
                 "primary_type": "group",
-                "primary_id": "sky-canis-major",
+                "primary_id": "culture-modern_iau",
+                "secondary_type": "figure",
+                "secondary_id": "CMa",
             },
             "wikipedia": {"extract": "Sirius is…", "url": "https://en…"},
         }
@@ -245,7 +248,9 @@ class TestStarEntries:
             "iau_constellation": {
                 "name": "Большой Пёс",
                 "primary_type": "group",
-                "primary_id": "sky-canis-major",
+                "primary_id": "culture-modern_iau",
+                "secondary_type": "figure",
+                "secondary_id": "CMa",
             },
         }
         assert localized["de"]["x-22137869"] == {

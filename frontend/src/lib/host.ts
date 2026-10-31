@@ -61,8 +61,9 @@ export interface Host {
 	messages: CoreMessages;
 	/** Link target of a body's scene label. */
 	bodyHref: (id: string, name: string) => string;
-	/** Link target of a collection page's scene label. */
-	groupHref: (slug: string, name: string) => string;
+	/** Link target of a collection page's scene label, or of a figure of the
+	 *  sky culture `slug`. */
+	groupHref: (slug: string, name: string, figure?: string | null) => string;
 	/** How far down the `distribution` ladder this embed may draw surface maps,
 	 *  panoramas, craft models and stars (docs/export-format/textures.md). `open` is
 	 *  what anyone may serve, `non-commercial` adds works whose licence bars

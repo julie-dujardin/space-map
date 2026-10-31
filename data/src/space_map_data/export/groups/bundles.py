@@ -1226,7 +1226,6 @@ def write_group_bundles(
             # (member search filter, feature → type link) off the index it
             # already loads instead of duplicating the 57-entry table.
             **({"code": code} if (code := FEATURE_TYPE_CODE_BY_SLUG.get(slug)) else {}),
-            **({"culture": key} if (key := sky_page_culture(slug)) else {}),
         }
         for slug, data in global_by_slug.items()
     }

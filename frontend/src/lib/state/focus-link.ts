@@ -151,6 +151,8 @@ export interface LinkTarget {
 	id?: string;
 	/** Group slug; set → the link opens `/g/<slug>` instead of focusing. */
 	group?: string;
+	/** With `group`: the link opens this figure of a culture. */
+	figure?: string;
 	/** IAU feature id; set → the link opens that feature on `id`. */
 	feature_id?: number;
 }
@@ -169,7 +171,7 @@ export function targetHref(
 	target: LinkTarget,
 	name: string
 ): string | undefined {
-	if (target.group) return groupHref(appState, target.group, name);
+	if (target.group) return groupHref(appState, target.group, name, { figure: target.figure });
 	if (!target.id) return undefined;
 	if (target.feature_id != null && appState) {
 		return serializeUrl(
@@ -190,7 +192,7 @@ export function targetClick(
 	target: LinkTarget,
 	name: string
 ): (e: MouseEvent) => void {
-	if (target.group) return groupClick(nav.appState, target.group, name);
+	if (target.group) return groupClick(nav.appState, target.group, name, { figure: target.figure });
 	const id = target.id;
 	if (!id) return () => {};
 	const featureId = target.feature_id;

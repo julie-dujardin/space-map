@@ -409,6 +409,27 @@ class TestGroupPaths:
             "const-bare": "/g/const-bare",
         }
 
+    def test_a_constellation_lists_its_figure_in_its_home_culture(
+        self, tmp_path: Path, monkeypatch
+    ):
+        messages = tmp_path / "messages"
+        messages.mkdir()
+        (messages / "en.json").write_bytes(b"{}")
+        monkeypatch.setattr(sitemap, "MESSAGES_DIR", messages)
+        groups = tmp_path / "groups"
+        _write_bundles(groups / BASE_LOCALE, 1, {"sky-orion": {"name": "Orion"}})
+        home = {"culture": "modern_iau", "figure": "Ori", "name": "Orion"}
+        _write_bundles(
+            groups / "__global__", 1, {"sky-orion": {"home_figure": home}, "sky-x": {}}
+        )
+        (groups / "__index__.json").write_bytes(
+            orjson.dumps({"sky-orion": {}, "sky-x": {}})
+        )
+
+        assert _group_paths(tmp_path, 1, 1) == {
+            "sky-orion": "/g/culture-modern_iau/f/Ori/Orion",
+        }
+
     def test_lists_no_group_without_the_index(self, tmp_path: Path):
         assert _group_paths(tmp_path, 1) == {}
 
@@ -437,7 +458,7 @@ class TestWriteSitemap:
             tmp_path,
             ObjectNames(_entities({}), session),
             {BASE_LOCALE: 0, "global": 1},
-            {BASE_LOCALE: 0},
+            {BASE_LOCALE: 0, "global": 0},
             [],
             PlanetPages([], {}),
             [],
@@ -479,7 +500,7 @@ class TestWriteSitemap:
             tmp_path,
             ObjectNames(_entities({}), session),
             {BASE_LOCALE: 1, "fr": 1, "global": 1},
-            {BASE_LOCALE: 0},
+            {BASE_LOCALE: 0, "global": 0},
             [StarObject(n, f"S{n}", f"Q{n}") for n in (1, 2, 3)],
             PlanetPages([], {}),
             [],
@@ -505,7 +526,7 @@ class TestWriteSitemap:
             tmp_path,
             ObjectNames(_entities({}), session),
             {BASE_LOCALE: 1, "global": 0},
-            {BASE_LOCALE: 0},
+            {BASE_LOCALE: 0, "global": 0},
             [StarObject(7, "Sir", "Q7")],
             planets,
             [],
@@ -532,7 +553,7 @@ class TestWriteSitemap:
             tmp_path,
             ObjectNames(_entities({}), session),
             {BASE_LOCALE: 0, "global": 1},
-            {BASE_LOCALE: 0},
+            {BASE_LOCALE: 0, "global": 0},
             [StarObject(7, "Sir", "Q7")],
             planets,
             [],
@@ -586,7 +607,7 @@ class TestPlanetPaths:
             tmp_path,
             names,
             {BASE_LOCALE: 0, "global": 0},
-            {BASE_LOCALE: 0},
+            {BASE_LOCALE: 0, "global": 0},
             [],
             planets,
             planets.served([PlanetObject(7, 1, "CD Cet b", "Q1", letter="b")]),

@@ -36,7 +36,6 @@ interface GroupIndexEntry {
   applies_to: GroupCategory;  // "earth_sat" | "small_body" | "probe" | "category" | "surface_feature" | "star" | "planet"
   n: number;                  // member count (surface features on a feature_type group, stars on a star_family group, planets on a planet_family group)
   code?: string;              // feature_type groups only: the 2-letter IAU descriptor code (slug ↔ code without a duplicated table)
-  culture?: string;           // a sky_constellation page outside the IAU's 88: the key of the culture it draws
 }
 // File body: Record<slug, GroupIndexEntry>
 ```
@@ -482,32 +481,35 @@ interface GlobalGroupData {
   // Constellations of the sky (sky-<slug>, from `sky_constellation_pages` in
   // `constants/stars/constellations.py`): the 88 of the IAU, and the Chinese
   // mansions, the nakshatras and the historical Western constellations that
-  // have a figure in a culture. A page has the text, the description and the
-  // pictures of its Wikidata item. `notable_members` lists the stars of its
-  // figure in the served file of its culture, the stars with the most sitelinks
-  // first, and member_count counts them. Each has an extrasolar ID: a line end
-  // with none is left out. No search reaches these members, so the Members tab
-  // shows this list.
-  // The culture is `modern_iau`, or else `SKY_PAGE_CULTURES`: the `culture` of
-  // `__index__.json`. A client draws that culture while the page is open, and
-  // it can be one that the picker leaves out.
+  // have a figure in a culture. A sky- key is data with no URL: every figure
+  // with this `page` shows its text, description and pictures at the figure's
+  // own URL, /g/culture-<key>/f/<figure>. `notable_members` lists the stars of
+  // the figure in its home culture, the stars with the most sitelinks first,
+  // and member_count counts them. Each has an extrasolar ID: a line end with
+  // none is left out. A client lists the stars of the figure on screen, and
+  // reads this list for the names and pictures it holds.
+  // The home culture is `modern_iau`, or else `SKY_PAGE_CULTURES`, and it can
+  // be one that the picker leaves out.
+  home_figure?: { culture: string; figure: string; name: string | null };  // the figure in the home culture: its `slug` and its name in the base locale. Search, the sitemap and the canonical link of each figure of the constellation name this page
   // The localized `name` is the figure's `labels` (extrasolar.md): for an IAU
   // page the curated `POLISH_CONSTELLATION_NAMES` in `pl`, else the Wikidata
   // label; for another page Stellarium's name, else the Wikidata label. There
-  // is no `group_name_` message. A client gets the slug from the figure's
-  // `page`. A star's `iau_constellation` links to the page (objects.md).
-  // A page goes into the search index only with a Wikipedia extract in the
-  // base locale. `applies_to` is `star`, and a page filters nothing on the map.
-  parent_group?: string;  // the page above: `culture-<key>` of its culture on a sky- page (`modern` has no page, so `culture-modern_iau`), `cat-constellations` on a culture- page
+  // is no `group_name_` message. A client gets the key from the figure's
+  // `page`. A star's `iau_constellation` links to the home figure (objects.md).
+  // A key goes into the search index only with a Wikipedia extract in the base
+  // locale. Its document names the page in `group.culture` and `group.figure`.
+  // `applies_to` is `star`, and a page filters nothing on the map.
+  parent_group?: string;  // the page above: `culture-<key>` of its home culture on a sky- key (`modern` has no page, so `culture-modern_iau`), `cat-constellations` on a culture- page
 
   // Sky cultures (culture-<key>, one per culture of the picker,
   // `SKY_CULTURE_REGIONS` in `constants/stars/cultures.py`). member_count is the
   // culture's figures, `figures` in extrasolar.md. The localized `name` is the
-  // picker's. A culture's sky- pages are its `child_groups`,
-  // and `cat-constellations` has the culture pages. A culture in
+  // picker's. A client lists a culture's figures from its culture file, each
+  // with a page there, and `cat-constellations` has the culture pages in
+  // `child_groups`. A culture in
   // `SKY_CULTURE_ARTICLES` has the item of that article; another has no item.
   // Every culture page goes into the search index, with or without a Wikipedia
-  // extract. A sky- page goes in only with an extract in the base locale.
+  // extract. A sky- key goes in only with an extract in the base locale.
   culture_text?: {
     text: string;      // the start of the source's own introduction, in English, with no markup; "\n" between paragraphs
     distribution: "open" | "non-commercial";  // the licence's tier of the text. The culture's data has its own tier in extrasolar.md

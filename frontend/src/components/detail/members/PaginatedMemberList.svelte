@@ -58,6 +58,8 @@
 		id?: string;
 		/** Group slug; set → the row routes to /g/<slug> instead of focusing. */
 		group?: string;
+		/** With `group`: the row opens this figure of a culture. */
+		figure?: string;
 		/** IAU feature id; set → the row opens that feature on its host body. */
 		feature_id?: number;
 		name: string;
@@ -97,6 +99,7 @@
 				return {
 					id: e.id,
 					group: e.group,
+					figure: e.figure,
 					feature_id: e.feature_id,
 					name: localizedNames?.[key] ?? e.name,
 					thumbnail: e.thumbnail,

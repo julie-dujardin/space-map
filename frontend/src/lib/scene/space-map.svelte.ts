@@ -253,7 +253,7 @@ export interface MapEvents {
 	/** A nomenclature label was clicked; carries what a fly-to needs. */
 	featureselect: (e: FeatureSelect) => void;
 	/** A constellation's name was clicked; `slug` is its collection page. */
-	constellationselect: (e: { slug: string; name: string }) => void;
+	constellationselect: (e: { slug: string; figure: string; name: string }) => void;
 	/** User-promoted bodies that can be cleared (the focused one excluded). */
 	userpromoted: (count: number) => void;
 	contextlost: () => void;
@@ -821,7 +821,8 @@ export class SpaceMap {
 			onUserPromotedChange: (count) => this.emit('userpromoted', count),
 			onFeatureSelect: (bodyId, featureId, lat, lon, diameterM) =>
 				this.emit('featureselect', { bodyId, featureId, lat, lon, diameterM }),
-			onConstellationSelect: (slug, name) => this.emit('constellationselect', { slug, name })
+			onConstellationSelect: (slug, figure, name) =>
+				this.emit('constellationselect', { slug, figure, name })
 		};
 	}
 

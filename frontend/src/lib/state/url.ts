@@ -8,14 +8,13 @@ import {
 	COMET_FAMILY_SLUG_PREFIX,
 	FEATURE_TYPE_SLUG_PREFIX,
 	isFamilySlug,
-	SKY_CONSTELLATION_SLUG_PREFIX,
 	SKY_CULTURE_SLUG_PREFIX,
 	SMALL_BODY_FLAG_SLUG_PREFIX
 } from '$lib/fetch/groups/registry';
 import { SAT_ORBIT_ZONES } from '$lib/charts/orbit-zones';
 import { isLagrangeClass } from '$lib/math/orbit/lagrange';
 import { DEFAULT_TRIP, parseTrip, serializeTripSuffix, type TripState } from '$lib/travel/trip';
-import { DEFAULT_SKY_CULTURE, EARTH_ID, SUN_ID } from '$lib/constants';
+import { EARTH_ID, SUN_ID } from '$lib/constants';
 import { SUN_VIEW_ZOOM } from '$lib/scene/framing';
 import type { PageSky } from '$lib/scene/settings.svelte';
 import { formatNavEnd, isBodyId, NAV_UNSET, parseNavEnd } from './nav-end';
@@ -25,6 +24,7 @@ import {
 	DRAWER_TABS,
 	UrlType,
 	featureIdOfRoute,
+	figureOfRoute,
 	objectIdOfRoute,
 	planetIdOfRoute,
 	urlTypeFromId,
@@ -198,7 +198,9 @@ export function parseUrl(): MapViewState | null {
 		});
 	}
 
-	const type = page.params.type;
+	// So has the figure route, which is always a group's.
+	const figureParam = page.params.figure;
+	const type = figureParam === undefined ? page.params.type : UrlType.Group;
 	const idStr = page.params.id;
 	if (!type || !idStr) {
 		console.warn(`parseUrl: missing route params (type=${type}, id=${idStr})`);
@@ -207,6 +209,11 @@ export function parseUrl(): MapViewState | null {
 
 	// Groups ride the body route shape — [id] holds the slug, not a number.
 	if (type === UrlType.Group) {
+		const figure = figureParam === undefined ? null : figureOfRoute(idStr, figureParam);
+		if (figureParam !== undefined && figure === null) {
+			console.warn(`parseUrl: no figure at /g/${idStr}/f/${figureParam}`);
+			return null;
+		}
 		const anchor = groupAnchor(idStr);
 		// `focus` names the member the camera is on instead of the anchor. The
 		// anchor zoom only fits the anchor, so a bare link frames the member by
@@ -220,6 +227,7 @@ export function parseUrl(): MapViewState | null {
 			zoom: member ? DEFAULT_VIEW.zoom : anchor.zoom,
 			framed: member === null, // the anchor zoom is deliberate framing, not a default
 			groupSlug: idStr,
+			figure,
 			imageIndex: parseImageIndex(page.url.searchParams.get('img')),
 			gallery: page.url.searchParams.get('gal'),
 			featureId: null,
@@ -344,6 +352,7 @@ export function applyFocus(
 		...focus,
 		featureId: null,
 		groupSlug: null,
+		figure: null,
 		// Land on a requested tab (e.g. a moon→planet link opening the Moons tab);
 		// overview otherwise. Falls back to overview client-side if the tab is absent.
 		tab: focus.tab ?? null,
@@ -425,6 +434,7 @@ export function applyNav(
 		navToPlace: destination?.place ?? null,
 		featureId: null,
 		groupSlug: null,
+		figure: null,
 		tab: null
 	};
 }
@@ -462,29 +472,33 @@ export function applyGallery(current: MapViewState, key: string | null): MapView
 }
 
 /** How a group opens: `frame` parks the camera on the group's anchor, for a
- *  caller about to fly there; `tab` opens a drawer tab other than the overview. */
+ *  caller about to fly there; `tab` opens a drawer tab other than the overview;
+ *  `figure` opens the page of that figure of a culture. */
 export interface GroupOpen {
 	frame?: boolean;
 	tab?: Exclude<DrawerTab, 'overview'>;
+	figure?: string | null;
 }
 
-/** A constellation page or a culture page. */
+/** A culture page, or the page of one of its figures. */
 export function isSkyPage(slug: string): boolean {
-	return slug.startsWith(SKY_CONSTELLATION_SLUG_PREFIX) || slug.startsWith(SKY_CULTURE_SLUG_PREFIX);
+	return slug.startsWith(SKY_CULTURE_SLUG_PREFIX);
 }
 
-/** What the page `slug` shows of the sky. A `sky-` page is about a figure of a
- *  culture, the IAU's unless the group index gives `culture`, and its members
- *  are that figure's stars, so it draws that culture whatever the reader picked. */
+/** What the page shows of the sky: its culture, whatever the reader picked,
+ *  and the figure to aim at. */
 export function pageSkyOf(
 	slug: string | null,
 	opening: boolean,
-	culture: string = DEFAULT_SKY_CULTURE
+	figure: string | null = null
 ): PageSky | null {
 	if (!slug || !isSkyPage(slug)) return null;
-	return slug.startsWith(SKY_CULTURE_SLUG_PREFIX)
-		? { culture: slug.slice(SKY_CULTURE_SLUG_PREFIX.length), slug: null, opening, hidden: false }
-		: { culture, slug, opening, hidden: false };
+	return {
+		culture: slug.slice(SKY_CULTURE_SLUG_PREFIX.length),
+		figure,
+		opening,
+		hidden: false
+	};
 }
 
 /** Next view when opening a group. Opening one moves no camera, so `id` stays
@@ -493,9 +507,10 @@ export function applyGroup(
 	current: MapViewState,
 	slug: string,
 	name: string,
-	{ frame = false, tab }: GroupOpen = {}
+	{ frame = false, tab, figure = null }: GroupOpen = {}
 ): MapViewState {
-	const anchor = frame ? groupAnchor(slug) : null;
+	// The sky is in view from anywhere, so the camera stays on its body.
+	const anchor = frame && !isSkyPage(slug) ? groupAnchor(slug) : null;
 	return {
 		...current,
 		...CLEAR_TAB_SCOPE,
@@ -504,6 +519,7 @@ export function applyGroup(
 		id: anchor?.id ?? current.id,
 		zoom: anchor?.zoom ?? current.zoom,
 		groupSlug: slug,
+		figure,
 		name,
 		featureId: null,
 		tab: tab ?? null
@@ -526,6 +542,7 @@ export function applyFeature(
 		// Opening a feature from a collection page (ft-*) leaves that page —
 		// a lingering slug would keep the group route winning over the feature.
 		groupSlug: null,
+		figure: null,
 		tab: null
 	};
 }
@@ -533,6 +550,7 @@ export function applyFeature(
 /** Produce the route path for the current MapViewState — `/<type>/<id>/<name>`
  *  for bodies and groups (groups carry a slug in the id slot, and `&focus=`
  *  the member the camera is on when it is not the anchor),
+ *  `/g/culture-<key>/f/<figure>/<name>` for figures,
  *  `/x/<host>/b/<n>/<name>` for planets, or
  *  `/<type>/<id>/f/<featureId>/<name>` for features — plus the shared
  *  `?at=<date>,<lat>,<lon>,<zoom>` query block. */
@@ -582,9 +600,11 @@ export function serializeUrl(state: MapViewState): string {
 	}
 
 	if (state.type === UrlType.Group && state.groupSlug !== null) {
-		const path = groupHref(state.groupSlug, state.name);
+		const path = groupHref(state.groupSlug, state.name, state.figure);
 		// The path names the group; the member the camera is on rides the query.
-		const focus = state.id !== groupAnchor(state.groupSlug).id ? `&focus=${state.id}` : '';
+		// A sky page has no subject of its own to frame, so it always names one.
+		const focused = isSkyPage(state.groupSlug) || state.id !== groupAnchor(state.groupSlug).id;
+		const focus = focused ? `&focus=${state.id}` : '';
 		return `${path}?at=${at}${focus}${img}${tab}${gal}${surface}${ring}${mp}`;
 	}
 

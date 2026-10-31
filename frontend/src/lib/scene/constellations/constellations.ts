@@ -25,6 +25,7 @@ import {
 	type LoadedSkyCulture,
 	type SkyCultureFile
 } from '$lib/fetch/extrasolar/skycultures';
+import { SKY_CULTURE_SLUG_PREFIX } from '$lib/fetch/groups/registry';
 import { DEFAULT_SKY_CULTURE } from '$lib/constants';
 import { getLocale, host } from '$lib/host';
 import {
@@ -67,8 +68,8 @@ type Vec3 = [number, number, number];
 
 export interface ConstellationLabel {
 	name: string;
-	/** The page of the figure. */
-	slug: string | null;
+	/** The figure's segment in its URL; null with no page. */
+	figure: string | null;
 	/** pc, in the frame of the render tree. */
 	anchor: Vec3;
 	/** Lines of the figure: where two labels meet, the larger figure keeps its name. */
@@ -159,7 +160,7 @@ export function constellationShape(file: SkyCultureFile, locale: string): Conste
 		if (!name || stars.length === 0) continue;
 		labels.push({
 			name,
-			slug: figure.page ?? null,
+			figure: figure.slug ?? null,
 			anchor: anchorOf(stars),
 			weight: lines.length,
 			firstVertex
@@ -236,7 +237,8 @@ void main() {
 /** A link where the host has pages. Every label takes the mouse, which lights
  *  its figure, and hands a drag on to the map. */
 function makeLabel(
-	{ name, slug }: ConstellationLabel,
+	{ name, figure }: ConstellationLabel,
+	culture: string,
 	mapLayer: number,
 	canvas: HTMLCanvasElement,
 	onSelect: ConstellationSelect,
@@ -247,13 +249,14 @@ function makeLabel(
 	element.dir = 'auto';
 	element.textContent = name;
 	element.draggable = false;
-	const href = slug && host().groupHref(slug, name);
+	const slug = `${SKY_CULTURE_SLUG_PREFIX}${culture}`;
+	const href = figure && host().groupHref(slug, name, figure);
 	// With no page, a click belongs to what lies under the label.
 	attachCanvasForwarders(element, canvas, !href);
-	if (slug && href) {
+	if (figure && href) {
 		element.href = href;
 		element.tabIndex = -1;
-		onLinkTap(element, () => onSelect(slug, name));
+		onLinkTap(element, () => onSelect(slug, figure, name));
 	}
 	// A touch has no hover: its enter and leave wrap a tap.
 	element.addEventListener('pointerenter', (event) => {
@@ -267,7 +270,7 @@ function makeLabel(
 
 interface ConstellationLabelState {
 	object: CSS2DObject;
-	slug: string | null;
+	figure: string | null;
 	anchor: Vec3;
 	firstVertex: number;
 	/** Vertices of the figure's lines. */
@@ -276,7 +279,7 @@ interface ConstellationLabelState {
 	box: LabelBox;
 }
 
-export type ConstellationSelect = (slug: string, name: string) => void;
+export type ConstellationSelect = (slug: string, figure: string, name: string) => void;
 /** Turn the camera to a direction of the sky, or back to the focus with null. */
 export type ConstellationAim = (direction: Vector3 | null, instant: boolean) => void;
 
@@ -288,7 +291,9 @@ export function pageAimDue(
 	shown: string | null,
 	flying: boolean
 ): boolean {
-	return !!page.slug && !page.hidden && page.slug !== aimed && page.culture === shown && !flying;
+	return (
+		!!page.figure && !page.hidden && page.figure !== aimed && page.culture === shown && !flying
+	);
 }
 
 export class ConstellationSystem {
@@ -314,7 +319,7 @@ export class ConstellationSystem {
 	/** The culture on show, and the one on its way: only the newest pick lands. */
 	private shown: string | null = null;
 	private pending: string | null = null;
-	/** The constellation the camera was last asked to turn to. */
+	/** The figure the camera was last asked to turn to. */
 	private aimed: string | null = null;
 	/** The camera is turned away from the focus for a page. */
 	private turned = false;
@@ -358,7 +363,7 @@ export class ConstellationSystem {
 		return constellationsWanted(sceneSettings(), (id) => this.ctx.layers.isVisible(id));
 	}
 
-	/** Follow the page in view: turn to its constellation once the figures are
+	/** Follow the page in view: turn to its figure once the figures are
 	 *  in and the camera has landed, and back to the focus when the reader
 	 *  leaves the sky pages. With no sky to see, the camera stays, and a later
 	 *  dawn does not move it. */
@@ -370,11 +375,11 @@ export class ConstellationSystem {
 			this.aimed = null;
 			return;
 		}
-		if (!page.slug) this.aimed = null;
+		if (!page.figure) this.aimed = null;
 		if (!pageAimDue(page, this.aimed, this.shown, this.flying())) return;
-		const label = this.labels.find(({ slug }) => slug === page.slug);
+		const label = this.labels.find(({ figure }) => figure === page.figure);
 		if (!label) return;
-		this.aimed = page.slug;
+		this.aimed = page.figure;
 		if (gain <= 0 || !this.wanted()) return;
 		const [cx, cy, cz] = sceneToTree(
 			camera.position.x + focus[0],
@@ -427,11 +432,18 @@ export class ConstellationSystem {
 		this.labelOpacity = '';
 		this.labels = shape.labels.map((label) => {
 			const state: ConstellationLabelState = {
-				object: makeLabel(label, this.mapLayer, this.canvas, this.onSelect, (hovered) => {
-					if (hovered) this.setHovered(state);
-					else if (this.hovered === state) this.setHovered(null);
-				}),
-				slug: label.slug,
+				object: makeLabel(
+					label,
+					culture?.file.key ?? key,
+					this.mapLayer,
+					this.canvas,
+					this.onSelect,
+					(hovered) => {
+						if (hovered) this.setHovered(state);
+						else if (this.hovered === state) this.setHovered(null);
+					}
+				),
+				figure: label.figure,
 				anchor: label.anchor,
 				firstVertex: label.firstVertex,
 				vertices: 2 * label.weight,

@@ -5,6 +5,7 @@
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import { Switch } from '$lib/components/ui/switch';
 	import {
+		cultureName,
 		fetchPickableCultures,
 		pickedCulture,
 		type SkyCultureEntry
@@ -14,7 +15,7 @@
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import { constellationsAsked } from '$lib/scene/settings.svelte';
 	import { getSettings, type ViewMode } from '$lib/state/settings.svelte';
-	import { cultureName, pickCulture } from './sky-culture-list';
+	import { pickCulture } from './sky-culture-list';
 	import SkyCulturePage from './SkyCulturePage.svelte';
 
 	let { onPicked }: { onPicked?: () => void } = $props();

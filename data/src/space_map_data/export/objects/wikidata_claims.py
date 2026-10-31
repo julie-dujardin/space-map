@@ -1,6 +1,7 @@
 """Wikidata claim extraction and entity-reference resolution."""
 
 import logging
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Literal, NamedTuple
 from urllib.parse import quote, urlparse
@@ -15,6 +16,7 @@ from space_map_data.constants.stars.constellations import (
     POLISH_CONSTELLATION_NAMES,
     SKY_CONSTELLATION_SLUG_PREFIX,
 )
+from space_map_data.constants.stars.cultures import SKY_CULTURE_SLUG_PREFIX
 from space_map_data.export.names import Names, ObjectNames
 from space_map_data.export.quantities import UnitConverter
 from space_map_data.export.wikidata import (
@@ -448,14 +450,21 @@ def attach_country_group_link(ref: EntityRef, qid: str) -> None:
     ref.primary_id = f"{COUNTRY_SLUG_PREFIX}{country.slug}"
 
 
-def attach_sky_constellation_group_link(ref: EntityRef, qid: str, lang: str) -> None:
-    """If ``qid`` is an IAU constellation, point the ref at its /g/sky-<slug>
-    page, under the name that page takes."""
+def attach_sky_constellation_group_link(
+    ref: EntityRef, qid: str, lang: str, homes: Mapping[str, dict]
+) -> None:
+    """If ``qid`` is an IAU constellation, point the ref at its figure in its
+    home culture (`homes`, by group slug), under the name that page takes."""
     slug = _SKY_CONSTELLATION_BY_QID.get(qid)
     if slug is None:
         return
+    home = homes.get(f"{SKY_CONSTELLATION_SLUG_PREFIX}{slug}")
+    if home is None:
+        return
     ref.primary_type = "group"
-    ref.primary_id = f"{SKY_CONSTELLATION_SLUG_PREFIX}{slug}"
+    ref.primary_id = f"{SKY_CULTURE_SLUG_PREFIX}{home['culture']}"
+    ref.secondary_type = "figure"
+    ref.secondary_id = home["figure"]
     if lang == "pl":
         ref.name = POLISH_CONSTELLATION_NAMES[slug]
 

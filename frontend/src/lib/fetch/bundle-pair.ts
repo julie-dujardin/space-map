@@ -132,6 +132,21 @@ export async function prefetchBundlePair(desc: BundlePairDescriptor, key: string
 	await prefetchFetcher(desc.globalPath(bucket), desc.versionClass).catch(() => null);
 }
 
+/** The localized half alone: a list of names has no use for the global bucket,
+ *  which is the bulk of a pair. */
+export async function fetchLocalizedEntry<L>(
+	desc: BundlePairDescriptor,
+	key: string,
+	lang: string
+): Promise<L | null> {
+	const meta = await fetchMetadata();
+	const buckets = meta[desc.counts]?.[lang] ?? 0;
+	if (!buckets) return null;
+	const bucket = await hashBucket(key, buckets);
+	const bundle = await prefetchFetcher(desc.localizedPath(lang, bucket), desc.versionClass);
+	return (bundle?.[key] as L | undefined) ?? null;
+}
+
 /** Client entry point: memoized metadata, cached bundles. `background` is
  *  for a caller that nothing waits on: its fetches queue like a prefetch. */
 export async function fetchBundlePair<G, L>(

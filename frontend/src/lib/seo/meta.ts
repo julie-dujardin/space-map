@@ -63,9 +63,13 @@ import {
 	ExtrasolarStaleError,
 	extrasolarAllowed,
 	extrasolarBase,
+	extrasolarPath,
 	type ExtrasolarMetadata
 } from '$lib/fetch/extrasolar/files';
+import { findFigure, figurePageName } from '$lib/fetch/extrasolar/figures';
 import { extrasolarObjectId, planetObjectId } from '$lib/fetch/extrasolar/ids';
+import type { SkyCultureFile } from '$lib/fetch/extrasolar/skycultures';
+import { SKY_CULTURE_SLUG_PREFIX } from '$lib/fetch/groups/registry';
 import { ExtrasolarLookup } from '$lib/fetch/extrasolar/lookup';
 import { PlanetCatalogue } from '$lib/fetch/extrasolar/planets';
 
@@ -112,7 +116,11 @@ type SeoObjectLocalized = Pick<
 > & {
 	discoverers?: Pick<EntityRef, 'name'>[];
 };
-type SeoGroupGlobal = { images?: SeoImage[]; galleries?: { images?: SeoImage[] }[] };
+type SeoGroupGlobal = {
+	images?: SeoImage[];
+	galleries?: { images?: SeoImage[] }[];
+	home_figure?: GlobalGroupData['home_figure'];
+};
 type SeoGroupLocalized = Pick<LocalizedGroupData, 'name' | 'description'>;
 type SeoFeatureGlobal = Pick<FeatureGlobalData, 'origin'> & { images?: SeoImage[] };
 type SeoFeatureLocalized = Pick<FeatureLocalizedData, 'description'>;
@@ -745,6 +753,61 @@ export async function loadGroupSeo(slug: string, url: URL): Promise<SeoMeta | nu
 		canonical: absoluteHref(groupHref(slug, name), url),
 		image: card.image,
 		ogType: 'website'
+	};
+}
+
+/**
+ * Meta for the page of a figure of a sky culture, or null when the culture has
+ * no such page. A constellation drawn by several cultures has one canonical
+ * page, in its home culture, as the sitemap lists it.
+ */
+export async function loadFigureSeo(
+	slug: string,
+	segment: string,
+	url: URL
+): Promise<SeoMeta | null> {
+	const key = slug.slice(SKY_CULTURE_SLUG_PREFIX.length);
+	const files = requestFiles(url);
+	const table = (await files.metadata()).skycultures;
+	const entry = table?.cultures.find((culture) => culture.key === key);
+	if (!table || !entry || !extrasolarAllowed(entry)) return null;
+	const path = extrasolarPath(table.file, { key });
+	const file = await gunzipJson<SkyCultureFile>(await files.response(path, table.token));
+	if (file.token !== table.token) throw new ExtrasolarStaleError(path, file.token, table.token);
+	const figure = findFigure(file, segment);
+	if (!figure) return null;
+
+	const name = figurePageName(figure, getLocale());
+	const own = figure.description ? cleanDescription(figure.description) : genericDescription(name);
+	const meta: SeoMeta = {
+		title: pageTitle(name),
+		description: own,
+		canonical: absoluteHref(groupHref(slug, name, segment), url),
+		ogType: 'website'
+	};
+	if (!figure.page) return meta;
+
+	const page = await readSeoPage<SeoGroupGlobal, SeoGroupLocalized>(`g/${figure.page}`);
+	const { global, localized, cards }: SeoSubject<SeoGroupGlobal, SeoGroupLocalized> = page
+		? pageSubject(page, url)
+		: await exportGroup(figure.page, url);
+	const home = global?.home_figure;
+	const lead = heroImage(global);
+	const card = await resolveOgCard(lead ? [lead] : undefined, describe(name, localized), cards);
+	return {
+		...meta,
+		description: card.description,
+		canonical: home
+			? absoluteHref(
+					groupHref(
+						`${SKY_CULTURE_SLUG_PREFIX}${home.culture}`,
+						localized?.name ?? home.name ?? name,
+						home.figure
+					),
+					url
+				)
+			: meta.canonical,
+		image: card.image
 	};
 }
 

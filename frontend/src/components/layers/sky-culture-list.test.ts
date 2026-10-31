@@ -1,13 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { SkyCultureEntry } from '$lib/fetch/extrasolar/skycultures';
+import { cultureName, type SkyCultureEntry } from '$lib/fetch/extrasolar/skycultures';
 import { UrlType, DEFAULT_VIEW } from '$lib/state/view';
-import {
-	byRegion,
-	cultureName,
-	matchCulture,
-	orderCultures,
-	pickCulture
-} from './sky-culture-list';
+import { byRegion, matchCulture, orderCultures, pickCulture } from './sky-culture-list';
 
 const entry = (key: string, name: string, group: string, figures: number, labels = {}) =>
 	({ key, name, group, figures, labels }) as SkyCultureEntry;

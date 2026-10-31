@@ -56,7 +56,7 @@
 			lon: number,
 			diameterM: number
 		) => void;
-		onConstellationSelect?: (slug: string, name: string) => void;
+		onConstellationSelect?: (slug: string, figure: string, name: string) => void;
 	}
 
 	let {
@@ -133,7 +133,9 @@
 			map.on('featureselect', ({ bodyId, featureId, lat, lon, diameterM }) =>
 				onFeatureSelect?.(bodyId, featureId, lat, lon, diameterM)
 			),
-			map.on('constellationselect', ({ slug, name }) => onConstellationSelect?.(slug, name)),
+			map.on('constellationselect', ({ slug, figure, name }) =>
+				onConstellationSelect?.(slug, figure, name)
+			),
 			map.on('notice', showNotice),
 			map.on('noticedismiss', dismissNotice)
 		];

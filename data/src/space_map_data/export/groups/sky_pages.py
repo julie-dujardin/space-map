@@ -1,11 +1,12 @@
-"""The stars of the constellation pages (``sky-``), and the sky culture pages
+"""The data of the constellation pages (``sky-``), and the sky culture pages
 (``culture-``).
 
-Both read the served extrasolar export, so a page tells what the map draws: a
-constellation lists the stars of its figure in its culture (`IAU_SKY_CULTURE`
-for the IAU's 88, `SKY_PAGE_CULTURES` for the others), and the cultures of the
-picker get a page each. The text of a culture page comes from
-the matched cultures, with Stellarium's translations of it. Its licence travels
+Both read the served extrasolar export, so a page tells what the map draws. A
+``sky-`` key holds the article and pictures of a constellation, which every
+figure of it shows at its own URL, `/g/culture-<key>/f/<figure>`. Its stars are
+those of the figure in its home culture (`IAU_SKY_CULTURE` for the IAU's 88,
+`SKY_PAGE_CULTURES` for the others). The text of a culture page comes from the
+matched cultures, with Stellarium's translations of it. Its licence travels
 with it.
 """
 
@@ -14,22 +15,21 @@ import html
 import json
 import logging
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from functools import partial
 from pathlib import Path
 
 from space_map_data.constants.categories import CONSTELLATIONS_SLUG
+from space_map_data.constants.providers import BASE_LOCALE
 from space_map_data.constants.stars.constellations import (
     SKY_PAGE_CULTURES,
-    UNPAGED_CULTURE_PARENTS,
     sky_page_culture,
 )
 from space_map_data.constants.stars.cultures import (
     IAU_SKY_CULTURE,
     SKY_CULTURE_SLUG_PREFIX,
-    SKY_CULTURE_TEXTS_LEFT_OUT,
 )
 from space_map_data.export.extrasolar.build import served
 from space_map_data.export.extrasolar.reader import ExportReader
@@ -39,6 +39,7 @@ from space_map_data.export.extrasolar.skycultures import (
     UNTRANSLATED_FLAGS,
     culture_credit,
     figure_star_ids,
+    text_allowed,
 )
 from space_map_data.export.groups.family_pages import served_metadata, sitelink_rank
 from space_map_data.export.groups.stats import GroupExtraStats
@@ -48,14 +49,7 @@ from space_map_data.export.objects.stars import PREFIX, StarObject
 from space_map_data.extrasolar.tables import METADATA
 from space_map_data.skycultures import translations
 from space_map_data.skycultures.build import INDEX_FILE
-from space_map_data.skycultures.licences import (
-    NO_DERIVATIVES,
-    NO_LICENCE,
-    NON_COMMERCIAL,
-    OPEN,
-    TK_LABELS,
-    UNKNOWN_LICENCE,
-)
+from space_map_data.skycultures.licences import NO_DERIVATIVES
 from space_map_data.skycultures.translations import Catalogues
 from space_map_data.utils.content_stamp import content_stamp
 from space_map_data.utils.paths import EXTRASOLAR_DIR
@@ -239,12 +233,7 @@ def culture_text(record: dict, catalogues: Catalogues | None = None) -> dict | N
     """The text of a culture page with its licence, or None when the licence
     or the text does not allow one. It is a part of the source, so the credit
     says where the whole is."""
-    licence = record["licence"]
-    if (
-        record["key"] in SKY_CULTURE_TEXTS_LEFT_OUT
-        or licence["distribution"] not in (OPEN, NON_COMMERCIAL)
-        or {NO_LICENCE, UNKNOWN_LICENCE, TK_LABELS} & set(licence["flags"])
-    ):
+    if not text_allowed(record):
         return None
     text = _own_text(record)
     if text is None:
@@ -252,7 +241,7 @@ def culture_text(record: dict, catalogues: Catalogues | None = None) -> dict | N
     translated = _text_translations(record, text, catalogues or Catalogues())
     out = {
         "text": text,
-        "distribution": licence["distribution"],
+        "distribution": record["licence"]["distribution"],
         "credit": culture_credit(record),
     }
     if translated:
@@ -277,13 +266,58 @@ def _culture_records(cultures_dir: Path) -> dict[str, dict]:
 
 
 def _figures_of(file: dict) -> list[dict]:
-    """The figures of a culture file that its pages read."""
+    """The figures of a culture file that call it home."""
     return [
         figure
         for figure in file["figures"]
         if "page" in figure
+        and "slug" in figure
         and (sky_page_culture(figure["page"]) or IAU_SKY_CULTURE) == file["key"]
     ]
+
+
+def _page_name(figure: dict) -> str | None:
+    """The base locale's name of a figure, as `labelOf` reads it."""
+    names = figure["names"]
+    return (figure.get("labels") or {}).get(BASE_LOCALE) or next(
+        (
+            name[kind]
+            for kind in ("english", "pronounce", "native")
+            for name in names
+            if kind in name
+        ),
+        None,
+    )
+
+
+def _home_figure(file: dict, figure: dict) -> dict:
+    return {
+        "culture": file["key"],
+        "figure": figure["slug"],
+        "name": _page_name(figure),
+    }
+
+
+def home_figures(extrasolar_dir: Path = EXTRASOLAR_DIR) -> dict[str, dict]:
+    """The figure each constellation page calls home, by group slug, or none
+    with no export served."""
+    root = extrasolar_dir / "v1" / "x"
+    homes: dict[str, dict] = {}
+    with served(extrasolar_dir):
+        table = (served_metadata(extrasolar_dir) or {}).get("skycultures")
+        if table is None:
+            return homes
+        for file in _home_files(root, table):
+            for figure in _figures_of(file):
+                homes.setdefault(figure["page"], _home_figure(file, figure))
+    return homes
+
+
+def _home_files(root: Path, table: dict) -> Iterator[dict]:
+    """The culture files that hold the home figures."""
+    for key in sorted({IAU_SKY_CULTURE, *SKY_PAGE_CULTURES.values()}):
+        path = root / table["file"].format(key=key)
+        yield json.loads(gzip.decompress(path.read_bytes()))
 
 
 def _page_stars(file: dict) -> dict[str, list[int]]:
@@ -295,26 +329,15 @@ def _page_stars(file: dict) -> dict[str, list[int]]:
     }
 
 
-def _child_pages(
-    cultures: list[dict], figures: dict[str, list[int]]
-) -> dict[str, list[str]]:
-    """The child pages of the Constellations page, IAU first, and of each
-    culture page."""
-    children: dict[str, list[str]] = {}
-    for slug in figures:
-        key = sky_page_culture(slug) or IAU_SKY_CULTURE
-        if key not in UNPAGED_CULTURE_PARENTS:
-            children.setdefault(f"{SKY_CULTURE_SLUG_PREFIX}{key}", []).append(slug)
-    for slugs in children.values():
-        slugs.sort()
-    children[CONSTELLATIONS_SLUG] = sorted(
+def _culture_pages(cultures: list[dict]) -> list[str]:
+    """The child pages of the Constellations page, IAU first."""
+    return sorted(
         (f"{SKY_CULTURE_SLUG_PREFIX}{entry['key']}" for entry in cultures),
         key=lambda slug: (
             slug != f"{SKY_CULTURE_SLUG_PREFIX}{IAU_SKY_CULTURE}",
             slug,
         ),
     )
-    return children
 
 
 def _stars(
@@ -372,13 +395,15 @@ def build_sky_pages(
             return out
         reader = ExportReader(root)
         figures: dict[str, list[int]] = {}
-        for key in sorted({IAU_SKY_CULTURE, *SKY_PAGE_CULTURES.values()}):
-            path = root / table["file"].format(key=key)
-            file = json.loads(gzip.decompress(path.read_bytes()))
+        for file in _home_files(root, table):
             figures |= _page_stars(file)
             for figure in _figures_of(file):
-                if key != IAU_SKY_CULTURE:
+                if file["key"] != IAU_SKY_CULTURE:
                     out.page_labels[figure["page"]] = figure.get("labels", {})
+                out.extra_stats.setdefault(
+                    figure["page"],
+                    GroupExtraStats(home_figure=_home_figure(file, figure)),
+                )
         out.notable_members = _stars(reader, figures, star_objects, names)
     out.member_counts = {slug: len(stars) for slug, stars in figures.items()}
 
@@ -394,12 +419,12 @@ def build_sky_pages(
         if text:
             out.extra_stats[slug] = GroupExtraStats(culture_text=text)
     out.member_counts[CONSTELLATIONS_SLUG] = len(cultures)
-    out.children = _child_pages(cultures, figures)
+    out.children = {CONSTELLATIONS_SLUG: _culture_pages(cultures)}
     logger.info(
         "Sky pages: %d constellations with %d stars, %d cultures, %d with a text",
         len(figures),
         sum(len(stars) for stars in figures.values()),
         len(cultures),
-        len(out.extra_stats),
+        sum(1 for stats in out.extra_stats.values() if stats.culture_text),
     )
     return out

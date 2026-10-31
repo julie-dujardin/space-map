@@ -10,9 +10,9 @@ These are standalone QID constants following the existing tuple-valued topic
 format. Constellations use `culture -> constellation -> tuple[QID, ...]`; the
 other tables use `slug -> tuple[QID, ...]`. The tables are not registered in
 `TOPIC_PAGE_TABLES`. Each constellation of `MODERN_IAU_CONSTELLATIONS`, and each
-row of the other three tables that has a figure in a culture, has a
-`/g/sky-<slug>` page ([groups.md](export-format/groups.md)), so the group
-registry fetches its article and pictures. Each culture of the picker has a
+row of the other three tables that has a figure in a culture, has a `sky-<slug>`
+group key ([groups.md](export-format/groups.md)), so the group registry fetches
+its article and pictures for the figure's page. Each culture of the picker has a
 `/g/culture-<key>` page; `SKY_CULTURE_ARTICLES` names the few that read an article
 of `SKY_TRADITION_PAGES`, and the others read their own text. A page never reads
 an article of `SKY_CULTURE_PEOPLE_PAGES`. The

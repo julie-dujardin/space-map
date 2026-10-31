@@ -12,6 +12,7 @@ const FILE: SkyCultureFile = {
 		{ id: 3 },
 		{ id: 4, position: [0, 0, 30] }
 	],
+	names: [],
 	figures: [
 		{
 			id: 'CON modern_iau Ori',
@@ -20,7 +21,8 @@ const FILE: SkyCultureFile = {
 			lines: [[0, 1, 2, 3]],
 			iau: 'Ori',
 			labels: { fr: 'Orion FR' },
-			page: 'sky-orion'
+			page: 'sky-orion',
+			slug: 'Ori'
 		},
 		{ id: 'AST modern_iau Big', kind: 'asterism', names: [], lines: [[0, 3]] },
 		{ id: 'CON modern_iau Xxx', kind: 'constellation', names: [], lines: [[2, 3]] }
@@ -137,7 +139,7 @@ describe('constellationShape', () => {
 	});
 
 	it('links a label to the page of its figure', () => {
-		expect(constellationShape(FILE, 'fr').labels[0].slug).toBe('sky-orion');
+		expect(constellationShape(FILE, 'fr').labels[0].figure).toBe('Ori');
 	});
 
 	it('anchors a label between its stars as the Sun sees them, at their median distance', () => {
@@ -163,7 +165,7 @@ function box(left: number, top: number, inView = true): LabelBox {
 }
 
 describe('pageAimDue', () => {
-	const page = { culture: 'modern_iau', slug: 'sky-orion', opening: false, hidden: false };
+	const page = { culture: 'modern_iau', figure: 'Ori', opening: false, hidden: false };
 
 	it('turns once the figures are in', () => {
 		expect(pageAimDue(page, null, 'modern_iau', false)).toBe(true);
@@ -175,7 +177,7 @@ describe('pageAimDue', () => {
 	});
 
 	it('turns once for a page', () => {
-		expect(pageAimDue(page, 'sky-orion', 'modern_iau', false)).toBe(false);
+		expect(pageAimDue(page, 'Ori', 'modern_iau', false)).toBe(false);
 	});
 
 	it('does not turn to a sky the reader switched off, and does when it is back', () => {
@@ -184,7 +186,7 @@ describe('pageAimDue', () => {
 	});
 
 	it('has nothing to turn to on a culture page', () => {
-		expect(pageAimDue({ ...page, slug: null }, null, 'modern_iau', false)).toBe(false);
+		expect(pageAimDue({ ...page, figure: null }, null, 'modern_iau', false)).toBe(false);
 	});
 });
 
@@ -281,12 +283,12 @@ describe('constellationShape pages', () => {
 				...FILE,
 				members: [member, other],
 				figures: [
-					{ ...line, id: 'a', names: [{ english: 'Net' }], page: 'sky-net' },
+					{ ...line, id: 'a', names: [{ english: 'Net' }], slug: '008' },
 					{ ...line, id: 'b', names: [{ native: 'Orion' }], iau: 'Ori', labels: { fr: 'Orion' } }
 				]
 			},
 			'en'
 		);
-		expect(labels.map((label) => label.slug).sort()).toEqual([null, 'sky-net'].sort());
+		expect(labels.map((label) => label.figure).sort()).toEqual([null, '008'].sort());
 	});
 });

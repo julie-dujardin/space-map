@@ -1134,7 +1134,8 @@ as `EntityRef`:
   `part_of` (P361);
 - `iau_constellation` (P59), the IAU constellation the star lies in. It is not
   `constellation`, which names a satellite constellation. An IAU constellation
-  links to its `/g/sky-<slug>` page (`primary_type` `group`, groups.md) under
+  links to its figure in `modern_iau` (`primary_type` `group` with the culture's
+  slug, `secondary_type` `figure` with the figure's `slug`, extrasolar.md) under
   the name that page takes.
 
 A reference to a star or a planet with an entry links to its page

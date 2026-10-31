@@ -3,7 +3,7 @@
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 	import LayersIcon from '@lucide/svelte/icons/layers';
 	import { formatCompactNumber } from '$lib/format/quantities';
-	import type { SearchHit } from '$lib/search/client';
+	import { groupHitPage, type SearchHit } from '$lib/search/client';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import {
 		applyFeature,
@@ -46,8 +46,10 @@
 				applyFeature(view, { bodyId: hit.body_id, featureId: hit.feature_id, featureName: name })
 			);
 		// The click flies to the group's anchor, so the href lands there too.
-		if (hit.kind === 'group')
-			return serializeUrl(applyGroup(view, hit.slug, name, { frame: true }));
+		if (hit.kind === 'group') {
+			const { slug, figure } = groupHitPage(hit);
+			return serializeUrl(applyGroup(view, slug, name, { frame: true, figure }));
+		}
 		return serializeUrl(applyFocus(view, { type: urlTypeFromId(hit.id), id: hit.id, name }));
 	});
 

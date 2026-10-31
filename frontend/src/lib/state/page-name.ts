@@ -5,6 +5,7 @@
  * is the URL the page writes, and the one the sitemap lists.
  */
 
+import { fetchFigureName } from '$lib/fetch/extrasolar/figures';
 import { fetchGroupDetail } from '$lib/fetch/groups/details';
 import { CATEGORY_SLUG_PREFIX } from '$lib/fetch/groups/registry';
 import { fetchBodyNomenclature } from '$lib/fetch/nomenclature/fetch';
@@ -53,7 +54,8 @@ export type PageSubject =
 			localized?: boolean;
 	  }
 	| { kind: 'feature'; bodyId: string; featureId: number }
-	| { kind: 'group'; slug: string };
+	| { kind: 'group'; slug: string }
+	| { kind: 'figure'; slug: string; figure: string };
 
 /**
  * The live object an alias of the extrasolar catalogue leads to, and the name
@@ -79,6 +81,7 @@ export async function extrasolarAlias(id: string): Promise<{ id: string; name: s
 /** The name of a page, read from the export in the reader's language. Empty
  *  when the export gives none. */
 export async function fetchPageName(subject: PageSubject): Promise<string> {
+	if (subject.kind === 'figure') return fetchFigureName(subject.slug, subject.figure);
 	if (subject.kind === 'group') {
 		return groupPageName(subject.slug, (await fetchGroupDetail(subject.slug)).localized?.name);
 	}

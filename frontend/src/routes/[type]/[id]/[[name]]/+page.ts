@@ -10,6 +10,7 @@ import {
 	loadStarSeo
 } from '$lib/seo/meta';
 import { extrasolarBase } from '$lib/fetch/extrasolar/files';
+import { SKY_CONSTELLATION_SLUG_PREFIX } from '$lib/fetch/groups/registry';
 import type { PageLoad } from './$types';
 
 export const load: PageLoad = async ({ params, url }) => {
@@ -20,6 +21,8 @@ export const load: PageLoad = async ({ params, url }) => {
 	if (type === UrlType.Extrasolar && !extrasolarBase()) error(404, 'No extrasolar catalogue');
 	// Groups (/g/<slug>) live in their own bundle; the [id] slot holds the slug.
 	const isGroup = type === UrlType.Group;
+	// A constellation is a data key: its pages are its figures.
+	if (isGroup && id.startsWith(SKY_CONSTELLATION_SLUG_PREFIX)) error(404, `No page "${id}"`);
 	const objectId = isGroup ? null : objectIdOfRoute(type, id);
 	if (!isGroup && objectId === null) error(404, `Unknown id "${id}"`);
 

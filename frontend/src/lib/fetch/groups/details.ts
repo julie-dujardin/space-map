@@ -99,7 +99,7 @@ export interface FeatureFamily {
 
 export interface CultureText {
 	text: string;
-	distribution: 'open' | 'non-commercial';
+	distribution: string;
 	credit: ExtrasolarCredit;
 	/** The text in the languages that Stellarium translates it to. */
 	translations?: Record<string, string>;
@@ -119,11 +119,15 @@ export interface GlobalGroupData {
 	 *  The breadcrumb climbs to the first. A top family names `cat-stars` or
 	 *  `cat-planets` here. */
 	parent_families?: string[];
-	/** Constellation and culture pages: the page above this one. */
+	/** Culture pages and figure pages: the page above this one. */
 	parent_group?: string;
-	/** Culture pages: the culture's own text. Its licence decides which hosts
-	 *  may show it. */
+	/** Culture pages: the culture's own text. Figure pages: the figure's. Its
+	 *  licence decides which hosts may show it. */
 	culture_text?: CultureText;
+	/** Constellation data: the figure whose URL is the page of this constellation. */
+	home_figure?: { culture: string; figure: string; name: string | null };
+	/** Figure pages: the culture that draws the figure, built in the browser. */
+	figure_credit?: ExtrasolarCredit;
 	/** Star families only: the stars that only an estimate puts in the
 	 *  family, of `member_count`. */
 	estimated_star_count?: number;

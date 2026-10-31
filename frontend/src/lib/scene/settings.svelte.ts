@@ -11,8 +11,8 @@ import type {
 export interface PageSky {
 	/** The culture to draw. */
 	culture: string;
-	/** The constellation to aim at. */
-	slug: string | null;
+	/** The figure to aim at, by its `slug`. */
+	figure: string | null;
 	/** Aim at once: the page opened the map. */
 	opening: boolean;
 	/** The reader turned the layer off on this page. */

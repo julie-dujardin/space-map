@@ -11,12 +11,14 @@ import {
 	parseExtrasolarId,
 	planetOfObjectId
 } from '$lib/fetch/extrasolar/ids';
+import { SKY_CULTURE_SLUG_PREFIX } from '$lib/fetch/groups/registry';
 
 /** URL path discriminator. Body types map 1:1 to ID prefix; Feature is a
  *  sub-selection on top of a body and uses a nested route shape
  *  (/<type>/<bodyId>/f/<featureId>/<name>). Group is a top-level aggregation
  *  view (/g/<slug>/<name>) that filters which bodies render but keeps a
- *  default anchor body for camera framing. */
+ *  default anchor body for camera framing. A figure of a sky culture nests
+ *  under its culture's group (/g/culture-<key>/f/<figure>/<name>). */
 export enum UrlType {
 	Body = 'b', // naif-
 	SmallBody = 's', // spkid-
@@ -79,6 +81,7 @@ export const FEATURE_ROUTE_TYPES: ReadonlySet<string> = new Set([
  *  and the empty string too, and each would be one more address for the same
  *  page. */
 const ID_NUMBER = /^-?(0|[1-9]\d*)$/;
+const FIGURE_SEGMENT = /^[A-Za-z0-9._-]+$/;
 
 export function isIdNumber(segment: string): boolean {
 	return ID_NUMBER.test(segment);
@@ -104,6 +107,12 @@ export function objectIdOfRoute(type: string, id: string): string | null {
 export function planetIdOfRoute(host: string, n: string): string | null {
 	const objectId = `${EXTRASOLAR_PREFIX}${host}-b-${n}`;
 	return planetOfObjectId(objectId) === null ? null : objectId;
+}
+
+/** A figure's segment, as the export writes it, or null. The culture page
+ *  above it is `slug`: only that prefix has figures. */
+export function figureOfRoute(slug: string, figure: string): string | null {
+	return slug.startsWith(SKY_CULTURE_SLUG_PREFIX) && FIGURE_SEGMENT.test(figure) ? figure : null;
 }
 
 /** The IAU feature id a feature route names, or null. */
@@ -162,6 +171,8 @@ export interface MapViewState {
 	 *  `id` then holds the group's camera anchor, or the member the camera moved
 	 *  to — deep-linked as `&focus=` so the link reopens on that member. */
 	groupSlug: string | null;
+	/** The figure of the culture `groupSlug` names, when its page is open. */
+	figure: string | null;
 	/** Active drawer tab; null = overview. Deep-linked as `&tab=`. */
 	tab: Exclude<DrawerTab, 'overview'> | null;
 	/** Pages loaded in a paginated list; null = first. Deep-linked as `&mp=` to
@@ -238,6 +249,7 @@ export const DEFAULT_VIEW: MapViewState = {
 	gallery: null,
 	featureId: null,
 	groupSlug: null,
+	figure: null,
 	tab: null,
 	memberPage: null,
 	quad: null,

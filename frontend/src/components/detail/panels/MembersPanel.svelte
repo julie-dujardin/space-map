@@ -20,7 +20,9 @@
 <div class="flex flex-col gap-4">
 	{#if isGroupMode && groupDetail?.global}
 		<PaginatedMemberList
-			source={{ kind: 'group', slug: groupDetail.global.slug }}
+			source={groupDetail.global.type === 'sky_constellation'
+				? { kind: 'list', key: groupDetail.global.slug }
+				: { kind: 'group', slug: groupDetail.global.slug }}
 			totalCount={members.memberTotal}
 			localizedNames={members.memberNames}
 			fallback={members.notableMembers ?? []}

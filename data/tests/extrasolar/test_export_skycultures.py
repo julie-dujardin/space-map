@@ -787,6 +787,7 @@ def test_a_star_shard_lists_each_figure_of_a_star_by_culture():
                     "names": [{"native": "Orion", "IPA": "x"}],
                     "labels": {"fr": "Orion"},
                     "page": "sky-orion",
+                    "slug": "Ori",
                     "lines": [[0, 1], [1, 2]],
                 },
                 {"names": [], "lines": [[0, 1]], "ray_helper": True},
@@ -805,9 +806,78 @@ def test_a_star_shard_lists_each_figure_of_a_star_by_culture():
             {
                 "names": [{"native": "Orion"}],
                 "labels": {"fr": "Orion"},
-                "page": "sky-orion",
+                "slug": "Ori",
             }
         ],
         "aztec": [{"names": [{"english": "Fire"}]}],
     }
     assert list(shards[1]["stars"]) == ["1"]
+
+
+class TestFigureSlugs:
+    """The URL segment of a figure."""
+
+    def test_is_the_last_word_of_the_id(self):
+        assert skycultures.figure_slug("CON modern_iau And", "constellation") == "And"
+        assert skycultures.figure_slug("CON Ava Guarani 001", "constellation") == "001"
+
+    def test_an_asterism_keeps_apart_from_its_constellation(self):
+        assert skycultures.figure_slug("AST indian Puṣ", "asterism") == "ast-Pus"
+
+    def test_keeps_only_what_a_url_needs_no_escape_for(self):
+        assert skycultures.figure_slug("CON indian R̥kṣa", "constellation") == "Rksa"
+
+    def test_a_repeated_id_takes_a_number_in_the_order_of_the_source(self):
+        figures = [
+            {"id": "CON japanese 05A", "kind": "constellation"},
+            {"id": "CON japanese 05A", "kind": "constellation"},
+        ]
+        skycultures.set_figure_slugs("japanese", figures)
+        assert [figure["slug"] for figure in figures] == ["05A", "05A-2"]
+
+    def test_a_ray_helper_has_no_page(self):
+        figure = {"id": "CON maya 1", "kind": "constellation", "ray_helper": True}
+        skycultures.set_figure_slugs("maya", [figure])
+        assert "slug" not in figure
+
+    def test_a_culture_out_of_the_picker_keeps_the_pages_it_is_home_to(self):
+        home = {
+            "id": "CON modern QuM",
+            "kind": "constellation",
+            "page": "sky-quadrans-muralis",
+        }
+        iau = {"id": "CON modern Ori", "kind": "constellation", "page": "sky-orion"}
+        own = {"id": "CON modern Xxx", "kind": "constellation"}
+        skycultures.set_figure_slugs("modern", [home, iau, own])
+        assert home["slug"] == "QuM"
+        assert "slug" not in iau
+        assert "slug" not in own
+
+
+class TestFigureText:
+    """The dataset's text on a figure."""
+
+    def _figure(self, licence: dict) -> dict:
+        record = {"dataset": "bucur", "key": "anuta", "licence": licence}
+        figure = {"id": "CON Anuta 001", "description": "A bamboo pole."}
+        return skycultures._figure(
+            record,
+            figure,
+            "constellation",
+            skycultures.Members(),
+            skycultures.Naming({}),
+            {},
+        )
+
+    def test_travels_as_it_is(self):
+        figure = self._figure({"distribution": "open", "flags": []})
+        assert figure["description"] == "A bamboo pole."
+
+    def test_a_no_derivatives_text_stays(self):
+        figure = self._figure({"distribution": "open", "flags": ["no-derivatives"]})
+        assert figure["description"] == "A bamboo pole."
+
+    def test_no_licence_or_labels_give_no_text(self):
+        for flag in ("no-licence", "tk-labels"):
+            figure = self._figure({"distribution": "open", "flags": [flag]})
+            assert "description" not in figure

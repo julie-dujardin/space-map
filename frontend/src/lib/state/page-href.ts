@@ -8,7 +8,7 @@
  */
 
 import { resolve } from '$app/paths';
-import type { SearchHit } from '$lib/search/client';
+import { groupHitPage, type SearchHit } from '$lib/search/client';
 import { planetOfObjectId } from '$lib/fetch/extrasolar/ids';
 import { UrlType, urlTypeFromId, urlTypeToIdPrefix } from './view';
 
@@ -38,8 +38,16 @@ export function planetHref(host: number, n: number, name: string): string {
 	});
 }
 
-/** A group's page: `/g/<slug>/<name>`, opening on the group's anchor. */
-export function groupHref(slug: string, name: string): string {
+/** A group's page: `/g/<slug>/<name>`, opening on the group's anchor, or the
+ *  page of a figure of a culture: `/g/culture-<key>/f/<figure>/<name>`. */
+export function groupHref(slug: string, name: string, figure?: string | null): string {
+	if (figure) {
+		return resolve('/g/[id]/f/[figure]/[[name]]', {
+			id: slug,
+			figure,
+			name: nameSegment(name)
+		});
+	}
 	return resolve('/[type]/[id]/[[name]]', {
 		type: UrlType.Group,
 		id: slug,
@@ -60,7 +68,10 @@ export function featureHref(bodyId: string, featureId: number, name: string): st
  *  holds it stands in. */
 export function searchHitHref(hit: SearchHit, name: string): string {
 	if (hit.kind === 'feature') return featureHref(hit.body_id, hit.feature_id, name);
-	if (hit.kind === 'group') return groupHref(hit.slug, name);
+	if (hit.kind === 'group') {
+		const { slug, figure } = groupHitPage(hit);
+		return groupHref(slug, name, figure);
+	}
 	if (hit.kind === 'pad') return groupHref(hit.site_slug, hit.site_name);
 	return bodyHref(hit.id, name);
 }

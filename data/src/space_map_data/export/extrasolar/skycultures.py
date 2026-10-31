@@ -53,13 +53,16 @@ from space_map_data.constants.stars.constellations import (
     SKY_PAGE_NAME_FIXES,
     sky_constellation_pages,
     sky_figure_pages,
+    sky_page_culture,
 )
 from space_map_data.constants.stars.cultures import (
+    IAU_SKY_CULTURE,
     SKY_CULTURE_LABEL_PREFIXES,
     SKY_CULTURE_LABELS,
     SKY_CULTURE_NAME_FIXES,
     SKY_CULTURE_NAMES_LEFT_OUT,
     SKY_CULTURE_REGIONS,
+    SKY_CULTURE_TEXTS_LEFT_OUT,
     SKY_PAGE_LABEL_FIXES,
     UNPICKED_SKY_CULTURES,
     sky_culture_page,
@@ -81,6 +84,7 @@ from space_map_data.skycultures.licences import (
     OPEN,
     TK_LABELS,
     UNDECIDED,
+    UNKNOWN_LICENCE,
 )
 from space_map_data.skycultures.translations import Catalogues
 from space_map_data.utils.paths import DERIVED_SKYCULTURES_DIR
@@ -114,6 +118,9 @@ DEGREES_PER_HOUR = 15.0
 NAME_FIELDS = ("native", "english", "pronounce", "transliteration", "IPA")
 # The name fields that a label reads.
 LABEL_NAME_FIELDS = ("native", "english", "pronounce")
+# A `slug` keeps these characters of a figure ID, with no marks.
+UNSAFE_IN_SLUG = re.compile(r"[^A-Za-z0-9._-]")
+ASTERISM_SLUG_PREFIX = "ast-"
 # Few enough for a star's page to read a small part of the index.
 STAR_SHARDS = 64
 # What a Wikidata title adds to a name to tell it from a namesake.
@@ -526,6 +533,51 @@ def _translations(record: dict, name: dict, naming: Naming) -> dict:
     return naming.figures.labels(english, name.get("context"))
 
 
+def text_allowed(record: dict) -> bool:
+    """Whether the licence lets the site show the text of a culture."""
+    licence = record["licence"]
+    return (
+        record["key"] not in SKY_CULTURE_TEXTS_LEFT_OUT
+        and licence["distribution"] in (OPEN, NON_COMMERCIAL)
+        and not {NO_LICENCE, UNKNOWN_LICENCE, TK_LABELS} & set(licence["flags"])
+    )
+
+
+def figure_slug(figure_id: str, kind: str) -> str:
+    """The URL segment of a figure: the last word of its ID, which the source
+    keeps stable. An asterism can share that word with a constellation."""
+    word = figure_id.rsplit(" ", 1)[-1]
+    plain = unicodedata.normalize("NFKD", word).encode("ascii", "ignore").decode()
+    slug = UNSAFE_IN_SLUG.sub("-", plain)
+    return f"{ASTERISM_SLUG_PREFIX}{slug}" if kind == "asterism" else slug
+
+
+def has_page(key: str, figure: dict) -> bool:
+    """Whether a figure has a page. A culture out of the picker has no page of
+    its own, so only a figure that a constellation page calls home has one."""
+    if figure.get("ray_helper"):
+        return False
+    if culture_group(key) is not None:
+        return True
+    page = figure.get("page")
+    return page is not None and (sky_page_culture(page) or IAU_SKY_CULTURE) == key
+
+
+def set_figure_slugs(key: str, figures: list[dict]) -> None:
+    """Give each figure with a page its `slug`. A source can repeat an ID, so a
+    later figure with the same slug takes a number, in the order of the source."""
+    taken: dict[str, int] = {}
+    for figure in figures:
+        if not has_page(key, figure):
+            continue
+        slug = figure_slug(figure["id"], figure["kind"])
+        taken[slug] = taken.get(slug, 0) + 1
+        if taken[slug] > 1:
+            logger.info("sky cultures: %s repeats the figure %s", key, slug)
+            slug = f"{slug}-{taken[slug]}"
+        figure["slug"] = slug
+
+
 def _figure(
     record: dict,
     figure: dict,
@@ -569,6 +621,8 @@ def _figure(
             out["labels"] = labels
     if figure.get("is_ray_helper"):
         out["ray_helper"] = True
+    if figure.get("description") and text_allowed(record):
+        out["description"] = figure["description"]
     return out
 
 
@@ -585,6 +639,7 @@ def layout(record: dict, naming: Naming) -> tuple[dict, Members]:
         )
         for figure in culture.get(key, [])
     ]
+    set_figure_slugs(record["key"], figures)
     names = [
         {"member": members.add(entry["object"]), "names": _names(entry["names"])}
         for entry in culture.get("common_names", [])
@@ -684,7 +739,7 @@ def star_shards(contents: Iterable[dict]) -> list[dict]:
                     if (kept := {k: name[k] for k in LABEL_NAME_FIELDS if k in name})
                 ]
             }
-            entry |= {k: figure[k] for k in ("labels", "page") if k in figure}
+            entry |= {k: figure[k] for k in ("labels", "slug") if k in figure}
             for id_ in sorted(set(figure_star_ids(content["members"], figure))):
                 stars = shards[id_ % STAR_SHARDS]["stars"]
                 stars.setdefault(str(id_), {}).setdefault(content["key"], []).append(

@@ -44,6 +44,7 @@ const initialView: MapViewState = {
 	gallery: null,
 	featureId: null,
 	groupSlug: null,
+	figure: null,
 	tab: null,
 	memberPage: null,
 	quad: null,

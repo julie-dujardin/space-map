@@ -2,10 +2,11 @@
 	import { getContext } from 'svelte';
 	import * as m from '$lib/paraglide/messages.js';
 	import { getLocale } from '$lib/paraglide/runtime.js';
-	import { byRegion, cultureName } from '../../../layers/sky-culture-list';
+	import { byRegion } from '../../../layers/sky-culture-list';
 	import { datasetSources } from '../culture-credits';
 	import type { Source } from '../SourcesFooter.svelte';
 	import {
+		cultureName,
 		fetchStarFigures,
 		labelOf,
 		type SkyCultureEntry,
@@ -64,16 +65,16 @@
 			slug: `${SKY_CULTURE_SLUG_PREFIX}${culture.key}`,
 			figures: figures.flatMap((figure) => {
 				const name = labelOf(figure, locale);
-				return name ? [{ name, slug: figure.page }] : [];
+				return name ? [{ name, figure: figure.slug }] : [];
 			})
 		}));
 	});
 </script>
 
-{#snippet link(slug: string, name: string, muted: boolean)}
+{#snippet link(slug: string, name: string, muted: boolean, figure?: string)}
 	<a
-		href={groupHref(appState, slug, name)}
-		onclick={groupClick(appState, slug, name)}
+		href={groupHref(appState, slug, name, { figure })}
+		onclick={groupClick(appState, slug, name, { figure })}
 		dir="auto"
 		class="hover:text-foreground underline-offset-2 {muted
 			? 'text-muted-foreground hover:underline'
@@ -93,8 +94,8 @@
 					<dt class="min-w-0">{@render link(row.slug, row.name, true)}</dt>
 					<dd class="flex min-w-0 flex-wrap gap-x-2">
 						{#each row.figures as figure, i (i)}
-							{#if figure.slug}
-								{@render link(figure.slug, figure.name, false)}
+							{#if figure.figure}
+								{@render link(row.slug, figure.name, false, figure.figure)}
 							{:else}
 								<span dir="auto">{figure.name}</span>
 							{/if}

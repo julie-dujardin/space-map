@@ -49,6 +49,7 @@
 	import { isLaunchSiteSlug } from '$lib/travel/launch-pad';
 	import { orbitZoneTarget } from '$lib/travel/orbit-zone-target';
 	import { parentCrumb, type Crumb } from '$lib/state/breadcrumb';
+	import { figureKey } from '$lib/fetch/groups/registry';
 	import ImageViewer from '../image-viewer/ImageViewer.svelte';
 	import ImagesPanel from './frame/ImagesPanel.svelte';
 	import {
@@ -117,7 +118,10 @@
 	let tripTarget = $derived(focusable.kind === 'group' ? null : focusable.body);
 	let isFeatureMode = $derived(focusable.kind === 'feature');
 	let isGroupMode = $derived(focusable.kind === 'group');
-	let groupSlug = $derived(focusable.kind === 'group' ? focusable.slug : null);
+	let groupSlug = $derived.by(() => {
+		if (focusable.kind !== 'group') return null;
+		return focusable.figure ? figureKey(focusable.slug, focusable.figure) : focusable.slug;
+	});
 	/** The launch range this page is, when it is one — its pads are places a trip
 	 *  can leave from. */
 	let launchSiteSlug = $derived(
@@ -440,7 +444,7 @@
 	// wiped by the scrub below during the gap before the new focusable arrives.
 	let viewFocusKey = $derived(
 		appState.view.groupSlug
-			? `group-${appState.view.groupSlug}`
+			? `group-${appState.view.figure ? figureKey(appState.view.groupSlug, appState.view.figure) : appState.view.groupSlug}`
 			: appState.view.featureId != null
 				? `feature-${appState.view.featureId}`
 				: appState.view.id

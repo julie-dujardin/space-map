@@ -104,6 +104,14 @@ export interface GroupHit extends BaseHit {
 	type: string;
 	applies_to: string;
 	member_count: number;
+	/** A constellation: the culture slug and the figure of its page. */
+	culture?: string;
+	figure?: string;
+}
+
+/** The page a group hit opens. */
+export function groupHitPage(hit: GroupHit): { slug: string; figure?: string } {
+	return hit.culture ? { slug: hit.culture, figure: hit.figure } : { slug: hit.slug };
 }
 
 /**
@@ -280,7 +288,9 @@ function toGroupHit(d: RawHit): GroupHit {
 		slug: g.slug as string,
 		type: g.type as string,
 		applies_to: g.applies_to as string,
-		member_count: (g.member_count as number) ?? 0
+		member_count: (g.member_count as number) ?? 0,
+		culture: g.culture as string | undefined,
+		figure: g.figure as string | undefined
 	} as GroupHit;
 }
 

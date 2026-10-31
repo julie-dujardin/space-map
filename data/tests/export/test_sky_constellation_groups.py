@@ -20,6 +20,7 @@ from space_map_data.export.objects.stars import _ref
 from space_map_data.export.wikidata import WikidataEntityCache
 
 ORION = MODERN_IAU_CONSTELLATIONS["orion"][0]
+HOMES = {"sky-orion": {"culture": "modern_iau", "figure": "Ori", "name": "Orion"}}
 
 
 class _Items(WikidataEntityCache):
@@ -98,10 +99,11 @@ def test_a_page_has_no_generated_message():
 
 
 def test_a_star_links_to_its_constellation_under_the_page_name():
-    ref = _ref(ORION, "pl", _Items(), {})
+    ref = _ref(ORION, "pl", _Items(), {}, HOMES)
     assert ref is not None
     assert ref["primary_type"] == "group"
-    assert ref["primary_id"] == "sky-orion"
+    assert ref["primary_id"] == "culture-modern_iau"
+    assert (ref["secondary_type"], ref["secondary_id"]) == ("figure", "Ori")
     assert ref["name"] == POLISH_CONSTELLATION_NAMES["orion"]
     assert "wikipedia" not in ref
 
@@ -111,7 +113,7 @@ def test_any_other_item_keeps_its_wikipedia_link():
         def get_referenced(self, qid):
             return super().get_referenced(ORION)
 
-    ref = _ref("Q1", "en", Other(), {})
+    ref = _ref("Q1", "en", Other(), {}, HOMES)
     assert ref is not None
     assert "primary_id" not in ref
     assert ref["wikipedia"]

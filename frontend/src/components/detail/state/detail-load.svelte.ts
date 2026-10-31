@@ -1,11 +1,13 @@
-/** The drawer's one detail fetch: whichever of the three payload shapes this
+/** The drawer's one detail fetch: whichever of the payload shapes this
  *  focusable takes, with stale-load guards. */
 
 import { untrack } from 'svelte';
 import { fetchObjectDetail, type ObjectDetailData } from '$lib/fetch/objects/object-data';
 import { extrasolarObjectId, planetObjectId } from '$lib/fetch/extrasolar/ids';
 import { fetchFeatureDetail, type FeatureDetailData } from '$lib/fetch/nomenclature/details';
+import { fetchFigureDetail } from '$lib/fetch/extrasolar/figures';
 import { fetchGroupDetail, type GroupDetailData } from '$lib/fetch/groups/details';
+import { figureKey } from '$lib/fetch/groups/registry';
 import type { Focusable } from '$lib/state/focusable';
 import { featureDetailToObjectData, groupDetailToObjectData } from '$lib/state/detail-adapters';
 
@@ -85,12 +87,12 @@ export class DetailLoad {
 				return;
 			}
 			if (current.kind === 'group') {
-				const slug = current.slug;
-				fetchGroupDetail(slug)
+				const { slug, figure } = current;
+				(figure ? fetchFigureDetail(slug, figure) : fetchGroupDetail(slug))
 					.then((detail) => {
 						if (d.focusableId() !== key) return;
 						this.groupDetail = detail;
-						this.data = groupDetailToObjectData(detail, slug);
+						this.data = groupDetailToObjectData(detail, figure ? figureKey(slug, figure) : slug);
 						this.loading = false;
 					})
 					.catch(onError);

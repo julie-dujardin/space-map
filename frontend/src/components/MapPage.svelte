@@ -96,17 +96,16 @@
 	import SearchIcon from '@lucide/svelte/icons/search';
 	import SearchBar from './search/SearchBar.svelte';
 	import FeaturedBar from './search/FeaturedBar.svelte';
-	import { isSearchEnabled, localizedName } from '$lib/search/client';
+	import { groupHitPage, isSearchEnabled, localizedName } from '$lib/search/client';
 	import { onOpenSearch } from '$lib/search/proof.svelte';
 	import { isSearchShortcut } from '$lib/search/shortcut';
 	import { coverageOf } from '$lib/fetch/coverage';
 	import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 	import { watchDataVersion } from '$lib/fetch/version-check';
 	import { fetchGroupDetail } from '$lib/fetch/groups/details';
-	import { fetchGroupIndex } from '$lib/fetch/groups/registry';
+	import { figureKey, MISSION_SLUG_PREFIX } from '$lib/fetch/groups/registry';
 	import { isModelBearing } from '$lib/scene/objects/body/model';
-	import { MISSION_SLUG_PREFIX } from '$lib/fetch/groups/registry';
-	import { isSkyPage, pageSkyOf, urlTypeFromId } from '$lib/state/url';
+	import { pageSkyOf, urlTypeFromId } from '$lib/state/url';
 	import { getLocale } from '$lib/paraglide/runtime.js';
 	import * as m from '$lib/paraglide/messages.js';
 	import { loadProgress } from '$lib/scene/state/load-progress.svelte';
@@ -294,8 +293,8 @@
 	setContext('focusFeature', focusFeature);
 
 	// Open a /g/<slug> group view, framing its camera anchor at the default angle.
-	function openGroup(slug: string, name: string) {
-		appState.setGroup(slug, name, { frame: true });
+	function openGroup(slug: string, name: string, figure?: string) {
+		appState.setGroup(slug, name, { frame: true, figure });
 		// setGroup parked view.id/zoom on the group anchor; the default framing
 		// angle lands the camera there instead of the prior angle.
 		map.focusOnBody(appState.view.id, appState.view.zoom, DEFAULT_FRAMING_LAT, DEFAULT_FRAMING_LON);
@@ -415,7 +414,7 @@
 	const focusable = $derived.by((): Focusable | null => {
 		if (isNav) return null;
 		if (appState.view.type === UrlType.Group && appState.view.groupSlug) {
-			return { kind: 'group', slug: appState.view.groupSlug };
+			return { kind: 'group', slug: appState.view.groupSlug, figure: appState.view.figure };
 		}
 		if (!selectedBody?.data.id) return null;
 		if (activeFeature) return { kind: 'feature', body: selectedBody, feature: activeFeature };
@@ -499,8 +498,9 @@
 	 *  `view` is replaced twice a second. */
 	const panelSubject = $derived.by(() => {
 		if (!panelPromised && !focusable) return null;
-		const { groupSlug, featureId, id } = appState.view;
-		return groupSlug ?? (featureId !== null ? `${id}/f/${featureId}` : id);
+		const { groupSlug, figure, featureId, id } = appState.view;
+		if (groupSlug) return figure ? figureKey(groupSlug, figure) : groupSlug;
+		return featureId !== null ? `${id}/f/${featureId}` : id;
 	});
 
 	// The payload the drawer will read and the name of its subject, asked for
@@ -511,9 +511,11 @@
 		const key = panelSubject;
 		if (key === null) return;
 		untrack(() => {
-			const { groupSlug: slug, featureId, id: bodyId } = appState.view;
+			const { groupSlug: slug, figure, featureId, id: bodyId } = appState.view;
 			let subject: PageSubject;
-			if (slug) {
+			if (slug && figure) {
+				subject = { kind: 'figure', slug, figure };
+			} else if (slug) {
 				void prefetchGroupDetail(slug);
 				subject = { kind: 'group', slug };
 			} else if (featureId !== null) {
@@ -1024,6 +1026,7 @@
 	const groupSlug = $derived(
 		appState.view.type === UrlType.Group && appState.view.groupSlug ? appState.view.groupSlug : null
 	);
+	const figure = $derived(appState.view.figure);
 	$effect(() => applyGroupFilter(groupSlug));
 
 	// A sky page shows its sky for as long as it is in view. It waits for the
@@ -1033,21 +1036,9 @@
 	$effect(() => {
 		if (!cameraPlaced) return;
 		const slug = groupSlug;
-		const opening = skyOpening;
+		const sky = pageSkyOf(slug, skyOpening, figure);
 		skyOpening = false;
-		if (!slug || !isSkyPage(slug)) {
-			settings.setPageSky(null);
-			return;
-		}
-		let left = false;
-		void fetchGroupIndex()
-			.catch(() => null)
-			.then((index) => {
-				if (!left) settings.setPageSky(pageSkyOf(slug, opening, index?.[slug]?.culture));
-			});
-		return () => {
-			left = true;
-		};
+		settings.setPageSky(sky);
 	});
 	// The setting outlives this map, and the next one must not open on it.
 	$effect(() => () => settings.setPageSky(null));
@@ -1200,7 +1191,7 @@
 						// so the click feels instant instead of waiting on it.
 						map.focusOnFeature(bodyId, fid, lat, lon, d, f.name, 'pan');
 					}}
-					onConstellationSelect={(slug, name) => appState.setGroup(slug, name)}
+					onConstellationSelect={(slug, figure, name) => appState.setGroup(slug, name, { figure })}
 					onUserPromotedChange={(count) => (userPromotedCount = count)}
 				/>
 			</div>
@@ -1223,7 +1214,8 @@
 							return;
 						}
 						if (hit.kind === 'group') {
-							openGroup(hit.slug, name);
+							const { slug, figure } = groupHitPage(hit);
+							openGroup(slug, name, figure);
 							return;
 						}
 						// A pad has no page of its own — the range holding it is what

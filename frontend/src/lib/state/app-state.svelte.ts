@@ -192,6 +192,7 @@ export class AppState {
 			type: urlTypeFromId(anchorId),
 			id: anchorId,
 			groupSlug: null,
+			figure: null,
 			featureId: null,
 			name: '',
 			imageIndex: null,

@@ -1,5 +1,5 @@
 import { DEFAULT_SKY_CULTURE } from '$lib/constants';
-import type { SkyCultureEntry } from '$lib/fetch/extrasolar/skycultures';
+import { cultureName, type SkyCultureEntry } from '$lib/fetch/extrasolar/skycultures';
 import { foldForSearch } from '$lib/format/fold';
 import { SKY_CULTURE_SLUG_PREFIX } from '$lib/fetch/groups/registry';
 import * as m from '$lib/paraglide/messages.js';
@@ -35,10 +35,6 @@ const REGION_LABELS = new Map(SKY_REGIONS);
 
 export function regionLabel(group: string | null): string {
 	return (group && REGION_LABELS.get(group)?.()) ?? '';
-}
-
-export function cultureName(culture: SkyCultureEntry, locale: string): string {
-	return culture.labels[locale] ?? culture.name;
 }
 
 /** A pick opens the culture in the sidebar. The trip planner stays: a group

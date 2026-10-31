@@ -18,8 +18,27 @@ def test_a_constellation_needs_a_blurb_and_another_group_does_not(tmp_path: Path
     _write(
         groups / "__global__" / "0.json.gz",
         {
-            "sky-orion": {"slug": "sky-orion", "type": "sky_constellation", **base},
-            "sky-mensa": {"slug": "sky-mensa", "type": "sky_constellation", **base},
+            "sky-orion": {
+                "slug": "sky-orion",
+                "type": "sky_constellation",
+                "home_figure": {
+                    "culture": "modern_iau",
+                    "figure": "Ori",
+                    "name": "Orion",
+                },
+                **base,
+            },
+            "sky-mensa": {
+                "slug": "sky-mensa",
+                "type": "sky_constellation",
+                "home_figure": {
+                    "culture": "modern_iau",
+                    "figure": "Men",
+                    "name": "Mensa",
+                },
+                **base,
+            },
+            "sky-lost": {"slug": "sky-lost", "type": "sky_constellation", **base},
             "star-giant": {"slug": "star-giant", "type": "star_family", **base},
         },
     )
@@ -28,11 +47,14 @@ def test_a_constellation_needs_a_blurb_and_another_group_does_not(tmp_path: Path
         {
             "sky-orion": {"name": "Orion", "wikipedia": {"extract": "A hunter."}},
             "sky-mensa": {"name": "Mensa", "wikipedia": {"title": "Mensa"}},
+            "sky-lost": {"name": "Lost", "wikipedia": {"extract": "No figure."}},
             "star-giant": {"name": "Giant star"},
         },
     )
-    slugs = [doc["group"]["slug"] for doc in build_group_documents(tmp_path)]
-    assert slugs == ["sky-orion", "star-giant"]
+    docs = list(build_group_documents(tmp_path))
+    assert [doc["group"]["slug"] for doc in docs] == ["sky-orion", "star-giant"]
+    assert docs[0]["group"]["culture"] == "culture-modern_iau"
+    assert docs[0]["group"]["figure"] == "Ori"
 
 
 def test_a_culture_needs_no_blurb(tmp_path: Path):

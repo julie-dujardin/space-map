@@ -26,6 +26,8 @@ export interface SkyCultureMember {
 	id?: number;
 	/** The object as the source writes it, on a member with no ID. */
 	ref?: string;
+	/** Its name in a catalogue, on a member with no ID. */
+	designation?: string;
 	/** pc, in the frame of the render tree. Absent on what the tree does not draw. */
 	position?: [number, number, number];
 	/** The source of a position's distance, where no star of the tree holds it. */
@@ -46,12 +48,16 @@ export interface SkyCultureFigure {
 	ray_helper?: boolean;
 	/** Name by site language, where the culture's own names are not enough. */
 	labels?: Record<string, string>;
-	/** The slug of the figure's page. */
+	/** The group key of the constellation it is, for its article and pictures. */
 	page?: string;
+	/** Its segment in the URL of its page; absent on a figure with no page. */
+	slug?: string;
+	/** The dataset's text on the figure, in its own language. */
+	description?: string;
 }
 
 /** What a star's page reads of a figure. */
-export type StarFigure = Pick<SkyCultureFigure, 'names' | 'labels' | 'page'>;
+export type StarFigure = Pick<SkyCultureFigure, 'names' | 'labels' | 'slug'>;
 
 export interface StarFigureShard {
 	token: string;
@@ -71,6 +77,8 @@ export interface SkyCultureFile {
 	key: string;
 	members: SkyCultureMember[];
 	figures: SkyCultureFigure[];
+	/** The culture's own names of its stars. */
+	names: { member: number; names: SkyCultureName[] }[];
 }
 
 export interface SkyCultureEntry {
@@ -99,6 +107,7 @@ export interface ExtrasolarSkyCultures {
 
 export interface LoadedSkyCulture {
 	file: SkyCultureFile;
+	entry: SkyCultureEntry;
 	/** The culture, then the catalogues that place its stars. */
 	credits: ExtrasolarCredit[];
 }
@@ -128,6 +137,10 @@ export function labelOf(figure: StarFigure, locale: string): string | null {
 		names.find(({ native }) => native)?.native ||
 		null
 	);
+}
+
+export function cultureName(culture: SkyCultureEntry, locale: string): string {
+	return culture.labels[locale] ?? culture.name;
 }
 
 /** The cultures a reader may pick. */
@@ -186,5 +199,5 @@ export async function fetchSkyCulture(key: string): Promise<LoadedSkyCulture | n
 	const file = await fetchExtrasolarJson<SkyCultureFile>(path, table.token);
 	const places = metadata.credits.filter((credit) => POSITION_CATALOGUE.test(credit.name));
 	const deepSky = drawsDeepSky(file) ? table.credits.filter((credit) => credit.deep_sky) : [];
-	return { file, credits: [entry.credit, ...places, ...deepSky] };
+	return { file, entry, credits: [entry.credit, ...places, ...deepSky] };
 }

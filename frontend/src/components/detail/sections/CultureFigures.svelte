@@ -4,7 +4,7 @@
 	import type { Source } from './SourcesFooter.svelte';
 	import { fetchSkyCulture, labelOf } from '$lib/fetch/extrasolar/skycultures';
 	import type { NotableMemberEntry } from '$lib/fetch/objects/object-data';
-	import { CAT_CONSTELLATIONS } from '$lib/fetch/groups/registry';
+	import { CAT_CONSTELLATIONS, SKY_CULTURE_SLUG_PREFIX } from '$lib/fetch/groups/registry';
 	import { categoryLabel } from '$lib/format/group';
 	import * as m from '$lib/paraglide/messages.js';
 	import { getLocale } from '$lib/paraglide/runtime.js';
@@ -19,8 +19,7 @@
 
 	let entries = $state.raw<NotableMemberEntry[]>([]);
 
-	// A figure with a page is a link and any other one a name, from the file
-	// that the map draws: no index holds them.
+	// Each figure is a link, from the file that the map draws: no index holds them.
 	$effect(() => {
 		const key = culture;
 		const locale = getLocale();
@@ -31,10 +30,11 @@
 				if (!current || loaded?.file.key !== key) return;
 				const collator = new Intl.Collator(locale);
 				entries = loaded.file.figures
-					.filter((figure) => !figure.ray_helper)
 					.flatMap((figure) => {
-						const name = labelOf(figure, locale);
-						return name ? [{ name, group: figure.page }] : [];
+						const name = labelOf(figure, locale) ?? figure.slug;
+						return figure.slug && name
+							? [{ name, group: `${SKY_CULTURE_SLUG_PREFIX}${key}`, figure: figure.slug }]
+							: [];
 					})
 					.sort((a, b) => collator.compare(a.name, b.name));
 				const [credit] = loaded.credits;

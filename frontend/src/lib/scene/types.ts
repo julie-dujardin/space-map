@@ -301,7 +301,7 @@ export interface Callbacks {
 		diameterM: number
 	): void;
 	/** Click on a constellation's name: `slug` is its collection page. */
-	onConstellationSelect?(slug: string, name: string): void;
+	onConstellationSelect?(slug: string, figure: string, name: string): void;
 }
 
 /** A camera pose around the focused body: body-fixed latitude/longitude and

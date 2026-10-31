@@ -602,7 +602,7 @@ export class SceneRenderer {
 			SceneRenderer.MAP_LAYER,
 			this.invalidate,
 			canvas,
-			(slug, name) => this.callbacks.onConstellationSelect?.(slug, name),
+			(slug, figure, name) => this.callbacks.onConstellationSelect?.(slug, figure, name),
 			(direction, instant) => this.aimAt(direction, instant),
 			() => this.focus.camOriginWorld !== null
 		);

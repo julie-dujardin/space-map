@@ -23,7 +23,10 @@
 	 *  prefix it is stays the id's business, so no type is named here. */
 	function entityTarget(ref: EntityRef): LinkTarget {
 		if (!ref.primary_id || !ref.primary_type) return {};
-		if (ref.primary_type === 'group') return { group: ref.primary_id };
+		if (ref.primary_type === 'group') {
+			const figure = ref.secondary_type === 'figure' ? ref.secondary_id : undefined;
+			return { group: ref.primary_id, figure };
+		}
 		const id = `${ref.primary_type}-${ref.primary_id}`;
 		if (ref.secondary_type === 'feature' && ref.secondary_id) {
 			return { id, feature_id: parseInt(ref.secondary_id, 10) };

@@ -30,7 +30,6 @@ import {
 	CAT_SURFACE_FEATURES,
 	FEATURE_TYPE_SLUG_PREFIX,
 	isFamilySlug,
-	SKY_CONSTELLATION_SLUG_PREFIX,
 	SKY_CULTURE_SLUG_PREFIX,
 	smallBodyCategory
 } from '$lib/fetch/groups/registry';
@@ -156,11 +155,8 @@ export function parentCrumb(
 			const label = familyLabel(parent);
 			return { label, target: { kind: 'group', slug: parent, name: label } };
 		}
-		// A constellation climbs to its culture, a culture to the Constellations page.
-		if (
-			slug.startsWith(SKY_CONSTELLATION_SLUG_PREFIX) ||
-			slug.startsWith(SKY_CULTURE_SLUG_PREFIX)
-		) {
+		// A figure climbs to its culture, a culture to the Constellations page.
+		if (slug.startsWith(SKY_CULTURE_SLUG_PREFIX)) {
 			const parent = groupGlobal?.parent_group;
 			if (!parent) return null;
 			const label = parentGroupName ?? familyLabel(parent);

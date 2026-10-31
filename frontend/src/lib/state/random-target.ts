@@ -229,7 +229,10 @@ async function randomExoplanet(): Promise<RandomTarget | null> {
 async function randomCollection(locale: Locale): Promise<RandomTarget | null> {
 	let slugs: string[];
 	try {
-		slugs = Object.keys(await fetchGroupIndex());
+		// A constellation key has no URL: its figures are reached from their culture.
+		slugs = Object.entries(await fetchGroupIndex())
+			.filter(([, entry]) => entry.type !== 'sky_constellation')
+			.map(([slug]) => slug);
 	} catch (e) {
 		console.warn('[random] the group index is unreachable — no collection to draw.', e);
 		return null;

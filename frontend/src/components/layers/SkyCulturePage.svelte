@@ -4,7 +4,7 @@
 	import CheckIcon from '@lucide/svelte/icons/check';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import { isCoarsePointer } from '$lib/device';
-	import type { SkyCultureEntry } from '$lib/fetch/extrasolar/skycultures';
+	import { cultureName, type SkyCultureEntry } from '$lib/fetch/extrasolar/skycultures';
 	import { formatNumber } from '$lib/format/quantities';
 	import { SKY_CULTURE_SLUG_PREFIX } from '$lib/fetch/groups/registry';
 	import { isModifiedClick } from '$lib/modified-click';
@@ -17,7 +17,6 @@
 	import BackPill from '../search/BackPill.svelte';
 	import {
 		byRegion,
-		cultureName,
 		matchCulture,
 		orderCultures,
 		regionLabel,

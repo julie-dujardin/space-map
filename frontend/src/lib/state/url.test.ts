@@ -6,6 +6,7 @@ vi.mock('$app/paths', () => ({
 			.replace('[type]', params.type ?? '')
 			.replace('[id]', params.id ?? '')
 			.replace('[n]', params.n ?? '')
+			.replace('[figure]', params.figure ?? '')
 			.replace('[featureId]', params.featureId ?? '')
 			.replace('/[[from]]', params.from ? `/${params.from}` : '')
 			.replace('/[[to]]', params.to ? `/${params.to}` : '')
@@ -47,6 +48,7 @@ const baseView: MapViewState = {
 	gallery: null,
 	featureId: null,
 	groupSlug: null,
+	figure: null,
 	tab: null,
 	memberPage: null,
 	quad: null,
@@ -274,6 +276,20 @@ describe('serializeUrl', () => {
 });
 
 describe('applyGroup', () => {
+	it('names the Sun as focus on a sky page, where it is also the anchor', () => {
+		const sun = { ...baseView, id: 'naif-10' };
+		const view = applyGroup(sun, 'culture-greek_almagest', 'Canis Minor', { figure: 'CMi' });
+		expect(serializeUrl(view)).toContain('focus=naif-10');
+	});
+
+	it('keeps the camera on its body when a framed open lands on the sky', () => {
+		const earth = { ...baseView, id: 'naif-399', zoom: 3 };
+		const view = applyGroup(earth, 'culture-modern_iau', 'Orion', { frame: true, figure: 'Ori' });
+		expect(view.id).toBe('naif-399');
+		expect(view.zoom).toBe(3);
+		expect(serializeUrl(view)).toContain('focus=naif-399');
+	});
+
 	it('keeps the body in view as the focus, since opening moves no camera', () => {
 		const view = applyGroup(
 			{ ...baseView, id: 'spkid-20000001', zoom: 3 },
@@ -759,21 +775,69 @@ describe('a planet in the URL', () => {
 	});
 });
 
-describe('pageSkyOf', () => {
-	it('draws the IAU culture on a constellation page and aims at the figure', () => {
-		expect(pageSkyOf('sky-orion', true)).toEqual({
-			culture: 'modern_iau',
-			slug: 'sky-orion',
-			opening: true,
-			hidden: false
+describe('figure pages', () => {
+	const at = '?at=2026-01-15T12:00:00.000Z,45.00000,0.00000,42.430';
+
+	function visit(params: Record<string, string>, query = '') {
+		Object.assign(page, {
+			params,
+			route: { id: '/g/[id]/f/[figure]/[[name]]' },
+			url: new URL(`http://x/g/${params.id}/f/${params.figure}${query}`)
 		});
+	}
+
+	it('writes a figure under its culture, with its name', () => {
+		const view = applyGroup(baseView, 'culture-maya', 'Tortuga', { figure: '003' });
+		expect(view.figure).toBe('003');
+		expect(serializeUrl(view)).toBe(`/g/culture-maya/f/003/Tortuga${at}&focus=naif-10`);
 	});
 
-	it('draws the culture of a constellation of another culture', () => {
-		expect(pageSkyOf('sky-horn', false, 'chinese')).toEqual({
+	it('writes a figure whose name it does not know yet with no name segment', () => {
+		const view = applyGroup(baseView, 'culture-japanese', '', { figure: '05A-2' });
+		expect(serializeUrl(view)).toBe(`/g/culture-japanese/f/05A-2${at}&focus=naif-10`);
+	});
+
+	it('reads a figure from its route, whatever the name segment says', () => {
+		visit({ id: 'culture-modern_iau', figure: 'Ori', name: 'not-read' });
+		const view = parseUrl();
+		expect(view).toMatchObject({
+			type: 'g',
+			groupSlug: 'culture-modern_iau',
+			figure: 'Ori',
+			id: 'naif-10',
+			name: ''
+		});
+		expect(serializeUrl({ ...view!, name: 'Orion' })).toMatch(
+			/^\/g\/culture-modern_iau\/f\/Ori\/Orion\?at=/
+		);
+	});
+
+	it('keeps the tab and the member the camera is on', () => {
+		visit({ id: 'culture-maya', figure: 'ast-001' }, '?tab=members&focus=naif-399');
+		expect(parseUrl()).toMatchObject({ figure: 'ast-001', tab: 'members', id: 'naif-399' });
+	});
+
+	it('names no view outside a culture, or for an unsafe segment', () => {
+		visit({ id: 'star-giant', figure: 'Ori' });
+		expect(parseUrl()).toBeNull();
+		visit({ id: 'culture-maya', figure: 'a b' });
+		expect(parseUrl()).toBeNull();
+	});
+
+	it('leaves the figure when the view leaves the page', () => {
+		const open = applyGroup(baseView, 'culture-maya', 'Tortuga', { figure: '003' });
+		expect(applyGroup(open, 'culture-maya', 'Maya').figure).toBeNull();
+		expect(applyFocus(open, { type: 'b', id: 'naif-399', name: 'Earth' }).figure).toBeNull();
+		expect(applyNav(open, 'naif-399', 'naif-499').figure).toBeNull();
+	});
+});
+
+describe('pageSkyOf', () => {
+	it('draws the culture of a figure page and aims at the figure', () => {
+		expect(pageSkyOf('culture-chinese', true, '042')).toEqual({
 			culture: 'chinese',
-			slug: 'sky-horn',
-			opening: false,
+			figure: '042',
+			opening: true,
 			hidden: false
 		});
 	});
@@ -781,7 +845,7 @@ describe('pageSkyOf', () => {
 	it('draws a culture on its page, with nothing to aim at', () => {
 		expect(pageSkyOf('culture-aztec', false)).toEqual({
 			culture: 'aztec',
-			slug: null,
+			figure: null,
 			opening: false,
 			hidden: false
 		});
@@ -789,6 +853,7 @@ describe('pageSkyOf', () => {
 
 	it('leaves every other page alone', () => {
 		expect(pageSkyOf('star-giant', false)).toBeNull();
+		expect(pageSkyOf('sky-orion', false)).toBeNull();
 		expect(pageSkyOf(null, false)).toBeNull();
 	});
 });

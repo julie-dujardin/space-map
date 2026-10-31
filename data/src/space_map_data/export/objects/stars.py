@@ -381,7 +381,11 @@ def _restates_spectral_class(qid: str, entities: WikidataEntityCache) -> bool:
 
 
 def _ref(
-    qid: str, lang: str, entities: WikidataEntityCache, pages: Mapping[str, _Page]
+    qid: str,
+    lang: str,
+    entities: WikidataEntityCache,
+    pages: Mapping[str, _Page],
+    homes: Mapping[str, dict],
 ) -> dict | None:
     """The entity reference to ``qid``. A star with an entry links to its page,
     under the name that page takes."""
@@ -390,7 +394,7 @@ def _ref(
         ref = resolve_entity_ref(qid, lang, entities)
         if ref is None:
             return None
-        attach_sky_constellation_group_link(ref, qid, lang)
+        attach_sky_constellation_group_link(ref, qid, lang, homes)
         return ref.to_dict()
     return make_body_entityref(page.obj_id, page.names.get(lang)).to_dict()
 
@@ -457,6 +461,7 @@ def _localized(
     lang: str,
     entities: WikidataEntityCache,
     pages: Mapping[str, _Page],
+    homes: Mapping[str, dict],
     page: _Page,
 ) -> dict:
     data: dict = {}
@@ -477,7 +482,7 @@ def _localized(
         refs = [
             ref
             for other in qids
-            if other != qid and (ref := _ref(other, lang, entities, pages))
+            if other != qid and (ref := _ref(other, lang, entities, pages, homes))
         ]
         if refs:
             data[claim.key] = refs if claim.multiple else refs[0]
@@ -550,12 +555,15 @@ def star_entries(
     stars: Sequence[StarObject],
     entities: WikidataEntityCache,
     planets: Sequence[PlanetObject] = (),
+    homes: Mapping[str, dict] | None = None,
 ) -> tuple[dict[str, dict], dict[str, dict[str, dict]]]:
     """The global entries and the localized ones by language, of the stars
-    and the planets."""
+    and the planets. `homes` gives the page of a constellation that a star
+    lies in, by group slug."""
     # References to an object with an entry link to its page, so every page is
     # known before the first entry. A star's page takes the references to an
     # item that a star and a planet both hold.
+    homes = homes or {}
     # Keyed by QID.
     pages: dict[str, _Page] = {}
     # Keyed by entry id.
@@ -645,6 +653,7 @@ def star_entries(
                 lang,
                 entities,
                 pages,
+                homes,
                 own_pages[obj_id],
             )
             if block:
@@ -669,7 +678,10 @@ def inject_star_objects(
 ) -> None:
     """Fold the entries of ``stars`` and ``planets`` into the object-bundle
     accumulators."""
-    global_data, localized = star_entries(stars, entities, planets)
+    # The group export imports this module.
+    from space_map_data.export.groups.sky_pages import home_figures
+
+    global_data, localized = star_entries(stars, entities, planets, home_figures())
     data.global_data.update(global_data)
     for lang, entries in localized.items():
         data.localized_data[lang].update(entries)
@@ -709,11 +721,14 @@ def export_star_objects_only(
     stay. As in a full export, only a planet that ``extrasolar_dir`` serves
     has an entry."""
     # The sitemap imports this module.
+    from space_map_data.export.groups.sky_pages import home_figures
     from space_map_data.export.sitemap import available_planet_pages
 
     stars, planets = read_extrasolar_objects()
     planets = available_planet_pages(extrasolar_dir).served(planets)
-    global_data, localized = star_entries(stars, WikidataEntityCache(), planets)
+    global_data, localized = star_entries(
+        stars, WikidataEntityCache(), planets, home_figures(extrasolar_dir)
+    )
     counts = orjson.loads((out_dir / "metadata.json").read_bytes())["object_bundles"]
     tiers: Mapping[str, Mapping[str, dict]] = {"global": global_data, **localized}
     changed: dict[str, int] = defaultdict(int)

@@ -71,6 +71,12 @@ export const SKY_CONSTELLATION_SLUG_PREFIX = 'sky-';
  *  ``data/constants/stars/cultures.py``. */
 export const SKY_CULTURE_SLUG_PREFIX = 'culture-';
 
+/** What keys a figure's page where a group's slug keys a group's. A `sky-` key
+ *  has no URL, and many figures read it. */
+export function figureKey(slug: string, figure: string): string {
+	return `figure-${slug}/${figure}`;
+}
+
 /** A star or planet family page. */
 export function isFamilySlug(slug: string): boolean {
 	return slug.startsWith(STAR_FAMILY_SLUG_PREFIX) || slug.startsWith(PLANET_FAMILY_SLUG_PREFIX);
@@ -178,8 +184,6 @@ export interface GroupIndexEntry {
 	n: number;
 	/** Feature-type groups only: the 2-letter IAU descriptor code. */
 	code?: string;
-	/** A constellation page of another culture than the IAU's: its culture. */
-	culture?: string;
 }
 
 export type GroupIndex = Record<string, GroupIndexEntry>;

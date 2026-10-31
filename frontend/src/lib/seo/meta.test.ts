@@ -5,11 +5,12 @@ import { gzipSync } from 'node:zlib';
 // three segments deep, and a planet's five.
 vi.mock('$app/paths', () => ({
 	resolve: (route: string, params: Record<string, string | undefined>) =>
-		(route.includes('[n]') ? '../../../..' : '../..') +
+		(/\[n\]|\[figure\]/.test(route) ? '../../../..' : '../..') +
 		route
 			.replace('[type]', params.type ?? '')
 			.replace('[id]', params.id ?? '')
 			.replace('[n]', params.n ?? '')
+			.replace('[figure]', params.figure ?? '')
 			.replace('[featureId]', params.featureId ?? '')
 			.replace('/[[name]]', params.name ? `/${params.name}` : '')
 }));
@@ -22,6 +23,7 @@ import {
 	loadGroupSeo,
 	loadObjectSeo,
 	loadPlanetSeo,
+	loadFigureSeo,
 	loadStarSeo,
 	minimalSeo
 } from './meta';
@@ -294,6 +296,68 @@ describe('catalogueSeo', () => {
 			canonical: `${ORIGIN}/b/399`,
 			ogType: 'website'
 		});
+	});
+});
+
+describe('loadFigureSeo', () => {
+	const XS_BASE = 'https://stars.test';
+	const TOKEN = 'cafe';
+	const figures = [
+		{ id: 'CON t Ori', names: [{ english: 'Hearth' }], lines: [], page: 'sky-orion', slug: 'Ori' },
+		{
+			id: 'CON t 2',
+			names: [{ english: 'Owl' }],
+			lines: [],
+			slug: '2',
+			description: 'A night bird.'
+		},
+		{ id: 'CON t 3', names: [{ english: 'Ray' }], lines: [], ray_helper: true }
+	];
+	const table = (group: string | null) => ({
+		token: TOKEN,
+		file: 'skycultures/{key}.json.gz',
+		cultures: [{ key: 'maya', group, distribution: 'open' }]
+	});
+
+	beforeEach(() => {
+		configureHost({ dataUrl: DATA, extrasolarUrl: XS_BASE, textures: 'site-only' });
+		stubExport({
+			'/v1/metadata.json': () => Response.json(METADATA),
+			'/v1/groups/__global__/0.json.gz': () =>
+				gz({
+					'sky-orion': {
+						home_figure: { culture: 'modern_iau', figure: 'Ori', name: 'Orion' }
+					}
+				}),
+			'/v1/groups/en/0.json.gz': () =>
+				gz({ 'sky-orion': { name: 'Orion', description: 'constellation' } }),
+			'/v1/x/metadata.json': () =>
+				Response.json({ format: 1, skycultures: table('central-america') }),
+			'/v1/x/skycultures/maya.json.gz': () =>
+				gz({ token: TOKEN, key: 'maya', members: [], figures, names: [] })
+		});
+	});
+
+	it('takes its name and text from the culture file', async () => {
+		const url = request('/g/culture-maya/f/2');
+		expect(await loadFigureSeo('culture-maya', '2', url)).toMatchObject({
+			title: 'Owl - Space Map',
+			description: 'A night bird.',
+			canonical: `${ORIGIN}/g/culture-maya/f/2/Owl`
+		});
+	});
+
+	it('names the home figure as the page of a constellation', async () => {
+		const url = request('/g/culture-maya/f/Ori');
+		expect(await loadFigureSeo('culture-maya', 'Ori', url)).toMatchObject({
+			title: 'Hearth - Space Map',
+			canonical: `${ORIGIN}/g/culture-modern_iau/f/Ori/Orion`
+		});
+	});
+
+	it('finds no page for a figure with no slug, or in an unknown culture', async () => {
+		expect(await loadFigureSeo('culture-maya', '3', request('/g/x'))).toBeNull();
+		expect(await loadFigureSeo('culture-other', '2', request('/g/x'))).toBeNull();
 	});
 });
 

@@ -12,7 +12,8 @@ from space_map_data.export.groups.bundles import _child_group_refs
 from space_map_data.export.groups.registry import GROUP_BY_SLUG, GROUPS, GroupType
 from space_map_data.export.groups.sky_pages import (
     MAX_TEXT,
-    _child_pages,
+    _culture_pages,
+    _page_name,
     _page_stars,
     culture_text,
     served_sky_pages_stamp,
@@ -51,6 +52,7 @@ def test_a_constellation_lists_the_stars_of_its_figure_once():
                 "names": [{"native": "Orion"}],
                 "lines": [[0, 1], [1, 2, 0]],
                 "page": "sky-orion",
+                "slug": "Ori",
             },
             {
                 "id": "AST x",
@@ -64,7 +66,7 @@ def test_a_constellation_lists_the_stars_of_its_figure_once():
 
 
 def test_a_page_reads_its_figure_in_its_own_culture():
-    figure = {"lines": [[0]], "page": "sky-horn"}
+    figure = {"lines": [[0]], "page": "sky-horn", "slug": "042"}
     file = {"members": [{"id": 1}], "figures": [figure]}
     assert _page_stars({**file, "key": "chinese"}) == {"sky-horn": [1]}
     assert _page_stars({**file, "key": "korean"}) == {}
@@ -230,16 +232,19 @@ def test_a_bibtex_key_with_a_capital_goes_from_the_text():
 
 def test_the_iau_culture_comes_first_and_the_others_in_order():
     cultures = [{"key": key} for key in ("aztec", "modern_iau", "chinese")]
-    children = _child_pages(
-        cultures, {"sky-orion": [], "sky-aries": [], "sky-horn": []}
-    )
-    assert children["cat-constellations"] == [
+    assert _culture_pages(cultures) == [
         "culture-modern_iau",
         "culture-aztec",
         "culture-chinese",
     ]
-    assert children["culture-modern_iau"] == ["sky-aries", "sky-orion"]
-    assert children["culture-chinese"] == ["sky-horn"]
+
+
+def test_a_home_figure_goes_by_the_name_the_app_gives_it():
+    labelled = {"names": [{"english": "Hunter"}], "labels": {"en": "Orion"}}
+    assert _page_name(labelled) == "Orion"
+    assert _page_name({"names": [{"native": "天", "english": "Sky"}]}) == "Sky"
+    assert _page_name({"names": [{"native": "天"}]}) == "天"
+    assert _page_name({"names": []}) is None
 
 
 def test_the_stamp_follows_the_metadata_entries_and_the_descriptions(tmp_path):

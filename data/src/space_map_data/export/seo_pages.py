@@ -207,6 +207,11 @@ def _object_records(
         )
 
 
+def _home_of(entry: dict) -> dict:
+    """The figure that a constellation's pages name as their canonical one."""
+    return {"home_figure": entry["home_figure"]} if "home_figure" in entry else {}
+
+
 def _group_records(
     out_dir: Path,
     slugs: Collection[str],
@@ -224,7 +229,9 @@ def _group_records(
         yield (
             f"g/{slug}",
             {
-                "global": None if entry is None else _with_images({}, images),
+                "global": None
+                if entry is None
+                else _with_images(_home_of(entry), images),
                 "localized": _by_key(localized, slug),
                 "credits": credits.of(images),
             },

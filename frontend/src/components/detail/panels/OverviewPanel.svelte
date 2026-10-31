@@ -239,7 +239,8 @@
 	// they back the mass chart and the tiles rather than one body's panel, the
 	// papers every dose on the Radiation page is read off, and the published
 	// inventory both Solar System mass charts are drawn from.
-	// A culture's own text, where it has no article in the reader's language.
+	// A culture's or a figure's own text, where it has no article in the
+	// reader's language.
 	let cultureText = $derived.by(() => {
 		const text = groupDetail?.global?.culture_text;
 		if (!text || data?.localized?.wikipedia?.extract) return undefined;
@@ -274,6 +275,13 @@
 					note: m.source_culture_text_note({ license: translators.license ?? '' })
 				});
 			}
+		}
+		// What draws a figure, where its text does not already name it.
+		const drawnBy = groupDetail?.global?.figure_credit;
+		if (drawnBy && !cultureText) {
+			out.push(
+				cultureSource(drawnBy, m.source_culture_figures_note({ license: drawnBy.license ?? '' }))
+			);
 		}
 		out.push(...figureCredits);
 		if (star) {

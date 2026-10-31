@@ -6,7 +6,7 @@ catalogues:
   reference: Hunt & Reffert 2024, A&A 686, A42
   license: None stated. The article is CC BY 4.0. Derived from Gaia DR3 (CC BY-NC 3.0 IGO).
   terms_url: https://cdsarc.cds.unistra.fr/ftp/J/A+A/686/A42/ReadMe
-  distribution: undecided
+  distribution: non-commercial
   cds:
     catalogue: J/A+A/686/A42
     files: [clusters.dat.gz, members.dat.gz, crossma.dat.gz]

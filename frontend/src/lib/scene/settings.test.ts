@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { MapLayerId } from '$lib/scene/layers';
 import { constellationsAsked, constellationsWanted } from './settings.svelte';
 
-const page = { culture: 'modern', slug: null, opening: false, hidden: false };
+const page = { culture: 'modern', figure: null, opening: false, hidden: false };
 const skyOn = () => true;
 const skyOff = (id: MapLayerId) => id !== 'stars' && id !== 'starfield';
 

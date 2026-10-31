@@ -12,6 +12,7 @@ locale. Each path here carries that name, taken from the files the app reads,
 so that no listed URL names another one as canonical. The names follow
 ``frontend/src/lib/state/page-name.ts`` and the paths ``page-href.ts``:
 ``/<type>/<id>/<name>`` for objects, ``/g/<slug>/<name>`` for groups,
+``/g/culture-<key>/f/<figure>/<name>`` for a constellation in its home culture,
 ``/<type>/<id>/f/<featureId>/<name>`` for features, ``/x/<host>/b/<n>/<name>``
 for planets.
 """
@@ -34,6 +35,8 @@ from sqlalchemy.orm import Session
 from space_map_data.constants.categories import CATEGORY_SLUG_PREFIX
 from space_map_data.constants.promoted import PROMOTED_EXTRA_IDS
 from space_map_data.constants.providers import BASE_LOCALE, LANGUAGES
+from space_map_data.constants.stars.constellations import SKY_CONSTELLATION_SLUG_PREFIX
+from space_map_data.constants.stars.cultures import SKY_CULTURE_SLUG_PREFIX
 from space_map_data.export.extrasolar.reader import ExportReader
 from space_map_data.export.groups.registry import CLASS_SLUG_PREFIX
 from space_map_data.export.names import (
@@ -282,13 +285,31 @@ def _group_name(
     return exported
 
 
-def _group_paths(out_dir: Path, n_buckets: int) -> dict[str, str]:
+def _figure_paths(
+    out_dir: Path, n_buckets: int, slugs: Collection[str]
+) -> dict[str, str]:
+    """The page of each constellation key: its figure in its home culture. A
+    key with no such figure has no page."""
+    entries = bundle_entries(out_dir / "groups" / "__global__", n_buckets, slugs)
+    return {
+        slug: _named(
+            f"/g/{SKY_CULTURE_SLUG_PREFIX}{home['culture']}/f/{home['figure']}",
+            home["name"],
+        )
+        for slug, entry in entries.items()
+        if (home := entry.get("home_figure"))
+    }
+
+
+def _group_paths(out_dir: Path, n_buckets: int, n_global: int = 0) -> dict[str, str]:
     """The canonical path of every exported group, by slug."""
     index = out_dir / "groups" / "__index__.json"
     if not index.exists():
         logger.warning("sitemap: %s missing; no group URLs emitted", index)
         return {}
-    slugs = list(orjson.loads(index.read_bytes()))
+    keys = list(orjson.loads(index.read_bytes()))
+    constellations = [s for s in keys if s.startswith(SKY_CONSTELLATION_SLUG_PREFIX)]
+    slugs = [s for s in keys if not s.startswith(SKY_CONSTELLATION_SLUG_PREFIX)]
     exported = _bundle_names(out_dir / "groups" / BASE_LOCALE, n_buckets, slugs)
     app_labels = orjson.loads((MESSAGES_DIR / f"{BASE_LOCALE}.json").read_bytes())
     names = {slug: _group_name(slug, exported.get(slug), app_labels) for slug in slugs}
@@ -298,7 +319,10 @@ def _group_paths(out_dir: Path, n_buckets: int) -> dict[str, str]:
         logger.warning(
             "sitemap: %d groups have no name: %s", len(unnamed), ", ".join(unnamed)
         )
-    return {slug: _named(f"/g/{slug}", name) for slug, name in names.items()}
+    return {
+        **{slug: _named(f"/g/{slug}", name) for slug, name in names.items()},
+        **_figure_paths(out_dir, n_global, constellations),
+    }
 
 
 def _index(files: list[str], lastmod: str) -> bytes:
@@ -480,7 +504,9 @@ def write_sitemap(
             [f"{STAR_PREFIX}{star.id}" for star in stars],
             {f"{STAR_PREFIX}{host}" for host in planets.hosts},
         ),
-        groups=_group_paths(out_dir, group_buckets[BASE_LOCALE]),
+        groups=_group_paths(
+            out_dir, group_buckets[BASE_LOCALE], group_buckets["global"]
+        ),
         features=_feature_paths(session, names.entities),
         planets=tuple(planet.obj_id for planet in planet_entries),
     )

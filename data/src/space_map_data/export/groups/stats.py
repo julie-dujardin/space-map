@@ -46,6 +46,9 @@ class GroupExtraStats:
     perihelion_au: float | None = None
     # Sky cultures: the page's text, as {text, distribution, credit}.
     culture_text: dict | None = None
+    # Constellation pages: the figure whose URL is the page's own, as
+    # {culture, figure, name}.
+    home_figure: dict | None = None
     # Atmospheres: how many kinds of envelope the members between them are —
     # the `atmosphere_type` vocabulary in use, from an exosphere to a stellar
     # atmosphere. The chart below plots pressure, so it says nothing about this.

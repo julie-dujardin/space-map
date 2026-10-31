@@ -5,8 +5,8 @@
 import { classNameFromSlug, FLAG_SLUG_PREFIX, orbitClassLabel } from '$lib/charts/orbit-zones';
 import {
 	FEATURE_TYPE_SLUG_PREFIX,
+	figureKey,
 	isFamilySlug,
-	SKY_CONSTELLATION_SLUG_PREFIX,
 	SKY_CULTURE_SLUG_PREFIX
 } from '$lib/fetch/groups/registry';
 import { categoryLabel, familyLabel } from '$lib/format/group';
@@ -20,7 +20,8 @@ import * as m from '$lib/paraglide/messages.js';
 export type Focusable =
 	| { kind: 'body'; body: PositionedBody }
 	| { kind: 'feature'; body: PositionedBody; feature: NomenclatureFeature }
-	| { kind: 'group'; slug: string }
+	/** `figure` is the page of a figure of the culture `slug`. */
+	| { kind: 'group'; slug: string; figure?: string | null }
 	/** An object of the extrasolar catalogue; its records come with it. */
 	| { kind: 'star'; body: PositionedBody; record: ExtrasolarRecord }
 	/** A planet of the extrasolar catalogue, with its system file's records. */
@@ -53,7 +54,7 @@ export type FocusFeature = (bodyId: string, featureId: number, name: string) => 
 /** Stable identity for cache/dedupe keys (detail-fetch effects, log dedupe). */
 export function focusableKey(f: Focusable): string {
 	if (f.kind === 'feature') return `feature-${f.feature.featureId}`;
-	if (f.kind === 'group') return `group-${f.slug}`;
+	if (f.kind === 'group') return `group-${f.figure ? figureKey(f.slug, f.figure) : f.slug}`;
 	return f.body.data.id;
 }
 
@@ -62,7 +63,7 @@ export function focusableKey(f: Focusable): string {
  *  bundled, so those resolve without the detail fetch. */
 export function focusableFallbackName(f: Focusable): string {
 	if (f.kind === 'feature') return f.feature.name;
-	if (f.kind === 'group') return groupSlugLabel(f.slug);
+	if (f.kind === 'group') return f.figure ? m.loading() : groupSlugLabel(f.slug);
 	if (f.kind === 'star') return f.record.metadata.name ?? String(f.record.id);
 	if (f.kind === 'planet') return localName(f.anchor.planet);
 	return f.body.data.name ?? f.body.data.id;
@@ -77,11 +78,9 @@ export function groupSlugLabel(slug: string): string {
 	if (slug === `${FLAG_SLUG_PREFIX}pha`) return m.pha();
 	// These carry their English name in the slug — a readable stand-in until the
 	// localized bundle lands.
-	const prefix = [
-		FEATURE_TYPE_SLUG_PREFIX,
-		SKY_CONSTELLATION_SLUG_PREFIX,
-		SKY_CULTURE_SLUG_PREFIX
-	].find((p) => slug.startsWith(p));
+	const prefix = [FEATURE_TYPE_SLUG_PREFIX, SKY_CULTURE_SLUG_PREFIX].find((p) =>
+		slug.startsWith(p)
+	);
 	if (prefix) {
 		const name = slug.slice(prefix.length).replace(/[-_]/g, ' ');
 		return name.charAt(0).toUpperCase() + name.slice(1);
