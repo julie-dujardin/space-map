@@ -407,3 +407,40 @@ describe('a lander', () => {
 		expect(lander.data.parentId).toBe('naif-499');
 	});
 });
+
+describe('a star on a drawn orbit', () => {
+	const star = (data: Partial<BodyData> & Pick<BodyData, 'id' | 'parentId'>): PositionedBody => ({
+		...mkBody({ objectType: ObjectType.EXTRASOLAR, ...data }),
+		extrasolar: { scene: [100, 0, 0] } as PositionedBody['extrasolar']
+	});
+
+	it('stays at its record with no parent', () => {
+		const alone = star({ id: 'x-1', parentId: '' });
+		expect(placerOver([alone]).place(alone, JD)).toEqual([100, 0, 0]);
+	});
+
+	it('moves about the body of its pair, through a nested pair', () => {
+		const pair = star({ id: 'x-1', parentId: '' });
+		const inner = star({ id: 'x-2', parentId: 'x-1', a: 2 });
+		const moving = star({ id: 'x-3', parentId: 'x-2', a: 0.1, n: 30 });
+		const placer = placerOver([pair, inner, moving]);
+		const at = [...placer.place(moving, JD)!];
+		const parent = placer.place(inner, JD)!;
+		expect(parent[0]).not.toBe(100);
+		const offset = Math.hypot(at[0] - parent[0], at[1] - parent[1], at[2] - parent[2]);
+		expect(offset).toBeGreaterThan(0.9);
+		expect(offset).toBeLessThan(1.3);
+		expect(placer.place(moving, JD + 1)).not.toEqual(at);
+	});
+
+	it('sits on the barycentre when its pair has no mass ratio', () => {
+		const pair = star({ id: 'x-1', parentId: '' });
+		const primary = star({ id: 'x-2', parentId: 'x-1', a: 0 });
+		expect(placerOver([pair, primary]).place(primary, JD)).toEqual([100, 0, 0]);
+	});
+
+	it('has no place when its pair has none', () => {
+		const orphan = star({ id: 'x-2', parentId: 'x-1' });
+		expect(placerOver([orphan]).place(orphan, JD)).toBeNull();
+	});
+});

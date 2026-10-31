@@ -1,7 +1,7 @@
 import { ObjectType, type BodyData, type PositionedBody } from '$lib/types/objects';
 import { OrbitalSource } from '$lib/fetch/position/format';
 import { extrasolarObjectId } from '$lib/fetch/extrasolar/ids';
-import { pointOf } from '$lib/fetch/extrasolar/systems';
+import { isStarSystem, pointOf } from '$lib/fetch/extrasolar/systems';
 import {
 	SYSTEM_SLUG,
 	astrometricOrbit,
@@ -20,10 +20,6 @@ import {
  *  star there outshines the sky around it, and its neighbours stay a sky. */
 export const STAR_VIEW_DISTANCE = 1e4;
 
-/** The classes of a point that holds several stars. One sphere at the point
- *  would show one star where there are more. */
-const SEVERAL_STARS: ReadonlySet<string | null> = new Set(['binary star', 'multiple star']);
-
 /** The starfield draws extrasolar bodies at their catalogue positions. A
  *  resolved system or a held star has a place but no point, so it draws
  *  nothing. The Metadata row says whether the object bundles hold a localized
@@ -32,7 +28,8 @@ export function makeStarBody(record: ExtrasolarRecord): PositionedBody {
 	const home = homeRow(record);
 	const orbit = astrometricOrbit(record);
 	const place = home ? starPlace(home, orbit) : null;
-	const radiusKm = home && !SEVERAL_STARS.has(record.metadata.class) ? starRadiusKm(home) : null;
+	// One sphere at the point would show one star where there are more.
+	const radiusKm = home && !isStarSystem(record) ? starRadiusKm(home) : null;
 	const data: BodyData = {
 		id: extrasolarObjectId(record.id),
 		name: record.metadata.name,

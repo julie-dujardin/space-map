@@ -73,6 +73,10 @@ export interface TilesBlock extends CreditFields {
 	bias_km?: number;
 }
 
+/** The centre of a star system comes before its stars, as the Sun comes before
+ *  its planets. */
+export const SYSTEM_CENTRE_PRIORITY = -1;
+
 export function typePriority(type: ObjectType): number {
 	switch (type) {
 		case ObjectType.STAR:

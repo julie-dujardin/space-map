@@ -46,14 +46,13 @@ export function buildTrails(
 	for (const [, bo] of bodyObjects) {
 		if (bo.trail !== null) continue;
 		const { body } = bo;
-		// A star has no trail. Mesh-upgradable halo-only bodies (asteroids,
-		// comets) defer trail build until focus upgrades the mesh — eager build
-		// would burn ~512 Kepler solves per body for nothing. `focusUpgraded`, not
-		// `mesh`, gates that, since a body with no measured size stays meshless
-		// regardless. Barycenters/Lagrange points are halo-only forever but still
-		// trail. Probes never get a sphere, so they trail as soon as promoted,
-		// unless minor-promoted (halo-only until focused).
-		if (body.data.objectType === ObjectType.STAR || isExtrasolar(body)) continue;
+		// A star has a line only on a drawn orbit. A mesh-upgradable body waits for
+		// its mesh: an eager build costs ~512 Kepler solves per body. The gate is
+		// `focusUpgraded`, because a body with no measured size never gets a mesh.
+		// A barycentre, a Lagrange point and a probe have a line with no mesh, but
+		// a minor-promoted probe waits for the focus.
+		if (body.data.objectType === ObjectType.STAR) continue;
+		if (isExtrasolar(body) && !body.orbitElements) continue;
 		const isProbe = body.data.orbitalSource === OrbitalSource.SPICE_PROBE;
 		if (isProbe) {
 			if (bo.isMinor && !bo.mesh) continue;

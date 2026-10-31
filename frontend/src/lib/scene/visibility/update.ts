@@ -364,8 +364,12 @@ export function updateBodyVisibility(
 		let isClose: boolean;
 		const isFocused = body.data.id === focusedBodyId;
 		const isSystemRoot = focusedSystemId !== null && body.data.id === focusedSystemId;
-		// A star that the reader asked for keeps its halo and name in any sky.
-		const isHeldStar = isFocused || ctx.visibility.isPinned(body.data.id);
+		const centreShare = ctx.visibility.systemCentres.get(body.data.id);
+		// A star that the reader asked for keeps its halo and name in any sky, and
+		// so does the centre of a system in view.
+		const isHeldStar = isFocused || ctx.visibility.isPinned(body.data.id) || centreShare === 1;
+		// A star on a drawn orbit takes the gates of a planet of another star.
+		const onOrbit = isExtrasolar(body) && body.orbitElements !== undefined;
 		let zoneShare = 1;
 		let labelThresholdShare = 1;
 		let orbitThresholdShare = 1;
@@ -373,18 +377,23 @@ export function updateBodyVisibility(
 		// Major bodies and planets of other stars take the mesh path's type-aware
 		// gates even when meshless, or they would skip the moon-label cap and the
 		// distance tiers and show every halo unbounded.
-		if (isExtrasolar(body)) {
+		if (isExtrasolar(body) && !onOrbit) {
 			// A host that is not the focus shows with its planetary system. Inside
 			// a system the other stars are its sky, with no halo or name, as the
 			// stars are in the solar system.
 			zoneShare = isHeldStar
 				? 1
-				: (ctx.visibility.systemShares.get(body.data.id) ?? 1 - insideShare);
+				: (centreShare ?? ctx.visibility.systemShares.get(body.data.id) ?? 1 - insideShare);
 			const visible = ctx.visibility.starShareOf(body.data.id, isHeldStar) > 0 && zoneShare > 0;
 			group.visible = visible;
 			isClose = false;
 			showLabel = visible;
-		} else if (bo.mesh === null && !isMajorBody(body.data.objectType) && !isExoplanet(body)) {
+		} else if (
+			bo.mesh === null &&
+			!isMajorBody(body.data.objectType) &&
+			!isExoplanet(body) &&
+			!onOrbit
+		) {
 			// Barycenters/Lagrange points: navigational aids, visible once built,
 			// except a barycenter sitting within a halo of its primary on screen —
 			// unseparated it reads as a stray marker over the planet (most
@@ -443,7 +452,8 @@ export function updateBodyVisibility(
 			if (trail && orbitThresholdShare > 0) trail.visible = true;
 		}
 
-		if (!drawn) {
+		// A centre with no share draws no halo or name, also when it is the focus.
+		if (!drawn || centreShare === 0) {
 			group.visible = false;
 			showLabel = false;
 			isClose = false;
@@ -536,7 +546,7 @@ export function updateBodyVisibility(
 		}
 		const labelShare = bo.starPoint
 			? 1
-			: isExtrasolar(body)
+			: isExtrasolar(body) && !onOrbit
 				? ctx.visibility.starShareOf(body.data.id, isHeldStar) * zoneShare
 				: ctx.visibility.systemShareOf(body) * zoneShare * labelThresholdShare;
 		if (bo.label) fadeLabel(bo.label, labelShare);

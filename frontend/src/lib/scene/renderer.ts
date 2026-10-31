@@ -1527,6 +1527,7 @@ export class SceneRenderer {
 		const [fx, fy, fz] = this.focus.focusTruePos;
 		const cam = this.camera.position;
 		this.exoplanetSystems.update({
+			jd: this.sceneJd,
 			camera: [fx + cam.x, fy + cam.y, fz + cam.z],
 			viewportPx: this.viewportH,
 			fovDeg: this.camera.fov,

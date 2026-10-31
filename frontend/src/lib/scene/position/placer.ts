@@ -44,7 +44,8 @@ import { host } from '$lib/host';
 import type { PositionDiagnostics } from './diagnostics';
 import { SSB_POSITION, setOrbitCenter, setPlaced, setTrailAnchor, setUnplaced } from './placement';
 
-/** An extrasolar object stays where its record puts it, at every date. */
+/** An extrasolar object on no orbit stays where its record puts it, at every
+ *  date. */
 function fixedPlace(body: PositionedBody): Vec3 | null {
 	const at = body.extrasolar?.scene;
 	return at ? setPlaced(body, at[0], at[1], at[2]) : setUnplaced(body, 'never');
@@ -174,7 +175,7 @@ export class Placer {
 		this.settling.add(id);
 		const pos = isSurfaceFeature(body)
 			? this.seatFeature(body, jd)
-			: isExtrasolar(body)
+			: isExtrasolar(body) && !body.data.parentId
 				? fixedPlace(body)
 				: this.settle(body, jd);
 		this.settling.delete(id);

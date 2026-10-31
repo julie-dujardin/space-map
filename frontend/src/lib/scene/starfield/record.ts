@@ -160,6 +160,13 @@ export function gEstimate(v: number | null, bv: number | null, hp: number | null
 	return hp === null ? null : hp + G_MINUS_HP;
 }
 
+/** B − V from the catalogue, else from SIMBAD; null where neither. */
+export function colourBv(row: TableRow): number | null {
+	const v = row.number('simbad_v_mag');
+	const b = row.number('simbad_b_mag');
+	return row.number('b_v') ?? (v !== null && b !== null ? b - v : null);
+}
+
 /** Apparent G: Gaia's, then SIMBAD's, then the estimate from Hipparcos, then
  *  the estimate from SIMBAD's V and B − V, then a planet host's G or V from
  *  its exoplanet catalogue. */

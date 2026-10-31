@@ -5,7 +5,7 @@ import { HAS_EXPORT, diskSource, own } from './__fixtures__/export';
 import { resolvedSystemRecord } from './__fixtures__/record';
 import { BINARY, HELD, SECOND, STAR, SYSTEM, syntheticExport } from './__fixtures__/synthetic';
 import {
-	loadSystemPoints,
+	loadSystemNodes,
 	pointOf,
 	systemNode,
 	systemPointIds,
@@ -30,6 +30,11 @@ async function record(lookup: ExtrasolarLookup, id: number): Promise<ExtrasolarR
 	const result = await lookup.lookup(id);
 	if (result.kind !== 'live') throw new Error(`${id} is not live`);
 	return result.record;
+}
+
+async function pointsOf(root: number, lookup: Pick<ExtrasolarLookup, 'live'>): Promise<number[]> {
+	const nodes = await loadSystemNodes(root, lookup);
+	return systemPointIds(nodes[0]?.tree ?? [], nodes);
 }
 
 async function node(lookup: ExtrasolarLookup, id: number): Promise<SystemNode> {
@@ -204,7 +209,7 @@ describe('the system of an ID', () => {
 	});
 
 	it('lists the points and the member stars, with no held star or entry', async () => {
-		expect(await loadSystemPoints(SYSTEM, syntheticLookup())).toEqual([BINARY, SECOND]);
+		expect(await pointsOf(SYSTEM, syntheticLookup())).toEqual([BINARY, SECOND]);
 	});
 
 	it('lists a star once, and no member with no ID', () => {
@@ -220,7 +225,7 @@ describe('the system of an ID', () => {
 
 	it('lists nothing for an ID that is not live', async () => {
 		const missing = { live: async () => ({ kind: 'missing', reason: 'barred' }) as const };
-		expect(await loadSystemPoints(SYSTEM, missing)).toEqual([]);
+		expect(await pointsOf(SYSTEM, missing)).toEqual([]);
 	});
 });
 
@@ -237,20 +242,20 @@ describe.skipIf(!HAS_EXPORT)('real star systems', () => {
 			[PROXIMA, 'star']
 		]);
 		expect(root.tree?.map((n) => n.id).sort()).toEqual([597894079, 61023167].sort());
-		const ids = await loadSystemPoints(597894079, lookup);
+		const ids = await pointsOf(597894079, lookup);
 		expect(ids.sort()).toEqual([RIGIL_KENTAURUS, TOLIMAN, PROXIMA].sort());
 		expect((await node(lookup, 61023167)).orbit?.period).toBeGreaterThan(29000);
 	});
 
 	it('lists a point with its held stars once, as a point', async () => {
-		expect(await loadSystemPoints(20657986, lookup)).toEqual([20657986]);
+		expect(await pointsOf(20657986, lookup)).toEqual([20657986]);
 		const held = await node(lookup, 591083330);
 		expect(held.parent).toBe(20657986);
 		expect(held.star).not.toBeNull();
 	});
 
 	it('lists the three points of Castor', async () => {
-		const ids = await loadSystemPoints(588825732, lookup);
+		const ids = await pointsOf(588825732, lookup);
 		expect(ids.sort()).toEqual([18400388, 555271300, 1092142212].sort());
 	});
 });

@@ -82,6 +82,11 @@ export class VisibilityController {
 	/** The share of each planetary system of another star that draws, by its
 	 *  host's scene id. Set by the renderer each frame. */
 	systemShares: ReadonlyMap<string, number> = new Map();
+	/** The share of the centre of each star system in view that shows, by its
+	 *  scene id. A centre has no threshold, as the Sun has none. A node that a
+	 *  star takes over has 0, also when it is the focus. Set by the renderer each
+	 *  frame. */
+	systemCentres: ReadonlyMap<string, number> = new Map();
 
 	private focusedBodyIdPlain: string = SUN_ID;
 	private focusedSystemIdPlain: string | null = null;
@@ -328,10 +333,11 @@ export class VisibilityController {
 	}
 
 	/** The share of the planetary system that `body` is in: its star's for a
-	 *  planet of another star, else the Sun's. A pinned planet of another star
-	 *  shows without its system, as a focused star does: from outside, no other
-	 *  name marks it. */
+	 *  planet of another star, its own for a star on a drawn orbit, else the
+	 *  Sun's. A pinned planet of another star shows without its system, as a
+	 *  focused star does: from outside, no other name marks it. */
 	systemShareOf(body: PositionedBody): number {
+		if (isExtrasolar(body)) return this.systemShares.get(body.data.id) ?? 0;
 		if (!isExoplanet(body)) return this.systemShare;
 		const share = this.systemShares.get(body.data.parentId) ?? 0;
 		return this.pinned.has(body.data.id) ? Math.max(share, this.exactStarShare) : share;
@@ -367,7 +373,8 @@ export class VisibilityController {
 	/** Distance-ratio based visibility for non-moon, non-star bodies. Probes and
 	 *  other planet-orbiters get moon-style ratio gating (against distance-to-
 	 *  parent, or planet-relative `a`); bodies that orbit the Sun or another
-	 *  star use the ratio to their semi-major axis about the star. */
+	 *  star use the ratio to their semi-major axis about the star. A star on a
+	 *  drawn orbit uses the one of its pair. */
 	private ratioVisibility(
 		body: PositionedBody,
 		camDistThreeJS: number,
@@ -416,7 +423,7 @@ export class VisibilityController {
 
 		// A planet of the Sun has its `a` about its barycentre, and the
 		// barycentre has the one about the Sun.
-		let refA = body.data.a;
+		let refA = body.extrasolar?.pairAxis ?? body.data.a;
 		if (!isTopLevelParent(body.data.parentId)) {
 			const parent = this.bodies.bodiesById.get(body.data.parentId);
 			if (parent?.data.a) refA = parent.data.a;

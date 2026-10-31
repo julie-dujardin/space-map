@@ -52,6 +52,8 @@ export interface BodyData extends OrbitalElements {
 	 */
 	isMinor?: boolean;
 	objectType: ObjectType;
+	/** Colour of the halo and the line of a star on a drawn orbit. Others go by type. */
+	starColor?: string;
 	/** Measured surface colour, set by the system file or on focus by
 	 *  `loadBodyTexture`. It sets the brightness of the ground
 	 *  (`surface-albedo.ts`). The point cloud and label keep their tint by type
@@ -220,8 +222,8 @@ export interface PositionedBody {
 	exoplanet?: PlanetAnchor;
 }
 
-/** An object of the extrasolar catalogue as a focus target. Its place is
- *  fixed, from its record; the starfield draws it. */
+/** An object of the extrasolar catalogue as a focus target. Its record gives
+ *  its place, and a drawn orbit moves it from there. The starfield draws it. */
 export interface StarAnchor {
 	id: number;
 	record: ExtrasolarRecord;
@@ -242,6 +244,14 @@ export interface StarAnchor {
 	 *  temperature in K, null when unknown. */
 	radiusKm: number | null;
 	teff: number | null;
+	/** Scene place now of a star on a drawn orbit. Absent: it stays at `tree`. */
+	drawnAt?: Readonly<[number, number, number]>;
+	/** The share of its light that draws, 0 to 1: a point and the pair it holds
+	 *  hand over by it. Absent: all of it. */
+	light?: number;
+	/** Semi-major axis of the pair of a star on a drawn orbit (AU). Both members
+	 *  take their tiers by it, as a page frames them by it. */
+	pairAxis?: number;
 }
 
 /** An object of the extrasolar catalogue — see {@link StarAnchor}. */

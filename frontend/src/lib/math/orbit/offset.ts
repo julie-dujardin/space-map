@@ -21,13 +21,15 @@ export function withinValidity(d: BodyData, jd: number): boolean {
 	return t >= d.validityStart && t <= d.validityEnd;
 }
 
-/** True for a row that sits on its parent: a barycentre or a planet with no
- *  offset of its own. Other rows with `a = 0` have no orbit. */
+/** True for a row that sits on its parent: a barycentre, a planet with no
+ *  offset of its own, or the primary of a pair with no mass ratio. Other rows
+ *  with `a = 0` have no orbit. */
 function sitsOnParent(d: BodyData): boolean {
 	return (
 		d.a === 0 &&
 		(d.objectType === ObjectType.BARYCENTER ||
 			d.objectType === ObjectType.LAGRANGE_POINT ||
+			d.objectType === ObjectType.EXTRASOLAR ||
 			isMajorBody(d.objectType))
 	);
 }

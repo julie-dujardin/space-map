@@ -8,6 +8,7 @@ import type { Vec3 } from '../animation/math';
 import {
 	HIDE_LABEL_BODY_HALO_FACTOR,
 	HALO_RADIUS_PX,
+	SYSTEM_CENTRE_PRIORITY,
 	typePriority,
 	type BodyObjects
 } from '../types';
@@ -239,6 +240,7 @@ type Candidate = {
 	isMinor: boolean;
 	isFocused: boolean;
 	isSelected: boolean;
+	priority: number;
 	rect: LabelScreenRect;
 	dist: number;
 };
@@ -346,6 +348,7 @@ function makeCandidate(): Candidate {
 		isMinor: false,
 		isFocused: false,
 		isSelected: false,
+		priority: 0,
 		rect: { x: 0, left: 0, right: 0, y: 0, h: 0 },
 		dist: 0
 	};
@@ -421,6 +424,9 @@ export function cullOverlappingLabels(
 		c.isFocused = isFocused;
 		// A pinned body is named whatever it overlaps.
 		c.isSelected = isFocused || isHovered || ctx.visibility.isPinned(body.data.id);
+		c.priority = ctx.visibility.systemCentres.has(body.data.id)
+			? SYSTEM_CENTRE_PRIORITY
+			: typePriority(body.data.objectType);
 		c.dist = bo.cachedDist;
 	}
 
@@ -432,9 +438,7 @@ export function cullOverlappingLabels(
 		const aMinor = a.isMinor && !a.isSelected;
 		const bMinor = b.isMinor && !b.isSelected;
 		if (aMinor !== bMinor) return aMinor ? 1 : -1;
-		const pa = typePriority(a.body!.data.objectType);
-		const pb = typePriority(b.body!.data.objectType);
-		if (pa !== pb) return pa - pb;
+		if (a.priority !== b.priority) return a.priority - b.priority;
 		return a.dist - b.dist;
 	});
 

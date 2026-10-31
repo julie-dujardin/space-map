@@ -11,11 +11,12 @@ const load = vi.hoisted(() => ({
 	body: vi.fn<(ctx: unknown, id: string) => Promise<unknown>>()
 }));
 
-vi.mock('$lib/fetch/extrasolar/systems', async (original) => ({
-	...(await original<typeof import('$lib/fetch/extrasolar/systems')>()),
-	loadSystemPoints: load.points
-}));
-vi.mock('$lib/scene/setup/extrasolar', () => ({ ensureExtrasolarBody: load.body }));
+/** A star system with no drawn pair, as the store holds it. */
+async function planOf(root: number) {
+	const points = await load.points(root);
+	await Promise.all(points.map((id) => load.body(null, `x-${id}`)));
+	return { root, nodes: new Map(), points, pairs: [], ids: points };
+}
 
 function star(id: number, root: number | null = null, row?: TableRow): PositionedBody {
 	const metadata = { system: root };
@@ -61,10 +62,13 @@ function planetOf(host: PositionedBody): PositionedBody {
 function systemsWith(bodies: PositionedBody[], pins?: (ids: ReadonlySet<string>) => void) {
 	const ctx = {
 		getBody: (id: string) => bodies.find((body) => body.data.id === id),
-		exoplanets: { index: null, loadIndex: async () => {} },
-		bodies: { pinExtrasolar: pins ?? (() => {}) }
+		place: (body: PositionedBody) => body.position,
+		exoplanets: { index: null, loadIndex: async () => {}, ensureStarSystem: planOf },
+		bodies: { pinExtrasolar: pins ?? (() => {}) },
+		visibility: {}
 	} as unknown as ContextManager;
-	return new ExoplanetSystems(ctx, {} as PromotionRegistry, () => {});
+	const promotion = { syncSystemBodies: () => {} } as unknown as PromotionRegistry;
+	return new ExoplanetSystems(ctx, promotion, () => {});
 }
 
 const frame = (focused: PositionedBody | undefined, camera = [0, 0, 0]): SystemsFrame =>

@@ -281,15 +281,16 @@ export class StarfieldSystem {
 	/**
 	 * The stars to draw on their own: `stars`, the focused one, the trip ends
 	 * and the hosts of the planets drawn, and `companions`, the other stars of
-	 * the focused system. Each draws at its record's place, which is exact where
-	 * a node's float32 row is not, whatever the drawn limit or the budget. Its
-	 * row in the tree draws nothing meanwhile, so it is never drawn twice. A
+	 * the focused system. Each draws at its record's place or on its drawn
+	 * orbit, which is exact where a node's float32 row is not, whatever the
+	 * drawn limit or the budget. Its row in the tree draws nothing meanwhile, so
+	 * it is never drawn twice. A held star on a drawn orbit has no row. A
 	 * companion takes no floor: it shows the light its row would.
 	 */
 	setExactStars(stars: readonly StarAnchor[], companions: readonly StarAnchor[] = []): void {
 		const next = new Map<number, StarAnchor>();
 		for (const star of [...stars, ...companions]) {
-			if (star.tree && !next.has(star.id)) next.set(star.id, star);
+			if ((star.tree || star.drawnAt) && !next.has(star.id)) next.set(star.id, star);
 		}
 		let changed = false;
 		for (const [id, exact] of this.exact) {
@@ -592,8 +593,10 @@ export class StarfieldSystem {
 		limit.value += (this.allowedLimit - limit.value) * ease;
 		this.uniforms.uGain.value = gain * skyShare;
 		this.exactGain.value = gain * this.exactFade.share;
-		for (const exact of this.exact.values())
+		for (const exact of this.exact.values()) {
+			this.moveExact(exact);
 			this.updateSurface(exact, camera, focus, viewportHeight);
+		}
 
 		this.applyFades(dtMs, camera, focus);
 		const drawing =
@@ -605,6 +608,17 @@ export class StarfieldSystem {
 		}
 	}
 
+	/** Put an exact star where its orbit has it now. */
+	private moveExact({ star, points, surface }: ExactStar): void {
+		const at = star.drawnAt ? sceneToTree(...star.drawnAt) : star.tree;
+		if (!at) return;
+		points.position.set(...at);
+		points.updateMatrix();
+		if (!surface) return;
+		surface.position.copy(points.position);
+		surface.updateMatrix();
+	}
+
 	private updateSurface(
 		exact: ExactStar,
 		camera: PerspectiveCamera,
@@ -612,11 +626,17 @@ export class StarfieldSystem {
 		viewportHeight: number
 	): void {
 		const { star, surface, points: point } = exact;
-		if (!surface || !star.scene || star.radiusKm === null) return;
+		const light = star.light ?? 1;
+		const fade = (point.material as ShaderMaterial).uniforms.uFade;
+		const at = star.drawnAt ?? star.scene;
+		if (!surface || !at || star.radiusKm === null) {
+			fade.value = light;
+			return;
+		}
 		const distance = Math.hypot(
-			star.scene[0] - focus[0] - camera.position.x,
-			star.scene[1] - focus[1] - camera.position.y,
-			star.scene[2] - focus[2] - camera.position.z
+			at[0] - focus[0] - camera.position.x,
+			at[1] - focus[1] - camera.position.y,
+			at[2] - focus[2] - camera.position.z
 		);
 		const radiusPx =
 			((kmToScene(star.radiusKm) / distance) *
@@ -626,6 +646,8 @@ export class StarfieldSystem {
 		const share = updateStarTransition(surface.material, null, point, radiusPx);
 		surface.visible = share > 0;
 		surface.material.uniforms.uGain.value = this.exactGain.value;
+		surface.material.uniforms.uFade.value *= light;
+		fade.value *= light;
 	}
 
 	dispose(): void {
@@ -965,7 +987,7 @@ export class StarfieldSystem {
 		const material = makeStarMaterial({ ...this.uniforms, uGain: this.exactGain }, FOCUS_FLOOR_MAG);
 		material.uniforms.uFade.value = 1;
 		const points = new Points(geometry, material);
-		points.position.set(...star.tree!);
+		points.position.set(...(star.drawnAt ? sceneToTree(...star.drawnAt) : star.tree!));
 		points.updateMatrix();
 		points.matrixAutoUpdate = false;
 		points.frustumCulled = false;

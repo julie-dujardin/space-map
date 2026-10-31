@@ -1,4 +1,4 @@
-import type { PositionedBody, Unplaced } from '$lib/types/objects';
+import type { OrbitalElements, PositionedBody, Unplaced } from '$lib/types/objects';
 
 type Vec3 = [number, number, number];
 type Writable = { -readonly [K in keyof PositionedBody]: PositionedBody[K] };
@@ -39,6 +39,29 @@ export function setOrbitCenter(body: PositionedBody, center: Readonly<Vec3> | nu
 	c[0] = center[0];
 	c[1] = center[1];
 	c[2] = center[2];
+}
+
+/** The elements of a star on no orbit. */
+const NO_ORBIT: OrbitalElements = { a: 0, e: 0, i: 0, om: 0, w: 0, ma: 0, n: 0, epoch: 0 };
+
+/** Put a star on a drawn orbit about the body `parentId`. A primary with no
+ *  mass ratio stays on the barycentre, and has no line. */
+export function putOnOrbit(
+	body: PositionedBody,
+	parentId: string,
+	elements: OrbitalElements
+): void {
+	Object.assign(body.data, elements, { parentId });
+	body.orbitElements = elements.a > 0 ? body.data : undefined;
+	body.orbitCenterId = elements.a > 0 ? parentId : undefined;
+}
+
+/** Take a star off its drawn orbit. A line that stays built has nowhere to draw. */
+export function takeOffOrbit(body: PositionedBody): void {
+	Object.assign(body.data, NO_ORBIT, { parentId: '' });
+	body.orbitElements = undefined;
+	body.orbitCenterId = undefined;
+	setOrbitCenter(body, null);
 }
 
 /** Record where the bright end of the trail is. */

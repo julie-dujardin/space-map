@@ -20,6 +20,7 @@ import { isAsteroid, ObjectType, type BodyData } from '$lib/types/objects';
  * split by parent (Earth → satellite, Sun → probe).
  */
 export function resolveBodyColor(data: BodyData): string {
+	if (data.starColor) return data.starColor;
 	if (BODY_COLORS[data.id]) return BODY_COLORS[data.id];
 	const { objectType, parentId } = data;
 	if (objectType === ObjectType.BARYCENTER) {

@@ -19,8 +19,9 @@ import {
 	planetObjectId,
 	planetOfObjectId
 } from '$lib/fetch/extrasolar/ids';
-import { extrasolarLookup, type ExtrasolarRecord } from '$lib/fetch/extrasolar/lookup';
+import { extrasolarLookup } from '$lib/fetch/extrasolar/lookup';
 import { planetCatalogue } from '$lib/fetch/extrasolar/planets';
+import { starPageName } from '$lib/fetch/extrasolar/star-name';
 
 /** An object's bundles, as far as its name goes. */
 interface NamedPair {
@@ -53,19 +54,6 @@ export type PageSubject =
 	  }
 	| { kind: 'feature'; bodyId: string; featureId: number }
 	| { kind: 'group'; slug: string };
-
-/** A star's name: the one of its object entry in the reader's language, else
- *  the one of its Metadata row. */
-async function starPageName(record: ExtrasolarRecord): Promise<string> {
-	const meta = record.metadata;
-	const own = await fetchObjectDetail(
-		extrasolarObjectId(record.id),
-		meta.object,
-		undefined,
-		true
-	).catch(() => null);
-	return own?.localized?.name ?? meta.name ?? '';
-}
 
 /**
  * The live object an alias of the extrasolar catalogue leads to, and the name

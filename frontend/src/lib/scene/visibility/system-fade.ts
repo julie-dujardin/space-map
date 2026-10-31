@@ -9,7 +9,7 @@ export const SYSTEM_OUT_PX = 4.3;
 /** Restores planets later to prevent flicker near the switch. */
 export const SYSTEM_IN_PX = 4.75;
 
-function pxPerRad(viewportPx: number, fovDeg: number): number {
+export function pxPerRad(viewportPx: number, fovDeg: number): number {
 	return viewportPx / 2 / Math.tan((fovDeg * Math.PI) / 360);
 }
 

@@ -194,6 +194,8 @@ export function makeTrail(
 	obj.userData.trailLocalPositions = curve ? validPoints : undefined;
 	obj.userData.sourceCurve = curve ?? undefined;
 	obj.userData.curvePending = curve === null;
+	// On a paused clock no pass of the frame loop asks for the curve.
+	obj.userData.refreshDeferred = curve === null;
 	obj.userData.isOpenCurve = isOpenCurve;
 	obj.userData.useTrail = useTrail;
 	obj.userData.curveJd = jd;

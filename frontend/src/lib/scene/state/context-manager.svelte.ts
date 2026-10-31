@@ -236,7 +236,8 @@ export class ContextManager {
 			return;
 		}
 		// A star is in no zone: its record places it. A star with planets brings
-		// its system, so a link can frame it.
+		// its planetary system, and a star in a star system brings that, so a link
+		// can frame it.
 		const host = extrasolarIdOf(targetId);
 		const system =
 			host === null
@@ -244,7 +245,10 @@ export class ContextManager {
 				: this.exoplanets.ensureHost(host).catch((e) => {
 						console.warn(`[planets] the system of ${targetId} did not load:`, e);
 					});
-		await Promise.all([ensureExtrasolarBody(this, targetId), system]);
+		const star = ensureExtrasolarBody(this, targetId).then((found) =>
+			this.exoplanets.ensureStarSystemOf(found)
+		);
+		await Promise.all([star, system]);
 	}
 
 	/** Install or remove the active group filter, branching on the slug's

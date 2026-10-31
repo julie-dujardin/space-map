@@ -38,10 +38,10 @@ vi.mock('$lib/scene/setup/extrasolar', () => ({
 		const body = {
 			data: { id: objectId, objectType: ObjectType.EXTRASOLAR, parentId: '' },
 			position: null,
-			extrasolar: { id, scene: place, tree: place }
+			extrasolar: { id, record: { metadata: {}, rows: new Map() }, scene: place, tree: place }
 		} as unknown as PositionedBody;
 		ctx.bodies.addExtrasolar(body);
-		return { kind: 'live' };
+		return { kind: 'missing' };
 	})
 }));
 
@@ -208,7 +208,7 @@ describe('ExoplanetStore', () => {
 		expect(body.extrasolar?.scene).toBeNull();
 		const promotion = { syncSystemBodies: vi.fn() } as unknown as PromotionRegistry;
 		const systems = new ExoplanetSystems(ctx, promotion, () => {});
-		const frame = { camera: [0, 0, 0] as const, viewportPx: 1000, fovDeg: 60, dtMs: 16 };
+		const frame = { jd: 0, camera: [0, 0, 0] as const, viewportPx: 1000, fovDeg: 60, dtMs: 16 };
 		systems.update({ ...frame, outside: 1, focused: body });
 		await vi.waitFor(() =>
 			expect(bodies.getBody(extrasolarObjectId(PAIR))?.extrasolar?.scene).toEqual(

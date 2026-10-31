@@ -72,6 +72,7 @@ function scene(objectType: ObjectType, starPoint = false) {
 			systemShareOf: () => 1,
 			starShareOf: () => 1,
 			systemShares: new Map(),
+			systemCentres: new Map(),
 			isPinned: () => false,
 			planetarySystemShare: () => 0,
 			focusedSystemId: null,
@@ -188,6 +189,94 @@ describe('a star of another system', () => {
 		expect(bo.label!.element.style.opacity).toBe('');
 		vis.isPinned = () => false;
 		frame(5, 16);
+		expect(bo.group.visible).toBe(true);
+	});
+});
+
+describe('the centre of a star system', () => {
+	it('keeps its halo and name in the sky of its system with the focus on a star', () => {
+		const { bo, ctx, frame } = scene(ObjectType.EXTRASOLAR);
+		bo.mesh = null;
+		bo.trail = null;
+		const vis = ctx.visibility as unknown as {
+			planetarySystemShare: () => number;
+			systemCentres: Map<string, number>;
+		};
+		vis.planetarySystemShare = () => 1;
+		frame(5, 16, 'other');
+		expect(bo.group.visible).toBe(false);
+		vis.systemCentres.set('body', 1);
+		frame(5, 16, 'other');
+		expect(bo.group.visible).toBe(true);
+		expect(bo.label!.element.style.opacity).toBe('');
+	});
+
+	it('hides while the focused body sits on it', () => {
+		const { bo, ctx, frame } = scene(ObjectType.EXTRASOLAR);
+		bo.mesh = null;
+		bo.trail = null;
+		const vis = ctx.visibility as unknown as { systemCentres: Map<string, number> };
+		vis.systemCentres.set('body', 0);
+		frame(5, 16, 'other');
+		expect(bo.group.visible).toBe(false);
+	});
+
+	it('draws no halo or name of a focused node that a star takes over', () => {
+		const { bo, ctx, frame } = scene(ObjectType.EXTRASOLAR);
+		bo.mesh = null;
+		bo.trail = null;
+		frame(5, 16, 'body');
+		expect(bo.group.visible).toBe(true);
+		const vis = ctx.visibility as unknown as { systemCentres: Map<string, number> };
+		vis.systemCentres.set('body', 0);
+		frame(5, 16, 'body');
+		expect(bo.group.visible).toBe(false);
+		expect(bo.label!.visible).toBe(false);
+	});
+});
+
+describe('a star on a drawn orbit', () => {
+	/** `id` is the focus. A focused star takes the tiers too. */
+	function onOrbit() {
+		const s = scene(ObjectType.EXTRASOLAR);
+		s.bo.mesh = null;
+		s.bo.radiusScene = 0;
+		s.bo.body.orbitElements = s.bo.body.data;
+		return {
+			...s,
+			vis: s.ctx.visibility as unknown as {
+				getPlanetVisibility: () => VISIBILITY;
+				systemShareOf: () => number;
+				planetarySystemShare: () => number;
+			}
+		};
+	}
+
+	it('drops its halo, name and line at the tiers of a planet, focused or not', () => {
+		for (const focusedId of ['body', 'other']) {
+			const { bo, frame, vis } = onOrbit();
+			frame(5, 16, focusedId);
+			expect(bo.group.visible).toBe(true);
+			expect(bo.trail!.visible).toBe(true);
+			vis.getPlanetVisibility = () => VISIBILITY.FAR;
+			frame(5, 16, focusedId);
+			expect(bo.group.visible).toBe(false);
+			expect(bo.trail!.visible).toBe(false);
+		}
+	});
+
+	it('fades its name and line with the share of its orbit', () => {
+		const { bo, frame, vis } = onOrbit();
+		vis.systemShareOf = () => 0.5;
+		frame(5, 16, 'other');
+		expect(bo.label!.element.style.opacity).toBe('0.5');
+		expect(bo.trail!.userData.zoneShare).toBe(1);
+	});
+
+	it('shows in the sky of its own system', () => {
+		const { bo, frame, vis } = onOrbit();
+		vis.planetarySystemShare = () => 1;
+		frame(5, 16, 'other');
 		expect(bo.group.visible).toBe(true);
 	});
 });

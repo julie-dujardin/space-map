@@ -156,6 +156,14 @@ export function photosphereColour(
 	return [1, 1, 1];
 }
 
+/** The CSS colour of a star's orbit line and halo. */
+export function starCssColour(teff: number | null, bpRp: number | null): string {
+	const [r, g, b] = photosphereColour(teff, bpRp).map((c) =>
+		Math.round(255 * (c <= 0.0031308 ? 12.92 * c : 1.055 * c ** (1 / 2.4) - 0.055))
+	);
+	return `rgb(${r}, ${g}, ${b})`;
+}
+
 const LUT_LO = BP_RP_TEFF[0][0];
 const LUT_HI = BP_RP_TEFF[BP_RP_TEFF.length - 1][0];
 const LUT_SIZE = 512;

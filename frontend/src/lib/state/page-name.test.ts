@@ -5,7 +5,10 @@ const { live, fetchObjectDetail } = vi.hoisted(() => ({
 	live: vi.fn(),
 	fetchObjectDetail: vi.fn()
 }));
-vi.mock('$lib/fetch/extrasolar/lookup', () => ({ extrasolarLookup: { live } }));
+vi.mock('$lib/fetch/extrasolar/lookup', async (importOriginal) => ({
+	...(await importOriginal<typeof import('$lib/fetch/extrasolar/lookup')>()),
+	extrasolarLookup: { live }
+}));
 vi.mock('$lib/fetch/objects/object-data', () => ({ fetchObjectDetail }));
 
 // The page's planet files: the α Cen system and its index.
@@ -44,6 +47,7 @@ vi.mock('$lib/fetch/extrasolar/planets', async (importOriginal) => {
 
 import { extrasolarAlias, fetchPageName, groupPageName, objectPageName } from './page-name';
 import { MERGED_HOST } from '$lib/scene/exoplanets/__fixtures__/system';
+import { resolvedSystemRecord } from '$lib/fetch/extrasolar/__fixtures__/record';
 
 const pair = (global: string | undefined, localized?: string) => ({
 	global: global === undefined ? null : { name: global },
@@ -173,5 +177,29 @@ describe('the alias of a star', () => {
 	it('is none for an ID with no page', async () => {
 		live.mockResolvedValue({ kind: 'missing', reason: 'no-row' });
 		expect(await extrasolarAlias('x-9')).toBeNull();
+	});
+});
+
+describe('the name of a star system with none of its own', () => {
+	const star = (id: number, name: string) => {
+		const record = resolvedSystemRecord(id, id);
+		return { ...record, metadata: { ...record.metadata, name } };
+	};
+
+	it('is the name of its primary, without the component letter', async () => {
+		const root = resolvedSystemRecord(100, 200);
+		live.mockImplementation(async (id: string | number) =>
+			Number(id) === 100
+				? { kind: 'live', record: root }
+				: { kind: 'live', record: star(200, 'HIP 1234 A') }
+		);
+		fetchObjectDetail.mockResolvedValue(null);
+		await expect(fetchPageName({ kind: 'body', id: 'x-100' })).resolves.toBe('HIP 1234');
+	});
+
+	it('is empty where the primary is the record itself', async () => {
+		live.mockResolvedValue({ kind: 'live', record: resolvedSystemRecord(100, 100) });
+		fetchObjectDetail.mockResolvedValue(null);
+		await expect(fetchPageName({ kind: 'body', id: 'x-100' })).resolves.toBe('');
 	});
 });

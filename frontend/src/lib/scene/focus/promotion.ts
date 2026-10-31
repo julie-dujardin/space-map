@@ -234,6 +234,8 @@ export class PromotionRegistry {
 		let built = false;
 		for (const body of bodies) {
 			if (this.buildBodyInstance(body, undefined, false, this.systemPromoted)) built = true;
+			// A star takes its orbit after the build that its focus asked for.
+			else if (body.orbitElements && !this.deps.bodyObjects.get(body.data.id)?.trail) built = true;
 		}
 		if (built) this.finalizeBuilds();
 	}

@@ -315,16 +315,17 @@ export function systemRoot(record: ExtrasolarRecord): number | null {
 	return record.metadata.system ?? (record.rows.has(SYSTEM_SLUG) ? record.id : null);
 }
 
+/** Whether a record is several stars. Such an object has no size, type or star
+ *  family of its own: those belong to its members. */
+export function isStarSystem({ metadata }: ExtrasolarRecord): boolean {
+	return metadata.class === 'binary star' || metadata.class === 'multiple star';
+}
+
 /** The ID one step toward the light of a record: its own, the primary of a
  *  node, or for a held star its node, which can be a resolved node. */
 export function pointOf(record: ExtrasolarRecord): number {
 	const parent = record.rows.get(SYSTEM_SLUG)?.number('parent');
 	return systemPrimary(record) ?? parent ?? record.id;
-}
-
-/** Whether a tree node is a held star, which has no members of its own. */
-function isHeldStar(node: SystemTreeNode): boolean {
-	return !node.point && node.class === 'star';
 }
 
 /** The IDs with a point of their own: the points of the tree and the member
@@ -342,22 +343,18 @@ export function systemPointIds(
 	return [...ids];
 }
 
-/** The IDs with a point of their own in the system of `root`. Empty when the
- *  host may not show its rows. */
-export async function loadSystemPoints(
+/** The rows of the tree of `root`, root first. Empty when the host may not
+ *  show its rows. */
+export async function loadSystemNodes(
 	root: number,
 	lookup: Pick<ExtrasolarLookup, 'live'> = extrasolarLookup
-): Promise<number[]> {
+): Promise<SystemNode[]> {
 	const nodeOf = async (id: number): Promise<SystemNode | null> => {
 		const result = await lookup.live(id);
 		return result.kind === 'live' ? systemNode(result.record) : null;
 	};
 	const top = await nodeOf(root);
 	if (!top?.tree) return [];
-	const inner = top.tree.filter((n) => n.id !== root && !isHeldStar(n));
-	const nodes = await Promise.all(inner.map((n) => nodeOf(n.id)));
-	return systemPointIds(
-		top.tree,
-		[top, ...nodes].filter((node) => node !== null)
-	);
+	const rest = await Promise.all(top.tree.filter((n) => n.id !== root).map((n) => nodeOf(n.id)));
+	return [top, ...rest.filter((node) => node !== null)];
 }

@@ -1,9 +1,10 @@
 /**
  * The planetary system the renderer draws, set once per frame: the system
  * of the focused star or planet. Each of its hosts draws by the pixel rule of
- * the solar system, with the halo, name and orbit line of each planet. The
- * starfield draws the host and the stars of the focused star system at their
- * exact places.
+ * the solar system, with the halo, name and orbit line of each planet and of
+ * each star on a drawn orbit. The centre of the focused star system has its halo
+ * and name too. The starfield draws the host and the stars of the focused star
+ * system at their exact places.
  */
 
 import { ExtrasolarStaleError } from '$lib/fetch/extrasolar/files';
@@ -29,6 +30,8 @@ export const EXACT_STARS = HIDDEN_ROWS;
 const INDEX = 0;
 
 export interface SystemsFrame {
+	/** The date of the scene. */
+	jd: number;
 	/** Scene position of the camera, barycentre origin. */
 	camera: Readonly<Vec3>;
 	viewportPx: number;
@@ -62,20 +65,22 @@ export class ExoplanetSystems {
 
 	/** True while a system fades in or out. */
 	get fading(): boolean {
-		return this.fades?.fading ?? false;
+		return (this.fades?.fading ?? false) || this.starSystem.fading;
 	}
 
 	update(frame: SystemsFrame): void {
-		this.starSystem.update(frame.focused, frame.camera);
+		this.starSystem.update(frame);
 		const store = this.ctx.exoplanets;
 		const star = this.starOf(frame.focused);
 		if (!store.index) {
 			if (star !== null) this.askIndex();
+			this.setShares(new Map());
 			this.hold([]);
+			this.syncBodies(frame.focused);
 			return;
 		}
 		this.fades ??= new SystemFades(store.index);
-		const key = star === null ? undefined : store.index.host(star)?.system;
+		const key = star === null ? undefined : this.planetSystemOf(star);
 		const hosts = key === undefined ? [] : store.index.hostsOf(key);
 		for (const host of hosts) if (!this.loaded(host)) this.ask(host);
 		const shares = this.fades.step({ ...frame, hosts, ready: (host) => this.ready(host) });
@@ -86,18 +91,35 @@ export class ExoplanetSystems {
 			return at ? Math.hypot(at[0] - cx, at[1] - cy, at[2] - cz) : Infinity;
 		};
 		this.drawn = [...shares.keys()].sort((a, b) => distance(a) - distance(b));
-		const byId = new Map<string, number>();
-		for (const [host, share] of shares) byId.set(extrasolarObjectId(host), share);
-		this.ctx.visibility.systemShares = byId;
+		this.setShares(shares);
 
 		store.use(new Set(key === undefined ? [] : [key]));
 		this.hold([...hosts, ...this.drawn]);
 		this.syncBodies(frame.focused);
 	}
 
+	/** The planetary system of a focused star: its own, or for a star on a
+	 *  drawn orbit that of its star system. The root keys the file of a star
+	 *  system. */
+	private planetSystemOf(star: number): number | undefined {
+		return this.ctx.exoplanets.index!.host(star)?.system ?? this.starSystem.drawnRoot;
+	}
+
+	/** Publish the shares of the hosts, of the stars on drawn orbits and of the
+	 *  system centres. */
+	private setShares(hosts: ReadonlyMap<number, number>): void {
+		const byId = new Map<string, number>();
+		for (const [host, share] of hosts) byId.set(extrasolarObjectId(host), share);
+		for (const [id, share] of this.starSystem.shares) {
+			byId.set(id, Math.max(share, byId.get(id) ?? 0));
+		}
+		this.ctx.visibility.systemShares = byId;
+		this.ctx.visibility.systemCentres = this.starSystem.centres;
+	}
+
 	/** Keep the bodies of `hosts` and of the focused star system. */
 	private hold(hosts: readonly number[]): void {
-		const ids = [...hosts, ...this.starSystem.points];
+		const ids = [...hosts, ...this.starSystem.ids];
 		this.ctx.bodies.pinExtrasolar(new Set(ids.map(extrasolarObjectId)));
 	}
 
@@ -109,8 +131,9 @@ export class ExoplanetSystems {
 		const out: StarAnchor[] = [];
 		const add = (anchor: StarAnchor | undefined) => {
 			if (out.length === EXACT_STARS) return;
-			const star = anchor && this.pointStar(anchor);
-			if (star?.tree && !out.some((s) => s.id === star.id)) out.push(star);
+			const star = anchor?.drawnAt ? anchor : anchor && this.pointStar(anchor);
+			const drawable = star?.tree || star?.drawnAt;
+			if (star && drawable && !out.some((s) => s.id === star.id)) out.push(star);
 		};
 		const addStarOf = (body: PositionedBody | undefined) => {
 			if (body && isExtrasolar(body)) add(body.extrasolar);
@@ -127,12 +150,12 @@ export class ExoplanetSystems {
 	companions(stars: readonly StarAnchor[]): StarAnchor[] {
 		const taken = new Set(stars.map((star) => star.id));
 		return this.starSystem.stars
-			.filter((star) => star.tree && !taken.has(star.id))
+			.filter((star) => (star.tree || star.drawnAt) && !taken.has(star.id))
 			.slice(0, EXACT_STARS - stars.length);
 	}
 
-	/** The star that draws the light of `anchor`. A node and a held star have
-	 *  none of their own. */
+	/** The star that draws the light of `anchor`. A node and a held star on no
+	 *  drawn orbit have none of their own. */
 	private pointStar(anchor: StarAnchor): StarAnchor | undefined {
 		if (anchor.point === anchor.id) return anchor;
 		const next = this.ctx.getBody(extrasolarObjectId(anchor.point))?.extrasolar;
@@ -197,14 +220,20 @@ export class ExoplanetSystems {
 		return this.ctx.exoplanets.held(host) !== null && !!star?.extrasolar?.scene;
 	}
 
-	/** Give the drawn planets and their hosts a halo and a name, and take them
-	 *  from the ones that left. */
+	/** Give the drawn planets, their hosts, the stars on drawn orbits and the
+	 *  system centres a halo and a name, and take them from the ones that left. */
 	private syncBodies(focused: PositionedBody | undefined): void {
 		const bodies: PositionedBody[] = [];
 		for (const host of this.drawn) {
 			const star = this.ctx.getBody(extrasolarObjectId(host));
 			if (star) bodies.push(star);
 			bodies.push(...(this.ctx.exoplanets.held(host)?.planets.get(host) ?? []));
+		}
+		const shown = new Set(this.starSystem.shares.keys());
+		for (const [id, share] of this.starSystem.centres) if (share > 0) shown.add(id);
+		for (const id of shown) {
+			const star = this.ctx.getBody(id);
+			if (star) bodies.push(star);
 		}
 		const key = `${bodies.map((b) => b.data.id).join(',')}|${focused?.data.id ?? ''}`;
 		if (key === this.drawnKey) return;

@@ -1,0 +1,178 @@
+/**
+ * The pairs of a star system that draw up close, and the numbers each one
+ * needs: the orbits of its members, the place of its barycentre, the object
+ * that carries its halo, the light of a held star, and the handover from a
+ * point to its two stars. Nothing here reads the scene.
+ */
+
+import type { PairOrbit, SystemNode } from '$lib/fetch/extrasolar/systems';
+import type { Vec3 } from '$lib/scene/animation/math';
+import type { OrbitalElements } from '$lib/types/objects';
+
+/** A wider pair stays at its catalogue places. No clock shows it move, and
+ *  the record's place is better than the place from such an orbit. */
+const MAX_PERIOD_DAYS = 1e5 * 365.25;
+/** The separation on screen (CSS px) up to which a point draws alone, and
+ *  from which its two stars draw alone. */
+const POINT_ALONE_PX = 2;
+const STARS_ALONE_PX = 6;
+/** Luminosity goes as this power of the mass, on the main sequence. */
+const MASS_LUMINOSITY = 3.5;
+
+/** Two values, of a pair's first and second member. */
+export type Both<T> = readonly [T, T];
+
+/** A node whose two members draw on its orbit. */
+export interface DrawnPair {
+	node: SystemNode;
+	orbit: PairOrbit;
+	first: number;
+	second: number;
+}
+
+/** The orbits of the two members about their barycentre. The first member is
+ *  opposite the second, so its ω is 180° on. */
+export function pairElements(orbit: PairOrbit): Both<OrbitalElements> {
+	const { a, e, i, om, w, ma, n, epoch, barycentre } = orbit;
+	const second = { a: a * (1 - barycentre), e, i, om, w, ma, n, epoch };
+	return [{ ...second, a: a * barycentre, w: (w + 180) % 360 }, second];
+}
+
+/** The barycentre of a pair from the places of its members. The second takes
+ *  the distance of the first: two parallaxes disagree by far more than the
+ *  orbit is wide. */
+export function barycentreOf(first: Readonly<Vec3>, second: Readonly<Vec3>, share: number): Vec3 {
+	const depth = Math.hypot(...first) / Math.hypot(...second);
+	return [
+		first[0] + share * (second[0] * depth - first[0]),
+		first[1] + share * (second[1] * depth - first[1]),
+		first[2] + share * (second[2] * depth - first[2])
+	];
+}
+
+/**
+ * The nodes of `nodes` that draw, outermost first. Each member needs an ID,
+ * and a member node needs something to draw: its own point, or a pair of its
+ * own. Their members stay at their catalogue places otherwise.
+ */
+export function drawnPairs(nodes: ReadonlyMap<number, SystemNode>): DrawnPair[] {
+	const draws = ({ orbit, members }: SystemNode): boolean =>
+		orbit !== null &&
+		orbit.period <= MAX_PERIOD_DAYS &&
+		members.length === 2 &&
+		members.every((member) => {
+			if (member.id === null) return false;
+			if (member.kind !== 'system') return true;
+			const inner = nodes.get(member.id);
+			return inner !== undefined && (inner.point || draws(inner));
+		});
+	return [...nodes.values()]
+		.filter(draws)
+		.sort((a, b) => a.depth - b.depth)
+		.map((node) => ({
+			node,
+			orbit: node.orbit!,
+			first: node.members[0].id!,
+			second: node.members[1].id!
+		}));
+}
+
+/**
+ * The pair that a page of the node `id` frames, the outermost one on the way
+ * down through the node's primary. A sibling of the primary is far away and
+ * has no place in this view. Null when no such pair draws.
+ */
+export function framedPair(
+	id: number,
+	nodes: ReadonlyMap<number, SystemNode>,
+	pairs: readonly DrawnPair[]
+): DrawnPair | null {
+	let node = nodes.get(id);
+	while (node?.members.length) {
+		const { id: nodeId, primary, members } = node;
+		const pair = pairs.find((p) => p.node.id === nodeId);
+		if (pair) return pair;
+		const inner = members.map((m) => (m.kind === 'system' ? nodes.get(m.id!) : undefined));
+		node = inner.find((n) => n?.primary === primary);
+	}
+	return null;
+}
+
+/**
+ * The object that carries the halo and name of the node `id`: the node, or the
+ * member on the barycentre of the pair that the node frames. That member takes
+ * over the node, as the Sun takes over the solar system.
+ */
+export function haloCarrier(
+	id: number,
+	nodes: ReadonlyMap<number, SystemNode>,
+	pairs: readonly DrawnPair[]
+): number {
+	const pair = framedPair(id, nodes, pairs);
+	return pair?.orbit.barycentre === 0 ? haloCarrier(pair.first, nodes, pairs) : id;
+}
+
+function flux(mag: number): number {
+	return 10 ** (-0.4 * mag);
+}
+
+function magnitude(light: number): number {
+	return -2.5 * Math.log10(light);
+}
+
+/**
+ * Absolute magnitudes of the two stars inside a point, which sum to `total`,
+ * the point's. Two stars with magnitudes of their own keep their ratio. Two
+ * masses give shares by the mass-luminosity law. One magnitude and no masses
+ * leaves the rest of the light to the other star, and with nothing better the
+ * stars share equally. A point with no magnitude leaves each star its own.
+ */
+export function splitLight(
+	total: number | null,
+	own: Both<number | null>,
+	masses: Both<number | null>
+): Both<number | null> {
+	if (total === null) return own;
+	const all = flux(total);
+	const shares = (a: number, b: number): Both<number> => [
+		magnitude((all * a) / (a + b)),
+		magnitude((all * b) / (a + b))
+	];
+	const [a, b] = own;
+	if (a !== null && b !== null) return shares(flux(a), flux(b));
+	const [ma, mb] = masses;
+	if (ma !== null && mb !== null) return shares(ma ** MASS_LUMINOSITY, mb ** MASS_LUMINOSITY);
+	const known = a ?? b;
+	if (known === null || flux(known) >= all) return shares(1, 1);
+	const rest = magnitude(all - flux(known));
+	return a === null ? [rest, known] : [known, rest];
+}
+
+/** The share of a pair's light that its two stars draw at a separation on
+ *  screen, and the rest of it their point. */
+export function starsShare(separationPx: number): number {
+	const t = (separationPx - POINT_ALONE_PX) / (STARS_ALONE_PX - POINT_ALONE_PX);
+	const x = Math.min(Math.max(t, 0), 1);
+	return x * x * (3 - 2 * x);
+}
+
+/**
+ * The share of its own light that each object of a system draws. `handed` is
+ * the share that a pair's point gives to its two stars. A point and its stars
+ * sum to the share that the point has. A resolved node has no light to keep, so
+ * its members take its whole share. `pairs` go outermost first.
+ */
+export function pairLight(
+	pairs: readonly { pair: DrawnPair; handed: number }[]
+): Map<number, number> {
+	const light = new Map<number, number>();
+	for (const { pair, handed } of pairs) {
+		const { node, first, second } = pair;
+		const own = light.get(node.id) ?? 1;
+		const stars = node.point ? handed : 1;
+		light.set(node.id, own * (1 - stars));
+		light.set(first, own * stars);
+		light.set(second, own * stars);
+	}
+	return light;
+}

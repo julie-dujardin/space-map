@@ -2,6 +2,7 @@ import {
 	ObjectType,
 	isAsteroid,
 	isExoplanet,
+	isExtrasolar,
 	type BodyData,
 	type PositionedBody
 } from '$lib/types/objects';
@@ -324,7 +325,8 @@ export class BodyIndex {
 
 	/** True if a body orbits within a planetary system, not directly around a star. */
 	isSystemBody(body: PositionedBody): boolean {
-		if (isTopLevelParent(body.data.parentId) || isExoplanet(body)) return false;
+		if (isTopLevelParent(body.data.parentId)) return false;
+		if (isExoplanet(body) || isExtrasolar(body)) return false;
 		const parent = this.bodiesById.get(body.data.parentId);
 		return parent?.data.objectType !== ObjectType.BARYCENTER;
 	}
