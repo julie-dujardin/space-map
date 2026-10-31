@@ -84,6 +84,7 @@ export const CREDIT_PAGES = {
 	orbits: '/2023A&A...674A..34G',
 	xpMetallicity: '/zenodo.7945154',
 	pastel: '/B/pastel',
+	jmdc: '/II/345',
 	simbad: '/simbad.cds.unistra.fr/',
 	apogee: 'sdss4.org/dr17/',
 	lamost: '/zenodo.14030249',
@@ -240,6 +241,7 @@ export function starCredits(
 		if (oneStar && row.text('xgboost_source')) pages.add('xpMetallicity');
 		// PASTEL, the GCVS and ATNF join by SIMBAD ids, LAMOST by its M-star catalogue.
 		if (row.text('pastel_source')) pages.add('pastel').add('simbad');
+		if (row.text('angular_diameter_source')) pages.add('jmdc');
 		if (row.text('apogee_source')) pages.add('apogee');
 		if (row.text('lamost_source')) pages.add('lamost').add('lamostMStars');
 		if (row.text('gcvs_source')) pages.add('gcvs').add('simbad');
@@ -248,7 +250,10 @@ export function starCredits(
 		if (oneStar && row.text('xhip_metallicity_source')) pages.add('xhip');
 	}
 	const out = creditsOf(pages, record.credits);
-	const papers = distance?.source === LITERATURE ? (references?.distance ?? []) : [];
+	const papers = [
+		...(distance?.source === LITERATURE ? (references?.distance ?? []) : []),
+		...(references?.paper_radius ?? [])
+	];
 	for (const paper of papers) {
 		out.push({ key: paper.url, label: paper.title, url: paper.url, note: paper.short });
 	}

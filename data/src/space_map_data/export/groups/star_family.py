@@ -47,8 +47,9 @@ from space_map_data.export.groups.family_pages import (
     sitelink_rank,
 )
 from space_map_data.export.groups.star_lineup import (
-    JMDC_FILE,
+    MEASURED_COLUMNS,
     add_lineup_fields,
+    measured_radius,
 )
 from space_map_data.export.groups.stats import GroupExtraStats
 from space_map_data.export.names import Names, ObjectNames
@@ -78,9 +79,10 @@ PLOT_SEED = 1
 PLOT_DIGITS = 3
 # The stage of a plotted star: the first of these that it has.
 PLOT_STAGES = ("white-dwarf", "supergiant", "giant", "subgiant", "main-sequence")
-# The star page's order of radii, each with its bounds. A catalogue's radius
-# of a planet host has no bounds, so no card can vouch for it.
-RADIUS_COLUMNS = ("radius_flame", "radius_flame_spec", "radius_gspphot")
+# The model radii a card can quote, each with its bounds. A catalogue's radius
+# of a planet host has no bounds, so no card can vouch for it. GSP-Phot alone
+# gave CM Vel 1416 ± 1 R☉ at log g −0.5, which no measurement backs.
+RADIUS_COLUMNS = ("radius_flame", "radius_flame_spec")
 # As on the planet cards: a card shows no uncertainty.
 CARD_PRECISION = 0.1
 
@@ -100,8 +102,7 @@ def served_families_stamp(extrasolar_dir: Path = EXTRASOLAR_DIR) -> dict | None:
     Metadata and Point source tokens of the served extrasolar export, None
     with no export served. The pages read the counts and the lists, the
     families of their Wikipedia stars from the Metadata tiles, and the largest
-    star, the diagram and the lineup from the Point source tiles, which JMDC
-    completes."""
+    star, the diagram and the lineup from the Point source tiles."""
     # Under the lock, so both files come from one export.
     with served(extrasolar_dir):
         metadata = served_metadata(extrasolar_dir)
@@ -113,7 +114,6 @@ def served_families_stamp(extrasolar_dir: Path = EXTRASOLAR_DIR) -> dict | None:
             "lists": content_stamp(families_file(extrasolar_dir / "v1" / "x")),
             "metadata": metadata["tables"]["metadata"]["token"],
             "point_source": metadata["tables"][POINT_SOURCE.slug]["token"],
-            "diameters": content_stamp(JMDC_FILE),
         }
 
 
@@ -195,23 +195,36 @@ def _radius(row: dict) -> float | None:
     return None
 
 
+def _measured(row: dict) -> float | None:
+    found = measured_radius(row)
+    return found and found[0]
+
+
 def _largest_star(
     reader: ExportReader, star_objects: list[StarObject], names: ObjectNames
 ) -> tuple[dict, Names] | None:
-    """The star with an entry and the largest radius, as {primary_type,
-    primary_id, name, radius_sun}, and the names of its page.
+    """The star with an entry and the largest radius, measured else from a
+    model, as {primary_type, primary_id, name, radius_sun}, and the names of its
+    page.
 
     The stars with an entry only: the tiles of every star are too many to read
     here, and an unknown star on the card would say little. A point that holds
     several stars has a radius, but a system is no star."""
     columns = [
-        name
-        for column in RADIUS_COLUMNS
-        for name in (column, f"{column}_lower", f"{column}_upper")
+        *MEASURED_COLUMNS,
+        *(
+            name
+            for column in RADIUS_COLUMNS
+            for name in (column, f"{column}_lower", f"{column}_upper")
+        ),
     ]
     entries = {star.id: star for star in star_objects if star.object_type == TYPE}
     rows = reader.rows(POINT_SOURCE.slug, sorted(entries), columns)
-    radii = {id_: radius for id_, row in rows.items() if (radius := _radius(row))}
+    radii = {
+        id_: radius
+        for id_, row in rows.items()
+        if (radius := _measured(row) or _radius(row))
+    }
     if not radii:
         return None
     best = max(radii, key=lambda id_: (radii[id_], id_))

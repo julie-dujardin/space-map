@@ -133,7 +133,8 @@ class TestBuild:
         [
             ({"radius_flame": 2.0, "low": 1.9, "up": 2.1, "gsp": 900.0}, 2.0),
             ({"radius_flame": 2.0, "low": 1.0, "up": 2.1, "gsp": 900.0}, None),
-            ({"radius_flame": None, "low": None, "up": None, "gsp": 900.0}, 900.0),
+            # GSP-Phot alone sized CM Vel at the edge of its grid.
+            ({"radius_flame": None, "low": None, "up": None, "gsp": 900.0}, None),
         ],
     )
     def test_a_card_shows_a_precise_radius(self, row, radius):
@@ -155,10 +156,11 @@ class TestBuild:
     def test_the_largest_star_is_no_system(self, session):
         """A point that holds several stars has a radius, but it is no star."""
 
-        def rows(_slug, ids, _columns):
+        def rows(_slug, ids, columns):
             radius = {1: 900.0, 2: 500.0}
             return {
                 id_: {
+                    **dict.fromkeys(columns),
                     "radius_flame": radius[id_],
                     "radius_flame_lower": radius[id_],
                     "radius_flame_upper": radius[id_],

@@ -1,21 +1,15 @@
 """The size and colour of a listed star, for the lineup of its page.
 
-Gaia saturates on the brightest stars, so the best-known stars have no radius
-in the Point source table. JMDC holds their measured angular diameters, which
-the star's distance turns into a radius. So the order is: a paper
-(`RADII` in `constants/stars/literature.py`), then JMDC, then the radius that
-the star page shows (`starRadiusKm` in the frontend). Gaia fits a normal star,
+Gaia saturates on the brightest stars, so the best-known stars have no model
+radius. The order is `measured_radius` (`measuredRadiusSolar` in the frontend,
+which the star page shows), then the catalogue radius. Gaia fits a normal star,
 so its radii do not count for a compact star: what it sees of a pulsar is
 mostly the companion.
 """
 
-import gzip
 import logging
-import re
-import statistics
 from collections import defaultdict
 from dataclasses import dataclass
-from pathlib import Path
 
 import numpy as np
 
@@ -24,13 +18,11 @@ from space_map_data.export.extrasolar.reader import ExportReader
 from space_map_data.export.extrasolar.render import bp_rp_from_v_i
 from space_map_data.export.notable import NotableObject
 from space_map_data.export.objects.stars import PREFIX
-from space_map_data.extrasolar.sources.literature import LITERATURE
+from space_map_data.extrasolar.sources.literature import LITERATURE, key_of
 from space_map_data.extrasolar.tables import METADATA, POINT_SOURCE
-from space_map_data.utils.paths import SOURCES_STARS_DIR
 
 logger = logging.getLogger(__name__)
 
-JMDC_FILE = SOURCES_STARS_DIR / "cds" / "II" / "345" / "jmdc.dat.gz"
 JMDC = Reference(
     "Duvert 2016",
     "JMDC: JMMC Measured Stellar Diameters Catalogue (VizieR II/345)",
@@ -46,25 +38,27 @@ NASA_EXOPLANET_ARCHIVE = Reference(
     "NASA Exoplanet Archive",
     "https://exoplanetarchive.ipac.caltech.edu",
 )
-# Mid-infrared rows see the dust around a giant, not its surface.
-FIRST_DUST_BAND = 11
 # A diameter becomes a radius by a paper's distance or a parallax of this many
 # sigma: the distance of a saturated supergiant from a prior can be off tenfold.
 MIN_PARALLAX_SIGMA = 5
 COMPACT_FAMILIES = ("neutron-star", "white-dwarf")
-# The name of a JMDC row that holds no HD number, with that number.
-JMDC_HD = {"CCDM J16294-2626 AB": "148478"}  # Antares
 SOLAR_RADIUS_KM = 695700.0
 # A star's radius is known to a few percent at best.
 RADIUS_DIGITS = 3
 MAS_TO_RAD = np.pi / 180 / 3.6e6
 KM_PER_PC = 3.0856775814914e13
 
-COLUMNS = [
+# What `measured_radius` reads.
+MEASURED_COLUMNS = [
+    "radius_literature",
+    "angular_diameter",
     "parallax",
     "parallax_error",
     "distance",
     "distance_source",
+]
+COLUMNS = [
+    *MEASURED_COLUMNS,
     "host_radius",
     "radius_flame",
     "radius_gspphot",
@@ -83,32 +77,6 @@ class _Size:
     reference: Reference
 
 
-def measured_diameters(path: Path = JMDC_FILE) -> dict[str, float]:
-    """The median angular diameter (mas) of each star of JMDC by HD number,
-    limb-darkened where the row gives it, else uniform-disk. A median: the
-    rows run from Michelson's to CHARA's, and a star's rows can disagree."""
-    rows: dict[str, list[float]] = defaultdict(list)
-    with gzip.open(path, "rt", encoding="latin-1") as lines:
-        for line in lines:
-            band = line[106:108].strip()
-            if band.isdigit() and int(band) >= FIRST_DUST_BAND:
-                continue
-            value = _float(line[68:75]) or _float(line[58:67])
-            name = line[:28].strip()
-            match = re.fullmatch(r"HD\s*0*(\d+)", name)
-            hd = match[1] if match else JMDC_HD.get(name)
-            if value and hd:
-                rows[hd].append(value)
-    return {hd: statistics.median(values) for hd, values in rows.items()}
-
-
-def _float(text: str) -> float | None:
-    try:
-        return float(text)
-    except ValueError:
-        return None
-
-
 def _distance_pc(row: dict) -> float | None:
     if row["distance_source"] == LITERATURE.name:
         return row["distance"]
@@ -118,22 +86,30 @@ def _distance_pc(row: dict) -> float | None:
     return None
 
 
-def _size(
-    metadata: dict, row: dict, diameters: dict[str, float], compact: bool = False
-) -> _Size | None:
-    keys = {
-        (cross["catalogue"], cross["release"], cross["catalogue_id"].strip())
-        for cross in metadata["cross_ids"]
-    }
-    for key in keys:
-        if (paper := RADII.get(key)) is not None:
-            return _Size(paper.value, "literature", REFERENCES[paper.reference])
+def measured_radius(row: dict) -> tuple[float, str] | None:
+    """A star's radius in solar radii where a paper or a measured diameter
+    gives it, and which of `literature` and `interferometry` did."""
+    if row["radius_literature"]:
+        return row["radius_literature"], "literature"
     distance = _distance_pc(row)
-    if distance:
-        for _, _, hd in filter(lambda key: key[0] == "hd", keys):
-            if hd in diameters:
-                radius_km = diameters[hd] * MAS_TO_RAD / 2 * distance * KM_PER_PC
-                return _Size(radius_km / SOLAR_RADIUS_KM, "interferometry", JMDC)
+    if row["angular_diameter"] and distance:
+        radius_km = row["angular_diameter"] * MAS_TO_RAD / 2 * distance * KM_PER_PC
+        return radius_km / SOLAR_RADIUS_KM, "interferometry"
+    return None
+
+
+def _paper(metadata: dict) -> Reference:
+    """The work behind the radius of a star of the literature table."""
+    ids = [c["catalogue_id"] for c in metadata["cross_ids"]]
+    kinds = [c["catalogue"] for c in metadata["cross_ids"]]
+    return REFERENCES[RADII[key_of(ids[kinds.index(LITERATURE.catalogue)])].reference]
+
+
+def _size(metadata: dict, row: dict, compact: bool = False) -> _Size | None:
+    if (measured := measured_radius(row)) is not None:
+        radius, source = measured
+        reference = _paper(metadata) if source == "literature" else JMDC
+        return _Size(radius, source, reference)
     if row["host_radius"]:
         return _Size(row["host_radius"], "catalogue", NASA_EXOPLANET_ARCHIVE)
     radius = row["radius_flame"] or row["radius_gspphot"]
@@ -168,11 +144,10 @@ def add_lineup_fields(
     order = [entry["slug"] for entry in reader.metadata["families"]]
     compact = sum(1 << order.index(family) for family in COMPACT_FAMILIES)
     rows = reader.rows(POINT_SOURCE.slug, ids, COLUMNS)
-    diameters = measured_diameters()
     sized: dict[str, int] = defaultdict(int)
     for id_, row in rows.items():
         tags = metadata[id_]["families"] | metadata[id_]["families_estimated"]
-        size = _size(metadata[id_], row, diameters, bool(tags & compact))
+        size = _size(metadata[id_], row, bool(tags & compact))
         if size is None:
             continue
         sized[size.source] += 1
