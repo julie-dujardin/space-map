@@ -18,10 +18,28 @@ import {
 	limbStrip,
 	screenCount,
 	screenFit,
-	screenScale
+	screenScale,
+	sizeBands
 } from './lineup-fit';
 
 const body = (radiusKm: number, label = 0) => ({ radiusKm, label });
+
+describe('sizeBands', () => {
+	const cut = (sizes: number[], perPage: number, ratio: number) =>
+		sizeBands(sizes, (x) => x, perPage, ratio);
+
+	it('turns the page at perPage', () => {
+		expect(cut([9, 8, 7, 6, 5], 2, Infinity)).toEqual([[9, 8], [7, 6], [5]]);
+	});
+
+	it('turns the page before a body too small for the page', () => {
+		expect(cut([1000, 500, 40, 30, 1], 5, 20)).toEqual([[1000, 500], [40, 30], [1]]);
+	});
+
+	it('keeps a body exactly at the ratio', () => {
+		expect(cut([20, 1], 5, 20)).toEqual([[20, 1]]);
+	});
+});
 
 describe('fitScale', () => {
 	it('keeps the full scale while the boxes fit', () => {

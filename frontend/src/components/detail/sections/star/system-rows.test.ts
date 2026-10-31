@@ -193,7 +193,7 @@ describe('a held star', () => {
 	it('gives each value with its source', () => {
 		const sections = systemSections(record, held, null);
 		const physical = section(sections, 'physical')?.rows;
-		expect(entry(physical, 'Diameter')?.tooltip).toBe('Source: Doyle et al. 2011');
+		expect(entry(physical, 'Diameter')?.tooltip).toContain('Source: Doyle et al. 2011');
 		expect(entry(physical, 'Mass')?.tooltip).toContain('Source: Doyle et al. 2011');
 		expect(section(sections, 'classification')?.rows[0].tooltip).toBe(
 			'Source: Open Exoplanet Catalogue'

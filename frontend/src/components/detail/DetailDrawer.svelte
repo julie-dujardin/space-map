@@ -266,6 +266,7 @@
 		satellitesGroup: () => members.satellitesGroup,
 		moonCount: () => data?.global?.moon_count ?? 0,
 		fallbackName: () => fallbackName,
+		starLineup: () => cat.stars || groupDetail?.global?.type === 'star_family',
 		// Opt-in: the two small-body categories say so in their config, and the
 		// zones, flags and split-comet families through the category their
 		// members belong to — none of them has a config entry.

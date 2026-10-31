@@ -437,6 +437,15 @@ interface GlobalGroupData {
   // metadata.json) and the Sun, and its `published_star_count` and
   // `estimated_star_count` are the root family's, the classified stars.
   // `notable_members` are the 20 best-known stars with a published family.
+  // A star listed here or on a family page, with a known size, also has `radii` (a = b = c, km, three
+  // figures), with `source` and the `reference` to credit: "literature" from a
+  // paper; "interferometry" from the median of its JMDC diameters at its
+  // distance, leaving out the bands from 8 µm, the distance a paper's or a parallax
+  // of 5σ; "catalogue" as its star page (`host_radius`, else `radius_flame`,
+  // else `radius_gspphot`, neither of those two for a neutron star or a white
+  // dwarf). It then has
+  // `teff` (`host_teff`, else `teff_gspphot`) and `bp_rp` as the render tree
+  // takes it, where it has them.
   // `groups/__star_plot__.json.gz` is its diagram: `bp_rp` and `abs_g`
   // (absolute G from the parallax, extinction not removed) and `stage` (an
   // index into `stages`, null without one of them) of the stars of 60 random

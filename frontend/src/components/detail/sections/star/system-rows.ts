@@ -17,7 +17,7 @@ import type {
 import type { EntityRef } from '$lib/fetch/objects/object-data';
 import { ltrIsolate } from '$lib/format/bidi';
 import { formatDeclination, formatRightAscension } from '$lib/format/star';
-import { formatMass, massComparison, SOLAR_MASS_KG } from '$lib/format/mass';
+import { formatMass, massComparison, SOLAR_MASS_KG, sizeComparison } from '$lib/format/mass';
 import { formatUnit, joinParts, sigFigures } from '$lib/format/quantities';
 import { formatTemperature } from '$lib/format/temperature';
 import { SOLAR_RADIUS_KM } from '$lib/math/units';
@@ -84,7 +84,13 @@ function diameterValue(radius: number): string {
 
 function heldStarStats(node: SystemNode, star: HeldStarValues): (Stat | null)[] {
 	const diameter =
-		star.radius === null ? null : { label: m.diameter(), value: diameterValue(star.radius) };
+		star.radius === null
+			? null
+			: {
+					label: m.diameter(),
+					value: diameterValue(star.radius),
+					tooltip: sizeComparison(star.radius * SOLAR_RADIUS_KM)
+				};
 	const code = spectralType(star.spectralType);
 	const nature =
 		star.teff !== null
@@ -279,7 +285,10 @@ function heldStarSections(
 			: {
 					label: m.diameter(),
 					value: diameterValue(star.radius),
-					tooltip: sourceOf(star.radiusSource, references)
+					tooltip: hint(
+						sizeComparison(star.radius * SOLAR_RADIUS_KM),
+						sourceOf(star.radiusSource, references)
+					)
 				},
 		star.teff === null
 			? null

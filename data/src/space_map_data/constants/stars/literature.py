@@ -33,11 +33,23 @@ class Distance(NamedTuple):
     upper_percentile: float | None = None
 
 
+class Radius(NamedTuple):
+    # Nominal solar radii.
+    value: float
+    reference: str
+
+
 REFERENCES: dict[str, Reference] = {
     "argyle_2015": Reference(
         "Argyle, Alzner & van Leeuwen 2015",
         "Micrometric measures and orbits of southern visual double stars (AN 336, 378)",
         "https://doi.org/10.1002/asna.201412166",
+    ),
+    "baron_2012": Reference(
+        "Baron et al. 2012",
+        "Imaging the Algol triple system in the H band with the CHARA"
+        " interferometer (ApJ 752, 20)",
+        "https://doi.org/10.1088/0004-637X/752/1/20",
     ),
     "bartkevicius_2002": Reference(
         "Bartkevičius & Gudas 2002",
@@ -101,6 +113,24 @@ REFERENCES: dict[str, Reference] = {
         "Tuthill et al. 2008",
         "The Prototype Colliding-Wind Pinwheel WR 104 (ApJ 675, 698)",
         "https://doi.org/10.1086/527286",
+    ),
+    "kasikov_2026": Reference(
+        "Kasikov et al. 2026",
+        "Painting a family portrait of the yellow super- and hypergiants in the"
+        " Milky Way. I. Constraining the distances and luminosities (A&A 708)",
+        "https://doi.org/10.1051/0004-6361/202558527",
+    ),
+    "levesque_2005": Reference(
+        "Levesque et al. 2005",
+        "The effective temperature scale of Galactic red supergiants: cool, but"
+        " not as cool as we thought (ApJ 628, 973)",
+        "https://doi.org/10.1086/430901",
+    ),
+    "wittkowski_2012": Reference(
+        "Wittkowski et al. 2012",
+        "Fundamental properties and atmospheric structure of the red supergiant"
+        " VY Canis Majoris based on VLTI/AMBER spectro-interferometry (A&A 540, L12)",
+        "https://doi.org/10.1051/0004-6361/201219126",
     ),
 }
 
@@ -168,4 +198,17 @@ DISTANCES: dict[StarKey, Distance] = {
     ("hip", "2007", "96274"): Distance(
         400.5, 389.2, 412.4, "parallax", "gaia_dr2_2018"
     ),
+}
+
+# For the listed stars that JMDC cannot size: a dust shell at 8 µm for VY CMa,
+# the three stars at once for Algol, and for the others no distance to take a
+# diameter to: Hipparcos has no 5σ parallax of µ Cep, Gaia a negative one of ρ Cas.
+RADII: dict[StarKey, Radius] = {
+    # Algol A.
+    ("hd", "1949", "19356"): Radius(2.73, "baron_2012"),
+    ("hd", "1949", "58061"): Radius(1420, "wittkowski_2012"),
+    # From its luminosity and Teff at the distance of Cep OB2.
+    ("hd", "1949", "206936"): Radius(1420, "levesque_2005"),
+    # Anugu et al. 2024's diameter of 2.09 mas at the paper's own distance.
+    ("hd", "1949", "224014"): Radius(628, "kasikov_2026"),
 }

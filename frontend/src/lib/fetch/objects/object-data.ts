@@ -144,6 +144,10 @@ export type ProbeVisitKind =
 	| 'atmospheric'
 	| 'observer';
 
+/** Where a star's lineup radius comes from: a paper, a measured angular
+ *  diameter at the star's distance, or the star's own catalogue value. */
+export type StarRadiusSource = 'literature' | 'interferometry' | 'catalogue';
+
 export interface NotableMemberEntry {
 	/** English Wikidata label (matching object bundles), or the DB fallback name. */
 	name: string;
@@ -173,9 +177,12 @@ export interface NotableMemberEntry {
 		a: number;
 		b: number;
 		c: number;
-		source?: MeasuredShapeSource;
+		source?: MeasuredShapeSource | StarRadiusSource;
 		reference?: OrientationReference;
 	};
+	/** A star's temperature (K), else its BP − RP: its colour on the lineup. */
+	teff?: number;
+	bp_rp?: number;
 	/** Scalar render radius (km) from the Wikidata radius — the render-size
 	 *  fallback for bodies with no PCK radii or SBDB diameter (most TNO dwarfs). */
 	radius_km?: number;

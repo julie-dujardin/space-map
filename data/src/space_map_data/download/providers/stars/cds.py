@@ -101,6 +101,9 @@ CATALOGUES: dict[str, tuple[str, ...]] = {
         "tableb1.dat",
         "refs.dat",
     ),
+    # JMDC (Duvert 2016): the angular diameters measured directly, by
+    # interferometry and lunar occultation. Gaia saturates on these stars.
+    "II/345": ("jmdc.dat.gz",),
     # Gaia Catalogue of Nearby Stars (Gaia Collaboration 2021): the sources
     # within 100 pc, kept and rejected. The distance PDFs are left out.
     "J/A+A/649/A6": (

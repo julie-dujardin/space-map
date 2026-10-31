@@ -5,6 +5,7 @@ import {
 	JUPITER_MASS_KG,
 	massComparison,
 	massReading,
+	sizeComparison,
 	SOLAR_MASS_KG
 } from './mass';
 
@@ -41,5 +42,24 @@ describe('a mass', () => {
 		expect(plain(massComparison(9.996 * e, 0.7 * e, 0.7 * e))).toBe('(10.0 ± 0.7)× Earth');
 		expect(plain(massComparison(9.996 * e, 0.02 * e, 0.02 * e))).toBe('10× Earth');
 		expect(plain(massComparison(1.37 * e, 0.07 * e, 0.2 * e))).toBe('1.37 (1.17–1.44)× Earth');
+	});
+});
+
+describe('sizeComparison', () => {
+	it('reads a star against the Sun', () => {
+		expect(sizeComparison(725 * 695_700)).toContain('725');
+		expect(sizeComparison(725 * 695_700)).toContain('the Sun');
+	});
+
+	it('takes the next reference down at parity', () => {
+		expect(sizeComparison(695_700)).toContain('Jupiter');
+	});
+
+	it('gives a small star as a share of the Sun', () => {
+		expect(sizeComparison(0.14 * 695_700)).toContain('14%');
+	});
+
+	it('reads a white dwarf against Earth', () => {
+		expect(sizeComparison(9_000)).toContain('Earth');
 	});
 });

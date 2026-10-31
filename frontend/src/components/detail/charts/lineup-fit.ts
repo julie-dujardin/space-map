@@ -80,6 +80,30 @@ export function endStrip(pr: number, width: number): number {
 	return 2 * pr <= ASIDE_END_PAD ? ASIDE_END_PAD : limbStrip(width);
 }
 
+/** `sorted`, largest first, cut into pages of at most `perPage`, each ending
+ *  before a body `maxRatio` times smaller than the page's first. */
+export function sizeBands<T>(
+	sorted: readonly T[],
+	size: (item: T) => number,
+	perPage: number,
+	maxRatio: number
+): T[][] {
+	const pages: T[][] = [];
+	let current: T[] = [];
+	for (const item of sorted) {
+		if (
+			current.length === perPage ||
+			(current.length > 0 && size(current[0]) > maxRatio * size(item))
+		) {
+			pages.push(current);
+			current = [];
+		}
+		current.push(item);
+	}
+	if (current.length > 0) pages.push(current);
+	return pages;
+}
+
 /** One body as the fit sees it: its size, the room its name needs, and how
  *  much of its size it takes across the screen. */
 export interface FitBody {

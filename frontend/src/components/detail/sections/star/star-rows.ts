@@ -31,7 +31,7 @@ import {
 } from '$lib/format/quantities';
 import { ltrIsolate } from '$lib/format/bidi';
 import { formatTemperature, formatTemperatureRange } from '$lib/format/temperature';
-import { formatMass, massComparison, SOLAR_MASS_KG } from '$lib/format/mass';
+import { formatMass, massComparison, SOLAR_MASS_KG, sizeComparison } from '$lib/format/mass';
 import { formatLuminosity, luminosityComparison, SOLAR_LUMINOSITY_W } from '$lib/format/light';
 import { SOLAR_RADIUS_KM } from '$lib/math/units';
 import type { Stat } from '../kit/StatCard.svelte';
@@ -227,6 +227,18 @@ function bounded(
 	};
 }
 
+/** A star's diameter row, with what `column`'s radius comes to against the Sun
+ *  (or Jupiter or Earth). */
+function diameterRow(
+	ps: TableRow,
+	entry: StarRowEntry | null,
+	column: string
+): StarRowEntry | null {
+	const radius = ps.number(column);
+	if (!entry || radius === null) return entry;
+	return { ...entry, tooltip: sizeComparison(radius * SOLAR_RADIUS_KM) };
+}
+
 /** A quantity in solar units, in SI on the power of ten of its value, and the
  *  comparison of that SI value and its errors. */
 interface SolarQuantity {
@@ -337,7 +349,11 @@ function flameRows(ps: TableRow, u: ReturnType<typeof units>, run: FlameRun): Fl
 	const fit = flameFitHolds(ps, run);
 	const stage = ps.number(column('evolstage'));
 	return {
-		diameter: bounded(ps, m.diameter(), column('radius'), u.km, 2 * SOLAR_RADIUS_KM),
+		diameter: diameterRow(
+			ps,
+			bounded(ps, m.diameter(), column('radius'), u.km, 2 * SOLAR_RADIUS_KM),
+			column('radius')
+		),
 		luminosity: solarRow(ps, SOLAR_LUMINOSITY, column('lum')),
 		age: fit ? bounded(ps, m.star_row_age(), column('age'), u.gigayear) : null,
 		stage:
@@ -398,7 +414,8 @@ export function starStats(record: ExtrasolarRecord): Stat[][] {
 	if (radius !== null) {
 		out.push({
 			label: m.diameter(),
-			value: joinParts({ value: sigFigures(2 * radius * SOLAR_RADIUS_KM), unit: u.km })
+			value: joinParts({ value: sigFigures(2 * radius * SOLAR_RADIUS_KM), unit: u.km }),
+			tooltip: sizeComparison(radius * SOLAR_RADIUS_KM)
 		});
 	} else if (mass !== null) {
 		out.push({
@@ -624,8 +641,16 @@ function pointSourceSections(
 			? catalogued(ps, m.exoplanet_row_metallicity(), 'host_metallicity', u.dex)
 			: null,
 		fitted('diameter') ??
-			bounded(ps, m.star_row_diameter_photometric(), 'radius_gspphot', u.km, 2 * SOLAR_RADIUS_KM) ??
-			catalogued(ps, m.diameter(), 'host_radius', u.km, null, 2 * SOLAR_RADIUS_KM),
+			diameterRow(
+				ps,
+				bounded(ps, m.star_row_diameter_photometric(), 'radius_gspphot', u.km, 2 * SOLAR_RADIUS_KM),
+				'radius_gspphot'
+			) ??
+			diameterRow(
+				ps,
+				catalogued(ps, m.diameter(), 'host_radius', u.km, null, 2 * SOLAR_RADIUS_KM),
+				'host_radius'
+			),
 		fitted('luminosity'),
 		massRow(ps),
 		fitted('age') ?? catalogued(ps, m.star_row_age(), 'host_age', m.symbol_gigaannum()),

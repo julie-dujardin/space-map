@@ -1,4 +1,5 @@
 import * as m from '$lib/paraglide/messages.js';
+import { EARTH_RADIUS_KM, JUPITER_RADIUS_KM, SOLAR_RADIUS_KM } from '$lib/math/units';
 import {
 	atParity,
 	earthRatio,
@@ -82,6 +83,21 @@ export function formatMeasuredMass(q: Omit<MeasuredQuantity, 'unit' | 'power' | 
 		unit: formatUnit('kilogram', true),
 		power: powerOfTen(q.value, 3)
 	});
+}
+
+/** The radii `sizeComparison` reads a body's against, as `REFERENCES` does.
+ *  Radii span less than masses: a white dwarf is an Earth, not 13% of Jupiter. */
+const SIZE_REFERENCES = [
+	{ km: SOLAR_RADIUS_KM, floor: 0.1, times: m.sun_times, percent: m.sun_percent },
+	{ km: JUPITER_RADIUS_KM, floor: 0.5, times: m.jupiter_times, percent: m.jupiter_percent },
+	{ km: EARTH_RADIUS_KM, floor: 0.01, times: m.earth_times, percent: m.earth_percent }
+];
+
+/** What a radius comes to against the Sun, Jupiter or Earth, by the rule of
+ *  `massComparison`. A ratio of radii is the ratio of the diameters too. */
+export function sizeComparison(radiusKm: number): string | undefined {
+	const ref = SIZE_REFERENCES.find((r) => radiusKm / r.km >= r.floor && !atParity(radiusKm / r.km));
+	return ref && (earthRatio(radiusKm / ref.km, { words: ref }) ?? undefined);
 }
 
 /** The masses a body's is read against, largest first, and the share of each

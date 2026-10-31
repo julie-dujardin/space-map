@@ -6,7 +6,8 @@ import {
 	buildLineup,
 	craftGeometryFromMember,
 	geometryFromMember,
-	renderableCount
+	renderableCount,
+	starGeometryFromMember
 } from './lineup';
 import { STRIP_CAPACITY } from '../members/MemberStrip.svelte';
 import type { LineupBody } from './BodyLineup.svelte';
@@ -23,6 +24,11 @@ import type { CategoryConfig } from '$lib/state/category-config';
 import { rocketBodies, rocketsCompareHref, rocketsOf } from '$lib/compare/rockets';
 import type { Source as CitedSource } from '../sections/SourcesFooter.svelte';
 import * as m from '$lib/paraglide/messages.js';
+
+// Stars span too much for one scale: a page holds five, none more than this
+// many times smaller than its largest, so each stays a disc.
+const STAR_PAGE = 5;
+const STAR_BAND_RATIO = 20;
 
 // A small-body zone earns a sphere lineup once enough members carry a measured
 // diameter; below the floor it falls back to the plain member-strip page.
@@ -56,6 +62,8 @@ export interface LineupHeroDeps {
 	satellitesGroup: () => string | undefined;
 	moonCount: () => number;
 	fallbackName: () => string;
+	/** Whether this page collects stars: Stars, or a star family. */
+	starLineup: () => boolean;
 	/** Whether this page asked for a sphere lineup — see `CategoryConfig`. */
 	sphereLineup: () => boolean;
 	/** The launch-vehicle group this page is, if it is one: its hero is the
@@ -76,6 +84,8 @@ export interface LineupHeroSpec {
 	bodies: LineupBody[];
 	ariaLabel: string;
 	perPage?: number;
+	/** See BodyLineup. Set only on a row of stars. */
+	bandRatio?: number;
 }
 
 type ImageryCredit = { key: string; label: string; url: string };
@@ -123,6 +133,21 @@ export class LineupHero {
 	};
 
 	constructor(d: LineupHeroDeps) {
+		// The same row on the overview and on the members tab.
+		const starRow = $derived.by<LineupHeroSpec | null>(() => {
+			if (!d.starLineup()) return null;
+			const bodies = buildLineup(d.notableMembers() ?? [], starGeometryFromMember, {
+				names: d.memberNames(),
+				descriptions: d.memberDescriptions()
+			});
+			if (bodies.length < 2) return null;
+			return {
+				bodies,
+				ariaLabel: d.fallbackName(),
+				perPage: STAR_PAGE,
+				bandRatio: STAR_BAND_RATIO
+			};
+		});
 		const smallBodyBodies = $derived(
 			buildLineup(d.notableMembers() ?? [], geometryFromMember, {
 				names: d.memberNames(),
@@ -165,6 +190,7 @@ export class LineupHero {
 			// its rocket to show.
 			if (this.#rockets.length > 0)
 				return { bodies: this.#rockets, ariaLabel: d.fallbackName(), perPage: 4 };
+			if (starRow) return starRow;
 			const members = d.notableMembers();
 			if (!members || members.length === 0) return null;
 			const names = d.memberNames();
@@ -232,6 +258,7 @@ export class LineupHero {
 		this.membersLineup = $derived.by<LineupHeroSpec | null>(() => {
 			const members = d.notableMembers();
 			if (!members || members.length === 0 || d.cat().planets) return null;
+			if (d.starLineup()) return starRow;
 			const spheres = buildLineup(members, geometryFromMember, {
 				names: d.memberNames(),
 				descriptions: d.memberDescriptions()

@@ -1,8 +1,11 @@
+import { SUN_ID } from '$lib/constants';
 import { isExtrasolarObjectId } from '$lib/fetch/extrasolar/ids';
 import type { NotableMemberEntry } from '$lib/fetch/groups/details';
 import type { ModelIndexEntry } from '$lib/fetch/models';
 import type { ModelBundleMeta } from '$lib/scene/objects/body/model';
+import { teffFromBpRp } from '$lib/scene/starfield/colour';
 import type { LineupBody } from './BodyLineup.svelte';
+import { SUN_TEFF } from './lineup-star';
 
 /** The body-class-specific part of a LineupBody: geometry plus optional flat
  *  colour / render hints. The routing id, localized name and hover description
@@ -47,6 +50,7 @@ export function geometryFromMember(m: NotableMemberEntry & { id: string }): Line
 	if (m.model) geom.model = m.model;
 	// Explicit false only — absent means a pre-flag export, which still probes.
 	geom.texture = m.texture;
+	if (m.id === SUN_ID) geom.photosphere = { teff: SUN_TEFF };
 	return {
 		...geom,
 		...RENDER_HINTS[m.id],
@@ -54,6 +58,17 @@ export function geometryFromMember(m: NotableMemberEntry & { id: string }): Line
 		geometricAlbedo: m.geometric_albedo,
 		lunarWeightScale: m.lunar_weight_scale
 	};
+}
+
+/** A star's lineup geometry: the Sun as any other row draws it, a catalogue
+ *  star from the size and colour the export gives it. `null` with neither. */
+export function starGeometryFromMember(
+	m: NotableMemberEntry & { id: string }
+): LineupGeometry | null {
+	if (!isExtrasolarObjectId(m.id)) return m.id === SUN_ID ? geometryFromMember(m) : null;
+	const teff = m.teff ?? (m.bp_rp != null ? teffFromBpRp(m.bp_rp) : null);
+	if (!m.radii || teff === null) return null;
+	return { radiusKm: m.radii.a, texture: false, photosphere: { teff } };
 }
 
 /** A spacecraft member's lineup geometry. The mesh *is* the craft — there is no

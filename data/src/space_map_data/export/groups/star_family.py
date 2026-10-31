@@ -46,6 +46,10 @@ from space_map_data.export.groups.family_pages import (
     served_metadata,
     sitelink_rank,
 )
+from space_map_data.export.groups.star_lineup import (
+    JMDC_FILE,
+    add_lineup_fields,
+)
 from space_map_data.export.groups.stats import GroupExtraStats
 from space_map_data.export.names import Names, ObjectNames
 from space_map_data.export.notable import NotableObject
@@ -96,7 +100,8 @@ def served_families_stamp(extrasolar_dir: Path = EXTRASOLAR_DIR) -> dict | None:
     Metadata and Point source tokens of the served extrasolar export, None
     with no export served. The pages read the counts and the lists, the
     families of their Wikipedia stars from the Metadata tiles, and the largest
-    star and the diagram from the Point source tiles."""
+    star, the diagram and the lineup from the Point source tiles, which JMDC
+    completes."""
     # Under the lock, so both files come from one export.
     with served(extrasolar_dir):
         metadata = served_metadata(extrasolar_dir)
@@ -108,6 +113,7 @@ def served_families_stamp(extrasolar_dir: Path = EXTRASOLAR_DIR) -> dict | None:
             "lists": content_stamp(families_file(extrasolar_dir / "v1" / "x")),
             "metadata": metadata["tables"]["metadata"]["token"],
             "point_source": metadata["tables"][POINT_SOURCE.slug]["token"],
+            "diameters": content_stamp(JMDC_FILE),
         }
 
 
@@ -141,6 +147,7 @@ def build_star_family_groups(
             names,
             sun,
         )
+        add_lineup_fields(reader, out.notable_members)
         largest = _largest_star(reader, star_objects, names)
         out.plot = _plot(reader, out.notable_members.get(STARS_SLUG, []))
 

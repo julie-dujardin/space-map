@@ -1,5 +1,6 @@
 <script lang="ts" module>
 	import type { DisplacementMeta } from '$lib/scene/objects/surface/displacement';
+	import type { Photosphere } from './lineup-star';
 
 	/** One body in the lineup. Geometry is supplied by the caller (planet/moon
 	 *  constants today, export diameters for asteroids later), so this engine
@@ -57,6 +58,8 @@
 		 *  pose is dropped for a face-on one — a coastline seen at a glancing
 		 *  angle is not a coastline anybody recognises. */
 		flat?: boolean;
+		/** A star: a self-lit disc in place of a surface. */
+		photosphere?: Photosphere;
 		/** Not a member of the row, but a neighbouring size band's body drawn at
 		 *  the row's own scale against one edge — the step in scale, shown rather
 		 *  than stated. It takes no slot, no name and no hover. */
@@ -80,6 +83,7 @@
 		Quaternion,
 		Scene,
 		SphereGeometry,
+		type Sprite,
 		SRGBColorSpace,
 		TextureLoader,
 		Vector3,
@@ -93,8 +97,15 @@
 		orthoRotateSpeed
 	} from '$lib/scene/camera/motion-scale';
 	import { sceneSettings } from '$lib/scene/settings.svelte';
+	import { starCssColour } from '$lib/scene/starfield/colour';
 	import { SilhouetteGlow } from './lineup-silhouette';
-	import { makeLineupSunMaterial } from './lineup-sun';
+	import {
+		addLineupStarHalo,
+		fitLineupStar,
+		HALO_LAYER,
+		LINEUP_SKY,
+		makeLineupStarMaterial
+	} from './lineup-star';
 	import {
 		cheapTier,
 		craftModelUrl,
@@ -134,7 +145,7 @@
 	import { getAtmosphereParams, loadAtmospheres } from '$lib/fetch/atmospheres';
 	import { makeEnvMap } from '$lib/scene/lighting';
 	import { frameMapQuaternion } from '$lib/math/orientation';
-	import { BODY_COLORS, DEFAULT_BODY_COLOR, SUN_ID } from '$lib/constants';
+	import { BODY_COLORS, DEFAULT_BODY_COLOR } from '$lib/constants';
 	import { dataBase, versionedUrl } from '$lib/fetch/data-base';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import type { FocusObject } from '$lib/state/focusable';
@@ -143,6 +154,7 @@
 	import { isModifiedClick } from '$lib/modified-click';
 	import { createScrub, DRAG_SLOP, SWIPE_PX } from '$lib/charts/scrub';
 	import { formatKm } from '$lib/format/distance';
+	import { sizeComparison } from '$lib/format/mass';
 	import {
 		ASIDE_END_PAD,
 		BOX_GAP,
@@ -155,7 +167,8 @@
 		fitScale,
 		fullScale,
 		labelWidth,
-		limbStrip
+		limbStrip,
+		sizeBands
 	} from './lineup-fit';
 	import ChevronLeftIcon from '@lucide/svelte/icons/chevron-left';
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
@@ -173,6 +186,9 @@
 		 *  ordered by size, sliced into pages of `perPage`, each page sized to its
 		 *  own largest body. Omit for a single unpaginated row (e.g. planets). */
 		perPage?: number;
+		/** With `perPage`, also turn the page once a body is this many times
+		 *  smaller than the page's largest, for a set too wide for one scale. */
+		bandRatio?: number;
 		/** Canvas height in px. The default suits a row inside the drawer; a page
 		 *  that gives the lineup a stage of its own passes more. */
 		height?: number;
@@ -246,6 +262,7 @@
 		bodies,
 		ariaLabel,
 		perPage,
+		bandRatio,
 		height = DEFAULT_HEIGHT,
 		bleed = 0,
 		boxed = false,
@@ -254,7 +271,7 @@
 		onlayout,
 		oncontextpick,
 		onpick,
-		ground,
+		ground: groundProp,
 		spread = true,
 		compare = false,
 		rotate = false,
@@ -306,10 +323,16 @@
 		return q;
 	}
 
+	function rowGround(row: LineupBody[], asked: string | undefined): string | undefined {
+		return asked ?? (row.some((b) => b.photosphere) ? LINEUP_SKY : undefined);
+	}
+
 	interface Body extends LineupBody {
 		diameterKm: number;
 	}
 	const sized = (b: LineupBody): Body => ({ ...b, diameterKm: b.radiusKm * 2 });
+	// A row with a star in it stands in space, on every page of it.
+	let ground = $derived(rowGround(bodies, groundProp));
 	let items = $derived<Body[]>(bodies.filter((b) => !b.aside).map(sized));
 	// A neighbouring band is fitted to its strip by the vertices it draws, and
 	// relief is applied in the shader where that fit cannot see it — so the one
@@ -331,18 +354,17 @@
 			? `${resolve('/compare')}?m=${sorted.map((b) => b.id).join(',')}`
 			: null
 	);
-	let pageCount = $derived(perPage ? Math.max(1, Math.ceil(sorted.length / perPage)) : 1);
+	let pages = $derived(
+		perPage ? sizeBands(sorted, (b) => b.diameterKm, perPage, bandRatio ?? Infinity) : [sorted]
+	);
+	let pageCount = $derived(Math.max(1, pages.length));
 	let page = $state(0);
 	// Clamp when the body set shrinks (switching collections) so a stale index
 	// can't strand the view on an empty slice.
 	$effect(() => {
 		if (page > pageCount - 1) page = pageCount - 1;
 	});
-	let visibleItems = $derived.by<Body[]>(() => {
-		if (!perPage) return sorted;
-		const p = Math.min(page, pageCount - 1);
-		return sorted.slice(p * perPage, p * perPage + perPage);
-	});
+	let visibleItems = $derived(pages[Math.min(page, pageCount - 1)] ?? []);
 
 	// Enough room reflection to model a craft's foil and panels without washing
 	// out the key light's shading. Craft rows only — see setRoomEnvironment.
@@ -942,6 +964,7 @@
 			material.map?.dispose();
 			material.displacementMap?.dispose();
 			material.dispose();
+			(mesh.children[0] as Sprite | undefined)?.material.dispose();
 			meshes.delete(id);
 		}
 		const root = modelRoots.get(id);
@@ -988,6 +1011,7 @@
 			b.aside ?? '',
 			b.craft ?? false,
 			b.color ?? null,
+			b.photosphere ?? null,
 			b.geometricAlbedo ?? null,
 			b.model ?? null,
 			b.surfaceFrame ?? null,
@@ -1035,9 +1059,10 @@
 			return;
 		}
 		const color = b.color ?? BODY_COLORS[b.id] ?? DEFAULT_BODY_COLOR;
-		// The Sun is self-luminous: unlit limb-darkened disc, no model/texture/relief.
-		if (b.id === SUN_ID) {
-			const mesh = new Mesh(geometry, makeLineupSunMaterial(color));
+		if (b.photosphere) {
+			const seed = [...b.id].reduce((a, c) => a + c.charCodeAt(0), 0);
+			const mesh = new Mesh(geometry, makeLineupStarMaterial(b.photosphere, b.radiusKm, seed));
+			addLineupStarHalo(mesh, b.photosphere);
 			baseQuats.set(b.id, styledQuaternion(b));
 			mesh.quaternion.copy(baseQuats.get(b.id)!);
 			scene.add(mesh);
@@ -1243,6 +1268,7 @@
 			// absolute_radius bodies skip it — their displacement carries the shape.
 			const polarY = p.displacement?.absolute_radius ? 1 : (p.polarRatio ?? 1);
 			obj.scale.set(p.pr, p.pr * polarY, p.pr);
+			if (p.photosphere) fitLineupStar(obj as Mesh, p.photosphere, p.pr);
 			// The relief shader measures slopes against the world radius the scale
 			// above just set, so its height scale is the local one times that.
 			const material = (obj as Mesh).material as MeshStandardMaterial;
@@ -1546,7 +1572,9 @@
 				// rim's core while nearer bodies still occlude it.
 				const depth = -(layout.length - 1 - i) * Z_STEP;
 				// White default when the body has no colour of its own.
-				const tint = BODY_COLORS[p.id] ?? p.color ?? '#ffffff';
+				const tint = p.photosphere
+					? starCssColour(p.photosphere.teff, null)
+					: (BODY_COLORS[p.id] ?? p.color ?? '#ffffff');
 				silhouette.update(renderer, scene, disp, depth - (p.pr + 60), tint, glowOpacity);
 			}
 		}
@@ -1589,6 +1617,7 @@
 		// near/far range so the z-separated spheres (see Z_STEP) all stay in view.
 		camera = new OrthographicCamera(0, 1, 1, 0, -1e6, 1e6);
 		camera.position.z = 10;
+		camera.layers.enable(HALO_LAYER);
 		const key = new DirectionalLight(0xffffff, 3.1);
 		key.position.copy(KEY_LIGHT_DIR.value);
 		const ambient = new AmbientLight(0xffffff, 0.12);
@@ -1673,7 +1702,7 @@
 		class="relative w-full {bleed ? '' : 'overflow-hidden'} {rotate
 			? 'touch-none'
 			: 'touch-pan-y'} {orbiting ? 'cursor-grabbing [&>a]:cursor-grabbing' : ''} {ground
-			? ''
+			? 'rounded-md'
 			: 'rounded-md bg-muted/30'}"
 		style="height: {height}px; {ground ? `background: ${ground}` : ''}"
 		role="group"
@@ -1791,8 +1820,12 @@
 						aria-label={m.pagination_go_to_page({ n: i + 1 })}
 						aria-current={i === page}
 						class="h-1.5 w-1.5 rounded-full transition {i === page
-							? 'bg-foreground/80'
-							: 'bg-foreground/30 hover:bg-foreground/50'}"
+							? ground
+								? 'bg-white/80'
+								: 'bg-foreground/80'
+							: ground
+								? 'bg-white/30 hover:bg-white/50'
+								: 'bg-foreground/30 hover:bg-foreground/50'}"
 					></button>
 				{/each}
 			</div>
@@ -1837,7 +1870,9 @@
 				<div class="text-muted-foreground text-[11px]">{hovered.description}</div>
 			{/if}
 			<div class="text-muted-foreground text-[11px] tabular-nums">
-				{hovered.craft ? m.lineup_span() : m.diameter()}: {sizeText(hovered)}
+				{hovered.craft ? m.lineup_span() : m.diameter()}: {(bandRatio &&
+					sizeComparison(hovered.radiusKm)) ||
+					sizeText(hovered)}
 			</div>
 		</div>
 	{/if}

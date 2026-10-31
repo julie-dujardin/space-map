@@ -6,7 +6,12 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { craftGeometryFromMember, geometryFromMember, renderableCount } from './lineup';
+import {
+	craftGeometryFromMember,
+	geometryFromMember,
+	renderableCount,
+	starGeometryFromMember
+} from './lineup';
 
 describe('geometryFromMember', () => {
 	it('carries the texture flag through, including explicit false', () => {
@@ -57,5 +62,28 @@ describe('craftGeometryFromMember', () => {
 		const eros = { name: 'Eros', id: 'spkid-1', model: 'eros', diameter_km: 16.8 };
 		expect(craftGeometryFromMember(eros)).toBeNull();
 		expect(renderableCount([eros, mro], craftGeometryFromMember)).toBe(1);
+	});
+});
+
+describe('starGeometryFromMember', () => {
+	const radii = { a: 5e8, b: 5e8, c: 5e8 };
+	const star = { name: 'Betelgeuse', id: 'x-22821649', radii };
+
+	it('takes the temperature first, then the colour', () => {
+		const teff = starGeometryFromMember({ ...star, teff: 3600, bp_rp: 0 });
+		expect(teff).toMatchObject({ radiusKm: 5e8, photosphere: { teff: 3600 } });
+		const colour = starGeometryFromMember({ ...star, bp_rp: 2.5 });
+		expect(colour?.photosphere?.teff).toBeLessThan(4000);
+	});
+
+	it('leaves out a star with no size or no colour', () => {
+		expect(starGeometryFromMember({ ...star, radii: undefined, teff: 3600 })).toBeNull();
+		expect(starGeometryFromMember(star)).toBeNull();
+	});
+
+	it('draws the Sun as a star in any row', () => {
+		const sun = { name: 'Sun', id: 'naif-10', radii: { a: 695700, b: 695700, c: 695700 } };
+		expect(starGeometryFromMember(sun)?.photosphere).toEqual({ teff: 5772 });
+		expect(geometryFromMember(sun)?.photosphere).toEqual({ teff: 5772 });
 	});
 });
