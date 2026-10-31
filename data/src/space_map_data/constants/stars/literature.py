@@ -45,6 +45,18 @@ REFERENCES: dict[str, Reference] = {
         "Micrometric measures and orbits of southern visual double stars (AN 336, 378)",
         "https://doi.org/10.1002/asna.201412166",
     ),
+    "aerts_2010": Reference(
+        "Aerts et al. 2010",
+        "Periodic mass-loss episodes due to an oscillation mode with variable"
+        " amplitude in the hot supergiant HD 50064 (A&A 517)",
+        "https://doi.org/10.1051/0004-6361/201014124",
+    ),
+    "arroyo_torres_2013": Reference(
+        "Arroyo-Torres et al. 2013",
+        "The atmospheric structure and fundamental parameters of the red"
+        " supergiants AH Sco, UY Sct, and KW Sgr (A&A 554, A76)",
+        "https://doi.org/10.1051/0004-6361/201220920",
+    ),
     "baron_2012": Reference(
         "Baron et al. 2012",
         "Imaging the Algol triple system in the H band with the CHARA"
@@ -114,6 +126,24 @@ REFERENCES: dict[str, Reference] = {
         "The Prototype Colliding-Wind Pinwheel WR 104 (ApJ 675, 698)",
         "https://doi.org/10.1086/527286",
     ),
+    "chesneau_2014": Reference(
+        "Chesneau et al. 2014",
+        "The yellow hypergiant HR 5171 A: resolving a massive interacting binary"
+        " in the common envelope phase (A&A 563, A71)",
+        "https://doi.org/10.1051/0004-6361/201322421",
+    ),
+    "clark_2012": Reference(
+        "Clark et al. 2012",
+        "On the nature of the galactic early-B hypergiants (A&A 541, A145)",
+        "https://doi.org/10.1051/0004-6361/201117472",
+    ),
+    "groh_2009": Reference(
+        "Groh et al. 2009",
+        "Bona-fide, strong-variable Galactic luminous blue variable stars are"
+        " fast rotators: detection of a high rotational velocity in HR Carinae"
+        " (ApJ 705, L25)",
+        "https://doi.org/10.1088/0004-637X/705/1/L25",
+    ),
     "kasikov_2026": Reference(
         "Kasikov et al. 2026",
         "Painting a family portrait of the yellow super- and hypergiants in the"
@@ -125,6 +155,18 @@ REFERENCES: dict[str, Reference] = {
         "The effective temperature scale of Galactic red supergiants: cool, but"
         " not as cool as we thought (ApJ 628, 973)",
         "https://doi.org/10.1086/430901",
+    ),
+    "mehner_2017": Reference(
+        "Mehner et al. 2017",
+        "Spectroscopic and photometric oscillatory envelope variability during"
+        " the S Doradus outburst of the Luminous Blue Variable R71 (A&A 608, A124)",
+        "https://doi.org/10.1051/0004-6361/201731829",
+    ),
+    "ritchie_2009": Reference(
+        "Ritchie et al. 2009",
+        "Spectroscopic monitoring of the Luminous Blue Variable Westerlund1-243"
+        " from 2002 to 2009 (A&A 507, 1597)",
+        "https://doi.org/10.1051/0004-6361/200912986",
     ),
     "wittkowski_2012": Reference(
         "Wittkowski et al. 2012",
@@ -202,13 +244,38 @@ DISTANCES: dict[StarKey, Distance] = {
 
 # For the listed stars that JMDC cannot size: a dust shell at 8 µm for VY CMa,
 # the three stars at once for Algol, and for the others no distance to take a
-# diameter to: Hipparcos has no 5σ parallax of µ Cep, Gaia a negative one of ρ Cas.
+# diameter to: neither Hipparcos nor Gaia has a 5σ parallax of these supergiants.
 RADII: dict[StarKey, Radius] = {
     # Algol A.
     ("hd", "1949", "19356"): Radius(2.73, "baron_2012"),
+    ("hd", "1949", "62058"): Radius(245, "kasikov_2026"),  # R Pup
+    # HR Car, at minimum, at the photosphere at 5 kpc.
+    ("hd", "1949", "90177"): Radius(75, "groh_2009"),
+    ("hd", "1949", "96918"): Radius(616, "kasikov_2026"),  # V382 Car
+    ("hd", "1949", "100261"): Radius(403, "kasikov_2026"),  # o1 Cen
+    ("hd", "1949", "101947"): Radius(222, "kasikov_2026"),  # V810 Cen
+    # HR 5171 A, the whole of its contact binary's larger star.
+    ("hd", "1949", "119796"): Radius(1315, "chesneau_2014"),
+    ("hd", "1949", "152236"): Radius(103, "clark_2012"),  # ζ1 Sco, at 1.64 kpc.
+    ("hd", "1949", "179821"): Radius(264, "kasikov_2026"),  # V1427 Aql
+    ("hd", "1949", "212466"): Radius(902, "kasikov_2026"),  # RW Cep
+    ("hd", "1949", "217476"): Radius(449, "kasikov_2026"),  # V509 Cas
     ("hd", "1949", "58061"): Radius(1420, "wittkowski_2012"),
     # From its luminosity and Teff at the distance of Cep OB2.
     ("hd", "1949", "206936"): Radius(1420, "levesque_2005"),
     # Anugu et al. 2024's diameter of 2.09 mas at the paper's own distance.
     ("hd", "1949", "224014"): Radius(628, "kasikov_2026"),
+    # R71, quiescent, at the photosphere.
+    ("hd", "1949", "269006"): Radius(107, "mehner_2017"),
+    ("hd", "1949", "316496"): Radius(1009, "arroyo_torres_2013"),  # KW Sgr
+    ("gaia", "dr3", "2067782734461462912"): Radius(246, "clark_2012"),  # Cyg OB2 #12
+    # HD 50064, not in Hipparcos. Rough, from its Hα profile.
+    ("gaia", "dr3", "3113547759973829120"): Radius(200, "aerts_2010"),
+    ("gaia", "dr3", "2200195820289135104"): Radius(1520, "levesque_2005"),  # V354 Cep
+    ("gaia", "dr3", "4152993273702130432"): Radius(
+        1708, "arroyo_torres_2013"
+    ),  # UY Sct
+    # Westerlund 1-243, at the photosphere at 4.5 kpc.
+    ("gaia", "dr3", "5940105830990286208"): Radius(450, "ritchie_2009"),
+    ("gaia", "dr3", "6054569565614460800"): Radius(70, "clark_2012"),  # BP Cru
 }
