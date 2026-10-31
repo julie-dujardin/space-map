@@ -20,9 +20,10 @@ from space_map_data.extrasolar.registry import (
 H1, H2 = 16_777_217, 33_554_433
 ARCHIVE = ("nasa-exoplanet-archive", "pscomppars")
 EU = ("exoplanet-eu", "catalog")
+PAPERS = ("Xuan 2024", "Best 2017")
 
 
-def planet(index, host, *ids, year=2010, letter="b", name=None, period=10.0):
+def planet(index, host, *ids, year=2010, letter="b", name=None, period=10.0, papers=()):
     return Incoming(
         index,
         host,
@@ -31,6 +32,7 @@ def planet(index, host, *ids, year=2010, letter="b", name=None, period=10.0):
         letter,
         name or f"P{index}",
         period,
+        papers,
     )
 
 
@@ -157,6 +159,29 @@ class TestLaterIngests:
         # The alias leads to the survivor at the next ingest.
         later = part.run([planet(0, H1, archive(2))])
         assert later.number[0] == (H1, 1)
+
+    def test_a_cited_merge_names_its_paper(self):
+        part = self.first()
+        result = part.run([planet(0, H1, archive(1), eu("A c"), papers=PAPERS)])
+        [text] = result.events["merged"]
+        assert text.endswith("P0 holds the ids of both (Xuan 2024; Best 2017)")
+
+    def test_a_merge_with_no_paper_names_none(self):
+        part = self.first()
+        result = part.run([planet(0, H1, archive(1), eu("A c"))])
+        [text] = result.events["merged"]
+        assert text.endswith("P0 holds the ids of both")
+
+    def test_a_cited_host_move_names_its_paper(self):
+        part = self.first()
+        result = part.run(
+            [
+                planet(0, H2, archive(1), papers=PAPERS),
+                planet(1, H1, archive(2), letter="c"),
+            ]
+        )
+        [text] = result.events["host changed"]
+        assert text.endswith(f"the host of P0 is now {H2} (Xuan 2024; Best 2017)")
 
     def test_a_new_host_gives_a_new_number_and_an_alias(self):
         # The host of planet 0 merged into H2, or a catalogue moved it there.

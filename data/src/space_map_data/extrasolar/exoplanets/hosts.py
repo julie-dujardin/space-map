@@ -37,7 +37,8 @@ Its rows claim the key and carry no astrometry: they rank above SIMBAD's, and
 a catalogue's position of the star is the primary's. A star that the table
 adds has no values, so it gives a row only when no catalogue lists the star.
 The rows of a host that claims its SIMBAD object carry no astrometry too, so
-the star keeps SIMBAD's.
+the star keeps SIMBAD's. Such a row needs its claim: `ingest.missed_claims`
+reports each row whose claim reached no object.
 """
 
 import csv
@@ -122,8 +123,9 @@ class Identity:
     oid: str | None = None
     # The DR3 id came from a catalogue, not from SIMBAD or DR2.
     gaia_from_catalogue: bool = False
-    # The key of its `planet_hosts` entry.
+    # The key of its `planet_hosts` entry, and the papers of its rows.
     listed: StarKey | None = None
+    papers: tuple[str, ...] = ()
 
     @property
     def first(self) -> Star:
@@ -311,6 +313,7 @@ def build_stars(
         catalogue, star, oid, dr3, hip, from_catalogue = entries[i]
         of[(catalogue, star.key)] = identity.index
         identity.listed = identity.listed or star.listed
+        identity.papers = tuple(dict.fromkeys((*identity.papers, *star.papers)))
         if catalogue in identity.members:
             duplicates.append(
                 f"{catalogue}: {star.name} is {identity.members[catalogue].name}"

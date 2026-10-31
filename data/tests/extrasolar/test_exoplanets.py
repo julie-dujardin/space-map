@@ -306,7 +306,7 @@ def planet(catalogue, name, star_key, period=None, **more) -> Planet:
         (name, *more.pop("aliases", ())),
         more.pop("status", catalogues.CONFIRMED),
         star_key,
-        letter=catalogues.letter_of(name, capital=True),
+        letter=catalogues.letter_of(name, capital=catalogue == catalogues.OEC),
         values=values,
         **more,
     )

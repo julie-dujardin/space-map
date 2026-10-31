@@ -10,6 +10,9 @@ and the planets table at commit. It comes after the star systems: a
 circumbinary planet's host is the node of its pair, and a planetary system
 is the root of its host's star system.
 
+`read` raises for a stale entry of `planet_hosts`, before anything is written.
+`add_passes` raises for a key of `planet_hosts` that its row does not reach.
+
 The Gaia rows of the hosts go to the gaia-dr3-named pass, whose astrometry
 ranks below Hipparcos. A host with a HIP number and an unpositionable DR3
 source that is not the best neighbour of a Hipparcos star claims its HIP
@@ -20,7 +23,7 @@ import logging
 import re
 from collections import Counter, defaultdict
 from collections.abc import Container, Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
 
@@ -141,6 +144,8 @@ class Prepared:
     items: list[wikidata_provider.ExoplanetItem]
     # Hosts that claim their SIMBAD object.
     by_simbad: list[str]
+    # Host rows with no astrometry whose claim linked no object.
+    missed_claims: list[str] = field(default_factory=list)
 
     def batches(self, source: str) -> list[pa.Table]:
         return [self.host_rows[source]]
@@ -245,6 +250,7 @@ def read(reader: GaiaReader, inputs: Inputs = DEFAULT_INPUTS) -> Read:
         catalogues.read_eu(inputs.eu),
         catalogues.read_oec(inputs.oec),
     ]
+    catalogues.check_papers(cats)
     hub = simbad.read_simbad(inputs.simbad)
     neighbours = hosts.read_neighbours(inputs.neighbourhood)
     stars = hosts.build_stars(cats, hub, neighbours)
@@ -652,9 +658,42 @@ def _star_of(planet: Joined, stars: Stars) -> int | None:
 
 
 def add_passes(run: IngestRun, prepared: Prepared, complete: bool) -> None:
-    """Run the catalogue passes."""
+    """Run the catalogue passes, and check the rows with no astrometry."""
+    identities = [prepared.stars.identities[index] for index in prepared.hosts]
+    # A merge that a key of `planet_hosts` causes names its paper.
+    run.citations |= {
+        "/".join(i.listed): "; ".join(i.papers) for i in identities if i.listed
+    }
     for source in SOURCES:
         run.add(source, prepared.batches(source.name), complete)
+    prepared.missed_claims = missed_claims(run, identities, complete)
+
+
+def missed_claims(
+    run: IngestRun, identities: list[hosts.Identity], complete: bool
+) -> list[str]:
+    """The host rows with no astrometry whose claim linked no object.
+
+    Such a row makes a star with no position, or takes a star near its row.
+    A partial ingest can lack the object. Else a key of `planet_hosts` raises:
+    the entry is wrong.
+    """
+    unreached = {source.name: run.unreached_claims(source.name) for source in SOURCES}
+    found = []
+    for identity in identities:
+        claim = "/".join(identity.listed or (*hosts.SIMBAD_OID, identity.oid or ""))
+        for source, star in identity.members.items():
+            if claim not in unreached[source].get(star.key, ()):
+                continue
+            text = f"{star.name} ({source}) claims {claim}"
+            if identity.listed and complete:
+                raise ValueError(
+                    f"planet_hosts: {text}, which it does not reach. Check the"
+                    " key and the position of the entry."
+                )
+            logger.warning("exoplanets: no object for a claim: %s", text)
+            found.append(text)
+    return found
 
 
 # The extension
@@ -739,6 +778,14 @@ class PlanetsExtension:
                     letter=record.text("letter"),
                     designation=record.text("designation") or "",
                     period=record.get("period"),
+                    papers=tuple(
+                        dict.fromkeys(
+                            (
+                                *record.joined.papers,
+                                *prepared.stars.identities[record.star].papers,
+                            )
+                        )
+                    ),
                 )
             )
         system_of, joined_systems = one_system_per_host(host_of, system_of, rank)
@@ -858,6 +905,17 @@ class PlanetsExtension:
                 f" unmatched {join.counts[(source, 'unmatched')]:,}"
             )
         lines += _listed("rows on a host from a paper", join.listed, limit=None)
+        lines += _listed("rows joined by a paper", join.cited, limit=None)
+        lines += _listed(
+            "check: rows that their catalogue now puts on the star of their"
+            " planet_hosts entry, so the entry can go",
+            [
+                text
+                for catalogue in prepared.catalogues
+                for text in catalogue.superseded
+            ],
+            limit=None,
+        )
         lines += _listed("ambiguous (a tie between candidates)", join.ambiguous)
         lines += _listed("contested (two rows want one planet)", join.contested)
         lines += _listed(
@@ -942,6 +1000,21 @@ class PlanetsExtension:
         lines += _listed(
             "hosts without a Gaia DR3 id or HIP number that claim their SIMBAD object",
             prepared.by_simbad,
+            limit=None,
+        )
+        lines += _listed(
+            "stars with a key from a paper",
+            [
+                f"{identity.name}: {'/'.join(identity.listed)}"
+                f" ({'; '.join(identity.papers)})"
+                for identity in (stars.identities[i] for i in host_list)
+                if identity.listed
+            ],
+            limit=None,
+        )
+        lines += _listed(
+            "check: host rows with no astrometry whose claim linked no object",
+            prepared.missed_claims,
             limit=None,
         )
         lines += _listed(
@@ -1030,6 +1103,7 @@ class PlanetsExtension:
             "new": assignment.new,
             "kept": assignment.kept,
             "moved": assignment.moved,
+            "missed_claims": len(prepared.missed_claims),
             **{
                 kind.replace(" ", "_")
                 .replace(",", "")

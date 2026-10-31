@@ -30,10 +30,10 @@ to a better row tries its next candidate.
 A paper in `planet_hosts` comes before all of this: a row with a host from a
 paper stays out of the join, and a row that a paper names as another catalogue's
 planet joins that planet first. A row with no star joins its planet last, as
-that planet can come from a later catalogue.
+that planet can come from a later catalogue. A citation raises when its planet
+is not in the join, or already has a row of that catalogue.
 """
 
-import logging
 import math
 import re
 from collections import Counter, defaultdict
@@ -58,8 +58,6 @@ from space_map_data.extrasolar.exoplanets.hosts import (
     component_letter,
 )
 from space_map_data.extrasolar.exoplanets.simbad import Simbad
-
-logger = logging.getLogger(__name__)
 
 KEPT_STATUS = frozenset({CONFIRMED, CONTROVERSIAL})
 # Objects that orbit a planet or share its orbit are not planets of a star.
@@ -127,6 +125,13 @@ class Joined:
                 return planet.values["period"].value
         return None
 
+    @property
+    def papers(self) -> tuple[str, ...]:
+        """The papers of `planet_hosts` that correct its rows."""
+        return tuple(
+            dict.fromkeys(paper for row in self.rows.values() for paper in row.papers)
+        )
+
 
 @dataclass
 class JoinResult:
@@ -141,8 +146,10 @@ class JoinResult:
     missed: list[str]
     # Unmatched planets with a sibling of the same letter on a shared host.
     same_letter: list[str] = field(default_factory=list)
-    # Rows with a host from a paper, and that host.
+    # Rows with a host from a paper, with that host and paper.
     listed: list[str] = field(default_factory=list)
+    # Rows that a paper joins to a planet, with that planet and paper.
+    cited: list[str] = field(default_factory=list)
 
 
 def _value(planet: Planet, name: str) -> float | None:
@@ -198,6 +205,22 @@ class _Hosts:
 
 def _bare(name: str) -> str:
     return _PRIMARY.sub("", LENS.sub(r"\1", name))
+
+
+def _cited(row: Planet, other: Planet) -> str:
+    return (
+        f"{row.name} ({row.catalogue}) is {other.name} ({other.catalogue}):"
+        f" {'; '.join(row.papers)}"
+    )
+
+
+def _no_planet(row: Planet) -> ValueError:
+    """The error of a row whose citation names no planet of the join."""
+    target = " ".join(row.same_as or ())
+    return ValueError(
+        f"planet_hosts: {row.name} ({row.catalogue}) joins {target}, which is no"
+        " planet of the join. Give the entry the row of that planet, or remove it."
+    )
 
 
 def designation_key(name: str) -> str:
@@ -282,7 +305,7 @@ def _match(
         for planet in joined.rows.values():
             if planet.listed:
                 continue
-            by_row[(planet.catalogue, planet.name)] = at
+            by_row[(planet.catalogue, planet.key)] = at
             for key in hosts.keys(planet):
                 by_key[key].append(at)
             oid = simbad.planet(planet.catalogue, planet.name)
@@ -295,7 +318,7 @@ def _match(
         if row.same_as in by_row:
             pairs.append((CITED, index, by_row[row.same_as], BY_CITATION))
         elif row.same_as:
-            logger.warning("%s: no row %s %s", row.name, *row.same_as)
+            raise _no_planet(row)
         candidates = {at for key in hosts.keys(row) for at in by_key.get(key, ())}
         oid = simbad.planet(row.catalogue, row.name)
         same = set(by_object.get(oid, ())) if oid else set()
@@ -344,6 +367,8 @@ def _match(
             result.counts[(catalogue, rule)] += 1
             joined_rows.add(index)
             other = base[at].first
+            if rule == BY_CITATION:
+                result.cited.append(_cited(row, other))
             if not close(_period(other), _period(row), CHECK_TOLERANCE) and (
                 _period(other) and _period(row)
             ):
@@ -401,7 +426,7 @@ def _days(planet: Planet) -> str:
 def _join_starless(catalogues: list[Catalogue], result: JoinResult) -> None:
     """Add each cited row with no star to the planet that it names."""
     by_row = {
-        (planet.catalogue, planet.name): joined
+        (planet.catalogue, planet.key): joined
         for joined in result.planets
         for planet in joined.rows.values()
     }
@@ -411,13 +436,22 @@ def _join_starless(catalogues: list[Catalogue], result: JoinResult) -> None:
                 continue
             joined = by_row.get(row.same_as)
             if joined is None:
-                logger.warning("%s: no row %s %s", row.name, *row.same_as)
-                continue
+                raise _no_planet(row)
+            # One planet holds one row of each catalogue.
+            if row.catalogue in joined.rows:
+                raise ValueError(
+                    f"planet_hosts: {row.name} ({row.catalogue}) joins"
+                    f" {joined.first.name}, which already has the row"
+                    f" {joined.rows[row.catalogue].name}. Remove the entry, or"
+                    " give that row a host."
+                )
+            other = joined.first
             rows = joined.rows | {row.catalogue: row}
             joined.rows = {c: rows[c] for c in CATALOGUES if c in rows}
             joined.how[row.catalogue] = BY_CITATION
             result.counts[(row.catalogue, "rows")] += 1
             result.counts[(row.catalogue, BY_CITATION)] += 1
+            result.cited.append(_cited(row, other))
 
 
 def join_planets(
@@ -453,7 +487,8 @@ def join_planets(
         rows = [row for row in kept if not row.listed]
         listed = [row for row in kept if row.listed]
         result.listed += [
-            f"{row.name} ({catalogue.name}): {row.star}" for row in listed
+            f"{row.name} ({catalogue.name}): {row.star} ({'; '.join(row.papers)})"
+            for row in listed
         ]
         left = rows
         if result.planets:

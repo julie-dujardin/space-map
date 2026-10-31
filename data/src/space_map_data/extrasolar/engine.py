@@ -16,7 +16,7 @@ registry and the earlier passes, the neighbouring regions included:
    links the row to the object that holds that id. A claim of an object that
    another row of the pass took, or that holds another id of the row's own
    catalogue, is a conflict. The ingest logs and counts it, and does not
-   apply it.
+   apply it. `unreached_claims` gives the rows whose claims linked nothing.
 3. A row with no link goes to the source's matcher, which searches the
    positions of the registry and of the earlier passes. The pairs of the
    whole pass are assigned together, so the result does not depend on the
@@ -37,11 +37,11 @@ claim one object, the first in input order keeps it. The others lose their
 claims, and the ingest logs each one.
 
 A row that links two objects joins them. Each join is logged with its
-evidence and shown in the report. When both are minted IDs, the older one
-survives (the earlier ingest, then the lower number) and the other becomes its
-alias. Each merge is logged with both IDs and its evidence, kept in the
-ingest log and shown in the report. It stays unreviewed until
-`space-map-extrasolar review`.
+evidence and shown in the report. The evidence names the work of a claim in
+`citations`. When both are minted IDs, the older one survives (the earlier
+ingest, then the lower number) and the other becomes its alias. Each merge is
+logged with both IDs and its evidence, kept in the ingest log and shown in the
+report. It stays unreviewed until `space-map-extrasolar review`.
 
 `commit` then works region by region. Each new object with a table row takes
 the next free serial in its home table and cell: brightest first, ties by
@@ -391,6 +391,8 @@ class PassState:
     counts: dict[str, int] = field(default_factory=lambda: defaultdict(int))
     # Keys that a row of this pass took by a claim, with that row.
     claimed: dict[int, str] = field(default_factory=dict)
+    # (catalogue id, claim) of each conflict of this pass.
+    refused: list[tuple[str, str]] = field(default_factory=list)
     # Catalogue ids of the rows whose claims another row keeps.
     lost: set[str] = field(default_factory=set)
     # The key of each claim, by region, that `_settle` looked up.
@@ -606,6 +608,8 @@ class IngestRun:
         # Run keys that a minting row joined after their own pass.
         self.mintable_joins: set[int] = set()
         self.conflicts: list[str] = []
+        # Claimed id, as `catalogue/release/id` → the work that gives it.
+        self.citations: dict[str, str] = {}
         # The evidence of each join of two objects.
         self.joins: list[str] = []
         self._cache: dict[int, tuple[pa.Table, pa.Table | None, np.ndarray]] = {}
@@ -1072,6 +1076,29 @@ class IngestRun:
             )
         return pa.concat_tables(parts)
 
+    def unreached_claims(self, name: str) -> dict[str, list[str]]:
+        """The rows of the pass of source `name` with a claim that linked
+        nothing: `catalogue_id` → each claim as `catalogue/release/id`. Nothing
+        held the id near the row, or the claim was a conflict."""
+        (state,) = [s for s in self.passes if s.source.name == name]
+        found: dict[str, list[str]] = defaultdict(list)
+        for row_id, claim in state.refused:
+            found[row_id].append(claim)
+        for region in sorted(state.regions):
+            path = region_file(self._pass_dir(state.number) / "claims", region)
+            if not path.exists():
+                continue
+            misses = pq.read_table(path)
+            ids = self._staged(state.number, region, ["catalogue_id"])["catalogue_id"]
+            claims = pc.binary_join_element_wise(
+                misses["catalogue"], misses["release"], misses["catalogue_id"], "/"
+            )
+            for row_id, claim in zip(
+                ids.take(misses["row"]).to_pylist(), claims.to_pylist()
+            ):
+                found[row_id].append(claim)
+        return dict(found)
+
     def positions(self, keys: np.ndarray) -> pa.Table:
         """The position of each object: `key`, `ra`, `dec` (J2016.0), `pmra`,
         `pmdec`, `mag`. A minted ID has its registry position, a new object
@@ -1264,6 +1291,8 @@ class IngestRun:
                     )
                 else:
                     links[target] = texts[c]
+                    continue
+                state.refused.append((row_id, texts[c]))
             if not own_key and not links:
                 continue
             primary = own_key or next(iter(links))
@@ -1276,7 +1305,10 @@ class IngestRun:
                 state.claimed[target] = name
             evidence = "; ".join(
                 ([f"{name} → {own_key}"] if own_key else [name])
-                + [f"claims {text} → {target}" for target, text in links.items()]
+                + [
+                    f"claims {text} → {target}{self._cited(text)}"
+                    for target, text in links.items()
+                ]
             )
             for target in links:
                 if target != primary:
@@ -1300,6 +1332,10 @@ class IngestRun:
             schema=CLAIM_MISSES,
         )
         return claim_hit, misses
+
+    def _cited(self, claim: str) -> str:
+        work = self.citations.get(claim)
+        return f" ({work})" if work else ""
 
     def _claim_hits(
         self, source: Source, view: _View | None, claims: pa.ListArray

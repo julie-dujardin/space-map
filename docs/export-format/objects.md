@@ -586,8 +586,8 @@ and map that names the object take its names from that rule. The global
   planet has no agreed letter. Its form after its host stays as an alias. A
   planet whose letter another planet of its
   host has keeps its catalogue name in every language, because a page name
-  points to one page. Every planet of the host counts ("GJ 229 Bb" beside the
-  controversial "GJ 229 b"). Any other planet takes the name of its host's
+  points to one page. Every planet of the host counts, also a controversial
+  one. Any other planet takes the name of its host's
   page in each language and its letter ("Proxima Centauri b"), also when the
   host has an IAU name ("Titawin e"). The host's page is its entry, else its
   Metadata name in the served extrasolar export. The planet's catalogue name

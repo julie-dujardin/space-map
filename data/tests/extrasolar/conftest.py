@@ -12,6 +12,7 @@ from cdshealpix import nested
 from space_map_data.export.extrasolar import skycultures
 from space_map_data.extrasolar import engine, sky
 from space_map_data.extrasolar.engine import IngestResult, IngestRun, Source
+from space_map_data.extrasolar.exoplanets import catalogues
 from space_map_data.extrasolar.match import PositionMatcher
 from space_map_data.extrasolar.registry import Registry
 from space_map_data.extrasolar.tables import CROSS_ID, METADATA, ColumnGroup, TableDef
@@ -150,6 +151,12 @@ def _no_git(monkeypatch):
 def _no_sky_cultures(monkeypatch, tmp_path):
     """An export reads no matched sky cultures unless a test gives some."""
     monkeypatch.setattr(skycultures, "CULTURES_DIR", tmp_path / "no-skycultures")
+
+
+@pytest.fixture(autouse=True)
+def _few_rows_of_the_papers(monkeypatch):
+    """A test catalogue holds few rows of `planet_hosts`, so none is stale."""
+    monkeypatch.setattr(catalogues, "check_papers", lambda found: None)
 
 
 @pytest.fixture

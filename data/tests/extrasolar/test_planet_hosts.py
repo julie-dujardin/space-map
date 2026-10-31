@@ -2,6 +2,7 @@
 
 import gzip
 import logging
+import re
 
 import pytest
 
@@ -22,12 +23,16 @@ from space_map_data.extrasolar.exoplanets.catalogues import (
     OEC,
     Measure,
     apply_papers,
+    check_papers,
+    citation,
 )
 from space_map_data.extrasolar.exoplanets.join import (
     BY_CITATION,
     join_planets,
 )
 from space_map_data.extrasolar.exoplanets.table import Record, settle_letters
+from space_map_data.extrasolar.sky import separation
+from space_map_data.extrasolar.sources.wikidata import gaia_position
 from space_map_data.extrasolar.systems.planets import _identity_ids
 from tests.extrasolar.exoplanet_files import EU_COLUMNS, eu_planet, write_csv
 from tests.extrasolar.test_exoplanets import (
@@ -41,6 +46,10 @@ from tests.extrasolar.test_exoplanets import (
 
 GAIA_STAR = HostStar(("gaia", "dr3", "77"), "T A", 10.0, 20.0)
 SIMBAD_STAR = HostStar(("simbad", "oid", "88"), "T B", 11.0, 21.0)
+XUAN = citation("xuan_2024")
+BENEDICT = citation("benedict_2022")
+# Arcsec from a Gaia HEALPix pixel of level 12 to its centre, with a margin.
+GAIA_PIXEL_REACH = 60.0
 
 
 def host(found: HostStar) -> Host:
@@ -67,6 +76,21 @@ class TestTable:
     def test_a_star_entry_keeps_the_name_of_its_row(self):
         for (_, name), entry in STARS.items():
             assert entry.star.name == name
+
+    def test_an_archive_target_is_an_objectid(self):
+        targets = [j.row[1] for j in JOINS.values() if j.row[0] == ARCHIVE]
+        assert targets
+        assert all(re.fullmatch(r"\d+\.\d+", target) for target in targets)
+
+    def test_a_gaia_key_is_at_the_position_of_its_entry(self):
+        stars = [e.star for e in (*HOSTS.values(), *STARS.values())]
+        checked = 0
+        for found in stars:
+            if found.key[:2] == ("gaia", "dr3"):
+                at = gaia_position(found.key[2])
+                assert separation(found.ra, found.dec, *at) < GAIA_PIXEL_REACH
+                checked += 1
+        assert checked
 
     def test_a_join_names_an_earlier_row_unless_it_has_no_star(self):
         later = {
@@ -121,20 +145,42 @@ class TestApplyPapers:
     def test_a_cited_row_names_its_planet(self):
         found = self.cited(
             planet(EU, "S e", "S"),
-            joins={(EU, "S e"): Join((ARCHIVE, "S c"), "benedict_2022")},
+            joins={(EU, "S e"): Join((ARCHIVE, "3.1"), "benedict_2022")},
         )
-        assert found.planets[0].same_as == (ARCHIVE, "S c")
+        assert found.planets[0].same_as == (ARCHIVE, "3.1")
+        assert found.planets[0].papers == (BENEDICT,)
 
-    def test_an_entry_with_no_row_is_loud(self, caplog):
-        with caplog.at_level(logging.WARNING):
-            self.cited(hosts_={(EU, "Gone b"): host(GAIA_STAR)})
-        assert "planet_hosts names no row" in caplog.text
+    def test_a_row_finds_its_entry_by_its_key(self):
+        row = planet(ARCHIVE, "S b", "2.1", key="3.1")
+        found = apply_papers(
+            catalogue(ARCHIVE, [star(ARCHIVE, "2.1", "S")], [row]),
+            {(ARCHIVE, "3.1"): host(GAIA_STAR)},
+            {},
+            {},
+        )
+        assert found.planets[0].listed
 
-    def test_an_entry_of_another_catalogue_is_silent(self, caplog):
-        with caplog.at_level(logging.WARNING):
-            self.cited(hosts_={(OEC, "Gone b"): host(GAIA_STAR)})
-            self.cited(stars_={(OEC, "Gone"): host(GAIA_STAR)})
-        assert caplog.text == ""
+    def test_a_listed_row_and_its_star_name_their_paper(self):
+        found = self.cited(
+            planet(EU, "S Bb", "S"), hosts_={(EU, "S Bb"): host(GAIA_STAR)}
+        )
+        assert found.planets[0].papers == (XUAN,)
+        assert found.stars["T A"].papers == (XUAN,)
+
+    def test_a_star_keeps_the_paper_of_each_row(self):
+        found = self.cited(
+            planet(EU, "S Ba", "S"),
+            planet(EU, "S Bb", "S"),
+            hosts_={
+                (EU, "S Ba"): Host(SIMBAD_STAR, "thompson_2025"),
+                (EU, "S Bb"): host(SIMBAD_STAR),
+            },
+        )
+        assert found.stars["T B"].papers == (citation("thompson_2025"), XUAN)
+
+    def test_a_star_row_names_its_paper(self):
+        found = self.cited(planet(EU, "S b", "S"), stars_={(EU, "S"): host(GAIA_STAR)})
+        assert found.stars["S"].papers == (XUAN,)
 
     def test_a_star_row_takes_the_key_and_position(self):
         found = self.cited(
@@ -149,10 +195,91 @@ class TestApplyPapers:
         assert (found.planets[0].star, found.planets[0].letter) == ("S", "b")
         assert found.planets[0].listed is False
 
-    def test_a_star_entry_with_no_row_is_loud(self, caplog):
-        with caplog.at_level(logging.WARNING):
-            self.cited(stars_={(EU, "Gone"): host(GAIA_STAR)})
-        assert "planet_hosts names no star" in caplog.text
+    def test_the_entry_wins_over_the_star_of_the_catalogue(self):
+        values = {"teff": Measure(900.0)}
+        rows = [planet(EU, "S Bb", "T A")]
+        found = catalogue(EU, [star(EU, "T A", values=values)], rows)
+        new = apply_papers(found, {(EU, "S Bb"): host(GAIA_STAR)}, {}, {}).stars["T A"]
+        assert (new.gaia_dr3, new.listed, new.papers) == (77, GAIA_STAR.key, (XUAN,))
+        assert (new.ra, new.dec, new.epoch) == (10.0, 20.0, None)
+        assert new.values == values
+
+    def test_a_row_on_the_star_of_its_entry_says_the_entry_can_go(self):
+        found = self.cited(
+            planet(EU, "S Bb", "T A"),
+            stars=("T A",),
+            hosts_={(EU, "S Bb"): host(GAIA_STAR)},
+        )
+        assert found.superseded == [f"S Bb ({EU}): T A"]
+
+    def test_a_row_that_a_paper_moves_needs_its_entry(self):
+        found = self.cited(
+            planet(EU, "S Bb", "S"),
+            planet(EU, "T A b", "T A"),
+            stars=("S", "T A"),
+            hosts_={(EU, "S Bb"): host(GAIA_STAR)},
+        )
+        assert found.stars["T A"].listed == GAIA_STAR.key
+        assert found.superseded == []
+
+
+class TestCheckPapers:
+    """An entry of `planet_hosts` that names no row stops the ingest."""
+
+    def catalogues(self):
+        return [
+            catalogue(ARCHIVE, [], [planet(ARCHIVE, "S c", "2.1", key="3.1")]),
+            catalogue(EU, [star(EU, "S")], [planet(EU, "S e", "S")]),
+            catalogue(OEC, [], [planet(OEC, "M b", "M")]),
+        ]
+
+    def test_entries_with_their_rows_pass(self):
+        check_papers(
+            self.catalogues(),
+            {(EU, "S e"): host(GAIA_STAR)},
+            {
+                (EU, "S e"): Join((ARCHIVE, "3.1"), "benedict_2022"),
+                (OEC, "M b"): Join((ARCHIVE, "3.1"), "benedict_2022"),
+            },
+            {(EU, "S"): host(GAIA_STAR)},
+        )
+
+    def test_a_join_can_name_a_later_catalogue(self):
+        check_papers(
+            self.catalogues(),
+            {},
+            {(EU, "S e"): Join((OEC, "M b"), "best_2017")},
+            {},
+        )
+
+    @pytest.mark.parametrize(
+        ("hosts_", "joins", "stars", "entry"),
+        [
+            ({(EU, "Gone b"): host(GAIA_STAR)}, {}, {}, f"HOSTS {EU} Gone b"),
+            (
+                {},
+                {(EU, "Gone b"): Join((ARCHIVE, "3.1"), "benedict_2022")},
+                {},
+                f"JOINS {EU} Gone b",
+            ),
+            (
+                {},
+                {(EU, "S e"): Join((ARCHIVE, "3.9"), "benedict_2022")},
+                {},
+                f"JOINS {EU} S e names {ARCHIVE} 3.9",
+            ),
+            ({}, {}, {(EU, "Gone"): host(GAIA_STAR)}, f"STARS {EU} Gone"),
+            # An archive row goes by its objectid.
+            ({(ARCHIVE, "S c"): host(GAIA_STAR)}, {}, {}, f"HOSTS {ARCHIVE} S c"),
+        ],
+    )
+    def test_a_stale_entry_raises(self, hosts_, joins, stars, entry):
+        with pytest.raises(ValueError, match=f"planet_hosts: no row for {entry}"):
+            check_papers(self.catalogues(), hosts_, joins, stars)
+
+    def test_the_message_says_what_to_do(self):
+        with pytest.raises(ValueError, match="new key of its row, or remove it"):
+            check_papers([], {(EU, "Gone b"): host(GAIA_STAR)}, {}, {})
 
 
 class TestReaders:
@@ -414,8 +541,9 @@ class TestJoin:
     def groups(self, *groups: tuple[str, ...]) -> set[frozenset[str]]:
         return {frozenset(group) for group in groups}
 
-    def contest(self, listed: bool):
-        """Two exoplanet.eu rows that want the archive's planet, as 2M0441's."""
+    def companions(self, listed: bool):
+        """The exoplanet.eu companions of A beside the archive's planet of the
+        pair, as 2M0441's. "S B" has no letter, as `read_eu` reads it."""
         rows = [planet(EU, "S Ab", "S"), planet(EU, "S B", "S")]
         if listed:
             entry = host(GAIA_STAR)
@@ -431,13 +559,19 @@ class TestJoin:
             ("S", "T A") if listed else ("S",),
         )
 
-    def test_without_the_table_the_rows_contest(self):
-        result = self.contest(False)
-        assert result.contested and result.ambiguous
+    def test_without_the_table_a_companion_takes_the_planet(self):
+        result = self.companions(False)
+        assert self.names(result) == self.groups(
+            (
+                f"{ARCHIVE}:S b",
+                f"{EU}:S Ab",
+                f"{OEC}:S b",
+            ),
+            (f"{EU}:S B",),
+        )
 
     def test_listed_rows_leave_the_planet_to_the_others(self):
-        result = self.contest(True)
-        assert not result.contested and not result.ambiguous
+        result = self.companions(True)
         assert self.names(result) == self.groups(
             (f"{EU}:S Ab",),
             (f"{EU}:S B",),
@@ -446,10 +580,13 @@ class TestJoin:
                 f"{OEC}:S b",
             ),
         )
-        assert result.listed == [f"S Ab ({EU}): T A", f"S B ({EU}): T A"]
+        assert result.listed == [
+            f"S Ab ({EU}): T A ({XUAN})",
+            f"S B ({EU}): T A ({XUAN})",
+        ]
 
     def test_a_listed_row_counts_as_a_row_and_not_as_unmatched(self):
-        result = self.contest(True)
+        result = self.companions(True)
         assert result.counts[(EU, "rows")] == 2
         assert result.counts[(EU, "unmatched")] == 0
 
@@ -498,19 +635,53 @@ class TestJoin:
             (f"{ARCHIVE}:S e",),
         )
 
-    def test_a_cited_row_with_no_planet_is_loud_and_keeps_its_score(self, caplog):
-        with caplog.at_level(logging.WARNING):
-            result = self.run(
+    def test_a_join_follows_the_key_when_the_archive_swaps_its_letters(self):
+        # The archive takes the letters of the paper, so its c is the 9.64 d planet.
+        result = self.run(
+            [
+                planet(ARCHIVE, "S c", "2.1", 9.64, key="3.2"),
+                planet(ARCHIVE, "S e", "2.1", 3947.0, key="3.1"),
+            ],
+            [planet(EU, "S e", "S", 4205.8, same_as=(ARCHIVE, "3.1"))],
+        )
+        assert self.names(result) == self.groups(
+            (f"{ARCHIVE}:S c",),
+            (
+                f"{ARCHIVE}:S e",
+                f"{EU}:S e",
+            ),
+        )
+
+    def test_a_join_goes_by_the_key_and_not_by_the_name(self):
+        with pytest.raises(ValueError, match=f"joins {ARCHIVE} S c"):
+            self.run(
+                [planet(ARCHIVE, "S c", "2.1", 3947.0, key="3.1")],
+                [planet(EU, "S e", "S", 4205.8, same_as=(ARCHIVE, "S c"))],
+            )
+
+    def test_the_join_lists_each_cited_row_with_its_paper(self):
+        rows = [planet(EU, "S e", "S", 4205.8)]
+        apply_papers(
+            catalogue(EU, [star(EU, "S")], rows),
+            {},
+            {(EU, "S e"): Join((ARCHIVE, "S c"), "benedict_2022")},
+            {},
+        )
+        result = self.run([planet(ARCHIVE, "S c", "2.1", 3947.0)], rows)
+        assert result.cited == [f"S e ({EU}) is S c ({ARCHIVE}): {BENEDICT}"]
+        assert result.planets[0].papers == (BENEDICT,)
+
+    def test_a_cited_row_with_no_planet_raises(self):
+        with pytest.raises(ValueError, match=f"S b .{EU}. joins {ARCHIVE} S z"):
+            self.run(
                 [planet(ARCHIVE, "S b", "2.1", 10.0)],
                 [planet(EU, "S b", "S", 10.0, same_as=(ARCHIVE, "S z"))],
             )
-        assert "no row" in caplog.text
-        assert self.names(result) == self.groups(
-            (
-                f"{ARCHIVE}:S b",
-                f"{EU}:S b",
-            )
-        )
+
+    def test_a_citation_of_a_listed_row_raises(self):
+        rows = [planet(ARCHIVE, "S c", "2.1", listed=True)]
+        with pytest.raises(ValueError, match="no planet of the join"):
+            self.run(rows, [planet(EU, "S e", "S", same_as=(ARCHIVE, "S c"))])
 
 
 class TestRowsWithNoStar:
@@ -528,8 +699,16 @@ class TestRowsWithNoStar:
         systems = hosts.group_systems(stars)
         return join_planets(cats, stars, systems, hub()), stars
 
-    def row(self, same_as=(OEC, "M b"), **more):
-        return planet(EU, "M b", None, same_as=same_as, **more)
+    def run_on_star(self, eu):
+        """As `run`, with the star of `M b` in exoplanet.eu."""
+        values = {"semi_major_axis": Measure(0.9)}
+        oec = catalogue(OEC, [star(OEC, "M")], [planet(OEC, "M b", "M", values=values)])
+        cats = [catalogue(ARCHIVE, [], []), catalogue(EU, [star(EU, "M")], eu), oec]
+        stars = hosts.build_stars(cats, hub(), {})
+        return join_planets(cats, stars, hosts.group_systems(stars), hub())
+
+    def row(self, same_as=(OEC, "M b"), name="M b", **more):
+        return planet(EU, name, None, same_as=same_as, **more)
 
     def test_it_joins_a_planet_of_a_later_catalogue(self):
         result, _ = self.run([self.row()])
@@ -550,11 +729,25 @@ class TestRowsWithNoStar:
         result, _ = self.run([self.row(status=catalogues.OTHER)])
         assert list(result.planets[0].rows) == [OEC]
 
-    def test_a_row_with_no_planet_is_loud(self, caplog):
-        with caplog.at_level(logging.WARNING):
-            result, _ = self.run([self.row(same_as=(OEC, "Gone b"))])
-        assert "no row" in caplog.text
-        assert list(result.planets[0].rows) == [OEC]
+    def test_a_row_with_no_planet_raises(self):
+        with pytest.raises(ValueError, match=f"joins {OEC} Gone b"):
+            self.run([self.row(same_as=(OEC, "Gone b"))])
+
+    def test_two_rows_of_one_catalogue_raise(self):
+        twin = planet(EU, "M 1", None, same_as=(OEC, "M b"))
+        with pytest.raises(ValueError, match="already has the row"):
+            self.run([self.row(), twin])
+
+    def test_a_planet_with_a_row_of_that_catalogue_raises(self):
+        joined = planet(EU, "M b", "M", values={"semi_major_axis": Measure(0.9)})
+        with pytest.raises(ValueError, match=f"M c .{EU}. joins M b, which already"):
+            self.run_on_star([joined, self.row(name="M c")])
+
+    def test_the_join_names_the_planet_and_the_paper(self):
+        row = self.row()
+        row.papers = (BENEDICT,)
+        result, _ = self.run([row])
+        assert result.cited == [f"M b ({EU}) is M b ({OEC}): {BENEDICT}"]
 
 
 def record(star_at: int, *rows) -> Record:

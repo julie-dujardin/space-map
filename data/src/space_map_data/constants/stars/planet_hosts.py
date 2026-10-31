@@ -1,7 +1,8 @@
 """Planet rows of the exoplanet catalogues that a paper corrects.
 
-An entry is keyed by (catalogue, row name). Each cites one work of REFERENCES
-by its key.
+A row is (catalogue, key), with the key of `Planet`: the objectid in the
+archive, else the first name. An objectid stays when the archive changes a
+letter. Each entry cites one work of REFERENCES by its key.
 
 HOSTS gives a row the star that a paper says it orbits. The row stays out of
 the planet join, takes no letter and loses its star columns. Its host row
@@ -13,6 +14,9 @@ it one, which can come later.
 
 STARS gives a star row of a catalogue, keyed by (catalogue, star key), the key
 and position of its star. The row then claims that key.
+
+An entry that names no row stops the ingest before it writes anything. A key
+that its row does not reach stops the ingest before its commit.
 """
 
 from typing import NamedTuple
@@ -40,7 +44,7 @@ class Host(NamedTuple):
 
 
 class Join(NamedTuple):
-    # (catalogue, row name) of the same planet.
+    # The row of the same planet.
     row: tuple[str, str]
     reference: str
 
@@ -145,14 +149,18 @@ HOSTS: dict[tuple[str, str], Host] = {
     (EU, "HD 97334 C"): Host(_HD_97334_B, "dupuy_2014"),
 }
 
+# The archive's "HD 160691 c" and "CD-35 2722 B b".
+_MU_ARA_E = (ARCHIVE, "3.11139")
+_CD_35_2722_B_B = (ARCHIVE, "3.21067")
+
 JOINS: dict[tuple[str, str], Join] = {
     # The outermost planet. Table 4 calls it e, as these rows do, and refines
     # its period to 3947 ± 23 d. The archive takes that period and calls it c.
-    (EU, "mu Ara e"): Join((ARCHIVE, "HD 160691 c"), "benedict_2022"),
-    (OEC, "mu Arae e"): Join((ARCHIVE, "HD 160691 c"), "benedict_2022"),
+    (EU, "mu Ara e"): Join(_MU_ARA_E, "benedict_2022"),
+    (OEC, "mu Arae e"): Join(_MU_ARA_E, "benedict_2022"),
     # The row has the preprint's two-satellite fit (169.45 d, 0.743 MJ). The
     # archive has the published one-satellite fit (171.11 d, 0.92 MJ).
-    (EU, "CD-35 2722 b I"): Join((ARCHIVE, "CD-35 2722 B b"), "hoy_2026"),
+    (EU, "CD-35 2722 b I"): Join(_CD_35_2722_B_B, "hoy_2026"),
     # OEC imported these two rows from exoplanet.eu. The rows give the paper's
     # 3.6 AU, 90 yr and 3.7 MJ, and 0.88 AU and 9 MJ, and name no star.
     (EU, "2MASS J1119-1137 b"): Join((OEC, "2MASS J1119-1137 b"), "best_2017"),

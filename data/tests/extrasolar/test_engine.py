@@ -50,6 +50,70 @@ def by_id(table: pa.Table) -> dict[int, dict]:
     return {row["id"]: row for row in table.to_pylist()}
 
 
+class TestUnreachedClaims:
+    """A run gives the rows whose claims linked nothing."""
+
+    def unreached(self, root, backup, *passes):
+        with IngestRun.start(root, backup, (POINT,), META) as run:
+            for source, rows in passes:
+                run.add(source, [rows])
+            found = run.unreached_claims(passes[-1][0].name)
+            run.commit()
+        return found
+
+    def test_a_claim_that_hits_is_not_listed(self, root, backup):
+        gaia = gaia_rows([star(1, mag=3.0)])
+        hip = hip_rows([star(5, 100, mag=3.0, claims=[claim("gaia", "dr3", 1)])])
+        assert self.unreached(root, backup, (GAIA, gaia), (HIP, hip)) == {}
+
+    def test_a_row_without_a_claim_is_not_listed(self, root, backup):
+        assert self.unreached(root, backup, (GAIA, gaia_rows([star(1)]))) == {}
+
+    def test_a_claim_that_nothing_holds(self, root, backup):
+        gaia = gaia_rows([star(1, mag=3.0)])
+        hip = hip_rows([star(5, 100, mag=3.0, claims=[claim("gaia", "dr3", 9)])])
+        found = self.unreached(root, backup, (GAIA, gaia), (HIP, hip))
+        assert found == {"5": ["gaia/dr3/9"]}
+
+    def test_a_claim_that_misses_and_a_position_that_matches(self, root, backup):
+        gaia = gaia_rows([star(1, mag=5.0)])
+        hip = hip_rows([star(7, 0.2, mag=5.0, claims=[claim("gaia", "dr3", 99)])])
+        found = self.unreached(root, backup, (GAIA_SUBSET, gaia), (HIP, hip))
+        assert found == {"7": ["gaia/dr3/99"]}
+
+    def test_a_conflict_over_an_object_of_the_pass(self, root, backup):
+        gaia = gaia_rows([star(1, mag=3.0)])
+        hip = hip_rows(
+            [
+                star(5, 100, mag=3.0, claims=[claim("gaia", "dr3", 1)]),
+                star(6, 200, mag=3.0, claims=[claim("gaia", "dr3", 1)]),
+            ]
+        )
+        found = self.unreached(root, backup, (GAIA, gaia), (HIP, hip))
+        assert found == {"6": ["gaia/dr3/1"]}
+
+    def test_a_conflict_with_an_id_of_the_catalogue(self, root, backup, ingest):
+        gaia = gaia_rows([star(1, mag=3.0)])
+        ingest(
+            [
+                (GAIA, gaia),
+                (
+                    HIP,
+                    hip_rows([star(5, 100, mag=3.0, claims=[claim("gaia", "dr3", 1)])]),
+                ),
+            ]
+        )
+        hip = hip_rows([star(6, 200, mag=3.0, claims=[claim("gaia", "dr3", 1)])])
+        found = self.unreached(root, backup, (GAIA, gaia), (HIP, hip))
+        assert found == {"6": ["gaia/dr3/1"]}
+
+    def test_the_next_ingest_keeps_the_object(self, root, backup, ingest):
+        gaia = gaia_rows([star(1, mag=3.0)])
+        hip = hip_rows([star(5, 100, mag=3.0, claims=[claim("gaia", "dr3", 1)])])
+        ingest([(GAIA, gaia), (HIP, hip)])
+        assert self.unreached(root, backup, (GAIA, gaia), (HIP, hip)) == {}
+
+
 class TestFirstIngest:
     """Serials, determinism and reruns."""
 
@@ -918,6 +982,25 @@ class TestNotPermanent:
             "first"
         ]
         assert "which this ingest joins to it" in caplog.text
+
+    def test_a_merge_names_the_work_of_its_claim(self, root, backup, ingest):
+        work = "Xuan et al. 2024, https://doi.org/x"
+        g_ra, g_dec = centre(4_000_000)
+        h_ra, h_dec = centre(4_000_001)
+        hip = hip_rows([{"id": 42, "ra": h_ra, "dec": h_dec, "mag": 2.0}])
+        gaia: list[dict] = [{"id": 1, "ra": g_ra, "dec": g_dec, "mag": 2.1}]
+        ingest([(HIP, hip)])
+        ingest([(GAIA, gaia_rows(gaia)), (HIP, hip)])
+        gaia[0]["claims"] = [claim("hip", "2007", 42)]
+        with IngestRun.start(root, backup, (POINT,), META) as run:
+            run.citations["hip/2007/42"] = work
+            run.add(GAIA, [gaia_rows(gaia)])
+            run.add(HIP, [hip])
+            result = run.commit()
+        registry = Registry(root)
+        [merge] = registry.merges(registry.last_ingest).to_pylist()
+        assert merge["evidence"].endswith(f"({work})")
+        assert work in result.report
 
     def test_a_permanent_source_comes_first(self, root, backup):
         ra, dec = near(0)

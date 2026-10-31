@@ -13,8 +13,8 @@ A planet of a later ingest finds its number by any of its catalogue ids. A
 planet that no id finds tries the free numbers of its host by letter and by a
 period within 20%, which finds an exoplanet.eu planet with a new name. The
 host of a number is the star the planet orbits, so a planet whose host is
-now another ID (its star merged, or a catalogue moved it) takes a number on
-the new host, and its old number becomes an alias of it: the old URL
+now another ID (its star merged, or a catalogue or a paper moved it) takes a
+number on the new host, and its old number becomes an alias of it: the old URL
 redirects. A planet that two numbers claim joins them: the number on its
 host, else the older one, survives and the other becomes its alias. A number
 that no planet takes retires: its URL then 404s.
@@ -61,6 +61,13 @@ class Incoming:
     letter: str | None
     designation: str
     period: float | None
+    # The papers of `planet_hosts` that correct its rows or its star.
+    papers: tuple[str, ...] = ()
+
+    @property
+    def cited(self) -> str:
+        """Its papers, as the end of a line of the ingest report."""
+        return f" ({'; '.join(self.papers)})" if self.papers else ""
 
 
 @dataclass
@@ -227,7 +234,7 @@ def assign(
                 record(loser, ALIAS, target=survivor)
                 events["merged"].append(
                     f"{_text(loser)} is now an alias of {_text(survivor)}:"
-                    f" {planet.designation} holds the ids of both"
+                    f" {planet.designation} holds the ids of both{planet.cited}"
                 )
 
     # A planet that no id finds tries the free numbers of its host. A number
@@ -271,7 +278,7 @@ def assign(
             record(old, ALIAS, target=now)
             events["host changed"].append(
                 f"{_text(old)} is now an alias of {_text(now)}: the host of"
-                f" {planet.designation} is now {planet.host}"
+                f" {planet.designation} is now {planet.host}{planet.cited}"
             )
 
     # Links that the part does not hold yet.

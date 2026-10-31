@@ -7,11 +7,18 @@ import numpy as np
 import pyarrow as pa
 import pytest
 
+from space_map_data.constants.stars.planet_hosts import HOSTS, STARS
 from space_map_data.extrasolar import sky
 from space_map_data.extrasolar.engine import ExtensionResult, IngestRun
+from space_map_data.extrasolar.exoplanets import catalogues, twins
 from space_map_data.extrasolar.exoplanets import ingest as exoplanets
-from space_map_data.extrasolar.exoplanets import twins
-from space_map_data.extrasolar.exoplanets.catalogues import ARCHIVE, EU, OEC
+from space_map_data.extrasolar.exoplanets.catalogues import (
+    ARCHIVE,
+    EU,
+    OEC,
+    check_papers,
+    citation,
+)
 from space_map_data.extrasolar.exoplanets.names import WgsnName
 from space_map_data.extrasolar.exoplanets.table import default_node
 from space_map_data.extrasolar.registry import Registry
@@ -648,12 +655,15 @@ class TestHostsFromPapers:
         assert row["host_spectral_type"] == "T6"
         assert row["astrometry_source"] == "simbad"
 
-    def test_a_claim_reaches_a_star_far_from_the_row(self, root, backup, tmp_path):
+    def nltt_31450(self):
         files = downloads()
         # The row has NLTT 730's star and position, on the other side of the sky.
         files.eu.append(eu_planet("NLTT 31450 b", "NLTT 730", 3.77, 29.93))
         dr3 = 1514394443389500288
-        stars = gaia_pass(gaia_star(dr3, 189.95550, 32.14722, 13.6))
+        return files, dr3, gaia_pass(gaia_star(dr3, 189.95550, 32.14722, 13.6))
+
+    def test_a_claim_reaches_a_star_far_from_the_row(self, root, backup, tmp_path):
+        files, dr3, stars = self.nltt_31450()
         result, _ = ingest(root, backup, files.write(tmp_path / "one"), stars=stars)
         assert result.entry["counts"]["conflicts"] == 0
         registry = Registry(root)
@@ -665,6 +675,102 @@ class TestHostsFromPapers:
         assert [p["host"] for p in planets if p["designation"] == "NLTT 31450 b"] == [
             point
         ]
+
+    def test_the_report_names_the_papers(self, root, backup, tmp_path):
+        result, _ = self.gj_229_b(root, backup, tmp_path, "one")
+        xuan, thompson = citation("xuan_2024"), citation("thompson_2025")
+        assert f"GJ 229 Bb ({EU}): GJ 229 B ({xuan})" in result.report
+        assert f"GJ 229 B: simbad/oid/864867 ({thompson}; {xuan})" in result.report
+
+    def test_a_host_move_names_its_paper(self, root, backup, tmp_path, monkeypatch):
+        files, _, stars = self.nltt_31450()
+        # A planet of its own keeps NLTT 730, so that only the row moves.
+        files.eu.append(
+            eu_planet("NLTT 730 b", "NLTT 730", 3.77, 29.93, orbital_period="5")
+        )
+        with monkeypatch.context() as patch:
+            patch.delitem(HOSTS, (EU, "NLTT 31450 b"))
+            ingest(root, backup, files.write(tmp_path / "one"), stars=stars)
+        result, _ = ingest(root, backup, files.write(tmp_path / "two"), stars=stars)
+        [line] = [line for line in result.report.splitlines() if "the host of" in line]
+        assert "NLTT 31450 b" in line and citation("deacon_2014") in line
+
+    def gj_229_bb(self, star_name="GJ 229"):
+        files = downloads()
+        files.eu.append(
+            eu_planet(
+                "GJ 229 Bb", star_name, 92.64423, -21.86464, orbital_period="12.1346"
+            )
+        )
+        return files
+
+    def test_the_entry_wins_when_the_catalogue_names_the_star(
+        self, root, backup, tmp_path
+    ):
+        result, _ = ingest(
+            root,
+            backup,
+            self.gj_229_bb("GJ 229 B").write(tmp_path / "one"),
+            simbad_rows=self.simbad_rows(tmp_path / "one"),
+        )
+        assert result.entry["counts"]["conflicts"] == 0
+        registry = Registry(root)
+        point = int(registry.lookup("simbad", "oid", ["864867"])[0])
+        assert int(registry.lookup(EU, "catalog", ["GJ 229 B"])[0]) == point
+        rows = table_rows(root, "point-source").to_pylist()
+        assert (
+            next(r for r in rows if r["id"] == point)["astrometry_source"] == "simbad"
+        )
+        assert "so the entry can go: 1" in result.report
+        assert f"GJ 229 Bb ({EU}): GJ 229 B\n" in result.report
+
+    def test_a_key_that_reaches_no_object_raises(self, root, backup, tmp_path):
+        inputs = self.gj_229_bb().write(tmp_path / "one")
+        with pytest.raises(ValueError, match="GJ 229 B .* claims simbad/oid/864867"):
+            ingest(root, backup, inputs)
+        assert Registry(root).ingests == []
+
+    def test_a_key_in_conflict_raises(self, root, backup, tmp_path):
+        files = downloads()
+        # The point holds another star of exoplanet.eu, so the row cannot take it.
+        files.eu.append(
+            eu_planet("Old b", "Old", 92.64434, -21.86984, orbital_period="5")
+        )
+        files.simbad_names.append(
+            ("exoplanet_eu", "catalog", "star", "Old", "Old", "printed", "864867")
+        )
+        files.simbad_basic["864867"] = ("HD 42581B", "BD*")
+        ingest(
+            root,
+            backup,
+            files.write(tmp_path / "one"),
+            simbad_rows=self.simbad_rows(tmp_path / "one"),
+        )
+        assert int(Registry(root).lookup(EU, "catalog", ["Old"])[0])
+        with pytest.raises(ValueError, match="GJ 229 B .* claims simbad/oid/864867"):
+            ingest(
+                root,
+                backup,
+                self.gj_229_bb().write(tmp_path / "two"),
+                simbad_rows=self.simbad_rows(tmp_path / "two"),
+            )
+        assert len(Registry(root).ingests) == 1
+
+    def test_a_partial_ingest_reports_a_missed_key(self, root, backup, tmp_path):
+        inputs = self.gj_229_bb().write(tmp_path / "one")
+        result, prepared = ingest(root, backup, inputs, complete=False)
+        assert prepared.missed_claims == [f"GJ 229 B ({EU}) claims simbad/oid/864867"]
+        assert "claim linked no object: 1" in result.report
+
+
+class TestStalePapers:
+    """A stale entry of `planet_hosts` stops the ingest in its read step."""
+
+    def test_nothing_is_written(self, root, backup, tmp_path, monkeypatch):
+        monkeypatch.setattr(catalogues, "check_papers", check_papers)
+        with pytest.raises(ValueError, match="planet_hosts: no row for"):
+            ingest(root, backup, downloads().write(tmp_path / "in"))
+        assert Registry(root).ingests == []
 
 
 class TestHostsBySimbad:
@@ -829,6 +935,26 @@ class TestHostsBySimbad:
             (p["host"], p["number"]) for p in before
         ]
 
+    def test_a_missed_claim_is_in_the_report(self, root, backup, tmp_path):
+        # The list of objects names it, but no SIMBAD row reaches the ingest.
+        oid = str(self.PULSAR)
+        inputs = self.files().write(tmp_path / "one")
+        result, prepared = ingest(root, backup, inputs, oids={oid})
+        # The first row mints the star, and the next rows reach it.
+        assert prepared.missed_claims == [
+            f"PSR B1257+12 ({ARCHIVE}) claims simbad/oid/{oid}"
+        ]
+        assert result.entry["extensions"]["planets"]["missed_claims"] == 1
+        assert "claim linked no object: 1" in result.report
+        host = int(Registry(root).lookup(ARCHIVE, "pscomppars", ["2.8"])[0])
+        rows = table_rows(root, "point-source").to_pylist()
+        assert next(r for r in rows if r["id"] == host)["ra"] is None
+
+    def test_a_claim_that_hits_is_not_in_the_report(self, root, backup, tmp_path):
+        result, prepared = self.merge(root, backup, tmp_path, "one")
+        assert prepared.missed_claims == []
+        assert "claim linked no object" not in result.report
+
     def test_an_object_on_two_stars_is_not_merged(self, root, backup, tmp_path):
         files = self.files()
         ra, dec = offset(*PULSAR, 90, 40)
@@ -890,7 +1016,7 @@ class TestStarsFromPapers:
             int(Registry(root).lookup(EU, "catalog", ["2MASS J1315-2649"])[0]) == point
         )
 
-    def test_a_row_with_no_object_claims_its_key(self, root, backup, tmp_path):
+    def twa_42(self, tmp_path):
         directory = write_simbad(
             tmp_path / "simbad-stars",
             [simbad_star(9910123, 169.885597, -11.629638, "TWA 42", otype="BD*")],
@@ -918,6 +1044,21 @@ class TestStarsFromPapers:
                 mass="3.7",
             )
         )
+        return files, rows
+
+    def test_a_star_merge_names_its_paper(self, root, backup, tmp_path, monkeypatch):
+        files, rows = self.twa_42(tmp_path)
+        with monkeypatch.context() as patch:
+            patch.delitem(STARS, (OEC, "2MASS J1119-1137"))
+            ingest(root, backup, files.write(tmp_path / "one"), simbad_rows=rows)
+        ingest(root, backup, files.write(tmp_path / "two"), simbad_rows=rows)
+        registry = Registry(root)
+        [merge] = registry.merges(registry.last_ingest).to_pylist()
+        assert "simbad/oid/9910123" in merge["evidence"]
+        assert citation("best_2017") in merge["evidence"]
+
+    def test_a_row_with_no_object_claims_its_key(self, root, backup, tmp_path):
+        files, rows = self.twa_42(tmp_path)
         result, _ = ingest(
             root, backup, files.write(tmp_path / "one"), simbad_rows=rows
         )

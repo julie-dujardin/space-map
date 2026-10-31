@@ -9,6 +9,7 @@ time is a Julian date: the readers add the offset of a shortened date.
 star's ω, which is the planet's plus 180°, and no catalogue says which.
 
 Each reader then applies the papers of `planet_hosts` to its rows.
+`check_papers` raises for an entry that found no row.
 """
 
 import csv
@@ -155,9 +156,10 @@ class Star:
     spectral_type: str | None = None
     # Order of the star in its OEC system.
     order: int = 0
-    # The key and SIMBAD object of a star from `planet_hosts`.
+    # The key and SIMBAD object of a star from `planet_hosts`, and its papers.
     listed: StarKey | None = None
     oid: str | None = None
+    papers: tuple[str, ...] = ()
 
 
 @dataclass
@@ -185,8 +187,10 @@ class Planet:
     time_system: str | None = None
     # A paper gives its star, so it joins no other row.
     listed: bool = False
-    # (catalogue, name) of the row that a paper shows is this planet.
+    # The row of `planet_hosts` that a paper shows is this planet.
     same_as: tuple[str, str] | None = None
+    # The papers of `planet_hosts` that correct this row.
+    papers: tuple[str, ...] = ()
 
 
 @dataclass
@@ -194,20 +198,29 @@ class Catalogue:
     name: str
     stars: dict[str, Star]
     planets: list[Planet]
+    # Rows that the catalogue itself now puts on the star of their entry.
+    superseded: list[str] = field(default_factory=list)
 
 
-def _listed_star(catalogue: str, host: HostStar) -> Star:
+def citation(reference: str) -> str:
+    """A work of `planet_hosts` as the ingest report names it."""
+    work = planet_hosts.REFERENCES[reference]
+    return f"{work.short}, {work.url}"
+
+
+def _with_key(star: Star, host: HostStar, paper: str) -> Star:
+    """The star with the key and position of an entry of `planet_hosts`."""
     source, _, value = host.key
-    return Star(
-        catalogue=catalogue,
-        key=host.name,
-        name=host.name,
-        names=(host.name,),
+    return replace(
+        star,
         ra=host.ra,
         dec=host.dec,
+        # The table gives J2016.0, so the position takes no proper motion.
+        epoch=None,
         gaia_dr3=int(value) if source == "gaia" else None,
         oid=value if source == "simbad" else None,
         listed=host.key,
+        papers=tuple(dict.fromkeys((*star.papers, paper))),
     )
 
 
@@ -218,47 +231,68 @@ def apply_papers(
     stars: dict[tuple[str, str], Host] = planet_hosts.STARS,
 ) -> Catalogue:
     """The catalogue with the corrections of `planet_hosts`."""
-    found = set()
     for row, entry in stars.items():
-        if row[0] != catalogue.name:
-            continue
-        if row[1] not in catalogue.stars:
-            logger.warning("planet_hosts names no star: %s %s", *row)
-            continue
-        listed = _listed_star(catalogue.name, entry.star)
-        catalogue.stars[row[1]] = replace(
-            catalogue.stars[row[1]],
-            ra=listed.ra,
-            dec=listed.dec,
-            # The table gives J2016.0, so the position takes no proper motion.
-            epoch=None,
-            gaia_dr3=listed.gaia_dr3,
-            oid=listed.oid,
-            listed=listed.listed,
-        )
+        if row[0] == catalogue.name and row[1] in catalogue.stars:
+            catalogue.stars[row[1]] = _with_key(
+                catalogue.stars[row[1]], entry.star, citation(entry.reference)
+            )
     for planet in catalogue.planets:
-        row = (catalogue.name, planet.name)
+        row = (catalogue.name, planet.key)
         if row in joins:
             planet.same_as = joins[row].row
-            found.add(row)
+            planet.papers += (citation(joins[row].reference),)
         if row in hosts:
-            star = hosts[row].star
-            catalogue.stars.setdefault(star.name, _listed_star(catalogue.name, star))
+            star, paper = hosts[row].star, citation(hosts[row].reference)
+            if planet.star == star.name:
+                catalogue.superseded.append(
+                    f"{planet.name} ({catalogue.name}): {star.name}"
+                )
+            # The entry wins, also over a star of this name in the catalogue.
+            found = catalogue.stars.get(star.name) or Star(
+                catalogue.name, star.name, star.name, (star.name,)
+            )
+            catalogue.stars[star.name] = _with_key(found, star, paper)
             planet.star = star.name
             planet.letter = None
             planet.listed = True
+            planet.papers += (paper,)
             # These columns describe the star that the catalogue gave it.
             planet.values = {
                 name: value
                 for name, value in planet.values.items()
                 if not name.startswith("star_")
             }
-            found.add(row)
-    # A renamed row would silently go back to the catalogue's star.
-    for row in sorted((hosts.keys() | joins.keys()) - found):
-        if row[0] == catalogue.name:
-            logger.warning("planet_hosts names no row: %s %s", *row)
     return catalogue
+
+
+def check_papers(
+    found: list[Catalogue],
+    hosts: dict[tuple[str, str], Host] = planet_hosts.HOSTS,
+    joins: dict[tuple[str, str], Join] = planet_hosts.JOINS,
+    stars: dict[tuple[str, str], Host] = planet_hosts.STARS,
+) -> None:
+    """Raise for an entry of `planet_hosts` that names no row.
+
+    A row with a new key would go back to the catalogue's star, with no
+    signal. The check takes all catalogues, as a join can name a later one.
+    """
+    planets = {(c.name, p.key) for c in found for p in c.planets}
+    star_rows = {(c.name, key) for c in found for key in c.stars}
+    stale = [
+        *(f"HOSTS {r[0]} {r[1]}" for r in sorted(hosts.keys() - planets)),
+        *(f"JOINS {r[0]} {r[1]}" for r in sorted(joins.keys() - planets)),
+        *(
+            f"JOINS {row[0]} {row[1]} names {entry.row[0]} {entry.row[1]}"
+            for row, entry in sorted(joins.items())
+            if entry.row not in planets
+        ),
+        *(f"STARS {r[0]} {r[1]}" for r in sorted(stars.keys() - star_rows)),
+    ]
+    if stale:
+        raise ValueError(
+            f"planet_hosts: no row for {', '.join(stale)}. Give each entry the"
+            " new key of its row, or remove it."
+        )
 
 
 def number(text: str | None) -> float | None:
