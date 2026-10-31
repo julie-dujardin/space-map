@@ -2988,7 +2988,9 @@ export class SceneRenderer {
 	 */
 	private updateSky(skyboxIntensity: number): void {
 		const share = this.starfield.skyboxShare();
-		if (this.ctx.layers.isVisible('stars') && share > SKY_GONE_SHARE) {
+		const drawn = this.ctx.layers.isVisible('stars') && share > SKY_GONE_SHARE;
+		this.ctx.credits.skyboxDrawn = drawn;
+		if (drawn) {
 			if (this.stashedSky) {
 				this.scene.background = this.stashedSky;
 				this.stashedSky = null;

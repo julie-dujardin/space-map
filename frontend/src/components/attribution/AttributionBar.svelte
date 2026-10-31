@@ -80,8 +80,9 @@
 		>
 			{#each shown as chip (chip.label)}
 				{#if chip.names.length > 0}
-					<!-- The chips share what the host's width leaves after the logo. -->
-					<span class="min-w-0 truncate">
+					<!-- The chips share what the host's width leaves after the logo; the
+					     last, usually the long list of star catalogues, gives way first. -->
+					<span class="min-w-0 truncate last:min-w-28 last:shrink-[100000]">
 						<span class={ink.dim}>{chip.label}:</span>
 						{chip.names.join(' · ')}
 					</span>

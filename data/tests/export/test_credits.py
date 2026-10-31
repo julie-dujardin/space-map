@@ -12,6 +12,8 @@ from space_map_data.export.credits import (
     _atmosphere_references,
     _build_model_contributors,
     _merge_references,
+    _orientation_references,
+    _star_references,
 )
 
 
@@ -25,6 +27,8 @@ def _sections() -> dict[str, list[dict]]:
         "temperature": [r._asdict() for r in TEMPERATURE_SOURCES.values()],
         "radiation": [r._asdict() for r in RADIATION_SOURCES.values()],
         "traverse": [r._asdict() for r in TRAVERSE_SOURCES.values()],
+        "orientation": _orientation_references(),
+        "star": _star_references(),
     }
 
 

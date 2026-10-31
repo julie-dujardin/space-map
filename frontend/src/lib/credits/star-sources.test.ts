@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { ExtrasolarCredit } from '$lib/fetch/extrasolar/files';
+import { inSceneCredits, type ExtrasolarCredit } from '$lib/fetch/extrasolar/files';
 import { ExtrasolarLookup, type ExtrasolarRecord } from '$lib/fetch/extrasolar/lookup';
 import {
 	HAS_EXPORT,
@@ -349,5 +349,28 @@ describe('the credits of a star system', () => {
 		]);
 		expect(out.map((work) => work.label)).toEqual(['Title', 'Krv2017']);
 		expect(out[0].note).toBe('One');
+	});
+});
+
+describe('inSceneCredits', () => {
+	const source = 'https://example.org/';
+
+	it('keeps the catalogues, and leaves papers and Wikidata to /credits', () => {
+		const credits: ExtrasolarCredit[] = [
+			{ name: 'Gaia Data Release 3', organisation: 'ESA/Gaia/DPAC', source },
+			{ name: 'Geometric distances', organisation: 'Bailer-Jones et al. 2021', source },
+			{ name: 'Wide binaries', organisation: 'El-Badry, Rix & Heintz 2021', source },
+			{
+				name: 'Published papers',
+				organisation: 'Cited on each page',
+				source: `${source}constants/stars/literature.py`
+			},
+			{
+				name: 'Wikidata',
+				organisation: 'Wikidata contributors',
+				source: 'https://www.wikidata.org/'
+			}
+		];
+		expect(credits.filter(inSceneCredits).map((c) => c.name)).toEqual(['Gaia Data Release 3']);
 	});
 });

@@ -3,14 +3,23 @@ import { OrbitalSource, type OrbitArchive } from '$lib/fetch/position/format';
 import type { ContextManager } from './context-manager.svelte';
 import type { PositionedBody } from '$lib/types/objects';
 import { CreditsStore } from './credits.svelte';
-import { attributionChips, creditedOrbitArchives } from './attribution';
+import {
+	attributionChips,
+	creditedOrbitArchives,
+	focusedModelCredit,
+	scopedCredits
+} from './attribution';
 
 /** Just the parts the credit filter reads: what has been recorded, where the
  *  camera is, and the one parent-child link the Earth system needs. */
-function fakeCtx(credits: CreditsStore, focusedSystemId: string | null): ContextManager {
+function fakeCtx(
+	credits: CreditsStore,
+	systemInView: string | null,
+	visibility: { systemDrawn?: boolean; focusedBodyId?: string; focusedAtFullSize?: boolean } = {}
+): ContextManager {
 	return {
 		credits,
-		visibility: { focusedSystemId },
+		visibility: { systemInView, systemDrawn: true, ...visibility },
 		bodies: {
 			isInSystem: (parentId: string, sysId: string | null) =>
 				parentId === sysId || (sysId === 'naif-3' && parentId === 'naif-399')
@@ -78,10 +87,48 @@ describe('creditedOrbitArchives', () => {
 		expect(creditedOrbitArchives(fakeCtx(credits, null))).toEqual(['esa', 'jaxa-darts']);
 	});
 
+	it('credits nobody once the solar system no longer draws', () => {
+		const credits = new CreditsStore();
+		credits.recordOrbitSources([body('naif-499', 'naif-4', OrbitalSource.HORIZONS)]);
+		const ctx = fakeCtx(credits, null, { systemDrawn: false });
+		expect(creditedOrbitArchives(ctx)).toEqual([]);
+	});
+
 	it('credits nobody for a probe no archive tracked', () => {
 		const credits = new CreditsStore();
 		credits.recordOrbitSources([probe('probe-1')]);
 		expect(creditedOrbitArchives(fakeCtx(credits, null))).toEqual([]);
+	});
+});
+
+describe('scopedCredits', () => {
+	const map = { bodyId: 'naif-399', systemId: 'naif-3' };
+
+	it('credits the imagery of the system in view', () => {
+		expect(scopedCredits(fakeCtx(new CreditsStore(), 'naif-3'), [map])).toEqual([map]);
+	});
+
+	it('drops it from solar system scope outwards, with the system still focused', () => {
+		expect(scopedCredits(fakeCtx(new CreditsStore(), null), [map])).toEqual([]);
+	});
+});
+
+describe('focusedModelCredit', () => {
+	const credits = new CreditsStore();
+	credits.registerModel({
+		bodyId: 'probe-1',
+		source: 'https://example.org/',
+		organisation: 'NASA'
+	});
+
+	it('credits the mesh while the body draws with no halo', () => {
+		const ctx = fakeCtx(credits, null, { focusedBodyId: 'probe-1', focusedAtFullSize: true });
+		expect(focusedModelCredit(ctx)?.organisation).toBe('NASA');
+	});
+
+	it('drops the credit once the halo draws', () => {
+		const ctx = fakeCtx(credits, null, { focusedBodyId: 'probe-1', focusedAtFullSize: false });
+		expect(focusedModelCredit(ctx)).toBeUndefined();
 	});
 });
 

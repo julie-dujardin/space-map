@@ -43,6 +43,7 @@ describe('orientationCredits', () => {
 		const [credit] = orientationCredits('occultation', MORGADO);
 		expect(credit.key).toBe(MORGADO.url);
 		expect(credit.short).toBe(MORGADO.title);
+		expect(credit.paper).toBe(true);
 	});
 
 	it('credits nobody for an occultation pole with no reference', () => {

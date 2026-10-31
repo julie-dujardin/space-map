@@ -17,11 +17,13 @@ from space_map_data.constants.atmosphere.references import (
     ATMOSPHERE_REFERENCES,
 )
 from space_map_data.constants.interior.references import INTERIOR_SOURCES
+from space_map_data.constants.measured_shapes import MEASURED_SHAPES
 from space_map_data.constants.radiation.references import RADIATION_SOURCES
 from space_map_data.constants.rings.attribution import RingSource
 from space_map_data.constants.rings.catalog import RING_CATALOGS
 from space_map_data.constants.rings.references import RING_REFERENCES
 from space_map_data.constants.spacecraft import SPACECRAFT_SOURCES
+from space_map_data.constants.stars import binaries, literature
 from space_map_data.constants.temperature.references import TEMPERATURE_SOURCES
 from space_map_data.constants.traverses.references import TRAVERSE_SOURCES
 from space_map_data.export.ephemeris import EPHEMERIS_ARCHIVES
@@ -112,6 +114,30 @@ def _atmosphere_references() -> list[dict]:
     return out
 
 
+def _orientation_references() -> list[dict]:
+    """The papers behind the poles and ellipsoids of the small bodies, which
+    name no archive the page could credit instead."""
+    out = []
+    for shape in MEASURED_SHAPES:
+        ref = shape.shape_reference
+        out.append({"title": ref.title, "url": ref.url, "contribution": "ellipsoid"})
+        if ref := shape.pole_reference:
+            out.append(
+                {"title": ref.title, "url": ref.url, "contribution": "spin pole"}
+            )
+    return out
+
+
+def _star_references() -> list[dict]:
+    """The papers behind the hand-curated star values. `title` is the name a
+    star's page gives the work, so the page reads like the catalogue papers."""
+    papers = {**literature.REFERENCES, **binaries.REFERENCES}
+    return [
+        {"title": ref.short, "url": ref.url, "contribution": ref.title}
+        for ref in papers.values()
+    ]
+
+
 # Shortest list first: a shared work stays in whichever list would most
 # notice losing it, so a small bibliography isn't stripped of an entry a
 # larger one can spare.
@@ -120,6 +146,8 @@ _REFERENCE_SECTIONS = (
     "ring",
     "traverse",
     "temperature",
+    "orientation",
+    "star",
     "radiation",
     "activity",
     "interior",
@@ -505,6 +533,8 @@ def write_credits(
             "temperature": [_bibliography_row(r) for r in TEMPERATURE_SOURCES.values()],
             "radiation": [_bibliography_row(r) for r in RADIATION_SOURCES.values()],
             "traverse": [_bibliography_row(r) for r in TRAVERSE_SOURCES.values()],
+            "orientation": _orientation_references(),
+            "star": _star_references(),
         }
     )
 
@@ -520,6 +550,8 @@ def write_credits(
         "activity_references": references["activity"],
         "radiation_references": references["radiation"],
         "traverse_references": references["traverse"],
+        "orientation_references": references["orientation"],
+        "star_references": references["star"],
     }
     if models_out:
         payload["models"] = models_out

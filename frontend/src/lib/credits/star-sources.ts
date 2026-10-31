@@ -10,6 +10,9 @@ import * as m from '$lib/paraglide/messages.js';
 import {
 	extrasolarAllowed,
 	fetchExtrasolarMetadata,
+	isPaperCredit,
+	isWikidataCredit,
+	LITERATURE_PAGE,
 	type ExtrasolarCredit
 } from '$lib/fetch/extrasolar/files';
 import {
@@ -24,6 +27,7 @@ import {
 import type { Planet } from '$lib/fetch/extrasolar/planets';
 import type { SystemCitation, SystemNode } from '$lib/fetch/extrasolar/systems';
 import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
+import type { Reference } from './credits-payload';
 
 const SOURCE_NAMES: Record<string, () => string> = {
 	'gaia-dr3': m.source_gaia_dr3_name,
@@ -106,7 +110,7 @@ export const CREDIT_PAGES = {
 	msc: 'atokovin/stars/',
 	sbx: '/sbx/',
 	elBadry: '/zenodo.4435257',
-	literature: '/constants/stars/literature.py',
+	literature: LITERATURE_PAGE,
 	starNames: '/star-names/'
 } as const;
 
@@ -304,6 +308,23 @@ function starCredit(credit: ExtrasolarCredit): StarCredit {
 	return { key: credit.source, label: credit.name, url: credit.source, note };
 }
 
+/** The catalogues by their paper, as /credits lists its references. The credit
+ *  of the literature table cites nothing itself: its papers have their rows. */
+export function starPaperReferences(credits: readonly ExtrasolarCredit[]): Reference[] {
+	return credits.filter(isPaperCredit).flatMap((credit) =>
+		credit.citation
+			? [
+					{
+						title: credit.citation,
+						url: credit.source,
+						contribution: credit.name,
+						license: credit.license
+					}
+				]
+			: []
+	);
+}
+
 /** The credits of the star catalogues for /credits; none where the host
  *  serves no extrasolar export, or may show none of it. */
 export async function fetchStarCatalogueCredits(): Promise<ExtrasolarCredit[]> {
@@ -312,5 +333,5 @@ export async function fetchStarCatalogueCredits(): Promise<ExtrasolarCredit[]> {
 		return null;
 	});
 	const shown = meta && Object.values(meta.tables).some((table) => extrasolarAllowed(table));
-	return shown ? meta.credits.map(localizedStarCredit) : [];
+	return shown ? meta.credits.filter((c) => !isWikidataCredit(c)).map(localizedStarCredit) : [];
 }

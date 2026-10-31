@@ -1391,9 +1391,10 @@
 			{/if}
 			<div
 				inert={bgInert}
-				class="fixed end-[var(--safe-end)] z-10 max-w-[calc(100vw_-_var(--safe-start)_-_var(--safe-end))] transition-opacity duration-300 ease-in-out
+				class="fixed end-[var(--safe-end)] z-10 max-w-[calc(100vw_-_var(--safe-start)_-_var(--safe-end)_-_var(--panel-inset))] transition-opacity duration-300 ease-in-out
 					{panelHeightDvh > 12 ? 'opacity-0 pointer-events-none' : 'opacity-100'}"
 				style="bottom: calc({Math.min(panelHeightDvh, 12)}dvh + var(--safe-bottom));"
+				style:--panel-inset={!isMobileViewport && sidebarOpen ? 'var(--detail-panel)' : '0px'}
 			>
 				<AttributionBar />
 			</div>

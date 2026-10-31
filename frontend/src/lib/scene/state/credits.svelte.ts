@@ -7,7 +7,7 @@ import type { PositionedBody } from '$lib/types/objects';
 import type { ExtrasolarCredit } from '$lib/fetch/extrasolar/files';
 
 /** One credited work behind a body's imagery, recorded as the layer attaches.
- *  `systemId` scopes the bar to the focused system; the popover shows all. */
+ *  `systemId` scopes the bar and the popover to the system in view. */
 export interface ImageryCredit extends CreditFields {
 	layer: ImageryLayer;
 	bodyId: string;
@@ -56,7 +56,9 @@ export class CreditsStore {
 	orientation = new Map<string, OrientationCredit>();
 	orientationVersion = $state(0);
 	skybox = $state<SkyboxCredit | null>(null);
-	/** The catalogues behind the starfield, set when its first stars draw. */
+	/** False once the starfield has taken the sky, or the layer is off. */
+	skyboxDrawn = $state(true);
+	/** The catalogues behind the starfield, while its stars draw. */
 	stars = $state.raw<readonly ExtrasolarCredit[]>([]);
 	/** The culture and catalogues behind the constellation lines, while they draw. */
 	constellations = $state.raw<readonly ExtrasolarCredit[]>([]);
@@ -115,7 +117,7 @@ export class CreditsStore {
 	}
 
 	setStars(credits: readonly ExtrasolarCredit[]): void {
-		if (this.stars.length === 0) this.stars = credits;
+		this.stars = credits;
 	}
 
 	setConstellations(credits: readonly ExtrasolarCredit[]): void {

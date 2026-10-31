@@ -74,6 +74,24 @@ export interface ExtrasolarCredit {
 	authors?: string[];
 }
 
+/** The credit of the literature table, by the page of its source. */
+export const LITERATURE_PAGE = '/constants/stars/literature.py';
+
+/** Wikidata is credited on its own, as the source of the object metadata. */
+export function isWikidataCredit(credit: ExtrasolarCredit): boolean {
+	return credit.source.includes('//www.wikidata.org/');
+}
+
+/** A work cited by author and year names a paper, not who runs a catalogue. */
+export function isPaperCredit(credit: ExtrasolarCredit): boolean {
+	return /\b\d{4}$/.test(credit.organisation) || credit.source.includes(LITERATURE_PAGE);
+}
+
+/** The bar and popover: papers would crowd out the credits we owe. */
+export function inSceneCredits(credit: ExtrasolarCredit): boolean {
+	return !isPaperCredit(credit) && !isWikidataCredit(credit);
+}
+
 /** The planet files: the index and one file per planetary system. */
 export interface ExtrasolarPlanets {
 	token: string;

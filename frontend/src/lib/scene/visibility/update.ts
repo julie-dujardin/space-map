@@ -537,6 +537,7 @@ export function updateBodyVisibility(
 
 		const screenR = !bo.noPhysical && bo.radiusScene > 0 ? (bo.radiusScene / dist) * projScale : 0;
 		const haloShare = ctx.visibility.haloThresholdShare(body.data.id, screenR < HALO_RADIUS_PX);
+		if (isFocused) ctx.visibility.focusedAtFullSize = drawn && haloShare === 0;
 		if (trail) {
 			trail.userData.haloShare = haloShare;
 			if (haloShare === 0) trail.visible = false;

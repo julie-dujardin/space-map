@@ -77,6 +77,7 @@ export interface Reference {
 	title: string;
 	url: string;
 	contribution: string;
+	license?: string;
 }
 
 /** Wire field names of the reference bundles, as `export/credits.py` writes them. */
@@ -88,7 +89,9 @@ export type ReferenceSection =
 	| 'temperature_references'
 	| 'radiation_references'
 	| 'spacecraft_references'
-	| 'traverse_references';
+	| 'traverse_references'
+	| 'orientation_references'
+	| 'star_references';
 
 /**
  * The reference sections, declared once: array order is render order on
@@ -97,12 +100,14 @@ export type ReferenceSection =
 export const REFERENCE_SECTIONS = [
 	{ key: 'atmosphere_references', label: m.attribution_section_atmospheres },
 	{ key: 'ring_references', label: m.attribution_section_rings },
+	{ key: 'orientation_references', label: m.attribution_section_rotation },
 	{ key: 'interior_references', label: m.attribution_section_interiors },
 	{ key: 'activity_references', label: m.attribution_section_activity },
 	{ key: 'temperature_references', label: m.attribution_section_temperatures },
 	{ key: 'radiation_references', label: m.attribution_section_radiation },
 	{ key: 'spacecraft_references', label: m.attribution_section_spacecraft },
-	{ key: 'traverse_references', label: m.attribution_section_traverses }
+	{ key: 'traverse_references', label: m.attribution_section_traverses },
+	{ key: 'star_references', label: m.attribution_stars }
 ] as const satisfies readonly { key: ReferenceSection; label: () => string }[];
 
 export interface Credits extends Partial<Record<ReferenceSection, Reference[]>> {

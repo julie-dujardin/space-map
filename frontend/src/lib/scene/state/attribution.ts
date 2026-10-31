@@ -7,6 +7,7 @@
 
 import { PROBE_ARCHIVES, type OrbitArchive } from '$lib/fetch/position/format';
 import type { ContextManager } from './context-manager.svelte';
+import type { ModelCredit } from './credits.svelte';
 import {
 	ORBIT_ARCHIVE_ORGANISATIONS,
 	ORBIT_SOURCE_ORDER,
@@ -18,43 +19,55 @@ import {
  *  translation of its own to pass in. */
 export type OrbitArchiveLabels = Record<OrbitArchive, string>;
 
-/** True while the camera sits in a system this scoped source fed. A source
- *  recorded without parents came off the chunk-level path, where crediting it
- *  everywhere beats dropping the citation. */
-function feedsFocusedSystem(ctx: ContextManager, source: NamedOrbitSource): boolean {
+/** True while a system this scoped source fed is in view. A source recorded
+ *  without parents came off the chunk-level path, where crediting it everywhere
+ *  beats dropping the citation. */
+function feedsSystemInView(ctx: ContextManager, source: NamedOrbitSource): boolean {
 	const parents = ctx.credits.orbitSourceParents.get(source);
 	if (!parents) return true;
-	const sysId = ctx.visibility.focusedSystemId;
+	const sysId = ctx.visibility.systemInView;
 	for (const parent of parents) if (ctx.bodies.isInSystem(parent, sysId)) return true;
 	return false;
 }
 
 /** Which archives belong in the credits right now: every one that fed a body
  *  of the scene, less the system-scoped providers while the camera is
- *  elsewhere. Several sources share an archive (SBDB serves both the small
- *  bodies and their moons), so each is listed once. */
+ *  elsewhere, and none once the solar system no longer draws. Several sources
+ *  share an archive (SBDB serves both the small bodies and their moons), so
+ *  each is listed once. */
 export function creditedOrbitArchives(ctx: ContextManager): OrbitArchive[] {
+	if (!ctx.visibility.systemDrawn) return [];
 	const credits = ctx.credits;
 	const archives = new Set<OrbitArchive>();
 	for (const source of ORBIT_SOURCE_ORDER) {
 		if (!credits.orbitSources.has(source)) continue;
 		const { archive, scoped } = ORBIT_SOURCES[source];
-		if (scoped && !feedsFocusedSystem(ctx, source)) continue;
+		if (scoped && !feedsSystemInView(ctx, source)) continue;
 		if (archive) archives.add(archive);
 		else for (const a of PROBE_ARCHIVES) if (a && credits.probeArchives.has(a)) archives.add(a);
 	}
 	return [...archives];
 }
 
-/** Credits for the focused system plus the focused body — the latter covers
- *  standalones like Bennu and Ceres, credited body-by-body. */
+/** Credits for the planetary system in view plus the focused body — the latter
+ *  covers standalones like Bennu and Ceres, credited body-by-body. None from
+ *  solar system scope outwards, where no system's imagery draws. */
 export function scopedCredits<T extends { bodyId: string; systemId?: string | null }>(
 	ctx: ContextManager,
 	all: Iterable<T>
 ): T[] {
-	const systemId = ctx.visibility.focusedSystemId;
+	const systemId = ctx.visibility.systemInView;
+	if (!systemId) return [];
 	const bodyId = ctx.visibility.focusedBodyId;
-	return [...all].filter((c) => c.bodyId === bodyId || (systemId && c.systemId === systemId));
+	return [...all].filter((c) => c.bodyId === bodyId || c.systemId === systemId);
+}
+
+/** The focused body's mesh, until it shrinks to a halo. Reads the store's
+ *  version counter like `attributionChips`. */
+export function focusedModelCredit(ctx: ContextManager): ModelCredit | undefined {
+	void ctx.credits.modelVersion;
+	const { focusedBodyId, focusedAtFullSize } = ctx.visibility;
+	return focusedAtFullSize ? ctx.credits.model.get(focusedBodyId) : undefined;
 }
 
 export interface AttributionChips {
@@ -76,7 +89,6 @@ export function attributionChips(
 ): AttributionChips {
 	const credits = ctx.credits;
 	void credits.imageryVersion;
-	void credits.modelVersion;
 
 	// Deduped on the label, so the translation decides which archives collapse.
 	const orbits = [...new Set(creditedOrbitArchives(ctx).map((archive) => labels[archive]))];
@@ -87,8 +99,7 @@ export function attributionChips(
 	}
 	// Models are body-scoped: a probe's model credit doesn't bleed into the
 	// system's other bodies.
-	const bodyId = ctx.visibility.focusedBodyId;
-	const model = bodyId ? credits.model.get(bodyId) : undefined;
+	const model = focusedModelCredit(ctx);
 	if (model) organisations.add(model.organisation);
 
 	const stars = [...new Set(credits.stars.filter((c) => c.license).map((c) => c.organisation))];

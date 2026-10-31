@@ -19,9 +19,12 @@
 	import type { ImageryCredit, ModelCredit } from '$lib/scene/state/credits.svelte';
 	import { IMAGERY_LAYERS, layerLabel, type ImageryLayer } from '$lib/credits/imagery-layers';
 	import { orientationCredits } from '$lib/credits/orientation-sources';
-	import { localizedStarCredit } from '$lib/credits/star-sources';
 	import { archiveLabel, archiveUrl } from '$lib/credits/archive-labels';
-	import { creditedOrbitArchives, scopedCredits } from '$lib/scene/state/attribution';
+	import {
+		creditedOrbitArchives,
+		focusedModelCredit,
+		scopedCredits
+	} from '$lib/scene/state/attribution';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import type { FocusObject } from '$lib/state/focusable';
 	import { applyFocus, serializeUrl, urlTypeFromId } from '$lib/state/url';
@@ -75,7 +78,7 @@
 				byBody.set(c.bodyId, [...(byBody.get(c.bodyId) ?? []), c]);
 
 		const rows: ImageryRow[] = [];
-		if (ctx.credits.skybox) {
+		if (ctx.credits.skybox && ctx.credits.skyboxDrawn) {
 			rows.push({
 				key: 'skybox',
 				label: m.attribution_section_skybox(),
@@ -110,21 +113,16 @@
 	});
 
 	// Models are body-scoped: only the focused probe's model is in the scene.
-	const focusedModel = $derived.by(() => {
-		void ctx.credits.modelVersion;
-		const bodyId = ctx.visibility.focusedBodyId;
-		return bodyId ? ctx.credits.model.get(bodyId) : undefined;
-	});
+	const focusedModel = $derived(focusedModelCredit(ctx));
 
-	// Rotation credits, deduped across the session. Sources vary per body
-	// (PCK, DAMIT lightcurve inversion, occultation papers), same mapper as
-	// the detail sidebar.
+	// Rotation credits, deduped across the session, same mapper as the detail
+	// sidebar. Papers go on /credits only.
 	const rotationRows = $derived.by(() => {
 		void ctx.credits.orientationVersion;
 		const rows = new Map<string, { key: string; label: string; url: string }>();
 		for (const credit of ctx.credits.orientation.values())
 			for (const entry of orientationCredits(credit.source, credit.reference))
-				if (!rows.has(entry.key))
+				if (!entry.paper && !rows.has(entry.key))
 					rows.set(entry.key, { key: entry.key, label: entry.long, url: entry.url });
 		return [...rows.values()];
 	});
@@ -252,7 +250,7 @@
 				<section class="space-y-1">
 					{@render sectionHeader(m.attribution_section_stars())}
 					<ul class="space-y-0.5">
-						{#each ctx.credits.stars.map(localizedStarCredit) as credit (credit.source)}
+						{#each ctx.credits.stars as credit (credit.source)}
 							<li>
 								{@render link(credit.source, credit.name, credit.organisation)}
 								{#if credit.license}<span class="text-muted-foreground">
@@ -268,7 +266,7 @@
 				<section class="space-y-1">
 					{@render sectionHeader(m.attribution_constellations())}
 					<ul class="space-y-0.5">
-						{#each ctx.credits.constellations.map(localizedStarCredit) as credit (credit.source)}
+						{#each ctx.credits.constellations as credit (credit.source)}
 							<li>
 								{@render link(credit.source, credit.name, credit.organisation)}
 								{#if credit.authors}<span class="text-muted-foreground">

@@ -66,14 +66,18 @@ export class VisibilityController {
 	focusedSystemId = $state<string | null>(null);
 	/** Set only when zoomed in — drives hiding of other systems. */
 	activeSystemId: string | null = null;
+	/** Reactive mirror of `activeSystemId`, for the credits. */
+	systemInView = $state<string | null>(null);
 	isZoomedIn = false;
 	/** The main zone and the satellite systems, faded to `activeSystemId`. */
 	readonly zones = new ZoneFades();
 	private readonly thresholds = new VisibilityThresholdFades();
-	/** The planetary system's share of the view (`system-fade.ts`): at 0 only
-	 *  the Sun draws, and every other body and cloud is hidden. Set by the
-	 *  renderer each frame. */
-	systemShare = 1;
+	private share = 1;
+	/** Reactive: false once `systemShare` is 0, for the credits. */
+	systemDrawn = $state(true);
+	/** Reactive: the focused body draws with no halo, for the credits. Set by
+	 *  the visibility pass each frame. */
+	focusedAtFullSize = $state(false);
 	/** The starfield's share of the sky, 0 to 1. Set by the renderer each frame. */
 	starShare = 0;
 	/** The share of the stars the starfield draws on their own. Set by the
@@ -161,12 +165,29 @@ export class VisibilityController {
 		// can change while the zoom does not (flyby probe, scrubbed craft), and
 		// edge-gating would hold the stale system active.
 		this.isZoomedIn = dist / AU_SCALE < this.hideThresholdAU;
-		this.activeSystemId = this.isZoomedIn ? this.focusedSystemIdPlain : null;
+		this.setActiveSystem(this.isZoomedIn ? this.focusedSystemIdPlain : null);
 		// Only recompute when distance changes by more than 0.5% — avoids a filter+sort every frame
 		if (Math.abs(dist - this.lastRecomputeDist) > this.lastRecomputeDist * 0.005 + 0.001) {
 			this.lastRecomputeDist = dist;
 			this.recomputeFullMoons();
 		}
+	}
+
+	/** The planetary system's share of the view (`system-fade.ts`): at 0 only
+	 *  the Sun draws, and every other body and cloud is hidden. Set by the
+	 *  renderer each frame. */
+	get systemShare(): number {
+		return this.share;
+	}
+
+	set systemShare(share: number) {
+		this.share = share;
+		this.systemDrawn = share > 0;
+	}
+
+	private setActiveSystem(sysId: string | null): void {
+		this.activeSystemId = sysId;
+		this.systemInView = sysId;
 	}
 
 	/** Advances after camera visibility selects this frame's targets. */
@@ -273,7 +294,7 @@ export class VisibilityController {
 		// whether the existing camera distance counts as "zoomed in".
 		this.hideThresholdAU = this.computeHideThreshold();
 		this.isZoomedIn = this.cameraDistThreeJS / AU_SCALE < this.hideThresholdAU;
-		this.activeSystemId = this.isZoomedIn ? sysId : null;
+		this.setActiveSystem(this.isZoomedIn ? sysId : null);
 		this.lastRecomputeDist = -1; // force recompute on next updateCamera
 		this.recomputeFullMoons();
 	}

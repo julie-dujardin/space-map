@@ -53,6 +53,7 @@ import {
 	extrasolarPath,
 	fetchExtrasolarFile,
 	fetchExtrasolarMetadata,
+	inSceneCredits,
 	type ExtrasolarCredit,
 	type ExtrasolarTree
 } from '$lib/fetch/extrasolar/files';
@@ -90,6 +91,7 @@ const TREE = 'mw';
 const ROOT = 'r';
 /** Retry key of `metadata.json`. No node has this name. */
 const METADATA = 'metadata.json';
+const NO_CREDITS: readonly ExtrasolarCredit[] = [];
 
 /** Limit magnitude with the camera near its target. */
 const BASE_LIMIT_MAG = 7.5;
@@ -237,7 +239,6 @@ export class StarfieldSystem {
 	private targetLimit = BASE_LIMIT_MAG;
 	/** The limit that the wanted set allows. It is below the target when the budget is full. */
 	private allowedLimit = BASE_LIMIT_MAG;
-	private creditsShown = false;
 	/** The camera is far enough from the barycentre for the starfield to load. */
 	private active = false;
 	/** The nodes wanted since loading started have come in. */
@@ -602,10 +603,7 @@ export class StarfieldSystem {
 		const drawing =
 			(this.group.visible && this.drawn.size > 0) ||
 			(this.exactGroup.visible && this.exact.size > 0);
-		if (drawing && !this.creditsShown) {
-			this.creditsShown = true;
-			this.ctx.credits.setStars(this.credits);
-		}
+		this.ctx.credits.setStars(drawing ? this.credits : NO_CREDITS);
 	}
 
 	/** Put an exact star where its orbit has it now. */
@@ -702,7 +700,7 @@ export class StarfieldSystem {
 				return;
 			}
 			this.tree = tree;
-			this.credits = meta.credits;
+			this.credits = meta.credits.filter(inSceneCredits);
 			this.root = this.record(ROOT, 0, tree.centre, tree.half_size, Infinity, null);
 			this.drawable = 'yes';
 			this.markDirty();

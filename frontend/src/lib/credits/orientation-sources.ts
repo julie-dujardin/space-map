@@ -9,7 +9,8 @@
  *
  * Single source of truth for both surfaces that credit a pole: the detail
  * sidebar, which quotes the rotation period as a value, and the scene's
- * attribution popover, which credits the elements the renderer spins bodies by.
+ * attribution popover, which credits the elements the renderer spins bodies by
+ * unless they come from a paper.
  */
 import * as m from '$lib/paraglide/messages.js';
 
@@ -34,6 +35,8 @@ export interface OrientationCreditEntry {
 	url: string;
 	/** What this source contributed, shown as the sidebar's parenthetical. */
 	role: string;
+	/** A paper: the sidebar cites it, the popover leaves it to /credits. */
+	paper?: true;
 }
 
 const IAU_WGCCRE_URL = 'https://www.iau.org/WG100/WG100/Home.aspx';
@@ -95,6 +98,7 @@ function namedWorkCredit(reference: OrientationReference, role: string): Orienta
 		short: reference.title,
 		long: reference.title,
 		url: reference.url,
-		role
+		role,
+		paper: true
 	};
 }
