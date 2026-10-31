@@ -27,7 +27,6 @@ import orjson
 from space_map_data.constants.providers import ID_TYPES, LANGUAGES
 from space_map_data.export.extrasolar.build import METADATA_FILE, served
 from space_map_data.export.extrasolar.census import (
-    KIND_OF_HOME,
     PLANET,
     STAR,
     STAR_SYSTEM,
@@ -49,7 +48,6 @@ from space_map_data.export.position.format import (
     unpack_chebyshev_header,
     unpack_elements_header,
 )
-from space_map_data.extrasolar.ids import table_of
 from space_map_data.models.object import ObjectType
 
 logger = logging.getLogger(__name__)
@@ -106,16 +104,15 @@ def kind_of(object_type: str, satcat: bool) -> str:
 
 
 def catalogue_kind(object_id: str, object_type: str) -> str | None:
-    """The row of an entry of the extrasolar catalogue, by the home table of
-    its object as the census counts it: a held star, of type star, is a star.
-    None for an object of the solar system."""
+    """The row of an entry of the extrasolar catalogue, by the kind of its
+    object as the census counts it: a node of a star system has the type of
+    its class, so another type is a star system. None for an object of the
+    solar system."""
     if not object_id.startswith(STAR_PREFIX):
         return None
     if PLANET_ID.match(object_id):
         return PLANET
-    if object_type == STAR_TYPE:
-        return STAR
-    return KIND_OF_HOME[table_of(int(object_id.removeprefix(STAR_PREFIX)))]
+    return STAR if object_type == STAR_TYPE else STAR_SYSTEM
 
 
 def has_own_text(entry: dict) -> bool:

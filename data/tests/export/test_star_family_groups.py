@@ -152,6 +152,31 @@ class TestBuild:
         }
         assert star_family._radius(columns) == radius
 
+    def test_the_largest_star_is_no_system(self, session):
+        """A point that holds several stars has a radius, but it is no star."""
+
+        def rows(_slug, ids, _columns):
+            radius = {1: 900.0, 2: 500.0}
+            return {
+                id_: {
+                    "radius_flame": radius[id_],
+                    "radius_flame_lower": radius[id_],
+                    "radius_flame_upper": radius[id_],
+                }
+                for id_ in ids
+            }
+
+        reader = MagicMock(rows=MagicMock(side_effect=rows))
+        stars = [
+            StarObject(1, "A binary", object_type="binary_star"),
+            StarObject(2, "A star"),
+        ]
+        names = ObjectNames(_entities({}), session)
+        found = star_family._largest_star(reader, stars, names)
+        assert found is not None
+        card, page = found
+        assert (card["primary_id"], page.name) == ("x-2", "A star")
+
     def test_the_plot_samples_the_stars(self, served, session):
         _, out = served
         plot = star_family.build_star_family_groups(

@@ -77,7 +77,7 @@ from space_map_data.extrasolar.registry import NoRegistry, Registry
 from space_map_data.extrasolar.sources.literature import LITERATURE, key_of
 from space_map_data.extrasolar.sources.names import IAU_WGSN
 from space_map_data.extrasolar.sources.wikidata import WIKIDATA
-from space_map_data.extrasolar.systems.assemble import BINARY, MULTIPLE
+from space_map_data.extrasolar.systems.assemble import NODE_CLASSES
 from space_map_data.extrasolar.tables import METADATA
 from space_map_data.utils.paths import EXPORT_DIR, EXTRASOLAR_DIR, REGISTRY_ROOT
 
@@ -87,7 +87,7 @@ PREFIX = "x-"
 TYPE = "star"
 PLANET_TYPE = "exoplanet"
 # The type of the entry of a star system node, by its class.
-SYSTEM_TYPES = {cls: cls.replace(" ", "_") for cls in (BINARY, MULTIPLE)}
+SYSTEM_TYPES = {cls: cls.replace(" ", "_") for cls in NODE_CLASSES}
 # The id of a planet's entry, as its scene id.
 PLANET_ID = re.compile(r"^x-\d+-b-\d+$")
 # The prefixes of SIMBAD's identifiers that Wikidata copies into some aliases:

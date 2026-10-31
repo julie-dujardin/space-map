@@ -546,6 +546,10 @@ def _build_tables(
         if dropped:
             logger.warning("%s: %d aliases without a live end left out", slug, dropped)
         results.append(TableResult(slug, split, files, rows))
+    logger.info(
+        "Family lists: %d held stars with a family have no magnitude, left out",
+        family_stars.unranked,
+    )
     return results, family_stars, pa.concat_tables(names)
 
 

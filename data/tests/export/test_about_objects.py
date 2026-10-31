@@ -92,8 +92,9 @@ PLANET_ID = f"x-{STAR_ID}-b-1"
 
 
 class TestCatalogueKind:
-    def test_by_home_table(self):
-        assert catalogue_kind(f"x-{STAR_ID}", "binary_star") == "star"
+    def test_a_node_is_a_star_system(self):
+        """Also a point, whose home is Point source."""
+        assert catalogue_kind(f"x-{STAR_ID}", "binary_star") == "star_system"
         assert catalogue_kind(f"x-{SYSTEM_ID}", "binary_star") == "star_system"
         assert catalogue_kind(PLANET_ID, "exoplanet") == "planet"
 

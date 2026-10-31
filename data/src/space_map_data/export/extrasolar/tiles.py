@@ -32,15 +32,18 @@ from space_map_data.constants.stars.families import FAMILIES, ROOT_FAMILY
 from space_map_data.export.extrasolar import citations, container, render
 from space_map_data.export.extrasolar.container import Column, Written
 from space_map_data.extrasolar import families
-from space_map_data.extrasolar.ids import CELL_LEVEL, CELL_MASK
+from space_map_data.extrasolar.ids import CELL_LEVEL, CELL_MASK, table_of
 from space_map_data.extrasolar.registry import ALIAS, LIVE, RETIRED, Registry
 from space_map_data.extrasolar.sky import REGION_LEVEL, REGION_SHIFT, region_of
+from space_map_data.extrasolar.systems.assemble import NODE_CLASSES
 from space_map_data.extrasolar.tables import (
     METADATA,
     POINT_SOURCE,
     REFERENCE,
+    SYSTEM,
     SYSTEM_ORBIT,
     SYSTEM_STAR,
+    SYSTEM_TABLE,
     TABLES,
     TableDef,
 )
@@ -111,6 +114,9 @@ COMPUTED = {METADATA.slug: families.FIELDS}
 # The Point source columns of the family masks and of the brightest stars,
 # each once: the two share some.
 FAMILY_COLUMNS = tuple(dict.fromkeys((*families.COLUMNS, *render.MAG_COLUMNS)))
+FAMILY_SCHEMA = pa.schema([POINT_SOURCE.schema.field(name) for name in FAMILY_COLUMNS])
+# The System columns of the held stars.
+HELD_COLUMNS = ("id", "star")
 # The length of each family list. A family page lists as many stars.
 LISTED_STARS = 20
 # The G, ID and name of a star of a family list.
@@ -347,10 +353,13 @@ class UnitJob:
 class FamilyStars:
     """The stars of each family in some Metadata rows. `counts` holds the
     number of published stars of each family, then of estimated stars.
-    `brightest` holds the brightest published stars of each family, by bit."""
+    `brightest` holds the brightest published stars of each family, by bit.
+    `unranked` counts the held stars with a published family and no magnitude,
+    which `brightest` leaves out."""
 
     counts: np.ndarray
     brightest: dict[int, list[Listed]]
+    unranked: int = 0
 
     def merge(self, other: FamilyStars) -> FamilyStars:
         """The family stars of both sets of rows."""
@@ -363,6 +372,7 @@ class FamilyStars:
                 )[:LISTED_STARS]
                 for bit in self.brightest.keys() | other.brightest.keys()
             },
+            self.unranked + other.unranked,
         )
 
 
@@ -565,33 +575,79 @@ def names_of(rows: pa.Table, ids: np.ndarray) -> pa.Table:
     return rows.filter(pa.array(wanted)).select(NAME_COLUMNS)
 
 
+def _read(
+    registry: Registry,
+    table: TableDef,
+    regions: tuple[int, ...],
+    columns: tuple[str, ...],
+) -> pa.Table:
+    """The `columns` of the rows of `table` in `regions`."""
+    names = list(columns)
+    parts = [registry.read_table(table.slug, region, names) for region in regions]
+    return pa.concat_tables(
+        [
+            table.schema.empty_table().select(names),
+            *(part for part in parts if part is not None),
+        ]
+    )
+
+
+def held_rows(system: pa.Table) -> pa.Table:
+    """Family rows of the held stars in the System rows `system`.
+
+    A held star has no Point source row, so its row is null but for its ID,
+    its spectral type and its magnitudes. The rules that read other columns
+    give nothing. Its G and V go in the columns of the last source of
+    `render.magnitudes`, which takes G, else V, with no estimate.
+    """
+    held = system.filter(system["star"].is_valid())
+    star = held["star"]
+    values = {
+        "id": held["id"],
+        families.SPECTRAL_TYPES[0]: pc.struct_field(star, "spectral_type"),
+        "host_g_mag": pc.struct_field(star, "g_mag"),
+        "host_v_mag": pc.struct_field(star, "v_mag"),
+    }
+    return pa.table(
+        [
+            values[f.name] if f.name in values else pa.nulls(held.num_rows, f.type)
+            for f in FAMILY_SCHEMA
+        ],
+        schema=FAMILY_SCHEMA,
+    )
+
+
 def with_families(
     registry: Registry, regions: tuple[int, ...], rows: pa.Table, problems: Problems
 ) -> tuple[pa.Table, FamilyStars]:
     """Metadata `rows` with their family masks and spectral type, and the
     stars of each family.
 
-    A row without a Point source row, such as an alias, has no family and no
-    type.
+    A held star reads its System row. A node of a star system has no family
+    and no type, and neither has another row without a Point source row, such
+    as an alias.
     """
-    parts = [
-        registry.read_table(POINT_SOURCE.slug, region, list(FAMILY_COLUMNS))
-        for region in regions
-    ]
-    kept = [part for part in parts if part is not None]
-    stars = pa.concat_tables(kept) if kept else None
+    stars = pa.concat_tables(
+        [
+            _read(registry, POINT_SOURCE, regions, FAMILY_COLUMNS),
+            held_rows(_read(registry, SYSTEM, regions, HELD_COLUMNS)),
+        ]
+    )
     published = np.zeros(rows.num_rows, np.uint64)
     estimated = np.zeros(rows.num_rows, np.uint64)
     spectral = pa.nulls(rows.num_rows, pa.string())
     mag = np.full(rows.num_rows, np.nan)
-    if stars is not None and stars.num_rows:
+    if stars.num_rows:
         at = pc.index_in(stars["id"], value_set=rows["id"].combine_chunks())
         found = at.is_valid().to_numpy(zero_copy_only=False)
         lost = stars["id"].to_numpy()[~found]
-        problems.add("Point source row without a Metadata row", lost, lost.size)
+        problems.add("star row without a Metadata row", lost, lost.size)
         stars = stars.filter(pa.array(found))
         at = at.filter(pa.array(found)).to_numpy()
         classes = rows["class"].take(pa.array(at))
+        is_star = pc.invert(pc.is_in(classes, value_set=pa.array(NODE_CLASSES)))
+        stars, classes = stars.filter(is_star), classes.filter(is_star)
+        at = at[is_star.to_numpy(zero_copy_only=False)]
         published[at], estimated[at] = families.masks(stars, classes)
         star_of = np.full(rows.num_rows, -1)
         star_of[at] = np.arange(at.size)
@@ -604,7 +660,10 @@ def with_families(
     for column, values in zip(families.FIELDS, (published, estimated, spectral)):
         rows = rows.append_column(column, pa.array(values, column.type))
     counts = np.stack([families.counts(published), families.counts(estimated)])
-    return rows, FamilyStars(counts, brightest(rows, published, mag))
+    held = table_of(rows["id"].to_numpy()) == SYSTEM_TABLE
+    unranked = held & np.isnan(mag) & (published != 0)
+    ranked = np.where(unranked, families.NONE, published)
+    return rows, FamilyStars(counts, brightest(rows, ranked, mag), int(unranked.sum()))
 
 
 def brightest(

@@ -75,9 +75,9 @@ class TestCensus:
             return census.census(registry, _serial, read_planets(registry)).objects
 
     def test_each_id_counts_once_by_its_home_table(self, objects):
-        # The point of two stars has its home in Point source.
+        # The point of two stars is a star system, not a star.
         counts = {kind: entry["count"] for kind, entry in objects.items()}
-        assert counts == {"star": 3, "star_system": 1, "planet": 1}
+        assert counts == {"star": 2, "star_system": 2, "planet": 1}
 
     def test_star_sources(self, objects):
         assert objects["star"]["sources"] == {
@@ -85,15 +85,13 @@ class TestCensus:
             "rybizki-2022": 2,
             "gaia-dr3-nss": 1,
             "hipparcos-2007": 1,
-            "simbad": 1,
-            "star-systems": 1,
         }
 
     def test_most_objects_first(self, objects):
         assert list(objects["star"]["sources"])[:2] == ["gaia-dr3", "rybizki-2022"]
 
     def test_system_and_planet_sources(self, objects):
-        assert objects["star_system"]["sources"] == {"star-systems": 1}
+        assert objects["star_system"]["sources"] == {"star-systems": 2, "simbad": 1}
         assert objects["planet"]["sources"] == {"nasa-exoplanet-archive": 1}
 
     def test_a_held_star_is_a_star(self, tmp_path):
@@ -101,9 +99,9 @@ class TestCensus:
         with Registry(built.root).reader() as registry:
             counted = census.census(registry, _serial, read_planets(registry))
         counts = {kind: entry["count"] for kind, entry in counted.objects.items()}
-        assert counts == {"star": 4, "star_system": 1, "planet": 1}
-        assert counted.rows["system", "star"] == 2
-        assert counted.objects["star"]["sources"]["star-systems"] == 2
+        assert counts == {"star": 3, "star_system": 2, "planet": 1}
+        assert counted.rows["system", "star"] == 1
+        assert counted.objects["star"]["sources"]["star-systems"] == 1
 
 
 class TestServedCensus:
@@ -114,8 +112,8 @@ class TestServedCensus:
         root = out / "v1" / "x"
         objects = ExportReader(root).metadata["objects"]
         assert {kind: entry["count"] for kind, entry in objects.items()} == {
-            "star": 3,
-            "star_system": 1,
+            "star": 2,
+            "star_system": 2,
             "planet": 1,
         }
         assert objects["star"]["sources"]["gaia-dr3"] == 2
@@ -136,8 +134,8 @@ class TestServedCensus:
                 p.stat().st_size for p in (root / name).rglob("*") if p.is_file()
             )
 
-        # The pair is one of two System rows and one of four live IDs; the
-        # point's System row is that of a star. The systems index is theirs.
+        # The pair and the point are the two System rows and two of four live
+        # IDs. The systems index is theirs.
         assert objects["star_system"]["size_bytes"] == pytest.approx(
-            tree("system") / 2 + tree("metadata") / 4 + tree("systems"), abs=1
+            tree("system") + tree("metadata") / 2 + tree("systems"), abs=1
         )

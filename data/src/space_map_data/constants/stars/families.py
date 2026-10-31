@@ -8,6 +8,10 @@ spectral type tag of ESP-ELS, the stage from the ESP-HS surface gravity (O and
 B stars) or from FLAME (other stars), the DSC white-dwarf probability, the
 ESP-ELS emission-line class or the class of a SPICY candidate.
 
+A node of a star system is no star, so it has no family. Its stars have them.
+A held star has no Point source row, so only its own spectral type and its
+class go through these rules.
+
 Where an object type and the MK class give stages that cannot both hold, one
 of them wins and the stage families of the other are dropped.
 

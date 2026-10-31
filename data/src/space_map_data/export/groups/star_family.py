@@ -6,9 +6,9 @@ served files, as the planets of the sitemap do: a page then tells what the
 site serves. A page lists the stars with a Wikipedia article first, then the
 brightest other stars of the family, which the extrasolar export picks.
 
-The Stars category page stands for the root family. It counts every star, and
-the classified ones are those of the root family. Its diagram plots a random
-sample of the stars.
+The Stars category page stands for the root family. It counts every star, but
+no node of a star system, and the classified ones are those of the root
+family. Its diagram plots a random sample of the stars.
 """
 
 import gzip
@@ -53,7 +53,7 @@ from space_map_data.export.groups.star_lineup import (
 from space_map_data.export.groups.stats import GroupExtraStats
 from space_map_data.export.names import Names, ObjectNames
 from space_map_data.export.notable import NotableObject
-from space_map_data.export.objects.stars import PREFIX, StarObject
+from space_map_data.export.objects.stars import PREFIX, TYPE, StarObject
 from space_map_data.extrasolar.families import of_spectral_type
 from space_map_data.extrasolar.tables import METADATA, POINT_SOURCE
 from space_map_data.utils.content_stamp import content_stamp
@@ -202,13 +202,14 @@ def _largest_star(
     primary_id, name, radius_sun}, and the names of its page.
 
     The stars with an entry only: the tiles of every star are too many to read
-    here, and an unknown star on the card would say little."""
+    here, and an unknown star on the card would say little. A point that holds
+    several stars has a radius, but a system is no star."""
     columns = [
         name
         for column in RADIUS_COLUMNS
         for name in (column, f"{column}_lower", f"{column}_upper")
     ]
-    entries = {star.id: star for star in star_objects}
+    entries = {star.id: star for star in star_objects if star.object_type == TYPE}
     rows = reader.rows(POINT_SOURCE.slug, sorted(entries), columns)
     radii = {id_: radius for id_, row in rows.items() if (radius := _radius(row))}
     if not radii:
@@ -423,6 +424,7 @@ def _add_brightest(
         if len(members) < wanted:
             short.append(f"{family} {len(members)}/{wanted}")
     logger.info("Star family pages: %d of the brightest stars added", added)
-    # The export fills each list, so a short one means the two files disagree.
+    # The export fills each list, but leaves out held stars with no magnitude.
+    # So a short list means that, or that the two files disagree.
     if short:
         logger.warning("Star family pages short of their family: %s", ", ".join(short))

@@ -161,11 +161,20 @@ def planet(
 
 @dataclass(frozen=True)
 class Held:
-    """A held star: its name, its System `star` value and its Wikidata item."""
+    """A held star: its name, its System `star` value, its Wikidata item and
+    the magnitudes of its member."""
 
     name: str | None = None
     star: Mapping[str, Any] | None = None
     qid: str | None = None
+    g_mag: float | None = None
+    v_mag: float | None = None
+
+
+def _star_values(held: Held) -> Mapping[str, Any] | None:
+    if held.star is None:
+        return None
+    return {**held.star, "g_mag": held.g_mag, "v_mag": held.v_mag}
 
 
 @dataclass(frozen=True)
@@ -282,6 +291,14 @@ def _system_rows(
                     "source": "msc",
                     "separation": 2.5,
                     "known": ["visual"],
+                    **(
+                        {
+                            "g_mag": node.held.get(letter, Held()).g_mag,
+                            "v_mag": node.held.get(letter, Held()).v_mag,
+                        }
+                        if kind == "held"
+                        else {}
+                    ),
                 }
             )
         stars_below = count(at)
@@ -327,7 +344,7 @@ def _system_rows(
                 "root": node_row["root"],
                 "distance": node_row["distance"],
                 "members": [],
-                "star": nodes[at].held.get(letter, Held()).star,
+                "star": _star_values(nodes[at].held.get(letter, Held())),
             }
         )
     for at, row in enumerate(rows):

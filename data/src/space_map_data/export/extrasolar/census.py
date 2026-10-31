@@ -1,12 +1,13 @@
 """The objects of the extrasolar export by kind, for `/about/data`: how many
 there are, the bytes of their files, and the objects that each source feeds.
 
-An object's kind is its home table, so each ID counts once: a star has its
-home in Point source, also when it is a point that holds two or more stars,
-and a resolved star system in System. A held star has its home in System,
-but it is a star. A source feeds an object when one of its values comes from
-it. Wikidata is left out: every object with an item has an object entry, and
-the main export counts the items from the entries.
+An object's kind is what it is, and each ID counts once. A star has its home
+in Point source. A held star has no Point source row and its home in System,
+but it is a star. A node of a star system is no star: a resolved system has
+its home in System, and a point that holds two or more stars in Point source.
+A source feeds an object when one of its values comes from it. Wikidata is
+left out: every object with an item has an object entry, and the main export
+counts the items from the entries.
 """
 
 from collections import Counter, defaultdict
@@ -22,6 +23,7 @@ from space_map_data.extrasolar.ids import table_of
 from space_map_data.extrasolar.registry import Registry
 from space_map_data.extrasolar.sky import REGION_COUNT
 from space_map_data.extrasolar.sources.wikidata import WIKIDATA
+from space_map_data.extrasolar.systems.assemble import NODE_CLASSES
 from space_map_data.extrasolar.tables import (
     BINARY_ORBIT,
     METADATA,
@@ -33,7 +35,7 @@ from space_map_data.extrasolar.tables import (
 STAR, STAR_SYSTEM, PLANET = "star", "star_system", "planet"
 
 KIND_OF_HOME = {POINT_SOURCE.number: STAR, SYSTEM.number: STAR_SYSTEM}
-# The tables whose rows are all stars. Metadata and System hold both kinds.
+# The tables of the drawn points. Metadata and System hold both kinds by row.
 _STAR_TABLES = (POINT_SOURCE.slug, BINARY_ORBIT.slug)
 _SHARED_TABLES = (METADATA.slug, SYSTEM.slug)
 # Another pass of a catalogue counts as that catalogue.
@@ -79,7 +81,8 @@ def read_columns(table: TableDef) -> tuple[str, ...]:
     """The columns of `table` that the census reads."""
     columns = ["id", *(group.source_column for group in table.groups)]
     if table is METADATA:
-        columns.append("alias_target")
+        # `class` tells a node.
+        columns += ["alias_target", "class"]
     return tuple(columns)
 
 
@@ -103,13 +106,17 @@ def _held_stars(registry: Registry, region: int) -> np.ndarray:
     return rows["id"].to_numpy()[single & ~point]
 
 
-def _kinds(ids: np.ndarray, held: np.ndarray) -> dict[str, np.ndarray]:
-    """Which of `ids` is of each kind: by its home table, a held star a star."""
+def _kinds(
+    ids: np.ndarray, held: np.ndarray, nodes: np.ndarray
+) -> dict[str, np.ndarray]:
+    """Which of `ids` is of each kind: by its home table, a held star a star
+    and a node a star system."""
     home = table_of(ids)
     is_held = np.isin(ids, held)
+    is_node = np.isin(ids, nodes)
     masks = {kind: home == number for number, kind in KIND_OF_HOME.items()}
-    masks[STAR] |= is_held
-    masks[STAR_SYSTEM] &= ~is_held
+    masks[STAR] = (masks[STAR] & ~is_node) | is_held
+    masks[STAR_SYSTEM] = (masks[STAR_SYSTEM] & ~is_held) | is_node
     return masks
 
 
@@ -124,12 +131,17 @@ def region_census(
         lambda: defaultdict(list)
     )
     held = _held_stars(registry, region)
+    # The IDs of the nodes, also those that are points. Metadata comes first.
+    nodes = np.zeros(0, np.int64)
     for table in (METADATA, POINT_SOURCE, BINARY_ORBIT, SYSTEM):
         rows = registry.read_table(table.slug, region, list(read_columns(table)))
         if rows is None:
             continue
         ids = rows["id"].to_numpy()
-        of_kind = _kinds(ids, held)
+        if table is METADATA:
+            is_node = pc.is_in(rows["class"], value_set=pa.array(NODE_CLASSES))
+            nodes = rows["id"].filter(is_node).to_numpy()
+        of_kind = _kinds(ids, held, nodes)
         if table.slug in _SHARED_TABLES:
             live = (
                 rows["alias_target"].is_null().to_numpy(zero_copy_only=False)

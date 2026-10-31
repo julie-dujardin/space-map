@@ -31,8 +31,16 @@ from space_map_data.extrasolar.tables import (
     METADATA,
     POINT_SOURCE,
     SYSTEM,
+    SYSTEM_STAR,
 )
-from tests.extrasolar.export_registry import HOST, random_stars, star, write_registry
+from tests.extrasolar.export_registry import (
+    HOST,
+    Held,
+    Node,
+    random_stars,
+    star,
+    write_registry,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -462,6 +470,7 @@ class TestExport:
             ("binary-orbit", render.ORBIT_COLUMNS),
             ("system", ("id",)),
             ("system", None),
+            ("system", tiles.HELD_COLUMNS),
             ("system", systems.READ_COLUMNS),
             ("system", census.HELD_COLUMNS),
             *(
@@ -521,6 +530,140 @@ class TestBrightest:
         whole = stars(slice(0, 5))
         assert merged.brightest == whole.brightest
         assert (merged.counts == whole.counts).all()
+
+
+class TestHeldRows:
+    """The family rows of the held stars come from their System values."""
+
+    def test_they_read_no_member(self):
+        star = {"spectral_type": "K0III", "g_mag": 7.0, "v_mag": 8.0}
+        rows = tiles.held_rows(
+            pa.table({"id": [1, 2], "star": pa.array([star, None], SYSTEM_STAR)})
+        )
+        assert rows["id"].to_pylist() == [1]
+        assert rows["host_g_mag"].to_pylist() == [7.0]
+        assert rows["host_v_mag"].to_pylist() == [8.0]
+
+
+class TestSystemFamilies:
+    """A node of a star system has no family. Its stars have theirs."""
+
+    GIANT = families.BIT["red-giant"]
+    RED_DWARF = families.BIT["red-dwarf"]
+    G_TYPE = families.BIT["g-type-main-sequence"]
+
+    @pytest.fixture
+    def exported(self, tmp_path, out):
+        giant = {"simbad_sp_type": "K0III", "simbad_otype": "RG*"}
+        gaia_tag = {"spectraltype_esphs": "G", "flags_esphs": "01000"}
+        dwarf = {"evolstage_flame": 250, "mass_flame": 1.0, "flags_flame": "00"}
+        built = write_registry(
+            tmp_path / "reg",
+            [
+                star(10.0, 5.0) | giant | dwarf | gaia_tag,
+                star(10.0, 6.0, g=9.0, simbad=True),
+                star(10.1, 6.0, g=10.0) | {"simbad_sp_type": "M4V"},
+                star(10.0, 7.0) | giant,
+            ],
+            systems=[
+                Node(
+                    (
+                        ("held", None, "A"),
+                        ("held", None, "B"),
+                        ("held", None, "C"),
+                        ("held", None, "D"),
+                        ("held", None, "E"),
+                    ),
+                    point=0,
+                    held={
+                        "A": Held("Point A", {"spectral_type": "K0III"}, g_mag=7.0),
+                        "B": Held("Point B", {"spectral_type": "M4V"}, v_mag=8.0),
+                        "C": Held("Point C", {"spectral_type": "G2V"}),
+                        "D": Held("Point D", {"mass": 1.0}, g_mag=6.0),
+                        "E": Held("Point E", {"spectral_type": "K"}, g_mag=5.0),
+                    },
+                ),
+                Node((("star", 1, "A"), ("star", 2, "B"))),
+                Node((("held", None, "A"), ("held", None, "B")), point=3),
+            ],
+        )
+        export_extrasolar(built.root, out, workers=1)
+        return built, ExportReader(out / "v1" / "x")
+
+    def _metadata(self, reader: ExportReader, id_: int) -> dict:
+        record = reader.lookup(str(id_))
+        assert record is not None
+        return record.metadata
+
+    def test_a_node_has_no_family_and_no_type(self, exported):
+        built, reader = exported
+        for node in built.nodes:
+            row = self._metadata(reader, node)
+            assert row["class"] in ("binary star", "multiple star")
+            assert row["families"] == row["families_estimated"] == 0
+            assert row["spectral_type"] is None
+
+    def test_a_held_star_has_the_families_of_its_type(self, exported):
+        built, reader = exported
+        row = self._metadata(reader, built.held[0, "A"])
+        assert row["families"] & self.GIANT
+        assert row["families_estimated"] == 0
+        assert row["spectral_type"] == "K0III"
+        assert self._metadata(reader, built.held[0, "B"])["families"] & self.RED_DWARF
+
+    def test_a_held_star_without_a_type_has_no_family(self, exported):
+        built, reader = exported
+        row = self._metadata(reader, built.held[0, "D"])
+        assert row["families"] == row["families_estimated"] == 0
+        assert row["spectral_type"] is None
+
+    def test_a_letter_alone_gives_a_held_star_no_family(self, exported):
+        built, reader = exported
+        row = self._metadata(reader, built.held[0, "E"])
+        assert row["families"] == row["families_estimated"] == 0
+        assert row["spectral_type"] == "K"
+
+    def test_a_star_with_its_own_point_keeps_its_families(self, exported):
+        built, reader = exported
+        assert self._metadata(reader, built.ids[1])["families"]
+        row = self._metadata(reader, built.ids[2])
+        assert row["families"] & self.RED_DWARF
+        assert row["spectral_type"] == "M4V"
+
+    def test_the_counts_leave_the_nodes_out(self, exported):
+        _, reader = exported
+        counts = {entry["slug"]: entry for entry in reader.metadata["families"]}
+        assert counts["red-giant"]["published"] == 1
+        assert counts["red-dwarf"]["published"] == 2
+        assert counts["g-type-main-sequence"]["published"] == 1
+        assert counts["g-type-main-sequence"]["estimated"] == 0
+
+    def test_a_list_ranks_held_stars_by_their_member(self, exported):
+        built, reader = exported
+        lists = json.loads((reader.root / FAMILIES_FILE).read_text())["brightest"]
+        assert [s["id"] for s in lists["red-giant"]] == [built.held[0, "A"]]
+        assert [s["id"] for s in lists["red-dwarf"]] == [
+            built.held[0, "B"],
+            built.ids[2],
+        ]
+
+    def test_a_list_leaves_out_a_held_star_without_magnitude(self, exported):
+        _, reader = exported
+        lists = json.loads((reader.root / FAMILIES_FILE).read_text())["brightest"]
+        assert "g-type-main-sequence" not in lists
+
+    def test_the_build_logs_the_held_stars_it_leaves_out(self, tmp_path, out, caplog):
+        held = {"A": Held(star={"spectral_type": "G2V"}), "B": Held(star={})}
+        built = write_registry(
+            tmp_path / "reg",
+            [star(10.0, 5.0)],
+            systems=[
+                Node((("held", None, "A"), ("held", None, "B")), point=0, held=held)
+            ],
+        )
+        with caplog.at_level("INFO", logger=build.__name__):
+            export_extrasolar(built.root, out, workers=1)
+        assert "1 held stars with a family have no magnitude" in caplog.text
 
 
 class TestChecks:
