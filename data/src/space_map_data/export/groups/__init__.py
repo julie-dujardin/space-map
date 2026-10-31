@@ -79,6 +79,7 @@ from space_map_data.export.groups.star_family import (
     write_star_plot,
 )
 from space_map_data.export.groups.stats import GroupExtraStats
+from space_map_data.export.groups.system_pages import build_system_pages
 from space_map_data.export.names import Names, ObjectNames, entity_names
 from space_map_data.export.notable import (
     NotableObject,
@@ -471,6 +472,7 @@ def run_groups_tier(
         ),
     )
     planets_page = planet_families.planets
+    system_pages = build_system_pages(star_objects or [], planet_families.hosts, names)
     sky_pages = build_sky_pages(star_objects or [], names)
 
     # Each constellation lists the buses its members fly, most-used first; the
@@ -486,6 +488,7 @@ def run_groups_tier(
     extra_member_counts.update(feature_types.member_counts)
     extra_member_counts.update(star_families.member_counts)
     extra_member_counts.update(planet_families.member_counts)
+    extra_member_counts.update(system_pages.member_counts)
     extra_member_counts.update(sky_pages.member_counts)
     extra_named_counts = dict(small_body_stats.named_counts)
     extra_named_counts.update(category_data.named_counts)
@@ -496,6 +499,7 @@ def run_groups_tier(
     extra_notable_members.update(feature_types.notable_members)
     extra_notable_members.update(star_families.notable_members)
     extra_notable_members.update(planet_families.notable_members)
+    extra_notable_members.update(system_pages.notable_members)
     extra_notable_members.update(sky_pages.notable_members)
     extra_notable_members.update(
         _earth_zone_notable_members(earth_orbit_stats, wikidata_entities)
@@ -531,6 +535,7 @@ def run_groups_tier(
         **missions.extra_stats,
         **star_families.extra_stats,
         **planet_families.extra_stats,
+        **system_pages.extra_stats,
         **sky_pages.extra_stats,
     }
     # The Planets page lists every planet. It also lists its Solar System
@@ -584,6 +589,8 @@ def run_groups_tier(
     if planets_page is not None:
         extra_chart_names.setdefault(PLANETS_SLUG, {}).update(planets_page.card_names)
     extra_chart_names.setdefault(STARS_SLUG, {}).update(star_families.card_names)
+    for slug, card_names in system_pages.card_names.items():
+        extra_chart_names.setdefault(slug, {}).update(card_names)
 
     write_earth_membership(out_dir, build.membership)
     write_orbit_samples(out_dir, small_body_stats.orbit_samples)

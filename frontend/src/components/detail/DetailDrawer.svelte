@@ -207,7 +207,8 @@
 			groupDetail?.global ?? null,
 			surface.featureType,
 			starSystem.root,
-			groupDetail?.localized?.parent_group_name
+			groupDetail?.localized?.parent_group_name,
+			starSystem.rootCategory
 		)
 	);
 
@@ -534,6 +535,7 @@
 		{star}
 		{planet}
 		system={starSystem.system}
+		systemCategories={starSystem.categories}
 	/>
 {/snippet}
 

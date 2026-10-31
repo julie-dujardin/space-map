@@ -47,8 +47,8 @@ class NotableObject:
     names: Names  # from `export.names`, as the member's own page has them
     diameter_km: float | None
     first_obs: str | None  # discovery proxy, YYYY-MM-DD or YYYY
-    # Set → the thumbnail is this object's: a planetary system routes to its
-    # barycenter, which has no photograph, and borrows its primary's.
+    # Set → the thumbnail is this object's or group's: a planetary system routes
+    # to its barycenter, which has no photograph, and borrows its primary's.
     image_of: str | None = None
     # Set → a planetary system, whose page is its barycenter's: the names of
     # that page ("Jupiter system"). `names` stays the planet's, because
@@ -306,7 +306,9 @@ def notable_entries(
         # Group members route to /g/<slug>; object members focus their mesh.
         if member.group_slug is not None:
             entry = {"name": name, "group": member.group_slug}
-            thumbnail = pick_thumbnail(collect_group_images(member.group_slug))
+            thumbnail = pick_thumbnail(
+                collect_group_images(member.image_of or member.group_slug)
+            )
             if thumbnail:
                 entry["thumbnail"] = thumbnail
             out.append(entry)

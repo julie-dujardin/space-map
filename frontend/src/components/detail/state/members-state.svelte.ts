@@ -135,7 +135,7 @@ export class MembersState {
 			const type = d.groupDetail()?.global?.type;
 			return type === 'star_family' || type === 'planet_family' || type === 'sky_constellation';
 		});
-		const bakedOnly = $derived(bakedType || d.cat().planets || d.cat().stars);
+		const bakedOnly = $derived(bakedType || d.cat().planets || d.cat().stars || d.cat().systems);
 		this.memberTotal = $derived(
 			d.isGroupMode()
 				? bakedOnly

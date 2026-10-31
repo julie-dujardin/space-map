@@ -97,6 +97,8 @@
 		planet?: PlanetAnchor | null;
 		/** The star system of `star`, once it loads. */
 		system?: StarSystem | null;
+		/** The system categories of `star`, for its cross-refs. */
+		systemCategories?: string[];
 	}
 
 	let {
@@ -117,7 +119,8 @@
 		actions,
 		star = null,
 		planet = null,
-		system = null
+		system = null,
+		systemCategories = []
 	}: Props = $props();
 
 	let data = $derived(load.data);
@@ -369,6 +372,7 @@
 				{planetarySystem}
 				{star}
 				planet={planet?.planet ?? null}
+				{systemCategories}
 			/>
 		{/if}
 		<!-- When this system's moons were found; sits under its cross-refs, which

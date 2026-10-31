@@ -120,6 +120,8 @@ class PlanetGroups(FamilyGroups):
     """The family pages and the Planets page."""
 
     planets: PlanetsPage | None = None
+    # The served planets of each host.
+    hosts: Counter[int] = field(default_factory=Counter)
 
 
 @dataclass
@@ -144,6 +146,8 @@ class _Planet:
     axis: tuple[float | None, int | None]
     # True for an exoplanet with an object entry.
     entry: bool = False
+    # An exoplanet's host.
+    host: int | None = None
     # A Solar System planet's category member.
     body: NotableObject | None = None
     # The diameter of a measured radius, else None.
@@ -196,6 +200,7 @@ def build_planet_family_groups(
     ranked = _ranked(planets, names.entities)
     out.notable_members = _family_lists(ranked, names)
     out.planets = _planets_page(planets, ranked, names, out.member_counts)
+    out.hosts = Counter(p.host for p in exoplanets if p.host is not None)
     logger.info(
         "Planet pages: %d planets (%d exoplanets), %d families, %d with planets,"
         " %d with listed planets",
@@ -249,6 +254,7 @@ def _planet(
         radius=_plotted(record, "radius", EARTH_RADII_PER_JUPITER),
         axis=_plotted(record, "semi_major_axis"),
         entry=entry,
+        host=record.get("host"),
         body=body,
         diameter_km=_round(diameter) if how == MEASURED else None,
         first_obs=None if year is None else str(year),

@@ -28,6 +28,7 @@ from space_map_data.constants.providers import LANGUAGES
 from space_map_data.export.groups.planet_family import served_planet_families_stamp
 from space_map_data.export.groups.sky_pages import served_sky_pages_stamp
 from space_map_data.export.groups.star_family import served_families_stamp
+from space_map_data.export.groups.system_pages import served_system_pages_stamp
 from space_map_data.export.names import system_titles
 from space_map_data.export.objects.position_sources import (
     load_probe_position_sources,
@@ -194,6 +195,7 @@ def tier_b_fingerprint(
         ),
         "star_families": served_families_stamp(),
         "planet_families": served_planet_families_stamp(),
+        "system_pages": served_system_pages_stamp(),
         "sky_pages": served_sky_pages_stamp(),
     }
 

@@ -12,7 +12,9 @@ import {
 	CAT_DWARF_PLANETS,
 	CAT_PLANETS,
 	CAT_SATELLITE_SYSTEMS,
+	CAT_PLANETARY_SYSTEMS,
 	CAT_SOLAR_SYSTEM,
+	CAT_STAR_SYSTEMS,
 	CAT_SURFACE_FEATURES
 } from '$lib/fetch/groups/registry';
 import { ObjectType } from '$lib/types/objects';
@@ -146,8 +148,12 @@ describe('parentCrumb: planet families', () => {
 		});
 	});
 
-	it('has no crumb for the Planets page, which holds the exoplanets too', () => {
-		expect(parentCrumb({ kind: 'group', slug: CAT_PLANETS }, undefined, null, null)).toBeNull();
+	it('climbs from the Planets page to the root, Planetary Systems', () => {
+		const crumb = parentCrumb({ kind: 'group', slug: CAT_PLANETS }, undefined, null, null);
+		expect(crumb?.target).toMatchObject({ kind: 'group', slug: CAT_PLANETARY_SYSTEMS });
+		for (const slug of [CAT_PLANETARY_SYSTEMS, CAT_STAR_SYSTEMS]) {
+			expect(parentCrumb({ kind: 'group', slug }, undefined, null, null)).toBeNull();
+		}
 	});
 });
 
@@ -199,8 +205,36 @@ describe('parentCrumb: the stars of a star system', () => {
 		});
 	});
 
-	it('has no crumb for a star in no system, or a root', () => {
+	it('has no crumb for a star in no system with no planets', () => {
 		expect(parentCrumb(toliman, undefined, null, null)).toBeNull();
+	});
+
+	it('climbs from a root to its category', () => {
+		const crumb = parentCrumb(
+			toliman,
+			undefined,
+			null,
+			null,
+			null,
+			null,
+			undefined,
+			CAT_STAR_SYSTEMS
+		);
+		expect(crumb?.target).toMatchObject({ kind: 'group', slug: CAT_STAR_SYSTEMS });
+	});
+
+	it('keeps a star in a system on its system, over any category', () => {
+		const crumb = parentCrumb(
+			toliman,
+			undefined,
+			null,
+			null,
+			null,
+			{ id: 5, name: 'Alpha Centauri' },
+			undefined,
+			CAT_PLANETARY_SYSTEMS
+		);
+		expect(crumb?.target).toMatchObject({ kind: 'focus', name: 'Alpha Centauri' });
 	});
 });
 

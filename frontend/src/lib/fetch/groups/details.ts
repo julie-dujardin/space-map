@@ -269,6 +269,14 @@ export interface GlobalGroupData {
 	largest_planet?: PlanetRecord & { radius_earth: number };
 	/** Planets only: the exoplanet with the earliest discovery year. */
 	first_exoplanet?: PlanetRecord & { discovery_year: number };
+	/** Star Systems only: the systems of three or more stars. */
+	multiple_star_system_count?: number;
+	/** Planetary Systems only: the systems of two or more planets. */
+	multi_planet_system_count?: number;
+	/** Star Systems only: the system of the most stars. */
+	most_stars_system?: PlanetRecord & { stars: number };
+	/** Planetary Systems only: the exoplanet host with the most planets. */
+	most_planets_system?: PlanetRecord & { planets: number };
 	/** Planets only: planet families with at least one planet. */
 	planet_family_count?: number;
 	/** Moons category: distinct planet/dwarf hosts that have a moon. */
@@ -430,7 +438,8 @@ export interface LocalizedGroupData {
 	/** Object.id → localized body label: the `feature_bodies` rows on an ft-
 	 *  page, `moon_counts` on the Moons category, `probe_targets` on the Probes
 	 *  category, the body of `largest_body`, the planets of `largest_planet`
-	 *  and `first_exoplanet`, and the targets each row of a collection's
+	 *  and `first_exoplanet`, the systems of the Star Systems and Planetary
+	 *  Systems cards, and the targets each row of a collection's
 	 *  `probes` list names. */
 	body_names?: Record<string, string>;
 	/** Feature-type pages: the name of `largest_feature` in this language,

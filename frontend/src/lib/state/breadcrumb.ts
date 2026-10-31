@@ -1,7 +1,7 @@
 /** One-level "parent" crumb for the drawer header: each focusable resolves to
  *  at most one ancestor (moon→planet, small body→zone, sat→constellation/class,
- *  planet→Solar System, star→its star system, group→category, category→Solar
- *  System root, feature→body). */
+ *  planet→Solar System, star→its star system, root of a system→its category,
+ *  group→category, category→Solar System root, feature→body). */
 
 import * as m from '$lib/paraglide/messages.js';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
@@ -19,6 +19,8 @@ import {
 	CAT_DWARF_PLANETS,
 	CAT_STRUCTURE_ACTIVITY,
 	CAT_PLANETS,
+	CAT_PLANETARY_SYSTEMS,
+	CAT_STAR_SYSTEMS,
 	CAT_CONSTELLATIONS,
 	CAT_STARS,
 	CAT_PROBES,
@@ -110,7 +112,8 @@ export function parentCrumb(
 	groupGlobal: GlobalGroupData | null,
 	featureType: { slug: string; label: string } | null = null,
 	starSystem: { id: number; name: string } | null = null,
-	parentGroupName?: string
+	parentGroupName?: string,
+	systemCategory: string | null = null
 ): Crumb | null {
 	// A surface feature climbs to its type's collection page; its host body is
 	// one of the two cross-ref tiles instead. Falls back to the body while the
@@ -129,8 +132,13 @@ export function parentCrumb(
 	if (focusable.kind === 'group') {
 		const slug = focusable.slug;
 		if (slug.startsWith(CATEGORY_SLUG_PREFIX)) {
-			// Planets and Stars reach beyond the Solar System, so each is a root.
-			if (slug === CAT_SOLAR_SYSTEM || slug === CAT_PLANETS || slug === CAT_STARS) return null;
+			// These reach beyond the Solar System, so each is a root.
+			if (slug === CAT_PLANETARY_SYSTEMS || slug === CAT_STAR_SYSTEMS || slug === CAT_STARS) {
+				return null;
+			}
+			if (slug === CAT_SOLAR_SYSTEM || slug === CAT_PLANETS) {
+				return categoryCrumb(CAT_PLANETARY_SYSTEMS);
+			}
 			// The Earth-orbiter collections' real parent is Earth, not the root.
 			if (slug === CAT_SATELLITES || slug === CAT_DEBRIS) {
 				const name = ctx?.getBody(EARTH_ID)?.data.name ?? m.earth();
@@ -180,10 +188,10 @@ export function parentCrumb(
 		return null;
 	}
 
-	// A star or an inner node climbs to the root of its system; a planet climbs
-	// to its star.
+	// A star or an inner node climbs to the root of its system, and a root to
+	// its category; a planet climbs to its star.
 	if (focusable.kind === 'star') {
-		if (!starSystem) return null;
+		if (!starSystem) return systemCategory ? categoryCrumb(systemCategory) : null;
 		const { id, name } = starSystem;
 		return { label: name, target: { kind: 'focus', id: extrasolarObjectId(id), name } };
 	}

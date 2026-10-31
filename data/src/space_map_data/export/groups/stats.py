@@ -137,6 +137,16 @@ class GroupExtraStats:
     # Planets category: the exoplanet found first, as {primary_type, primary_id,
     # name, discovery_year}.
     first_exoplanet: dict | None = None
+    # Star Systems category: the systems of three or more stars.
+    multiple_star_system_count: int | None = None
+    # Planetary Systems category: the systems of two or more planets.
+    multi_planet_system_count: int | None = None
+    # Star Systems category: the system of the most stars, as {primary_type,
+    # primary_id, name, stars}.
+    most_stars_system: dict | None = None
+    # Planetary Systems category: the exoplanet host with the most planets, as
+    # {primary_type, primary_id, name, planets}.
+    most_planets_system: dict | None = None
     # Planets category: the planet families that have planets.
     planet_family_count: int | None = None
 

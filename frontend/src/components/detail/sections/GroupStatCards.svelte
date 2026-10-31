@@ -14,6 +14,8 @@
 		CAT_PLANETS,
 		CAT_CONSTELLATIONS,
 		CAT_STARS,
+		CAT_STAR_SYSTEMS,
+		CAT_PLANETARY_SYSTEMS,
 		CAT_PROBES,
 		CAT_RING_SYSTEMS,
 		CAT_SATELLITES,
@@ -247,6 +249,16 @@
 		};
 	}
 
+	/** The system a card counts for, and its page. */
+	function topSystem(
+		label: string,
+		ref: { primary_id: string; name: string } | undefined,
+		n: number | undefined
+	): Stat | null {
+		if (!ref || n == null || !appState) return null;
+		return { label, value: formatNumber(n), tooltip: bodyName(ref), ...planetLink(ref) };
+	}
+
 	/** The Planets page: every planet on the overview, then a card set per tab. */
 	function planetsStats(g: GlobalGroupData): (Stat | null)[] {
 		if (tab === 'solar-system') return [largestBody(g), count(m.group_stat_moons(), g.moon_total)];
@@ -475,6 +487,22 @@
 				];
 			case CAT_STARS:
 				return [stars(m.group_stat_stars(), g.member_count), classifiedShare(g), largestStar(g)];
+			case CAT_STAR_SYSTEMS:
+				return [
+					stars(m.group_stat_systems(), g.member_count),
+					count(m.group_stat_multiple_stars(), g.multiple_star_system_count),
+					topSystem(m.group_stat_most_stars(), g.most_stars_system, g.most_stars_system?.stars)
+				];
+			case CAT_PLANETARY_SYSTEMS:
+				return [
+					count(m.group_stat_systems(), g.member_count),
+					count(m.group_stat_multi_planet(), g.multi_planet_system_count),
+					topSystem(
+						m.group_stat_most_planets(),
+						g.most_planets_system,
+						g.most_planets_system?.planets
+					)
+				];
 			case CAT_CONSTELLATIONS:
 				return [members(g, m.group_type_plural_sky_culture())];
 			case CAT_PLANETS:

@@ -39,6 +39,8 @@
 		star: ExtrasolarRecord | null;
 		/** The record of an extrasolar planet. */
 		planet: Planet | null;
+		/** The system categories of `star`: star, planetary, or both. */
+		systemCategories: string[];
 	}
 
 	let {
@@ -50,7 +52,8 @@
 		orbitElements,
 		planetarySystem,
 		star,
-		planet
+		planet,
+		systemCategories
 	}: Props = $props();
 
 	const ctx = getContext<ContextManager>('ctx');
@@ -82,7 +85,8 @@
 	let system = $derived(planetarySystem.isSystemPage ? planetarySystem.system : null);
 
 	// A star's or a planet's most specific families. Two tiles at most, as
-	// three in a row look uneven; the Sun's Solar System tile takes one of them.
+	// three in a row look uneven; a system's category or the Sun's Solar System
+	// tile takes one of them.
 	let sunLinks = $derived(
 		(isStarBody ? (data?.global?.star_families ?? []) : []).slice(0, 1).map(
 			(family): FamilyLink => ({
@@ -177,10 +181,15 @@
 			<FamilyTile {link} />
 		{/each}
 	</div>
-{:else if familyTiles.length}
+{:else if systemCategories.length || familyTiles.length}
+	{@const families = familyTiles.slice(0, 2 - systemCategories.length)}
+	{@const wide = systemCategories.length + families.length === 1 ? 'col-span-2' : ''}
 	<div class="grid grid-cols-2 gap-2">
-		{#each familyTiles as link (link.slug)}
-			<FamilyTile {link} class={familyTiles.length === 1 ? 'col-span-2' : ''} />
+		{#each systemCategories as slug (slug)}
+			<BodyCategoryTile {slug} class={wide} />
+		{/each}
+		{#each families as link (link.slug)}
+			<FamilyTile {link} class={wide} />
 		{/each}
 	</div>
 {:else if orbitClass}

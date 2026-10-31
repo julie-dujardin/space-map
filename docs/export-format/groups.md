@@ -551,6 +551,10 @@ interface GlobalGroupData {
     discovery_year: number;
   };
   planet_family_count?: number;      // planet families with at least one planet
+  multiple_star_system_count?: number;  // cat-star-systems: the systems of three or more stars
+  multi_planet_system_count?: number;   // cat-planetary-systems: the systems of two or more planets, the Solar System too
+  most_stars_system?: { primary_type: "object"; primary_id: string; name: string; stars: number };     // cat-star-systems
+  most_planets_system?: { primary_type: "object"; primary_id: string; name: string; planets: number }; // cat-planetary-systems: the exoplanet host with the most; in a tie, one with an object entry
   exoplanets_qid?: "Q44559";         // the item of the Exoplanets tab; its text is the localized `exoplanets`
 
   // `mission` groups only — focus redirect to the primary probe (not a filter).
@@ -876,7 +880,7 @@ interface LocalizedGroupData {
   member_system_names?: Record<string, string>;  // `cat-satellite-systems` only: member Object.id → the name of the system's page in this language, only where it differs from `system_name`
   exoplanets?: { name?: string; description?: string; wikipedia?: { extract?: string; description?: string; url?: string } }; // cat-planets only: the label, description and Wikipedia text of `exoplanets_qid` in this language, for the Exoplanets tab
   probe_names?: Record<string, string>;       // `probes` entry Object.id → localized label, only where it differs from the global name
-  body_names?: Record<string, string>;        // Object.id → name in this language where it differs from the global one (`export/names.py`): `feature_bodies` rows on ft-<slug>, `moon_counts` rows on cat-moons, `probe_targets` rows on cat-probes, the body of `largest_body`, the planets of `largest_planet` and `first_exoplanet` on cat-planets, and the members each `probes` entry names in `visits`
+  body_names?: Record<string, string>;        // Object.id → name in this language where it differs from the global one (`export/names.py`): `feature_bodies` rows on ft-<slug>, `moon_counts` rows on cat-moons, `probe_targets` rows on cat-probes, the body of `largest_body`, the planets of `largest_planet` and `first_exoplanet` on cat-planets, the systems of `most_stars_system` and `most_planets_system`, and the members each `probes` entry names in `visits`
   largest_feature_name?: string;              // the name of `largest_feature` in this language, where it differs from the global one
 }
 ```

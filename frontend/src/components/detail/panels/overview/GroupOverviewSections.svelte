@@ -29,6 +29,7 @@
 	import { fetchPickableCultures } from '$lib/fetch/extrasolar/skycultures';
 	import {
 		CAT_CONSTELLATIONS,
+		CAT_PLANETARY_SYSTEMS,
 		CAT_STARS,
 		CAT_STRUCTURE_ACTIVITY,
 		SKY_CULTURE_SLUG_PREFIX
@@ -149,9 +150,12 @@
 	<chart.component members={notableMembers} localizedNames={memberNames} {...chart.extra?.()} />
 {/if}
 {#if cat.planets}
-	<!-- Stars, for the exoplanets; the planet families, then where every planet
+	<!-- Where the exoplanets are; the planet families, then where every planet
 	     lies by mass. -->
-	<BodyCategoryTile slug={CAT_STARS} />
+	<div class="grid grid-cols-2 gap-2">
+		<BodyCategoryTile slug={CAT_STARS} />
+		<BodyCategoryTile slug={CAT_PLANETARY_SYSTEMS} />
+	</div>
 	{#if visibleChildGroups.length}
 		<ChildGroups childGroups={visibleChildGroups} />
 	{/if}

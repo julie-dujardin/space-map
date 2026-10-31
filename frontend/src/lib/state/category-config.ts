@@ -3,6 +3,8 @@
 
 import {
 	CAT_CONSTELLATIONS,
+	CAT_PLANETARY_SYSTEMS,
+	CAT_STAR_SYSTEMS,
 	CAT_STARS,
 	CAT_PLANETS,
 	CAT_MOONS,
@@ -32,6 +34,9 @@ export interface CategoryConfig {
 	/** Every planet, with a tab for the Solar System's eight and one for the
 	 *  exoplanets. */
 	planets: boolean;
+	/** Star Systems, Planetary Systems: the page lists a few of what it counts,
+	 *  and search has no list of them. */
+	systems: boolean;
 	moons: boolean;
 	dwarfPlanets: boolean;
 	solarSystem: boolean;
@@ -76,6 +81,7 @@ export type PropertyKind =
 const NONE: CategoryConfig = {
 	stars: false,
 	planets: false,
+	systems: false,
 	moons: false,
 	dwarfPlanets: false,
 	solarSystem: false,
@@ -102,6 +108,8 @@ const BY_SLUG: Record<string, Partial<CategoryConfig>> = {
 		crossRefs: true
 	},
 	[CAT_SOLAR_SYSTEM]: { solarSystem: true },
+	[CAT_STAR_SYSTEMS]: { systems: true, crossRefs: true },
+	[CAT_PLANETARY_SYSTEMS]: { systems: true, crossRefs: true },
 	[CAT_SATELLITE_SYSTEMS]: { satelliteSystems: true, membersShownInFull: true },
 	[CAT_ASTEROIDS]: { smallBody: true, sphereLineup: true, crossRefs: true },
 	[CAT_COMETS]: { smallBody: true, sphereLineup: true, crossRefs: true },
