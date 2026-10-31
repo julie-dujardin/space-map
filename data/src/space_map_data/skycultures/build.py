@@ -26,6 +26,7 @@ from space_map_data.download.providers.skycultures import bucur, simbad, stellar
 from space_map_data.extrasolar.registry import Registry
 from space_map_data.extrasolar.store import write_json
 from space_map_data.skycultures import read
+from space_map_data.skycultures.deep_sky import read_places
 from space_map_data.skycultures.licences import read_licence
 from space_map_data.skycultures.read import Culture
 from space_map_data.skycultures.refs import (
@@ -47,7 +48,11 @@ from space_map_data.skycultures.resolve import (
     registry_ids,
     wanted,
 )
-from space_map_data.utils.paths import DERIVED_SKYCULTURES_DIR, REGISTRY_ROOT
+from space_map_data.utils.paths import (
+    DERIVED_SKYCULTURES_DIR,
+    REGISTRY_ROOT,
+    SOURCES_CATALOGUES_DIR,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +71,7 @@ class Sources:
     stellarium: Path = stellarium.OUT_DIR
     bucur: Path = bucur.OUT_DIR
     simbad: Path = simbad.OUT_DIR
+    catalogues: Path = SOURCES_CATALOGUES_DIR
 
 
 def _commit(directory: Path) -> str:
@@ -192,6 +198,13 @@ def ingest(
             crosswalk,
         )
         registry_ingest = registry.last_ingest
+    designations = lookup.designations(refs)
+    lookup.places = read_places(designations, sources.catalogues)
+    logger.info(
+        "catalogues place %d of %d deep-sky designations",
+        len(lookup.places),
+        len(designations),
+    )
     logger.info(
         "registry ingest %d: IDs for %d of %d HIP, %d of %d Gaia DR3 and %d of %d"
         " HD numbers",

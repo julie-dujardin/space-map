@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from space_map_data.download.downloader import Downloader, DownloadError
+from space_map_data.download.downloader import Downloader, require_inputs
 
 
 class InputReader(Downloader):
@@ -23,6 +23,4 @@ class InputReader(Downloader):
         )
 
     def require_inputs(self) -> None:
-        for path in self.inputs:
-            if not path.exists():
-                raise DownloadError(f"{path} is missing, run its provider first")
+        require_inputs(self.inputs)

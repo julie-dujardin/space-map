@@ -10,6 +10,10 @@ the whole Point source region as the tree build runs it, so a line ends on
 the rendered star. A star that the tree does not draw keeps its ID and has no
 position.
 
+A member with no ID that has a direction, a deep-sky object or a point of the
+sky, has a stand-in position until the registry holds its object. `stand_in`
+names the source of its distance.
+
 All files share one directory. A Bucur culture that has the key of a
 Stellarium culture, or that is a copy of one under another key, is left out,
 and `select` logs why.
@@ -27,6 +31,7 @@ import hashlib
 import html
 import json
 import logging
+import math
 import re
 import unicodedata
 from collections.abc import Iterable, Iterator, Mapping
@@ -88,6 +93,10 @@ STELLARIUM = "stellarium"
 # culture with no licence grants nothing; Traditional Knowledge labels add terms
 # of their own. These cultures keep the names they publish.
 UNTRANSLATED_FLAGS = frozenset({NO_DERIVATIVES, NO_LICENCE, TK_LABELS})
+# The `stand_in` of a distance that no catalogue gives. All these points sit at
+# one distance, among the culture's stars: each figure of sky points keeps its
+# shape from near the Sun, and no point spikes out of it from afar.
+CULTURE_STARS = "culture-stars"
 # Their constellations are the 88 of the IAU; a figure ID ends in the
 # abbreviation and the source has no field for it. `modern_journey_to_the_west`
 # has those IDs too, but it draws figures of its own over them.
@@ -100,6 +109,7 @@ SAME_NAMES = 0.5
 # The matched cultures that the export reads.
 CULTURES_DIR = DERIVED_SKYCULTURES_DIR
 ZERO_TOKEN = "0" * container.TOKEN_SIZE
+DEGREES_PER_HOUR = 15.0
 # The name fields a figure or a star name keeps.
 NAME_FIELDS = ("native", "english", "pronounce", "transliteration", "IPA")
 # The name fields that a label reads.
@@ -125,6 +135,38 @@ SIMBAD = {
     " Strasbourg Astronomical Observatory, France.",
     "citation": "Wenger et al. 2000, A&AS 143, 9",
 }
+HUNT_REFFERT = {
+    "name": "Cleaned open cluster catalogue (J/A+A/686/A42)",
+    "organisation": "Hunt & Reffert 2024",
+    "source": "https://cdsarc.cds.unistra.fr/viz-bin/cat/J/A+A/686/A42",
+    "license": "CC BY-NC 3.0 IGO",
+    "citation": "Hunt & Reffert 2024, A&A 686, A42",
+}
+# What places the deep-sky stand-ins, which a culture that draws one credits.
+DEEP_SKY_CREDITS = (
+    SIMBAD,
+    HUNT_REFFERT,
+    {
+        "name": "Fundamental parameters of Galactic globular clusters",
+        "organisation": "Baumgardt et al.",
+        "source": "https://people.smp.uq.edu.au/HolgerBaumgardt/globular/",
+        "citation": "Baumgardt & Hilker 2018, MNRAS 478, 1520; Baumgardt &"
+        " Vasiliev 2021, MNRAS 505, 5957",
+    },
+    {
+        "name": "Heraklion Extragalactic Catalogue (HECATE)",
+        "organisation": "Kovlakas et al. 2021",
+        "source": "https://cdsarc.cds.unistra.fr/viz-bin/cat/J/MNRAS/506/1896",
+        "license": "CC BY 4.0",
+        "citation": "Kovlakas et al. 2021, MNRAS 506, 1896",
+    },
+    {
+        "name": "OpenNGC",
+        "organisation": "Mattia Verga",
+        "source": "https://github.com/mattiaverga/OpenNGC",
+        "license": "CC BY-SA 4.0",
+    },
+)
 CREDITS = (
     {
         "name": "Stellarium sky cultures",
@@ -143,7 +185,7 @@ CREDITS = (
         "source": "https://github.com/Stellarium/stellarium/tree/master/po/stellarium-skycultures",
         "license": "GPL-2.0",
     },
-    SIMBAD,
+    *({**credit, "deep_sky": True} for credit in DEEP_SKY_CREDITS),
 )
 
 
@@ -275,7 +317,9 @@ class Members:
         elif isinstance(point, dict):
             key = ("ref", point["ref"], point["reason"])
             entry = {
-                k: point[k] for k in ("ref", "reason", "designation") if k in point
+                k: point[k]
+                for k in ("ref", "reason", "designation", "place")
+                if k in point
             }
         else:
             raise TypeError(f"not a culture point: {point!r}")
@@ -579,6 +623,42 @@ def positions(registry: Registry, ids: Iterable[int]) -> dict[int, list[float]]:
     return found
 
 
+def _cartesian(ra: float, dec: float, distance: float) -> list[float]:
+    ra_rad, dec_rad = math.radians(ra), math.radians(dec)
+    return [
+        distance * math.cos(dec_rad) * math.cos(ra_rad),
+        distance * math.cos(dec_rad) * math.sin(ra_rad),
+        distance * math.sin(dec_rad),
+    ]
+
+
+def place_stand_ins(members: list[dict]) -> None:
+    """Give each member with a direction and no ID its stand-in position.
+
+    Its distance is that of its catalogue, else the median of the culture's
+    stars. A culture with no star cannot give that, so such a member has no
+    position.
+    """
+    stars = [np.linalg.norm(m["position"]) for m in members if "position" in m]
+    median = float(np.median(stars)) if stars else None
+    for member in members:
+        place = member.pop("place", None)
+        if "ra_hours" in member:
+            ra, dec = member["ra_hours"] * DEGREES_PER_HOUR, member["dec"]
+            distance, source = None, None
+        elif place is not None:
+            ra, dec = place["ra"], place["dec"]
+            distance, source = place["distance"], place["source"]
+        else:
+            continue
+        if distance is None:
+            distance, source = median, CULTURE_STARS
+        if distance is None:
+            continue
+        member["position"] = _cartesian(ra, dec, distance)
+        member["stand_in"] = source
+
+
 def figure_star_ids(members: list[dict], figure: dict) -> Iterator[int]:
     """The extrasolar IDs of a figure's stars in the order of its lines, then
     its group. A star on two lines comes twice."""
@@ -708,6 +788,7 @@ def _entry(
         "figures": len(content["figures"]),
         "members": len(members),
         "positioned": sum(1 for m in members if "position" in m),
+        "stand_ins": sum(1 for m in members if "stand_in" in m),
         "unresolved": sum(1 for m in members if "ref" in m),
     }
 
@@ -756,6 +837,7 @@ def build(
         for entry in members.entries:
             if "id" in entry and entry["id"] in found:
                 entry["position"] = found[entry["id"]]
+        place_stand_ins(members.entries)
         contents.append(content)
     unplaced = sorted(ids - set(found))
     logger.debug("sky cultures: stars that the tree does not draw: %s", unplaced)

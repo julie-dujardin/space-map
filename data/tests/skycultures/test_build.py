@@ -7,8 +7,10 @@ import pytest
 
 from space_map_data.skycultures import build
 from space_map_data.skycultures.build import Sources
+from space_map_data.skycultures.deep_sky import HUNT_REFFERT
 from space_map_data.skycultures.resolve import DEEP_SKY, NOT_IN_SIMBAD
 from tests.skycultures.registry import write_registry
+from tests.skycultures.test_deep_sky import catalogue_files
 from tests.skycultures.test_read import DESCRIPTION
 from tests.skycultures.test_resolve import simbad_files
 
@@ -60,7 +62,7 @@ def sources(tmp_path) -> Sources:
     _metadata(bucur, commit="b1")
     simbad = simbad_files(tmp_path / "simbad")
     _metadata(simbad, bucur_commit="b1")
-    return Sources(stellarium, bucur, simbad)
+    return Sources(stellarium, bucur, simbad, catalogue_files(tmp_path / "catalogues"))
 
 
 @pytest.fixture
@@ -94,7 +96,20 @@ class TestIngest:
         figure = record["culture"]["constellations"][0]
         assert figure["lines"] == [
             [hip100, sirius, eta_car],
-            [sirius, {"ref": "DSO:M44", "reason": DEEP_SKY, "designation": "M44"}],
+            [
+                sirius,
+                {
+                    "ref": "DSO:M44",
+                    "reason": DEEP_SKY,
+                    "designation": "M44",
+                    "place": {
+                        "ra": 130.05,
+                        "dec": 19.62,
+                        "distance": 183.5,
+                        "source": HUNT_REFFERT,
+                    },
+                },
+            ],
         ]
         assert figure["common_name"] == {"english": "A", "native": "Α"}
         assert record["culture"]["common_names"] == [

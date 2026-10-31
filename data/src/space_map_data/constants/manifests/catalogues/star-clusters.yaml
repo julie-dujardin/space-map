@@ -52,7 +52,7 @@ catalogues:
     reference to the papers." The proper motions are from Gaia EDR3
     (CC BY-NC 3.0 IGO).
   terms_url: https://people.smp.uq.edu.au/HolgerBaumgardt/globular/
-  distribution: undecided
+  distribution: non-commercial
   refresh_days: 30
   urls:
   - https://people.smp.uq.edu.au/HolgerBaumgardt/globular/orbits_table.txt

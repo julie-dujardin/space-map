@@ -2,6 +2,7 @@
 
 import csv
 import json
+import logging
 import re
 
 import httpx
@@ -47,6 +48,7 @@ OBJECTS = {
     6: ("TYC 1-2-3", "*", 2, ["TYC 1-2-3"]),
     7: ("NAME Dilmun", "*", 8, ["NAME Dilmun", "Gaia DR3 17"]),
     8: ("HD 789", "*", 1, ["HD 789"]),
+    9: ("HD 321", "*", 2, ["HD 321", "HIP 59273", "Gaia DR3 19"]),
 }
 # (parent, child)
 LINKS = [(4, 5), (4, 6), (1, 99)]
@@ -133,6 +135,9 @@ def fake(tmp_path, monkeypatch):
     monkeypatch.setattr(SimbadStarsDownloader, "inputs", (names,))
     monkeypatch.setattr(simbad_stars, "OUT_DIR", tmp_path / "simbad")
     monkeypatch.setattr(simbad_stars, "MIN_REFERENCES", 20)
+    monkeypatch.setattr(
+        simbad_stars, "no_solution_identifiers", lambda: ["HIP 59273", "HIP 3"]
+    )
     simbad = FakeSimbad()
     monkeypatch.setattr(simbad_stars, "tap_rows", simbad.rows)
     monkeypatch.setattr(simbad_stars, "tap_join", simbad.join)
@@ -183,8 +188,9 @@ class TestSimbadStarsDownloader:
         out = simbad_stars.OUT_DIR
         basic = [int(row["oid"]) for row in _rows(out / simbad_stars.BASIC_FILE)]
         # 1 and 2 by references, 1, 4, 5 and 7 by identifier, 8 by an IAU
-        # name, 6 as a component of 4. 3 is not well known.
-        assert basic == [1, 2, 4, 5, 6, 7, 8]
+        # name, 9 by a Hipparcos entry, 6 as a component of 4. 3 is not well
+        # known.
+        assert basic == [1, 2, 4, 5, 6, 7, 8, 9]
         ident = _rows(out / simbad_stars.IDENT_FILE)
         assert {"oidref": "1", "id": "Gaia DR3 11"} in ident
         assert all(row["id"] != "TYC 1-2-3" for row in ident)
@@ -200,9 +206,39 @@ class TestSimbadStarsDownloader:
             {"name": "Nowhere", "identifier": "", "oid": ""},
         ]
         meta = json.loads((out / "metadata.json").read_text())
-        assert meta["complete"] and meta["record_count"] == 7
+        assert meta["complete"] and meta["record_count"] == 8
         assert (meta["counts"]["iau"], meta["counts"]["components"]) == (1, 1)
-        assert meta["iau_resolved"] == 3
+        assert meta["counts"]["no_solution"] == 1
+        assert (meta["iau_resolved"], meta["no_solution_resolved"]) == (3, 1)
+
+    def test_two_no_solution_entries_of_one_object_both_resolve(
+        self, fake, monkeypatch, caplog
+    ):
+        monkeypatch.setitem(
+            OBJECTS, 9, ("HD 321", "*", 2, ["HD 321", "HIP 59273", "HIP 59274"])
+        )
+        monkeypatch.setattr(
+            simbad_stars,
+            "no_solution_identifiers",
+            lambda: ["HIP 59273", "HIP 59274", "HIP 3"],
+        )
+        with caplog.at_level(logging.WARNING):
+            found = SimbadStarsDownloader(httpx.Client())._resolve_no_solution()
+        assert found == {9}
+        assert "SIMBAD does not know HIP 3" in caplog.text
+        assert "HIP 5927" not in caplog.text
+
+    def test_no_solution_entries_are_in_1997_and_not_in_2007(
+        self, tmp_path, monkeypatch
+    ):
+        numbers = {"1997.dat": {5, 6, 7}, "2007.dat": {5, 7}}
+        files = {name: tmp_path / name for name in numbers}
+        monkeypatch.setattr(simbad_stars, "HIP_1997_FILE", files["1997.dat"])
+        monkeypatch.setattr(simbad_stars, "HIP_2007_FILE", files["2007.dat"])
+        monkeypatch.setattr(
+            simbad_stars, "_hip_numbers", lambda path: numbers[path.name]
+        )
+        assert simbad_stars.no_solution_identifiers() == ["HIP 6"]
 
     def test_a_cluster_gives_no_components(self, fake, monkeypatch):
         monkeypatch.setattr(simbad_stars, "MAX_CHILDREN", 1)

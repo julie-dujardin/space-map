@@ -9,8 +9,8 @@ The list holds the objects whose main type is below `*` in the type tree,
 except the types in EXCLUDED_TYPES, and that are well known: they have an
 identifier that starts with one of TRADITIONAL, or at least MIN_REFERENCES
 references. The list also holds the stars below a listed object in SIMBAD's
-hierarchy (the components of a system), and the object of each IAU star name,
-of any type.
+hierarchy (the components of a system), and the object of each IAU star name
+and of each Hipparcos entry with no astrometric solution, of any type.
 
 SIMBAD has no bulk file, so the rows come from its TAP service. A selection
 query sends MAX_ROWS as its row limit; the per-object queries upload the oids
@@ -39,10 +39,12 @@ import logging
 import re
 from collections import Counter
 from datetime import timedelta
+from pathlib import Path
 
 import httpx
 
 from space_map_data.constants.providers import PROVIDERS
+from space_map_data.download.cds import README, read_fixed_width
 from space_map_data.download.downloader import DownloadError
 from space_map_data.download.providers.exoplanets.inputs import InputReader
 from space_map_data.download.providers.exoplanets.simbad import TAP_URL
@@ -53,6 +55,7 @@ from space_map_data.download.providers.exoplanets.tap import (
     tap_sync,
     write_csv,
 )
+from space_map_data.download.providers.stars import cds as cds_stars
 from space_map_data.download.providers.stars import iau_names
 from space_map_data.utils.paths import SOURCES_STARS_DIR
 
@@ -68,6 +71,8 @@ OTYPEDEF_FILE, BASIC_FILE, FLUXES_FILE, IDENT_FILE, LINKS_FILE, IAU_FILE = (
     "iau.csv",
 )
 NAMES_FILE = iau_names.OUT_DIR / "names.json"
+HIP_1997_FILE = cds_stars.OUT_DIR / "I/239/hip_main.dat"
+HIP_2007_FILE = cds_stars.OUT_DIR / "I/311/hip2.dat.gz"
 
 # Below `*` but not a star: planets, supernovae, planetary nebulae, outflows.
 EXCLUDED_TYPES = frozenset({"Pl", "Pl?", "SN*", "SN?", "PN", "PN?", "out", "of?", "HH"})
@@ -230,6 +235,18 @@ def iau_identifiers(entry: dict[str, str]) -> list[str]:
     return list(dict.fromkeys(found))
 
 
+def _hip_numbers(path: Path) -> set[int]:
+    readme = (path.parent / README).read_text(encoding="latin-1")
+    return set(read_fixed_width(path, readme, {"HIP": "hip"})["hip"].to_pylist())
+
+
+def no_solution_identifiers() -> list[str]:
+    """The Hipparcos entries of 1997 that the reduction of 2007 drops. They have
+    no astrometry, so without SIMBAD they stay apart from their Gaia star."""
+    numbers = _hip_numbers(HIP_1997_FILE) - _hip_numbers(HIP_2007_FILE)
+    return [f"HIP {number}" for number in sorted(numbers)]
+
+
 def components(links: list[tuple[int, int]]) -> set[int]:
     """The children in `links` of parents with at most MAX_CHILDREN of them."""
     children = Counter(parent for parent, _ in links)
@@ -241,7 +258,7 @@ def components(links: list[tuple[int, int]]) -> set[int]:
 
 class SimbadStarsDownloader(InputReader):
     name = PROVIDERS.SIMBAD_STARS
-    inputs = (NAMES_FILE,)
+    inputs = (NAMES_FILE, HIP_1997_FILE, HIP_2007_FILE)
     # The list moves slowly. A new IAU name list runs it again.
     max_age = timedelta(days=30)
 
@@ -275,6 +292,10 @@ class SimbadStarsDownloader(InputReader):
         listed |= {int(oid) for _, _, oid in iau if oid}
         counts["iau"] = len(listed) - counts["well_known"]
 
+        no_solution = self._resolve_no_solution()
+        listed |= no_solution
+        counts["no_solution"] = len(listed) - counts["well_known"] - counts["iau"]
+
         added = set(listed)
         for _ in range(COMPONENT_LEVELS):
             if not added:
@@ -282,7 +303,9 @@ class SimbadStarsDownloader(InputReader):
             _, links = self._by_oid(_CHILDREN.format(types=types), sorted(added))
             added = components([(int(p), int(c)) for p, c in links]) - listed
             listed |= added
-        counts["components"] = len(listed) - counts["well_known"] - counts["iau"]
+        counts["components"] = (
+            len(listed) - counts["well_known"] - counts["iau"] - counts["no_solution"]
+        )
         oids = sorted(listed)
         logger.info("SIMBAD: %d stars listed, %s", len(oids), counts)
 
@@ -318,7 +341,21 @@ class SimbadStarsDownloader(InputReader):
             links=len(links),
             iau_names=len(iau),
             iau_resolved=sum(1 for _, _, oid in iau if oid),
+            no_solution_resolved=len(no_solution),
         )
+
+    def _resolve_no_solution(self) -> set[int]:
+        """The objects of the Hipparcos entries with no solution.
+
+        Two entries can be one object.
+        """
+        strings = no_solution_identifiers()
+        _, matches = tap_join(
+            self.client, TAP_URL, _RESOLVE, "name", "char", strings, NAME_CHUNK
+        )
+        for name in sorted(set(strings) - {name for name, _ in matches}):
+            logger.warning("SIMBAD does not know %s", name)
+        return {int(oid) for _, oid in matches}
 
     def _resolve_iau(self) -> list[tuple[str, str, str]]:
         """Each IAU name with the first of its identifiers that SIMBAD knows."""

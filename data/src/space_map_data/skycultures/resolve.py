@@ -11,17 +11,20 @@ no extrasolar ID yet.
 
 A resolved object becomes its ID. An unresolved one becomes
 {"ref": <as published>, "reason": <one of REASONS>} with the designation of a
-deep-sky object, and for a SIMBAD identifier the object that SIMBAD gives.
+deep-sky object, for a SIMBAD identifier the object that SIMBAD gives, and
+`place`, its `deep_sky.Place` as a dict, when a catalogue positions it.
 """
 
 import csv
 import logging
 import re
 from collections import Counter
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from space_map_data.extrasolar.registry import Registry
+from space_map_data.skycultures.deep_sky import Place
 from space_map_data.skycultures.refs import Kind, Ref
 
 logger = logging.getLogger(__name__)
@@ -45,6 +48,8 @@ REASONS = {
     NO_STAR_NUMBER: "a SIMBAD star with no HIP, Gaia DR3 or HD number",
     UNKNOWN: "a designation of no known form",
 }
+# The reasons of what `deep_sky` can place. No form fits "coalsack nebula".
+PLACEABLE = frozenset({DEEP_SKY, UNKNOWN})
 # How a SIMBAD identifier reached its ID.
 VIA_HIP, VIA_GAIA, VIA_HD, VIA_PARENT = "hip", "gaia", "hd", "parent-hip"
 
@@ -185,6 +190,8 @@ class Lookup:
     gaia: dict[str, int]
     hd: dict[str, int] = field(default_factory=dict)
     simbad: SimbadCrosswalk | None = None
+    # By designation, as `designations` gives it.
+    places: Mapping[str, Place] = field(default_factory=dict)
 
     def resolve(self, ref: Ref) -> tuple[int | None, str, dict]:
         """(ID, MATCHED or a reason, fields to keep) of `ref`."""
@@ -203,6 +210,15 @@ class Lookup:
         if ref.kind == Kind.SIMBAD:
             return self._simbad(ref)
         return None, UNKNOWN, {}
+
+    def designations(self, refs: Iterable[Ref]) -> set[str]:
+        """The designations of `refs` that have no ID and that can have a place."""
+        found = set()
+        for ref in refs:
+            _, outcome, kept = self.resolve(ref)
+            if outcome in PLACEABLE:
+                found.add(kept.get("designation", ref.value))
+        return found
 
     def disagreements(self) -> list[str]:
         """The SIMBAD stars whose numbers give the registry different IDs.
@@ -275,6 +291,10 @@ class Matcher:
             return id_
         point = {"ref": ref.text, "reason": outcome, **kept}
         self.unresolved.append({"place": place, **point})
+        if outcome in PLACEABLE:
+            found = self.lookup.places.get(kept.get("designation", ref.value))
+            if found is not None:
+                point["place"] = found._asdict()
         return point
 
     def summary(self) -> dict:

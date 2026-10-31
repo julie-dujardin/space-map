@@ -28,6 +28,8 @@ METHODS = {
     "galaxy",
     "geometric",
     "expansion",
+    "dynamical",
+    "model",
 }
 
 
@@ -52,7 +54,9 @@ class TestTable:
 
     def test_references(self):
         for reference in REFERENCES.values():
-            assert reference.url.startswith("https://doi.org/")
+            assert reference.url.startswith(
+                ("https://doi.org/", "https://ui.adsabs.harvard.edu/abs/")
+            )
             assert reference.short and reference.title
 
     def test_eta_car(self):
@@ -68,6 +72,17 @@ class TestTable:
         assert (alnilam.value, alnilam.method) == (384, "association")
         wr_104 = DISTANCES[("gaia", "dr3", "4069167258796371712")]
         assert (wr_104.lower, wr_104.upper) == (1900, 3300)
+
+    def test_stars_of_the_sky_cultures(self):
+        beta_phe = DISTANCES[("hip", "2007", "5165")]
+        assert beta_phe == Distance(55.77, 54.17, 57.47, "parallax", "argyle_2015")
+        tau2_cap = DISTANCES[("hip", "2007", "101923")]
+        assert (tau2_cap.method, tau2_cap.reference) == (
+            "dynamical",
+            "bartkevicius_2002",
+        )
+        hd_184268 = DISTANCES[("hip", "2007", "96274")]
+        assert hd_184268 == Distance(400.5, 389.2, 412.4, "parallax", "gaia_dr2_2018")
 
 
 class TestRows:

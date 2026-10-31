@@ -671,10 +671,10 @@ def _oec_measure(element: ET.Element, tag: str) -> Measure | None:
 
 
 def sexagesimal(text: str | None, hours: bool) -> float | None:
-    """Degrees from `hh mm ss.s` or `±dd mm ss.s`."""
-    if not text or not text.strip():
+    """Degrees from `hh mm ss.s` or `±dd mm ss.s`, with spaces or colons."""
+    parts = (text or "").replace(":", " ").split()
+    if not parts:
         return None
-    parts = text.split()
     try:
         values = [abs(float(part)) for part in parts]
     except ValueError:

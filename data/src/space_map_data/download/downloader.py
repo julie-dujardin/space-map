@@ -5,6 +5,7 @@ import logging
 import re
 import ssl
 from abc import ABC, abstractmethod
+from collections.abc import Iterable
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
@@ -29,6 +30,12 @@ def tls_context() -> ssl.SSLContext:
 
 class DownloadError(Exception):
     """A provider hit an unrecoverable error and should not retry this run."""
+
+
+def require_inputs(paths: Iterable[Path]) -> None:
+    for path in paths:
+        if not path.exists():
+            raise DownloadError(f"{path} is missing, run its provider first")
 
 
 # The "bot" that ends the product name, which is the text before the version.

@@ -241,13 +241,7 @@ CREDITS = (
         "license": "CC BY 4.0",
         "citation": "Best et al. 2025, The UltracoolSheet, Zenodo",
     },
-    {
-        "name": "Cleaned open cluster catalogue (J/A+A/686/A42)",
-        "organisation": "Hunt & Reffert 2024",
-        "source": "https://cdsarc.cds.unistra.fr/viz-bin/cat/J/A+A/686/A42",
-        "license": "CC BY-NC 3.0 IGO",
-        "citation": "Hunt & Reffert 2024, A&A 686, A42",
-    },
+    skycultures.HUNT_REFFERT,
     {
         "name": "Distance to the Large Magellanic Cloud",
         "organisation": "Pietrzyński et al. 2019",

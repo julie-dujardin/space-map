@@ -149,7 +149,8 @@ class TestCultureFile:
         members = content["members"]
         assert [m.get("id") for m in members] == [a, b, c, None, None, d, None]
         assert members[3] == DEEP_SKY
-        assert members[4] == {"ra_hours": 19.4, "dec": -23.8}
+        assert (members[4]["ra_hours"], members[4]["dec"]) == (19.4, -23.8)
+        assert members[4]["stand_in"] == skycultures.CULTURE_STARS
         assert members[6] == {"ref": "NAME Venus", "reason": "solar-system"}
         figure, asterism = content["figures"]
         assert figure == {
@@ -188,7 +189,9 @@ class TestCultureFile:
     def test_positions_equal_the_tree_build_float64(self, tmp_path, exported):
         reader, ids, _ = exported
         members = reader.culture("skycultures/test.json.gz")["members"]
-        found = {m["id"]: m["position"] for m in members if "position" in m}
+        found = {
+            m["id"]: m["position"] for m in members if "id" in m and "position" in m
+        }
         assert set(found) == {ids[0], ids[1], ids[3]}
         registry = Registry(tmp_path / "reg")
         with registry.reader():
@@ -200,8 +203,72 @@ class TestCultureFile:
                         assert found[id_] == xyz
 
 
+PLACE = {"ra": 90.0, "dec": 0.0, "distance": 500.0, "source": "hecate"}
+
+
+class TestStandIns:
+    """Members with a direction and no ID."""
+
+    def test_a_catalogue_distance_is_kept(self):
+        member = {"ref": "M31", "reason": "deep-sky", "place": PLACE}
+        skycultures.place_stand_ins([member])
+        assert member["position"] == pytest.approx([0, 500, 0], abs=1e-9)
+        assert member["stand_in"] == "hecate"
+        assert "place" not in member
+
+    def test_a_place_reads_by_name(self):
+        place = {"source": "hecate", "distance": 500.0, "dec": 0.0, "ra": 90.0}
+        member = {"ref": "M31", "reason": "deep-sky", "place": place}
+        skycultures.place_stand_ins([member])
+        assert member["position"] == pytest.approx([0, 500, 0], abs=1e-9)
+        assert member["stand_in"] == "hecate"
+
+    def test_other_points_take_the_median_of_the_stars(self):
+        stars = [{"id": n, "position": [d, 0.0, 0.0]} for n, d in enumerate((1, 3, 9))]
+        sky = {"ra_hours": 6.0, "dec": 0.0}
+        nebula = {
+            "ref": "B33",
+            "reason": "deep-sky",
+            "place": {**PLACE, "distance": None, "source": None},
+        }
+        skycultures.place_stand_ins([*stars, sky, nebula])
+        for point in (sky, nebula):
+            assert point["position"] == pytest.approx([0, 3, 0], abs=1e-9)
+            assert point["stand_in"] == skycultures.CULTURE_STARS
+
+    def test_with_no_star_a_point_stays_unplaced(self):
+        sky = {"ra_hours": 6.0, "dec": 0.0}
+        skycultures.place_stand_ins([sky])
+        assert sky == {"ra_hours": 6.0, "dec": 0.0}
+
+    def test_a_star_with_no_position_and_a_planet_stay_as_they_are(self):
+        members = [{"id": 1}, {"ref": "NAME Mars", "reason": "solar-system"}]
+        skycultures.place_stand_ins(members)
+        assert members == [
+            {"id": 1},
+            {"ref": "NAME Mars", "reason": "solar-system"},
+        ]
+
+    def test_a_stand_in_is_no_star_of_its_figure(self):
+        members = [
+            {"id": 7, "position": [1.0, 0.0, 0.0]},
+            {"ra_hours": 6.0, "dec": 0.0, "position": [0.0, 1.0, 0.0], "stand_in": "x"},
+        ]
+        assert list(skycultures.figure_star_ids(members, {"lines": [[0, 1]]})) == [7]
+
+
 class TestMetadata:
     """The table is listed with its token, and each culture with its terms."""
+
+    def test_credits_mark_the_deep_sky_catalogues(self, exported):
+        credits = exported[0].metadata["skycultures"]["credits"]
+        assert {c["name"] for c in credits if c.get("deep_sky")} == {
+            c["name"] for c in skycultures.DEEP_SKY_CREDITS
+        }
+        assert not all(c.get("deep_sky") for c in credits)
+
+    def test_the_catalogue_credits_carry_no_mark(self, exported):
+        assert not any(c.get("deep_sky") for c in exported[0].metadata["credits"])
 
     def test_index_entry(self, exported):
         reader, _, report = exported
@@ -217,7 +284,8 @@ class TestMetadata:
         assert test["credit"]["source"] == (
             "https://github.com/Stellarium/stellarium/tree/c1/skycultures/test"
         )
-        assert (test["members"], test["positioned"], test["unresolved"]) == (7, 3, 2)
+        assert (test["members"], test["positioned"], test["unresolved"]) == (7, 4, 2)
+        assert test["stand_ins"] == 1
         assert other["distribution"] == UNDECIDED
         assert other["flags"] == ["no-licence"]
         assert entry["star_figures"] == "skycultures/stars/{shard}.json.gz"

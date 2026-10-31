@@ -265,11 +265,13 @@ POINT_SOURCE = TableDef(
         # A distance in pc from a paper, a SIMBAD parallax or a distance
         # catalogue, with bounds and their percentiles where published.
         # `distance_method`: `parallax`, `photometric`, `cluster` (of
-        # the host cluster), `galaxy` (of the host galaxy), `geometric`
-        # (parallax with a Galaxy prior), `expansion` (expansion parallax of
-        # a nebula) or `system` (of the star's system). A value from a paper
-        # comes first: it is chosen for that star. The system distance comes
-        # last. Only a star that no other step places gets one.
+        # the host cluster), `association` (of the star's association or
+        # cloud), `galaxy` (of the host galaxy), `geometric` (parallax with a
+        # Galaxy prior), `expansion` (expansion parallax of a nebula),
+        # `dynamical` (parallax from a binary's orbit and masses), `model` (a
+        # fit to the object) or `system` (of the star's system). A value from
+        # a paper comes first: it is chosen for that star. The system distance
+        # comes last. Only a star that no other step places gets one.
         ColumnGroup(
             "distance",
             (

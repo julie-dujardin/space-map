@@ -257,7 +257,7 @@ The distance group and the SIMBAD photometry:
 | `distance` | float32 | distance (pc) from a paper, a SIMBAD parallax or a distance catalogue |
 | `distance_lower`, `distance_upper` | float32 | bounds of the uncertainty (pc); either can be null. For `galaxy`, the error of the galaxy's distance, not its depth |
 | `distance_lower_percentile`, `distance_upper_percentile` | float32 | percentile (0–100) of each bound where published; null when a bound is an error or its percentile is unspecified |
-| `distance_method` | dict | `parallax`, `photometric`, `cluster` (the distance of the host cluster), `association` (the distance of the star's OB association), `galaxy` (the distance of the host galaxy), `geometric` (parallax with a Galaxy prior), `expansion` (expansion parallax of a nebula) or `system` (the distance of the star's system) |
+| `distance_method` | dict | `parallax`, `photometric`, `cluster` (the distance of the host cluster), `association` (the distance of the star's OB association or cloud), `galaxy` (the distance of the host galaxy), `geometric` (parallax with a Galaxy prior), `expansion` (expansion parallax of a nebula), `dynamical` (parallax from a binary's orbit and masses), `model` (a fit to the object) or `system` (the distance of the star's system) |
 | `distance_source` | dict | the first of `literature` (a paper chosen for the star, cited in its object entry), `simbad-parallax` (a 5σ parallax that SIMBAD gives a `gaia-dr3-named` star, which has no 5σ Gaia parallax), `reyle-2021` (the 10 pc sample, Reylé et al. 2021), `ultracoolsheet` (Best et al.), `hunt-reffert-2024` (cluster members), `magellanic-clouds` (LMC and SMC members after Luri et al. 2021, at the distances of Pietrzyński et al. 2019 and Graczyk et al. 2020), `bailer-jones-2021` (Bailer-Jones et al. 2021), `star-systems` (the distance of the star's system, step 3 of the placement) that has the star |
 | `simbad_b_mag`, `simbad_v_mag`, `simbad_g_mag` | float32 | B, V and Gaia G that SIMBAD compiles from the literature (mag) |
 | `simbad_sp_type` | string | the spectral type as SIMBAD gives it |
@@ -506,8 +506,8 @@ A file is gzip around one JSON object:
   "members": [
     { "id": 24592883, "position": [6.517253887958679, -11.840880957963618, 1.517162498208393] },
     { "id": 26486783 },
-    { "ref": "DSO:M44", "reason": "deep-sky", "designation": "M44" },
-    { "ra_hours": 19.43791, "dec": -23.807 }
+    { "ref": "DSO:M44", "reason": "deep-sky", "designation": "M44", "position": [-111.1, 132.2, 61.6], "stand_in": "hunt-reffert-2024" },
+    { "ra_hours": 19.43791, "dec": -23.807, "position": [18.5, -46.8, -22.2], "stand_in": "culture-stars" }
   ],
   "figures": [
     {
@@ -524,7 +524,9 @@ A file is gzip around one JSON object:
 - **`members`.** Each object that a figure or a star name points to, once, in order of first use. It is one of:
   - a star: `id` is its extrasolar ID, and `position` its position in parsecs, in the frame of the render tree (ICRS axes, origin at the barycentre, J2016.0), as float64. The position is the one that the tree build computes for the star, from the same code over the same rows, so a line ends on the rendered star: it is the float64 value that the node stores as the node's centre plus a float32 offset. A star that the tree does not draw has an `id` and no `position`: a star with no distance (no 5σ parallax and no `distance`), a flagged star that neither Hipparcos nor SIMBAD saw, or a star with no magnitude (see the render tree). A named Gaia source without a 5σ parallax (`gaia-dr3-named`) has an `id`, and the tree draws it when it has a `distance`.
   - an object with no ID: `ref` as the source writes it, `reason` (below), and `designation` for a deep-sky object or a planet. A line that passes through it keeps its index, so no line is cut; a client skips the segments to a member without a position.
-  - a point of the sky that a Stellarium figure gives in place of a star: `ra_hours` and `dec` (degrees) as published. It has no distance.
+  - a point of the sky that a Stellarium figure gives in place of a star: `ra_hours` and `dec` (degrees) as published.
+
+  A deep-sky object and a point of the sky have a stand-in position until the registry holds an object for them: `position` as for a star, and `stand_in`, the source of its distance. A deep-sky object takes its direction from SIMBAD (the local export), else OpenNGC, and its distance from `baumgardt-globular-clusters`, `hunt-reffert-2024` (the median, of a row of `Type` o, g or d; a row's own `Name` goes before an alias that rows share) or `hecate`, the first that lists one of its SIMBAD identifiers. With no such distance, and for each point of the sky, `stand_in` is `culture-stars`: the distance is the median of the culture's stars, so that a figure of sky points keeps its shape from near the Sun and stays among the culture's stars from afar. A stand-in is no star: it is in no shard, in no page's stars, and has no ID. A `solar-system` member, `NAME Milky Way` (a band, no point) and `PK080-06.1` (not in the local catalogues) have no position.
 - **`figures`.** `kind` is `constellation` or `asterism`. `names` lists the names of the figure, each with the fields that the source gives of `native` (in the culture's script), `english`, `pronounce`, `transliteration` and `IPA`. `lines` is a list of chains; each chain is a list of member indexes, joined in order. A Bucur figure can have `group`, member indexes of a star group with no lines, and `iau`, the IAU constellation that holds a figure whose stars are not known. In `modern`, `modern_iau`, `modern_st` and `modern_chinese`, each constellation has `iau`, its IAU abbreviation. `modern_journey_to_the_west` has the IDs of the 88, but draws figures of its own, so it has no `iau`.
 
   `page` is the slug of the figure's `/g/sky-<slug>` page ([groups.md](groups.md)). The constellations of those four cultures have one by their Latin `native` name, and the figures of `dien` and `ruelle` by their Latin `english` name, with `(eq)` on the second chart of a constellation. A Chinese mansion, a nakshatra and a historical Western constellation have one by figure ID (`sky_figure_pages` in `constants/stars/constellations.py`). `iau` alone names no page: a Bucur figure can lie inside the constellation that it names.
@@ -847,11 +849,12 @@ The token of `systems` is the SHA-256 of the file's path, a zero byte and the SH
         "figures": 415,
         "members": 3131,
         "positioned": 3095,
+        "stand_ins": 0,
         "unresolved": 11
       },
       "…"
     ],
-    "credits": [{ "name": "Stellarium sky cultures", "…": "…" }, { "name": "Constellation line figures in sky cultures across the world", "…": "…" }, { "name": "SIMBAD astronomical database", "…": "…" }]
+    "credits": [{ "name": "Stellarium sky cultures", "…": "…" }, { "name": "Constellation line figures in sky cultures across the world", "…": "…" }, { "name": "SIMBAD astronomical database", "deep_sky": true, "…": "…" }]
   },
   "planets": {
     "token": "3f0c…",
@@ -900,8 +903,8 @@ The token of `systems` is the SHA-256 of the file's path, a zero byte and the SH
   - `labels`: the name of the culture by site language, for the languages that have one of their own. The others, and English, read `name`. A Stellarium culture has Stellarium's translation (`stellarium-skycultures-descriptions`), fixed by hand where it does not work (`SKY_CULTURE_NAME_FIXES`). A gap, and each Bucur culture, reads the hand table `SKY_CULTURE_LABELS` or a Wikidata label, fixed by hand where one does not work as a name; an edition reads the translated name of its culture, then its edition; a culture with no matching item has none. A people's label names the culture only: it does not make that item the culture's astronomy.
   - `packaged`: false for a culture that Stellarium leaves out of its standard package.
   - `credit`: the culture's own credit: its source at the pinned commit, its licence, and for Stellarium `authors`, the plain names of the people that the culture's description names as its makers, with no Markdown, addresses or links.
-  - `figures`, `members`, `positioned` (members with a position) and `unresolved` (members with no ID, sky points left out).
-  - `credits` of the section: Stellarium, Bucur's dataset and SIMBAD, which matched Bucur's identifiers.
+  - `figures`, `members`, `positioned` (members with a position), `stand_ins` (those that are stand-ins) and `unresolved` (members with no ID, sky points left out).
+  - `credits` of the section: Stellarium, Bucur's dataset, SIMBAD, which matched Bucur's identifiers, and the catalogues of the deep-sky stand-ins (Hunt & Reffert 2024, Baumgardt et al., HECATE, OpenNGC). `deep_sky: true` marks a credit that places these stand-ins (SIMBAD and those four); a culture with a figure that draws a stand-in credits these too.
 
 ## `families.json`
 

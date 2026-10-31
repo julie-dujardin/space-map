@@ -6,7 +6,9 @@ from pathlib import Path
 import pytest
 
 from space_map_data.extrasolar.registry import Registry
+from space_map_data.skycultures.deep_sky import Place
 from space_map_data.skycultures.refs import (
+    Kind,
     Ref,
     bucur_ref,
     stellarium_name,
@@ -234,3 +236,33 @@ class TestRegistryIds:
         matcher = Matcher(lookup)
         point = matcher(Ref("HIP  1", stellarium_name("HIP 1").kind, "1"), "names")
         assert point == {"ref": "HIP  1", "reason": NOT_IN_REGISTRY}
+
+
+class TestPlaces:
+    """The place that a deep-sky object carries to the export."""
+
+    def lookup(self) -> Lookup:
+        return Lookup({}, {}, places={"M44": Place(1.0, 2.0, 3.0, "hecate")})
+
+    def test_a_designation_with_a_place_keeps_it(self):
+        point = Matcher(self.lookup())(stellarium_point("DSO:M44"), "lines")
+        assert isinstance(point, dict)
+        assert point["place"] == {
+            "ra": 1.0,
+            "dec": 2.0,
+            "distance": 3.0,
+            "source": "hecate",
+        }
+
+    def test_one_with_none_is_as_before(self):
+        point = Matcher(self.lookup())(stellarium_point("DSO:M45"), "lines")
+        assert point == {"ref": "DSO:M45", "reason": DEEP_SKY, "designation": "M45"}
+
+    def test_designations_are_those_with_no_id(self):
+        refs = [
+            stellarium_point("DSO:M44"),
+            stellarium_name("coalsack nebula"),
+            stellarium_name("NAME Mars"),
+            Ref("5", Kind.HIP, "5"),
+        ]
+        assert Lookup({"5": 1}, {}).designations(refs) == {"M44", "coalsack nebula"}
