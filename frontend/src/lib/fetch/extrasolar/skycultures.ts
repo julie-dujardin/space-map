@@ -24,8 +24,12 @@ export interface SkyCultureName {
 
 export interface SkyCultureMember {
 	id?: number;
+	/** The object as the source writes it, on a member with no ID. */
+	ref?: string;
 	/** pc, in the frame of the render tree. Absent on what the tree does not draw. */
 	position?: [number, number, number];
+	/** The source of a position's distance, where no star of the tree holds it. */
+	stand_in?: string;
 }
 
 export interface SkyCultureFigure {
@@ -90,6 +94,7 @@ export interface ExtrasolarSkyCultures {
 	/** A star's shard is its ID modulo this. */
 	star_shards: number;
 	cultures: SkyCultureEntry[];
+	credits: ExtrasolarCredit[];
 }
 
 export interface LoadedSkyCulture {
@@ -160,6 +165,16 @@ export async function fetchStarFigures(id: number): Promise<StarFigures> {
 	return { cultures: pickableCultures(table).filter(({ key }) => key in figures), figures };
 }
 
+/** Whether a figure draws a deep-sky stand-in. A member only in `names` has no
+ *  place on the map. */
+function drawsDeepSky({ members, figures }: SkyCultureFile): boolean {
+	const standsIn = (index: number) => !!members[index].ref && !!members[index].position;
+	return figures.some(
+		({ lines, group, ray_helper }) =>
+			!ray_helper && (lines.flat().some(standsIn) || !!group?.some(standsIn))
+	);
+}
+
 /** A culture and its credit, or null where the export or the host has none. */
 export async function fetchSkyCulture(key: string): Promise<LoadedSkyCulture | null> {
 	const metadata = await fetchExtrasolarMetadata();
@@ -170,5 +185,6 @@ export async function fetchSkyCulture(key: string): Promise<LoadedSkyCulture | n
 	const path = extrasolarPath(table.file, { key: entry.key });
 	const file = await fetchExtrasolarJson<SkyCultureFile>(path, table.token);
 	const places = metadata.credits.filter((credit) => POSITION_CATALOGUE.test(credit.name));
-	return { file, credits: [entry.credit, ...places] };
+	const deepSky = drawsDeepSky(file) ? table.credits.filter((credit) => credit.deep_sky) : [];
+	return { file, credits: [entry.credit, ...places, ...deepSky] };
 }

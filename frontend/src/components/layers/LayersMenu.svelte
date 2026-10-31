@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { getContext } from 'svelte';
 	import * as m from '$lib/paraglide/messages.js';
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
@@ -10,13 +11,16 @@
 	} from '$lib/fetch/extrasolar/skycultures';
 	import { quantityIsolate } from '$lib/format/bidi';
 	import { getLocale } from '$lib/paraglide/runtime.js';
+	import type { AppState } from '$lib/state/app-state.svelte';
+	import { constellationsAsked } from '$lib/scene/settings.svelte';
 	import { getSettings, type ViewMode } from '$lib/state/settings.svelte';
-	import { cultureName } from './sky-culture-list';
+	import { cultureName, pickCulture } from './sky-culture-list';
 	import SkyCulturePage from './SkyCulturePage.svelte';
 
 	let { onPicked }: { onPicked?: () => void } = $props();
 
 	const settings = getSettings();
+	const appState = getContext<AppState>('appState');
 
 	let cultures = $state.raw<readonly SkyCultureEntry[]>([]);
 	let choosing = $state(false);
@@ -25,7 +29,7 @@
 	const culture = $derived(
 		pickedCulture(cultures, pageSky?.culture ?? settings.constellationCulture)
 	);
-	const constellationsOn = $derived(settings.showConstellations || (!!pageSky && !pageSky.hidden));
+	const constellationsOn = $derived(constellationsAsked(settings));
 	const immersive = $derived(settings.viewMode === 'immersive');
 	const cultureLine = $derived(
 		culture
@@ -47,10 +51,8 @@
 		if (immersive) choosing = false;
 	});
 
-	function pick(key: string): void {
-		settings.setConstellationCulture(key);
-		settings.setShowConstellations(true);
-		if (pageSky) settings.setPageSky({ ...pageSky, culture: key, hidden: false });
+	function pick(culture: SkyCultureEntry): void {
+		pickCulture(culture, getLocale(), settings, appState);
 		onPicked?.();
 	}
 
@@ -114,7 +116,6 @@
 		{cultures}
 		picked={culture?.key}
 		onPick={pick}
-		onOpenPage={() => onPicked?.()}
 		onBack={() => (choosing = false)}
 	/>
 {:else}
@@ -205,15 +206,6 @@
 							disabled={immersive}
 						/>
 					</div>
-					{#if constellationsOn && !immersive}
-						<label class="flex cursor-pointer items-center justify-between gap-3">
-							<span class="text-sm font-medium">{m.layers_clear_sky()}</span>
-							<Switch
-								checked={settings.clearSky}
-								onCheckedChange={(on) => settings.setClearSky(on)}
-							/>
-						</label>
-					{/if}
 				</section>
 			</div>
 		</ScrollArea>

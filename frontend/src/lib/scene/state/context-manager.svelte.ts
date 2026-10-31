@@ -1,7 +1,11 @@
 import { ObjectType, type PositionedBody } from '$lib/types/objects';
 import { CreditsStore } from '$lib/scene/state/credits.svelte';
 import { BodyIndex } from '$lib/scene/state/bodies.svelte';
-import { VisibilityController } from '$lib/scene/visibility/controller.svelte';
+import {
+	ALL_PROBES,
+	VisibilityController,
+	type ProbePage
+} from '$lib/scene/visibility/controller.svelte';
 import { matchesSmallBodyFilter } from '$lib/scene/visibility/small-body-filter';
 import type { ChebyshevStore } from '$lib/fetch/position/chebyshev/store';
 import type { ProbeStore } from '$lib/fetch/position/probes/store';
@@ -17,6 +21,7 @@ import {
 	CAT_ASTEROIDS,
 	CAT_COMETS,
 	CAT_DEBRIS,
+	CAT_PROBES,
 	CAT_SATELLITES,
 	CLASS_SLUG_PREFIX,
 	MISSION_SLUG_PREFIX,
@@ -64,7 +69,8 @@ export class ContextManager {
 		() => this.earthSatFilter,
 		() => this.smallBodyFilter,
 		() => this.layers,
-		() => this.earthTypeFilter
+		() => this.earthTypeFilter,
+		() => this.probePage
 	);
 
 	loading = $state(true);
@@ -170,6 +176,11 @@ export class ContextManager {
 	/** Place of `body` at `jd`. Null when it has none, and before the scene is up. */
 	place(body: PositionedBody, jd: number): [number, number, number] | null {
 		return this.placer?.place(body, jd) ?? null;
+	}
+
+	/** The probes the open group page is about, which a cleared sky leaves. */
+	private get probePage(): ProbePage {
+		return this.currentGroupSlug === CAT_PROBES ? ALL_PROBES : this.missionMemberIds;
 	}
 
 	/** True when an /g/<slug> view is active and the body belongs to it — keeps

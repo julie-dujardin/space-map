@@ -37,7 +37,7 @@ import { RetryBackoff } from '$lib/fetch/retry-backoff';
 import { attachCanvasForwarders } from '$lib/scene/label/forward';
 import { onLinkTap } from '$lib/scene/objects/tap-not-drag';
 import { clampToFarGlsl } from '$lib/scene/setup/depth-mode';
-import { sceneSettings, type PageSky } from '$lib/scene/settings.svelte';
+import { constellationsWanted, sceneSettings, type PageSky } from '$lib/scene/settings.svelte';
 import { STAR_RENDER_ORDER } from '$lib/scene/starfield/starfield';
 import { sceneToTree, treeMatrixElements, treeToScene } from '$lib/scene/starfield/tree';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
@@ -95,19 +95,23 @@ export interface ConstellationShape {
 	labels: ConstellationLabel[];
 }
 
-/** The middle of the stars as the Sun sees them, at their mean distance: a
- *  mean of positions would lean to the farthest stars. */
+/** The middle of the stars as the Sun sees them, at their median distance: a
+ *  mean of positions or distances would lean to one far member. */
 function anchorOf(stars: readonly Vec3[]): Vec3 {
 	const sum: Vec3 = [0, 0, 0];
-	let distance = 0;
+	const distances: number[] = [];
 	for (const [x, y, z] of stars) {
 		const r = Math.hypot(x, y, z);
-		distance += r;
+		distances.push(r);
 		sum[0] += x / r;
 		sum[1] += y / r;
 		sum[2] += z / r;
 	}
-	const scale = distance / stars.length / Math.hypot(...sum);
+	distances.sort((a, b) => a - b);
+	const middle = stars.length >> 1;
+	const median =
+		stars.length % 2 ? distances[middle] : (distances[middle - 1] + distances[middle]) / 2;
+	const scale = median / Math.hypot(...sum);
 	return [sum[0] * scale, sum[1] * scale, sum[2] * scale];
 }
 
@@ -351,12 +355,7 @@ export class ConstellationSystem {
 	}
 
 	wanted(): boolean {
-		const settings = sceneSettings();
-		// The sky is the skybox near the Sun and the starfield past it.
-		const sky = this.ctx.layers.isVisible('stars') || this.ctx.layers.isVisible('starfield');
-		const page = settings.pageSky;
-		const on = settings.showConstellations || (!!page && !page.hidden);
-		return on && settings.viewMode !== 'immersive' && sky;
+		return constellationsWanted(sceneSettings(), (id) => this.ctx.layers.isVisible(id));
 	}
 
 	/** Follow the page in view: turn to its constellation once the figures are

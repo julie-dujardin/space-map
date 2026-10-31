@@ -26,6 +26,8 @@
 	import SegmentedPill from './map-pill/SegmentedPill.svelte';
 	import { frameOptions } from './travel-frame/frame-options';
 	import { ringBrightnessOptions } from './rings/brightness-options';
+	import { clearSkyOptions } from './layers/clear-sky-options';
+	import { constellationsWanted } from '$lib/scene/settings.svelte';
 	import type { Hazard } from '$lib/travel/hazards';
 	import { labelHazards } from '$lib/travel/hazard-labels';
 	import { formatTripDate } from '$lib/travel/format';
@@ -317,6 +319,12 @@
 	$effect(() => {
 		if (!ringPillShown) settings.setOverexposeRings(false);
 	});
+	// Layer switches are not reactive state, and the sky pill follows them.
+	const shownLayers = () => new Set(map.getLayers().filter((id) => map.isLayerVisible(id)));
+	let visibleLayers = $state.raw(shownLayers());
+	$effect(() => map.on('layerschange', () => (visibleLayers = shownLayers())));
+	let clearSkyPillShown = $derived(constellationsWanted(settings, (id) => visibleLayers.has(id)));
+	let mapPillShown = $derived(framesDiffer || ringPillShown || clearSkyPillShown);
 	// A runtime switch: it hides the stars, and they go on loading as the camera moves.
 	$effect(() => {
 		map.setLayerVisible('starfield', settings.showStarfield);
@@ -398,6 +406,7 @@
 	$effect(() => {
 		const ends = [navFrom, navTo].filter((id) => id !== null);
 		map.setTripPins(ends.filter(isExtrasolarObjectId));
+		ctx.visibility.setTripEnds(ends);
 	});
 
 	// Group route wins over body focus: the camera may be parked on the anchor
@@ -1252,7 +1261,7 @@
 				     reader is looking at. -->
 				<div
 					class="fixed start-[calc(var(--safe-start)_+_1rem)] end-[calc(var(--safe-end)_+_1rem)] top-[calc(var(--safe-top)_+_4.125rem)] z-10 md:end-[calc(var(--safe-end)_+_1rem)] md:top-[calc(var(--safe-top)_+_1rem)] md:flex md:h-10 md:items-center md:start-[var(--featured-start)]
-						{framesDiffer || ringPillShown ? 'max-md:hidden' : ''}"
+						{mapPillShown ? 'max-md:hidden' : ''}"
 					style="--featured-start: {featuredStart}"
 				>
 					<FeaturedBar
@@ -1392,7 +1401,7 @@
 					<ClearPromoted count={userPromotedCount} onClear={() => map.clearUserPromoted()} />
 				{/if}
 			</div>
-			{#if framesDiffer || ringPillShown}
+			{#if mapPillShown}
 				<!-- Centred on the window, not the map area beside the panel: measured
 				     off that, it would slide sideways as the panel opens and closes. It
 				     only leaves centre when the panel would otherwise cover it. -->
@@ -1401,11 +1410,11 @@
 					style:--panel-inset={!isMobileViewport && sidebarOpen
 						? 'calc(var(--detail-panel) + 0.75rem)'
 						: '0px'}
-					class="center-clear-of-panel pointer-events-none fixed left-1/2 z-10 flex
+					class="center-clear-of-panel pointer-events-none fixed left-1/2 z-10 flex w-max max-w-[calc(100vw_-_2rem)] flex-col items-center gap-2
 						top-[calc(var(--safe-top)_+_4.125rem)] md:top-[calc(var(--safe-top)_+_4rem)]"
 				>
-					<!-- One slot, so the two never stack: the planner and a body's ring
-					     catalogue are not open at the same time. -->
+					<!-- One slot for these two: the planner and a body's ring catalogue are
+					     not open at the same time. The sky pill can show with either. -->
 					{#if framesDiffer}
 						<SegmentedPill
 							label={m.travel_frame()}
@@ -1413,7 +1422,7 @@
 							value={viewFrame}
 							onSelect={(next) => (viewFrame = next)}
 						/>
-					{:else}
+					{:else if ringPillShown}
 						<SegmentedPill
 							label={m.rings_brightness()}
 							shortLabel={m.tab_rings()}
@@ -1421,6 +1430,22 @@
 							value={settings.overexposeRings}
 							onSelect={(next) => settings.setOverexposeRings(next)}
 						/>
+					{/if}
+					{#if clearSkyPillShown}
+						<div
+							class="flex justify-center {framesDiffer || ringPillShown
+								? 'max-md:clear-of-phone-buttons'
+								: ''}"
+						>
+							<SegmentedPill
+								label={m.layers_clear_sky()}
+								shortLabel={m.layers_clear_sky_short()}
+								alwaysLabelled
+								options={clearSkyOptions()}
+								value={settings.clearSky}
+								onSelect={(next) => settings.setClearSky(next)}
+							/>
+						</div>
 					{/if}
 				</div>
 			{/if}

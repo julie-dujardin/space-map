@@ -259,6 +259,16 @@ body {
 	}
 }
 
+/* A row of the map pills beside the button column of a phone: it leaves the
+   centre only as far as it needs to clear the column and a small gap. */
+@utility clear-of-phone-buttons {
+	--phone-buttons: calc(var(--safe-end) + 3.5rem + 0.5rem);
+	translate: min(0px, calc(50vw - var(--phone-buttons) - 50%)) 0;
+	[dir='rtl'] & {
+		translate: max(0px, calc(var(--phone-buttons) + 50% - 50vw)) 0;
+	}
+}
+
 :root {
 	color-scheme: light;
 }

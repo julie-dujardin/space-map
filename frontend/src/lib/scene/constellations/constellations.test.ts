@@ -57,6 +57,24 @@ describe('constellationShape', () => {
 		]);
 	});
 
+	it('draws a line to a stand-in as to a star', () => {
+		const shape = constellationShape(
+			{
+				...FILE,
+				members: [
+					{ ra_hours: 1, dec: 2, position: [1, 0, 0], stand_in: 'culture-stars' },
+					{ ref: 'DSO:M44', position: [0, 1, 0], stand_in: 'hunt-reffert-2024' }
+				] as SkyCultureFile['members'],
+				figures: [
+					{ id: 'CON t A', kind: 'constellation', names: [{ english: 'A' }], lines: [[0, 1]] }
+				]
+			},
+			'en'
+		);
+		expect([...shape.positions]).toEqual([1, 0, 0, 0, 1, 0]);
+		expect(shape.labels).toHaveLength(1);
+	});
+
 	it('leaves out a ray helper', () => {
 		const figures = FILE.figures.map((figure) => ({ ...figure, ray_helper: true }));
 		expect(constellationShape({ ...FILE, figures }, 'en').positions).toHaveLength(0);
@@ -122,10 +140,21 @@ describe('constellationShape', () => {
 		expect(constellationShape(FILE, 'fr').labels[0].slug).toBe('sky-orion');
 	});
 
-	it('anchors a label between its stars as the Sun sees them, at their mean distance', () => {
+	it('anchors a label between its stars as the Sun sees them, at their median distance', () => {
 		const [{ anchor }] = constellationShape(FILE, 'en').labels;
 		expect(anchor[0]).toBeCloseTo(anchor[1]);
 		expect(Math.hypot(...anchor)).toBeCloseTo(15);
+	});
+
+	it('keeps a label among its stars when one member lies far away', () => {
+		const at = (distance: number, x: number): SkyCultureFile['members'][number] => ({
+			position: [distance * x, distance, 0]
+		});
+		const members = [at(10, 0), at(12, 0.01), at(14, -0.01), at(772_000, 0)];
+		const figures = [{ ...FILE.figures[0], lines: [[0, 1, 2, 3]] }];
+		const [{ anchor }] = constellationShape({ ...FILE, members, figures }, 'en').labels;
+		expect(Math.hypot(...anchor)).toBeCloseTo(13, 0);
+		expect(anchor[0] / anchor[1]).toBeCloseTo(0, 2);
 	});
 });
 

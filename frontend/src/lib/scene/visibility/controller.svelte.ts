@@ -14,7 +14,7 @@ import { f64dist } from '$lib/scene/animation/math';
 import { hillRadiusAU } from '$lib/scene/visibility/hill';
 import type { ProbeStore } from '$lib/fetch/position/probes/store';
 import { smallBodyCategory, type SmallBodyFilter } from '$lib/fetch/groups/registry';
-import { LayerSet } from '$lib/scene/layers';
+import { bodyLayer, LayerSet } from '$lib/scene/layers';
 import {
 	matchesSmallBodyFilter,
 	SMALL_BODY_ZONE_PREFIX
@@ -34,6 +34,10 @@ import {
 import { SwitchFade } from '$lib/scene/visibility/switch-fade';
 import { ZoneFades } from '$lib/scene/visibility/zone-fade';
 import { VisibilityThresholdFades } from '$lib/scene/visibility/threshold-fade';
+
+/** The probes the open page is about: all, a mission's, or none. */
+export const ALL_PROBES = 'all';
+export type ProbePage = ReadonlySet<string> | typeof ALL_PROBES | null;
 
 /** What a controller built without a map draws: everything. */
 const ALL_LAYERS = new LayerSet();
@@ -73,8 +77,8 @@ export class VisibilityController {
 	/** The main zone and the satellite systems, faded to `activeSystemId`. */
 	readonly zones = new ZoneFades();
 	/** The sky is being cleared for the constellations. A view state: the
-	 *  reader's layers stay as they are, and so do the clouds the open group
-	 *  page is about. */
+	 *  reader's layers stay as they are, and so does what the open page is
+	 *  about. */
 	clearSky = false;
 	private readonly clearing = new SwitchFade(false);
 	private readonly thresholds = new VisibilityThresholdFades();
@@ -121,6 +125,7 @@ export class VisibilityController {
 	private moonVisibilityCache = new Map<string, VISIBILITY>();
 	/** Bodies a host wants in sight from however far. */
 	private pinned: ReadonlySet<string> = new Set();
+	private tripEnds: ReadonlySet<string> = new Set();
 
 	constructor(
 		private readonly bodies: BodyIndex,
@@ -128,7 +133,8 @@ export class VisibilityController {
 		private readonly getEarthSatGroupFilter: () => ReadonlySet<string> | null = () => null,
 		private readonly getSmallBodyFilter: () => SmallBodyFilter | null = () => null,
 		private readonly getLayers: () => LayerSet = () => ALL_LAYERS,
-		private readonly getEarthTypeFilter: () => ReadonlySet<ObjectType> | null = () => null
+		private readonly getEarthTypeFilter: () => ReadonlySet<ObjectType> | null = () => null,
+		private readonly getProbePage: () => ProbePage = () => null
 	) {}
 
 	/** Per-tick mask read by the orbit worker pool to hide non-matching small
@@ -383,6 +389,11 @@ export class VisibilityController {
 		this.pinned = new Set(ids);
 	}
 
+	/** The planner is about these, so a cleared sky leaves them. */
+	setTripEnds(ids: Iterable<string>): void {
+		this.tripEnds = new Set(ids);
+	}
+
 	isPinned(id: string): boolean {
 		return this.pinned.has(id);
 	}
@@ -412,6 +423,7 @@ export class VisibilityController {
 		if (!pinned && this.getLayers().hidesBody(body.data.objectType, body.data.parentId)) {
 			return VISIBILITY.HIDE;
 		}
+		if (this.bodyUnclearedShare(body) === 0) return VISIBILITY.HIDE;
 		// Check SPICE_PROBE before isSystemBody — Mars-zone probes carry parentId=naif-499,
 		// which would otherwise satisfy isSystemBody and short-circuit to FULL.
 		if (body.data.orbitalSource === OrbitalSource.SPICE_PROBE) {
@@ -552,6 +564,10 @@ export class VisibilityController {
 
 	/** Combines overlapping zones; probe intervals bridge parent-ID load gaps. */
 	fullRenderingShare(body: PositionedBody): number {
+		return this.zoneRenderingShare(body) * this.bodyUnclearedShare(body);
+	}
+
+	private zoneRenderingShare(body: PositionedBody): number {
 		const main = this.zones.mainShare;
 		if (main === 1 || this.pinned.has(body.data.id)) return 1;
 		const home = isTopLevelParent(body.data.parentId) ? body.data.id : body.data.parentId;
@@ -596,13 +612,33 @@ export class VisibilityController {
 	/** Returns the share of the cloud's solar or satellite zone. */
 	spacecraftGroupShare(groupParentId: string): number {
 		const share = this.spacecraftZoneShare(groupParentId);
-		if (groupParentId !== EARTH_ID) return share;
-		const asked = this.getEarthSatGroupFilter() || this.getEarthTypeFilter();
+		const asked =
+			groupParentId === EARTH_ID
+				? this.getEarthSatGroupFilter() || this.getEarthTypeFilter()
+				: this.getProbePage();
 		return asked ? share : share * this.unclearedShare;
 	}
 
 	private get unclearedShare(): number {
 		return 1 - this.clearing.share;
+	}
+
+	/** The share of a body that a cleared sky leaves. Probes, asteroids and
+	 *  comets go, promoted or not, except what the reader is looking at and what
+	 *  the open page is about. A flyby probe's parent flips, so the source
+	 *  decides as well as the layer. */
+	private bodyUnclearedShare(body: PositionedBody): number {
+		if (this.clearing.share === 0) return 1;
+		const { id, objectType, parentId, orbitalSource } = body.data;
+		const looked = id === this.focusedBodyIdPlain || id === this.focusedSystemIdPlain;
+		if (looked || this.pinned.has(id) || this.tripEnds.has(id)) return 1;
+		const layer = bodyLayer(objectType, parentId);
+		if (layer === 'spacecraft' || orbitalSource === OrbitalSource.SPICE_PROBE) {
+			const page = this.getProbePage();
+			return page === ALL_PROBES || page?.has(id) ? 1 : this.unclearedShare;
+		}
+		if (layer !== 'asteroids' && layer !== 'comets') return 1;
+		return this.getSmallBodyFilter() ? 1 : this.unclearedShare;
 	}
 
 	private zoneUnclearedShare(zone: string): number {

@@ -1,4 +1,5 @@
 import { DEFAULT_SKY_CULTURE } from '$lib/constants';
+import type { MapLayerId } from '$lib/scene/layers';
 import type {
 	AtmosphereCalibration,
 	AtmosphereQualityConfig,
@@ -36,8 +37,8 @@ export interface SceneSettings {
 	constellationCulture?: string;
 	/** What a constellation or culture page shows of the sky, for that view. */
 	pageSky?: PageSky | null;
-	/** The constellation layer hides the clouds of asteroids, comets and Earth
-	 *  satellites, which bury its faint figures. */
+	/** The constellation layer hides the asteroids, comets and probes, and the
+	 *  cloud of Earth satellites, which bury its faint figures. */
 	clearSky?: boolean;
 	showAtmospheres: boolean;
 	atmosphereQuality: AtmosphereQualityTier;
@@ -78,6 +79,26 @@ function storeCalibration(v: AtmosphereCalibration | null): void {
 	} catch {
 		// Private mode or blocked storage: the bench just runs again next load.
 	}
+}
+
+/** The reader or the page in view asks for the constellation layer. */
+export function constellationsAsked({
+	showConstellations,
+	pageSky
+}: Pick<SceneSettings, 'showConstellations' | 'pageSky'>): boolean {
+	const forPage = !!pageSky && !pageSky.hidden;
+	return !!showConstellations || forPage;
+}
+
+/** Whether the constellation layer draws. The sky is the skybox near the Sun
+ *  and the starfield past it. */
+export function constellationsWanted(
+	settings: Pick<SceneSettings, 'showConstellations' | 'pageSky' | 'viewMode'>,
+	isLayerVisible: (id: MapLayerId) => boolean
+): boolean {
+	const sky = isLayerVisible('stars') || isLayerVisible('starfield');
+	const asked = constellationsAsked(settings);
+	return asked && settings.viewMode !== 'immersive' && sky;
 }
 
 /** What a bare embed renders with: everything on, quality measured at boot and

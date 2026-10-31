@@ -2,7 +2,6 @@
 <script lang="ts">
 	import { getContext } from 'svelte';
 	import CheckIcon from '@lucide/svelte/icons/check';
-	import InfoIcon from '@lucide/svelte/icons/info';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import { isCoarsePointer } from '$lib/device';
 	import type { SkyCultureEntry } from '$lib/fetch/extrasolar/skycultures';
@@ -29,14 +28,12 @@
 		cultures: readonly SkyCultureEntry[];
 		/** Key of the culture on show. */
 		picked: string | undefined;
-		onPick: (key: string) => void;
-		/** A row's link took the reader to the culture's page. */
-		onOpenPage?: () => void;
+		onPick: (culture: SkyCultureEntry) => void;
 		onBack: () => void;
 	}
-	let { cultures, picked, onPick, onOpenPage, onBack }: Props = $props();
+	let { cultures, picked, onPick, onBack }: Props = $props();
 
-	const appState = getContext<AppState | undefined>('appState');
+	const appState = getContext<AppState>('appState');
 
 	const locale = getLocale();
 	const orders: { value: SkyCultureOrder; label: string }[] = [
@@ -67,47 +64,30 @@
 {#snippet row(culture: SkyCultureEntry, region?: string)}
 	{@const selected = culture.key === picked}
 	{@const name = cultureName(culture, locale)}
-	{@const slug = `${SKY_CULTURE_SLUG_PREFIX}${culture.key}`}
-	{@const page = groupHref(appState, slug, name)}
-	<div class="flex items-center gap-0.5">
-		<button
-			type="button"
-			aria-pressed={selected}
-			onclick={() => onPick(culture.key)}
-			class="hover:bg-muted flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-start text-sm transition-colors md:min-h-0 {selected
-				? 'bg-muted'
-				: ''}"
+	<a
+		href={groupHref(appState, `${SKY_CULTURE_SLUG_PREFIX}${culture.key}`, name)}
+		aria-current={selected ? 'true' : undefined}
+		onclick={(e) => {
+			if (isModifiedClick(e)) return;
+			e.preventDefault();
+			onPick(culture);
+		}}
+		class="hover:bg-muted flex min-h-11 min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-start text-sm transition-colors md:min-h-0 {selected
+			? 'bg-muted'
+			: ''}"
+	>
+		<span class="min-w-0 flex-1">
+			<span class="block truncate"><bdi>{name}</bdi></span>
+			{#if region}
+				<span class="text-muted-foreground block truncate text-[11px] leading-[14px]">{region}</span
+				>
+			{/if}
+		</span>
+		<span class="text-muted-foreground shrink-0 font-mono text-[11px] tabular-nums"
+			>{formatNumber(culture.figures)}</span
 		>
-			<span class="min-w-0 flex-1">
-				<span class="block truncate"><bdi>{name}</bdi></span>
-				{#if region}
-					<span class="text-muted-foreground block truncate text-[11px] leading-[14px]"
-						>{region}</span
-					>
-				{/if}
-			</span>
-			<span class="text-muted-foreground shrink-0 font-mono text-[11px] tabular-nums"
-				>{formatNumber(culture.figures)}</span
-			>
-			{#if selected}<CheckIcon class="size-3.5 shrink-0" aria-hidden="true" />{/if}
-		</button>
-		{#if page}
-			<a
-				href={page}
-				aria-label={`${m.layers_sky_culture_page()}: ${name}`}
-				title={m.layers_sky_culture_page()}
-				class="text-muted-foreground hover:bg-muted hover:text-foreground flex size-11 shrink-0 items-center justify-center rounded-md transition-colors md:size-7"
-				onclick={(e) => {
-					if (isModifiedClick(e)) return;
-					e.preventDefault();
-					appState?.setGroup(slug, name);
-					onOpenPage?.();
-				}}
-			>
-				<InfoIcon class="size-3.5" aria-hidden="true" />
-			</a>
-		{/if}
-	</div>
+		{#if selected}<CheckIcon class="size-3.5 shrink-0" aria-hidden="true" />{/if}
+	</a>
 {/snippet}
 
 <div class="flex h-[640px] max-h-full min-h-0 flex-1 flex-col">

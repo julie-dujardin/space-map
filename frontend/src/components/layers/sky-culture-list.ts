@@ -1,7 +1,12 @@
 import { DEFAULT_SKY_CULTURE } from '$lib/constants';
 import type { SkyCultureEntry } from '$lib/fetch/extrasolar/skycultures';
 import { foldForSearch } from '$lib/format/fold';
+import { SKY_CULTURE_SLUG_PREFIX } from '$lib/fetch/groups/registry';
 import * as m from '$lib/paraglide/messages.js';
+import type { AppState } from '$lib/state/app-state.svelte';
+import type { getSettings } from '$lib/state/settings.svelte';
+import { pageSkyOf } from '$lib/state/url';
+import { UrlType } from '$lib/state/view';
 
 /** The picker's region groups in their order: the keys of
  *  ``SKY_CULTURE_REGIONS`` in ``data/constants/stars/cultures.py``. */
@@ -34,6 +39,26 @@ export function regionLabel(group: string | null): string {
 
 export function cultureName(culture: SkyCultureEntry, locale: string): string {
 	return culture.labels[locale] ?? culture.name;
+}
+
+/** A pick opens the culture in the sidebar. The trip planner stays: a group
+ *  ends the trip, so there a pick only changes the setting. */
+export function pickCulture(
+	culture: SkyCultureEntry,
+	locale: string,
+	settings: Pick<
+		ReturnType<typeof getSettings>,
+		'setConstellationCulture' | 'setShowConstellations' | 'setPageSky'
+	>,
+	appState: Pick<AppState, 'view' | 'setGroup'>
+): void {
+	settings.setConstellationCulture(culture.key);
+	settings.setShowConstellations(true);
+	if (appState.view.type === UrlType.Nav) return;
+	const slug = `${SKY_CULTURE_SLUG_PREFIX}${culture.key}`;
+	// Set here too: a pick of the page in view changes no group, and its sky can be hidden.
+	settings.setPageSky(pageSkyOf(slug, false));
+	appState.setGroup(slug, cultureName(culture, locale));
 }
 
 export type SkyCultureOrder = 'region' | 'name' | 'figures';

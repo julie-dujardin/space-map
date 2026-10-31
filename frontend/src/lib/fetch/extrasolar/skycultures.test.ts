@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import * as files from './files';
 import {
+	fetchSkyCulture,
 	fetchStarFigures,
 	pickableCultures,
 	pickedCulture,
@@ -66,5 +67,49 @@ describe('the figures of a star', () => {
 		expect(found.cultures.map((c) => c.key)).toEqual(['chinese']);
 		expect(found.figures.chinese).toEqual([figure]);
 		expect((await fetchStarFigures(1)).cultures).toEqual([]);
+	});
+});
+
+describe('the credits of a culture', () => {
+	const catalogue = (name: string) => ({ name, organisation: 'o', source: 's' });
+	const metadata = {
+		credits: [catalogue('Gaia Data Release 3'), catalogue('Wikidata')],
+		skycultures: {
+			...TABLE,
+			file: 'skycultures/{key}.json.gz',
+			token: 't',
+			credits: [{ ...catalogue('OpenNGC'), deep_sky: true }, catalogue('Stellarium sky cultures')]
+		}
+	};
+	const names = async (members: object[], figures?: object[]) => {
+		vi.spyOn(files, 'fetchExtrasolarMetadata').mockResolvedValue(metadata as never);
+		vi.spyOn(files, 'fetchExtrasolarJson').mockResolvedValue({
+			members,
+			figures: figures ?? [{ lines: [members.map((_, index) => index)] }]
+		} as never);
+		return (await fetchSkyCulture('chinese'))?.credits.map(({ name }) => name);
+	};
+
+	it('names a deep-sky catalogue only for a culture that draws such an object', async () => {
+		expect(await names([{ id: 1, position: [1, 0, 0] }])).toEqual([
+			'chinese',
+			'Gaia Data Release 3'
+		]);
+		expect(await names([{ ref: 'M44' }])).toEqual(['chinese', 'Gaia Data Release 3']);
+		expect(await names([{ ref: 'M44', position: [1, 0, 0] }])).toEqual([
+			'chinese',
+			'Gaia Data Release 3',
+			'OpenNGC'
+		]);
+	});
+
+	it('names no deep-sky catalogue for a stand-in that no line or group reaches', async () => {
+		const standIn = { ref: 'M44', position: [1, 0, 0] };
+		const star = { id: 1, position: [0, 1, 0] };
+		expect(await names([star, standIn], [{ lines: [[0]] }])).not.toContain('OpenNGC');
+		expect(await names([star, standIn], [{ lines: [[0, 1]], ray_helper: true }])).not.toContain(
+			'OpenNGC'
+		);
+		expect(await names([star, standIn], [{ lines: [], group: [1] }])).toContain('OpenNGC');
 	});
 });

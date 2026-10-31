@@ -5,7 +5,7 @@ import { AU_SCALE } from '$lib/math/units';
 import { BodyIndex } from '$lib/scene/state/bodies.svelte';
 import type { SmallBodyFilter } from '$lib/fetch/groups/registry';
 import { LayerSet } from '$lib/scene/layers';
-import { VisibilityController } from './controller.svelte';
+import { ALL_PROBES, VisibilityController, type ProbePage } from './controller.svelte';
 import { VISIBILITY } from './thresholds';
 
 /**
@@ -56,7 +56,7 @@ interface GroupFilters {
 	types?: ReadonlySet<ObjectType>;
 }
 
-function buildScene(layers: LayerSet, filters: GroupFilters = {}) {
+function buildScene(layers: LayerSet, filters: GroupFilters = {}, probePage: ProbePage = null) {
 	const bodies = new BodyIndex();
 	bodies.addBodies([
 		mkBody({ id: SUN, name: 'Sun', objectType: ObjectType.STAR }),
@@ -76,7 +76,8 @@ function buildScene(layers: LayerSet, filters: GroupFilters = {}) {
 		() => filters.satellites ?? null,
 		() => filters.smallBody ?? null,
 		() => layers,
-		() => filters.types ?? null
+		() => filters.types ?? null,
+		() => probePage
 	);
 	vis.updateViewport(954);
 	vis.setFocused(bodies.bodiesById.get(EARTH)!);
@@ -170,7 +171,7 @@ describe('a cleared sky', () => {
 		vis.stepZones(150);
 		expect(vis.asteroidGroupShare(ZONE)).toBe(0);
 		expect(vis.spacecraftGroupShare(EARTH)).toBe(0);
-		expect(vis.spacecraftGroupShare(SUN)).toBeGreaterThan(0);
+		expect(vis.spacecraftGroupShare(SUN)).toBe(0);
 	});
 
 	it('keeps the clouds the open group page is about', () => {
@@ -191,6 +192,101 @@ describe('a cleared sky', () => {
 		expect(cleared(satellites, 0.5).asteroidGroupShare(ZONE)).toBe(0);
 		const debris = cleared({ types: new Set([ObjectType.DEBRIS]) });
 		expect(debris.spacecraftGroupShare(EARTH)).toBeGreaterThan(0);
+	});
+
+	describe('over single bodies', () => {
+		const EROS = 'eros';
+		const COMET = 'halley';
+		const CERES = 'ceres';
+		const ISS = 'iss';
+		const smallBodies = () => [
+			mkBody({ id: EROS, objectType: ObjectType.ASTEROID_INNER, a: 1.5 }),
+			mkBody({ id: COMET, objectType: ObjectType.COMET, a: 17.8, e: 0.97 }),
+			mkBody({ id: CERES, objectType: ObjectType.DWARF_PLANET, a: 2.8 }),
+			mkBody({ id: ISS, objectType: ObjectType.SPACECRAFT, parentId: EARTH, a: 4e-5 })
+		];
+		const scene = (filters: GroupFilters = {}, probePage: ProbePage = null) => {
+			const { bodies, vis } = buildScene(new LayerSet(), filters, probePage);
+			bodies.addBodies(smallBodies());
+			vis.updateCamera(0.5 * AU_SCALE, 2451545);
+			vis.clearSky = true;
+			vis.stepZones(16);
+			vis.stepZones(300);
+			vis.stepZones(300);
+			return { bodies, vis, get: (id: string) => bodies.bodiesById.get(id)! };
+		};
+		const hidden = (vis: VisibilityController, body: PositionedBody) =>
+			vis.getPlanetVisibility(body, dist) === VISIBILITY.HIDE && vis.fullRenderingShare(body) === 0;
+
+		it('hides probes, asteroids and comets and leaves the rest', () => {
+			const { vis, get } = scene();
+			for (const id of [PROBE, EROS, COMET]) expect(hidden(vis, get(id))).toBe(true);
+			for (const id of [EARTH, CERES, ISS]) expect(hidden(vis, get(id))).toBe(false);
+			vis.updateCamera(dist, 2451545);
+			expect(vname(vis.getMoonVisibility(get(MOON)))).not.toBe(vname(VISIBILITY.HIDE));
+			expect(vis.isMoonGroupVisible('naif-3')).toBe(true);
+		});
+
+		it('fades them as it fades the clouds', () => {
+			const { bodies, vis } = buildScene(new LayerSet());
+			bodies.addBodies(smallBodies());
+			vis.updateCamera(0.5 * AU_SCALE, 2451545);
+			vis.stepZones(16);
+			const eros = bodies.bodiesById.get(EROS)!;
+			expect(vis.fullRenderingShare(eros)).toBe(1);
+			vis.clearSky = true;
+			vis.stepZones(150);
+			expect(vis.fullRenderingShare(eros)).toBeGreaterThan(0);
+			expect(vis.fullRenderingShare(eros)).toBeLessThan(1);
+			expect(vname(vis.getPlanetVisibility(eros, dist))).not.toBe(vname(VISIBILITY.HIDE));
+		});
+
+		it('hides a probe that flies by Earth', () => {
+			const { vis, bodies } = scene();
+			const flyby = mkBody({
+				id: 'probe-2',
+				objectType: ObjectType.SPACECRAFT,
+				parentId: EARTH,
+				orbitalSource: OrbitalSource.SPICE_PROBE
+			});
+			bodies.addBodies([flyby]);
+			expect(hidden(vis, flyby)).toBe(true);
+		});
+
+		it('keeps the focus, its system and a pin', () => {
+			const { vis, get } = scene();
+			vis.setFocused(get(EROS));
+			expect(hidden(vis, get(EROS))).toBe(false);
+			vis.setPinned([COMET]);
+			expect(hidden(vis, get(COMET))).toBe(false);
+			expect(hidden(vis, get(PROBE))).toBe(true);
+			vis.setTripEnds([PROBE]);
+			expect(hidden(vis, get(PROBE))).toBe(false);
+		});
+
+		it('keeps the small bodies of an active filter, and clears the probes', () => {
+			const { vis, get } = scene({ smallBody: { kind: 'category', category: 'asteroid' } });
+			expect(vis.fullRenderingShare(get(EROS))).toBe(1);
+			expect(hidden(vis, get(PROBE))).toBe(true);
+		});
+
+		it('keeps the probes of a mission page, and all of them on the probes page', () => {
+			const mission = scene({}, new Set([PROBE]));
+			expect(hidden(mission.vis, mission.get(PROBE))).toBe(false);
+			expect(hidden(mission.vis, mission.get(EROS))).toBe(true);
+			expect(mission.vis.spacecraftGroupShare(SUN)).toBeGreaterThan(0);
+			const probes = scene({}, ALL_PROBES);
+			expect(hidden(probes.vis, probes.get(PROBE))).toBe(false);
+		});
+
+		it('takes nothing from the layers', () => {
+			const layers = new LayerSet();
+			const { vis } = buildScene(layers);
+			vis.clearSky = true;
+			vis.stepZones(16);
+			vis.stepZones(300);
+			expect(layers.isVisible('spacecraft')).toBe(true);
+		});
 	});
 
 	it('leaves the layers alone and comes back', () => {

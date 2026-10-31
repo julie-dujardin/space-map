@@ -72,6 +72,8 @@ export interface ExtrasolarCredit {
 	attribution?: string;
 	citation?: string;
 	authors?: string[];
+	/** In the credits of sky cultures: this places the deep-sky stand-ins. */
+	deep_sky?: boolean;
 }
 
 /** The credit of the literature table, by the page of its source. */
