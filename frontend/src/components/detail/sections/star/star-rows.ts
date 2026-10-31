@@ -12,7 +12,12 @@ import {
 	type TableRow
 } from '$lib/fetch/extrasolar/lookup';
 import { PC_AU } from '$lib/scene/starfield/tree';
-import { flameFitHolds, starMass, type FlameRun } from '$lib/scene/starfield/record';
+import {
+	flameFitHolds,
+	measuredRadiusSolar,
+	starMass,
+	type FlameRun
+} from '$lib/scene/starfield/record';
 import {
 	boundErrors,
 	formatDeclination,
@@ -240,6 +245,21 @@ function diameterRow(
 	return { ...entry, tooltip: sizeComparison(radius * SOLAR_RADIUS_KM) };
 }
 
+/** The row of a measured diameter, with the column that gives it as source. */
+function measuredDiameterRow(ps: TableRow, u: ReturnType<typeof units>): StarRowEntry | null {
+	const radius = measuredRadiusSolar(ps);
+	if (radius === null) return null;
+	return {
+		label: m.diameter(),
+		value: formatMeasuredQuantity({
+			value: 2 * radius * SOLAR_RADIUS_KM,
+			unit: u.km,
+			maxSignificantDigits: 3
+		}),
+		tooltip: sizeComparison(radius * SOLAR_RADIUS_KM)
+	};
+}
+
 /** A quantity in solar units, in SI on the power of ten of its value, and the
  *  comparison of that SI value and its errors. */
 interface SolarQuantity {
@@ -406,6 +426,7 @@ export function starStats(record: ExtrasolarRecord): Stat[][] {
 	if (!ps) return [];
 	const out: (Stat | null)[] = [];
 	const radius =
+		measuredRadiusSolar(ps) ??
 		ps.number('radius_flame') ??
 		ps.number('radius_flame_spec') ??
 		ps.number('radius_gspphot') ??
@@ -640,7 +661,8 @@ function pointSourceSections(
 		metallicity.length === 0
 			? catalogued(ps, m.exoplanet_row_metallicity(), 'host_metallicity', u.dex)
 			: null,
-		fitted('diameter') ??
+		measuredDiameterRow(ps, u) ??
+			fitted('diameter') ??
 			diameterRow(
 				ps,
 				bounded(ps, m.star_row_diameter_photometric(), 'radius_gspphot', u.km, 2 * SOLAR_RADIUS_KM),

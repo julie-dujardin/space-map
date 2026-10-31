@@ -3,7 +3,12 @@
 import numpy as np
 import pytest
 
-from space_map_data.constants.stars.literature import DISTANCES, REFERENCES, Distance
+from space_map_data.constants.stars.literature import (
+    DISTANCES,
+    REFERENCES,
+    Distance,
+    Radius,
+)
 from space_map_data.download.providers.stars.wikidata_stars import (
     GAIA_PIXEL_LEVEL,
     GAIA_PIXEL_SHIFT,
@@ -11,9 +16,10 @@ from space_map_data.download.providers.stars.wikidata_stars import (
 from space_map_data.extrasolar import sky
 from space_map_data.extrasolar.engine import IngestRun
 from space_map_data.extrasolar.registry import Registry
-from space_map_data.extrasolar.sources import distances, gaia, literature
+from space_map_data.extrasolar.sources import distances, gaia, jmdc, literature
 from space_map_data.extrasolar.sources.distances import REYLE_2021
 from space_map_data.extrasolar.sources.gaia import GAIA_DR3
+from space_map_data.extrasolar.sources.hipparcos import claim_lists
 from space_map_data.extrasolar.sources.literature import LITERATURE
 from space_map_data.extrasolar.tables import POINT_SOURCE
 from tests.extrasolar.conftest import table_rows
@@ -109,7 +115,9 @@ class TestRows:
             ("hip", "2007", "5"): Distance(20, 19, 21, "parallax", "smith_2006"),
             ("hd", "1949", "6"): Distance(30, 29, 31, "parallax", "smith_2006"),
         }
-        rows = literature.engine_rows({"5": (1.0, 2.0)}, {"6": (3.0, 4.0)}, table)
+        rows = literature.engine_rows(
+            {"5": (1.0, 2.0)}, {"6": (3.0, 4.0)}, table, radii={}
+        )
         assert rows["catalogue_id"].to_pylist() == [
             f"gaia/dr3/{source}",
             "hip/2007/5",
@@ -139,14 +147,54 @@ class TestRows:
     def test_unknown_star(self):
         table = {("hip", "2007", "5"): Distance(20, 19, 21, "parallax", "smith_2006")}
         with pytest.raises(ValueError, match="no star has hip/2007/5"):
-            literature.engine_rows({}, {}, table)
+            literature.engine_rows({}, {}, table, radii={})
         table = {("tyc", "2", "5"): Distance(20, 19, 21, "parallax", "smith_2006")}
         with pytest.raises(ValueError, match="not a Gaia, HIP or HD id"):
-            literature.engine_rows({}, {}, table)
+            literature.engine_rows({}, {}, table, radii={})
 
 
 class TestPass:
     """The literature pass through the engine."""
+
+    def test_a_radius_alone_leaves_the_distance_to_its_catalogue(self, tmp_path):
+        root = tmp_path / "root"
+        p1 = at(0)
+        source = gaia_id(*p1, 1)
+        stored = gaia.engine_rows(
+            gaia.join_fidelity(gaia_stars([gaia_star(source, *p1, 5.0)]), fidelity([])),
+            NO_BEST,
+        )
+        key = ("gaia", "dr3", str(source))
+        rows = literature.engine_rows({}, {}, {}, {key: Radius(1420, "baron_2012")})
+        reyle = distances.rows(
+            np.array([p1[0]]),
+            np.array([p1[1]]),
+            [key],
+            np.array([100.0]),
+            np.array([99.0]),
+            np.array([101.0]),
+            ["parallax"],
+        )
+        diameters = jmdc.engine_rows({"7": p1}, {"7": (44.0, 3)}).set_column(
+            6, "claims", claim_lists([[key]])
+        )
+        with IngestRun.start(root, root / "backup") as run:
+            run.add(GAIA_DR3, [stored])
+            run.add(REYLE_2021, [reyle])
+            run.add(LITERATURE, [rows])
+            run.add(jmdc.JMDC, [diameters])
+            run.commit()
+        star = int(Registry(root).lookup("gaia", "dr3", [str(source)])[0])
+        row = {r["id"]: r for r in table_rows(root, POINT_SOURCE.slug).to_pylist()}[
+            star
+        ]
+        assert (row["radius_literature"], row["paper_radius_source"]) == (
+            1420,
+            "literature",
+        )
+        assert (row["distance"], row["distance_source"]) == (100, "reyle-2021")
+        assert (row["angular_diameter"], row["angular_diameter_count"]) == (44, 3)
+        assert row["angular_diameter_source"] == "jmdc"
 
     def test_ingest(self, tmp_path):
         root = tmp_path / "root"
@@ -161,7 +209,10 @@ class TestPass:
         )
         key = ("gaia", "dr3", str(source))
         rows = literature.engine_rows(
-            {}, {}, {key: Distance(2350, 2300, 2400, "expansion", "smith_2006")}
+            {},
+            {},
+            {key: Distance(2350, 2300, 2400, "expansion", "smith_2006")},
+            radii={},
         )
         # A catalogue distance of the same star ranks below the paper.
         reyle = distances.rows(

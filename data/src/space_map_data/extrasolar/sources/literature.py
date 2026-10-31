@@ -13,7 +13,13 @@ from collections.abc import Mapping
 import numpy as np
 import pyarrow as pa
 
-from space_map_data.constants.stars.literature import DISTANCES, Distance, StarKey
+from space_map_data.constants.stars.literature import (
+    DISTANCES,
+    RADII,
+    Distance,
+    Radius,
+    StarKey,
+)
 from space_map_data.extrasolar.engine import Source
 from space_map_data.extrasolar.sources import distances
 from space_map_data.extrasolar.sources.hipparcos import GAIA_DR3, HD
@@ -55,27 +61,33 @@ def engine_rows(
     hip_positions: dict[str, tuple[float, float]],
     hd_positions: dict[str, tuple[float, float]],
     table: Mapping[StarKey, Distance] = DISTANCES,
+    radii: Mapping[StarKey, Radius] = RADII,
 ) -> pa.Table:
-    """A row for each star of the table, with its distance."""
-    keys = list(table)
+    """A row for each star of the tables, with its distance and its radius."""
+    keys = list(dict.fromkeys([*table, *radii]))
+    none = Distance(float("nan"), float("nan"), float("nan"), None, "")
+    given = [table.get(key, none) for key in keys]
     found = np.array(
         [_position(key, hip_positions, hd_positions) for key in keys], np.float64
     ).reshape(-1, 2)
-    values = np.array(
-        [(d.value, d.lower, d.upper) for d in table.values()], np.float64
-    ).reshape(-1, 3)
+    values = np.array([(d.value, d.lower, d.upper) for d in given], np.float64).reshape(
+        -1, 3
+    )
     percentiles = np.array(
-        [(d.lower_percentile, d.upper_percentile) for d in table.values()], np.float64
+        [(d.lower_percentile, d.upper_percentile) for d in given], np.float64
     ).reshape(-1, 2)
-    return distances.rows(
+    rows = distances.rows(
         found[:, 0],
         found[:, 1],
         [*keys],
         values[:, 0],
         values[:, 1],
         values[:, 2],
-        [d.method for d in table.values()],
+        [d.method for d in given],
         catalogue_ids=[catalogue_id(key) for key in keys],
         lower_percentile=percentiles[:, 0],
         upper_percentile=percentiles[:, 1],
+        distance_required=False,
     )
+    radius = [radii[key].value if key in radii else None for key in keys]
+    return rows.append_column("radius_literature", pa.array(radius, pa.float32()))

@@ -31,7 +31,12 @@ import orjson
 import pyarrow.parquet as pq
 
 from space_map_data.constants.providers import BASE_LOCALE, LANGUAGES
-from space_map_data.constants.stars.literature import DISTANCES, REFERENCES, StarKey
+from space_map_data.constants.stars.literature import (
+    DISTANCES,
+    RADII,
+    REFERENCES,
+    StarKey,
+)
 from space_map_data.export.extrasolar.planets import read_planets
 from space_map_data.export.images import collect_star_images
 from space_map_data.export.in_place import refresh_versions
@@ -494,10 +499,15 @@ def _localized(
 def star_references(star: StarObject) -> dict[str, list[dict]]:
     """The works that the literature table cites for the values of the star,
     by column group."""
-    distance = DISTANCES.get(star.literature) if star.literature else None
-    if distance is None:
+    if star.literature is None:
         return {}
-    return {"distance": [REFERENCES[distance.reference]._asdict()]}
+    cited = {"distance": DISTANCES.get(star.literature)}
+    cited["paper_radius"] = RADII.get(star.literature)
+    return {
+        group: [REFERENCES[value.reference]._asdict()]
+        for group, value in cited.items()
+        if value is not None
+    }
 
 
 def has_description(localized: dict | None) -> bool:

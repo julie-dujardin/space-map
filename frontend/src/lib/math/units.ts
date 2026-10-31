@@ -2,6 +2,8 @@
 export const AU_SCALE = 10;
 /** 1 AU in km */
 export const AU_KM = 149_597_870.7;
+/** 1 pc in km */
+export const KM_PER_PC = 3.0856775814914e13;
 /** IAU nominal solar radius in km. */
 export const SOLAR_RADIUS_KM = 695_700;
 /** Jupiter equatorial radius used by the exoplanet catalogue, in km. */

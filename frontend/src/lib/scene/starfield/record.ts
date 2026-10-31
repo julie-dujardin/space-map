@@ -6,11 +6,18 @@
  * table-2 row, which gives the distance where it has one.
  */
 
-import { starDistance, type TableRow } from '$lib/fetch/extrasolar/lookup';
+import {
+	distanceParallax,
+	LITERATURE,
+	starDistance,
+	type TableRow
+} from '$lib/fetch/extrasolar/lookup';
 import type { Planet } from '$lib/fetch/extrasolar/planets';
-import { SOLAR_RADIUS_KM } from '$lib/math/units';
+import { KM_PER_PC, SOLAR_RADIUS_KM } from '$lib/math/units';
 import { bpRpFromTeff } from './colour';
 import { icrsToTree, treeToScene, type Vec3 } from './tree';
+
+const MAS_PER_RAD = (180 / Math.PI) * 3.6e6;
 
 /** Epoch of the render tree's positions (Julian year). */
 export const RENDER_EPOCH = 2016.0;
@@ -22,11 +29,32 @@ export function positiveNumber(row: TableRow, name: string): number | null {
 	return value !== null && Number.isFinite(value) && value > 0 ? value : null;
 }
 
-/** In nominal solar radii. FLAME's radius comes first: for most stars it
- *  rests on the parallax, where GSP-Phot's always rests on its own
- *  photometric distance. */
+/** A radius from a paper or a measured diameter, in nominal solar radii. A
+ *  diameter takes a paper's distance or a 5σ parallax: the distance of a
+ *  saturated supergiant from a prior can be off tenfold. The export reads the
+ *  same rule (`measured_radius` in `star_lineup.py`). */
+export function measuredRadiusSolar(row: TableRow): number | null {
+	const paper = positiveNumber(row, 'radius_literature');
+	if (paper !== null) return paper;
+	const diameter = positiveNumber(row, 'angular_diameter');
+	if (diameter === null) return null;
+	const used = distanceParallax(row, null);
+	const distance =
+		row.text('distance_source') === LITERATURE
+			? positiveNumber(row, 'distance')
+			: used && 1000 / used.parallax;
+	return distance ? (diameter / MAS_PER_RAD / 2) * distance * (KM_PER_PC / SOLAR_RADIUS_KM) : null;
+}
+
+/** In nominal solar radii. A measurement comes first. Then FLAME's radius: for
+ *  most stars it rests on the parallax, where GSP-Phot's always rests on its
+ *  own photometric distance. */
 export function starRadiusSolar(row: TableRow): number | null {
-	return positiveNumber(row, 'radius_flame') ?? positiveNumber(row, 'radius_gspphot');
+	return (
+		measuredRadiusSolar(row) ??
+		positiveNumber(row, 'radius_flame') ??
+		positiveNumber(row, 'radius_gspphot')
+	);
 }
 
 /** The drawn radius. A planet host's exoplanet catalogue comes first: its
@@ -90,8 +118,6 @@ const G_MINUS_HP = -0.28;
 /** BP − RP from V − I, ascending powers (Riello et al. 2021, Table C.2). */
 const BP_RP_FROM_V_I = [-0.01612, 1.274, -0.08143];
 const V_I_RANGE: [number, number] = [-0.5, 3.5];
-
-const MAS_PER_RAD = (180 / Math.PI) * 3.6e6;
 
 export interface StarPlace {
 	/** ICRS at the render epoch, degrees. */

@@ -47,6 +47,7 @@ _CATALOGUE_OF_PASS = {
 _CATALOGUE_OF_GROUP = {
     "xgboost": "andrae-2023",
     "pastel": "pastel-2020",
+    "paper_radius": "literature",
     "apogee": "apogee-dr17",
     "lamost": "lamost-dr10",
     "gcvs": "gcvs-5.1",

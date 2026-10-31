@@ -396,6 +396,22 @@ POINT_SOURCE = TableDef(
             ("gaia-dr3", "gaia-dr3-named"),
         ),
         # FLAME, from the GSP-Phot temperature and the G luminosity.
+        # What a star's size was measured at, above the model radii. A paper's
+        # radius in solar radii, and JMDC's angular diameter in mas, which the
+        # reader takes to a radius at the star's distance.
+        ColumnGroup(
+            "paper_radius",
+            (pa.field("radius_literature", pa.float32()),),
+            ("literature",),
+        ),
+        ColumnGroup(
+            "angular_diameter",
+            (
+                pa.field("angular_diameter", pa.float32()),
+                pa.field("angular_diameter_count", pa.int16()),
+            ),
+            ("jmdc",),
+        ),
         ColumnGroup("flame", _flame(""), ("gaia-dr3", "gaia-dr3-named")),
         # FLAME again, from the GSP-Spec parameters of the RVS spectra.
         ColumnGroup("flame_spec", _flame("_spec"), ("gaia-dr3", "gaia-dr3-named")),

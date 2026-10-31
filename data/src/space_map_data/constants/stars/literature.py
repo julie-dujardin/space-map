@@ -27,7 +27,7 @@ class Distance(NamedTuple):
     lower: float
     upper: float
     # A value of `distance_method`.
-    method: str
+    method: str | None
     reference: str
     lower_percentile: float | None = None
     upper_percentile: float | None = None

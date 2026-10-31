@@ -247,12 +247,13 @@ def rows(
     distance: np.ndarray,
     lower: np.ndarray,
     upper: np.ndarray,
-    method: list[str],
+    method: list[str] | list[str | None],
     mag: np.ndarray | None = None,
     error: float | None = None,
     catalogue_ids: list[str] | None = None,
     lower_percentile: float | np.ndarray | None = None,
     upper_percentile: float | np.ndarray | None = None,
+    distance_required: bool = True,
 ) -> pa.Table:
     """Pass rows: a position at J2016.0, at most one claim, and a distance."""
     n = len(claims)
@@ -278,7 +279,7 @@ def rows(
             "distance_method": pa.array(method, pa.string()),
         }
     )
-    return table.filter(pc.is_valid(table["distance"]))
+    return table.filter(pc.is_valid(table["distance"])) if distance_required else table
 
 
 def parallax_bounds(

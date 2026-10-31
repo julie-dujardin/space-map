@@ -54,6 +54,7 @@ from space_map_data.extrasolar.sources import (
     gaia,
     gcvs,
     hipparcos,
+    jmdc,
     lamost,
     literature,
     names,
@@ -281,6 +282,7 @@ def ingest(
         found.items_placed(lines)
         # A source that is not permanent comes after the permanent sources.
         run.add(WIKIDATA, [item_rows], complete)
+        run.add(jmdc.JMDC, [_keep(jmdc.engine_rows(hd_positions), ranges)], complete)
         result = run.commit()
     return result, summary(Registry(root), name_ids, item_rows.num_rows)
 

@@ -50,6 +50,7 @@ from space_map_data.extrasolar.sources.gaia import (
     BestNeighbours,
 )
 from space_map_data.extrasolar.sources.hipparcos import HIPPARCOS, HIPPARCOS_1997
+from space_map_data.extrasolar.sources.jmdc import JMDC
 from space_map_data.extrasolar.sources.literature import LITERATURE
 from space_map_data.extrasolar.sources.names import IAU_WGSN
 from space_map_data.extrasolar.sources.simbad import SIMBAD
@@ -275,6 +276,7 @@ class TestTables:
                     WIKIDATA.name,
                     *(source.name for source in DISTANCE_SOURCES),
                     STAR_SYSTEMS,
+                    JMDC.name,
                 }
         distance = {g.name: g for g in POINT_SOURCE.groups}["distance"]
         # The system distance comes last.

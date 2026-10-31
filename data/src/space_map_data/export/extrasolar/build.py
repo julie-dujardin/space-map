@@ -146,6 +146,12 @@ CREDITS = (
         "source": "https://cdsarc.cds.unistra.fr/viz-bin/cat/B/pastel",
         "citation": "Soubiran et al. 2016, A&A 591, A118",
     },
+    {
+        "name": "JMDC: JMMC Measured Stellar Diameters Catalogue (II/345)",
+        "organisation": "Duvert 2016",
+        "source": "https://cdsarc.cds.unistra.fr/viz-bin/cat/II/345",
+        "citation": "Duvert 2016, VizieR On-line Data Catalog II/345",
+    },
     # SIMBAD places the PASTEL designations, the GCVS names and the ATNF
     # pulsars, joins the planet catalogues and gives the named stars.
     skycultures.SIMBAD,
