@@ -333,6 +333,37 @@ class TestReaders:
         assert found.stars == {}
 
 
+class TestFreeFloating:
+    """A row with itself as its star orbits none."""
+
+    def result(self):
+        eu = catalogue(
+            EU,
+            [star(EU, "S")],
+            [planet(EU, "T A", "S"), planet(EU, "S b", "S", 5.0)],
+        )
+        apply_papers(eu, {(EU, "T A"): host(GAIA_STAR)}, {}, {})
+        found = hosts.build_stars([eu], hub(), {})
+        systems = hosts.group_systems(found)
+        return eu, join_planets([eu], found, systems, hub())
+
+    def test_the_row_leaves_its_old_host(self):
+        _, result = self.result()
+        names = [row.name for joined in result.planets for row in joined.rows.values()]
+        assert names == ["S b"]
+        assert result.counts[(EU, "named like their star")] == 1
+
+    def test_the_star_is_no_host(self):
+        eu, result = self.result()
+        assert eu.stars["T A"].listed == GAIA_STAR.key
+        assert all(row.star == "S" for j in result.planets for row in j.rows.values())
+
+    def test_kpno_tau_4_has_no_host(self):
+        entry = HOSTS[EU, "KPNO-Tau 4"]
+        assert entry.star.name == "KPNO-Tau 4"
+        assert entry.reference == "joncour_2017"
+
+
 class TestStars:
     """A listed star joins by the ids of its key."""
 

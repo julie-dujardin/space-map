@@ -163,6 +163,8 @@ COMPONENTS = pa.schema(
         # How the source found the mass: the MSC's mass code.
         pa.field("mass_method", pa.string()),
         pa.field("spectral_type", pa.string()),
+        # A paper's type can come from another work than its elements.
+        pa.field("spectral_type_reference", pa.string()),
         pa.field("reference", pa.string()),
     ]
 )
@@ -708,6 +710,8 @@ def read_literature(
                 **_literature_value("mass", star.mass),
                 **_literature_value("radius", star.radius),
                 **_literature_value("teff", star.teff),
+                spectral_type=star.spectral_type,
+                spectral_type_reference=binary.type_reference or binary.reference,
                 reference=binary.reference,
             )
     return orbits.table(), stars.table()

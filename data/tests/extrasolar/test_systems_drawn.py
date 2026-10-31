@@ -11,6 +11,7 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pytest
 
+from space_map_data.constants.stars import binaries
 from space_map_data.extrasolar import frame
 from space_map_data.extrasolar.exoplanets.catalogues import OEC
 from space_map_data.extrasolar.exoplanets.table import default_node
@@ -338,9 +339,53 @@ class TestPairs:
         )
         assert a["mass_source"] == a["radius_source"] == orbits.LITERATURE
         assert b["teff"] is None and b["radius"] == pytest.approx(0.22623)
+        assert (a["spectral_type"], b["spectral_type"]) == ("dK", "dM")
+        assert a["spectral_type_source"] == orbits.LITERATURE
         assert a["references"] == [
-            {"source": orbits.LITERATURE, "reference": "doyle_2011"}
+            {"source": orbits.LITERATURE, "reference": "doyle_2011"},
+            {"source": orbits.LITERATURE, "reference": "triaud_2022"},
         ]
+
+    def test_a_paper_type_goes_before_the_type_of_oec(self):
+        literature, stars = orbits.read_literature()
+        at = stars["system"].to_pylist().index("gaia/dr3/2133476355197071616")
+        oec = stars.slice(at, 2).to_pylist()
+        for row, letter in zip(oec, "KM"):
+            row |= {"source": OEC, "spectral_type": letter}
+        rows = pa.Table.from_pylist(oec, schema=stars.schema)
+        found = drawn.draw(
+            kepler_16(),
+            Inputs(
+                catalogue_orbits=literature,
+                catalogue_stars=pa.concat_tables([stars, rows]),
+            ),
+            FakeResolver({KEPLER_16: 20}, []),
+        )
+        a, b = found.held.to_pylist()
+        assert (a["spectral_type"], b["spectral_type"]) == ("dK", "dM")
+
+    def test_a_paper_cites_only_the_work_of_its_values(self):
+        table = {
+            ("gaia", "dr3", "2133476355197071616"): binaries.BINARIES[
+                ("gaia", "dr3", "2133476355197071616")
+            ]._replace(
+                stars=(
+                    binaries.Star("A", None, None, None, spectral_type="dK"),
+                    binaries.Star("B", None, None, None),
+                )
+            )
+        }
+        literature, stars = orbits.read_literature(table)
+        found = drawn.draw(
+            kepler_16(),
+            Inputs(catalogue_orbits=literature, catalogue_stars=stars),
+            FakeResolver({KEPLER_16: 20}, []),
+        )
+        a, b = found.held.to_pylist()
+        assert a["references"] == [
+            {"source": orbits.LITERATURE, "reference": "triaud_2022"}
+        ]
+        assert b["references"] == []
 
     def test_the_paper_goes_to_the_members_by_their_letters(self):
         """Kepler-16 with B first: Doyle et al.'s orbit of B about A turns

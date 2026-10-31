@@ -18,6 +18,11 @@ The papers do not share their conventions, so each entry records them:
 - `arg_periastron_of`: whose ω the paper gives, else NOT_STATED.
 - `node`: the binary's Ω on the sky. No light curve gives it, so the
   photometric-dynamical fits fix it at 0; that 0 is no value and is left out.
+
+`spectral_type` is what a paper prints for that star, in the form that the
+family rules read: "M dwarf" is dM, "main sequence G-type star" is GV. A star
+with none has no type in its papers. No type comes from us out of a mass or a
+temperature.
 """
 
 import math
@@ -53,6 +58,7 @@ class Star(NamedTuple):
     mass: Value | None
     radius: Value | None
     teff: Value | None
+    spectral_type: str | None = None
 
 
 class Binary(NamedTuple):
@@ -76,6 +82,8 @@ class Binary(NamedTuple):
     osculating_epoch: float | None = None
     mean_longitude: Value | None = None
     node: Value | None = None
+    # The work of the stars' spectral types when `reference` prints none.
+    type_reference: str | None = None
 
 
 REFERENCES: dict[str, Reference] = {
@@ -183,6 +191,13 @@ REFERENCES: dict[str, Reference] = {
         " around a Grazing Eclipsing Binary (AJ 159, 94)",
         "https://doi.org/10.3847/1538-3881/ab665b",
     ),
+    "triaud_2022": Reference(
+        "Triaud et al. 2022",
+        "BEBOP III. Observations and an independent mass measurement of Kepler-16"
+        " (AB) b, the first circumbinary planet detected with radial velocities"
+        " (MNRAS 511, 3561)",
+        "https://doi.org/10.1093/mnras/stab3712",
+    ),
     "triaud_2025": Reference(
         "Triaud et al. 2025",
         "BEBOP VIII. SOPHIE radial velocities reveal an eccentric, circumbinary"
@@ -210,9 +225,11 @@ REFERENCES: dict[str, Reference] = {
 BINARIES: dict[StarKey, Binary] = {
     # Kepler-16. Table 1 of the published version: medians, with the 15.85%
     # and 84.15% levels as errors. Osculating Jacobian elements at
-    # BJD 2,455,212.12316. The paper gives no Teff of B.
+    # BJD 2,455,212.12316. The paper gives no Teff of B and no types; Triaud et
+    # al. 2022 says "a K dwarf" and "a mid M dwarf".
     ("gaia", "dr3", "2133476355197071616"): Binary(
         reference="doyle_2011",
+        type_reference="triaud_2022",
         period=Value(41.079220, 0.000078, 0.000077),
         semi_major_axis=Value(0.22431, 0.00035, 0.00034),
         axis_unit=AU,
@@ -230,12 +247,14 @@ BINARIES: dict[StarKey, Binary] = {
                 Value(0.6897, 0.0035, 0.0034),
                 Value(0.6489, 0.0013),
                 Value(4450, 150),
+                spectral_type="dK",
             ),
             Star(
                 "B",
                 Value(0.20255, 0.00066, 0.00065),
                 Value(0.22623, 0.00059, 0.00053),
                 None,
+                spectral_type="dM",
             ),
         ),
         osculating_epoch=2455212.12316,
@@ -312,7 +331,8 @@ BINARIES: dict[StarKey, Binary] = {
     ),
     # Kepler-38. Tables 4 to 6, best fit, with the 15.8% and 84.2% levels
     # about the median as errors. Osculating at t0 = BJD 2,454,970. The paper
-    # gives Teff of B only as a ratio to A's (Table 7, 0.5896).
+    # gives Teff of B only as a ratio to A's (Table 7, 0.5896). A's Teff "is
+    # roughly what one expects for a spectral type of G4V".
     ("gaia", "dr3", "2105448841733970432"): Binary(
         reference="orosz_2012",
         period=Value(18.79537, 0.000062, 0.000051),
@@ -332,6 +352,7 @@ BINARIES: dict[StarKey, Binary] = {
                 Value(0.949, 0.055, 0.059),
                 Value(1.757, 0.031, 0.034),
                 Value(5623, 50),
+                spectral_type="G4V",
             ),
             Star(
                 "B",
@@ -344,7 +365,8 @@ BINARIES: dict[StarKey, Binary] = {
     ),
     # Kepler-47. Tables 5 and 6. Jacobian elements at Tref = BJD 2,454,965.
     # Teff of A is fixed at the value of Orosz et al. 2012; B has only a
-    # ratio to it (0.613).
+    # ratio to it (0.613). B is larger than models, "as is seen in many other M
+    # dwarfs".
     ("gaia", "dr3", "2080506523540902912"): Binary(
         reference="orosz_2019",
         period=Value(7.4483648, 0.0000038, 0.0000270),
@@ -360,7 +382,9 @@ BINARIES: dict[StarKey, Binary] = {
         frame=JACOBIAN,
         stars=(
             Star("A", Value(0.957, 0.013, 0.015), Value(0.936, 0.005), Value(5636)),
-            Star("B", Value(0.342, 0.003), Value(0.338, 0.002), None),
+            Star(
+                "B", Value(0.342, 0.003), Value(0.338, 0.002), None, spectral_type="dM"
+            ),
         ),
         e_cos_omega=Value(-0.019895, 0.000025, 0.000024),
         e_sin_omega=Value(-0.0208, 0.0019, 0.0020),
@@ -369,6 +393,7 @@ BINARIES: dict[StarKey, Binary] = {
     # Kepler-64 (PH1), the eclipsing pair Aa+Ab of a quadruple. Tables 7 and
     # 8, the EB-only and EB-fixed columns that the paper prefers. Osculating
     # Jacobian elements at t0 = BJD 2,454,970. Radii and Teff from Sect. 6.
+    # Types: "an F dwarf" and "M dwarf".
     ("gaia", "dr3", "2073478823183937536"): Binary(
         reference="schwamb_2013",
         period=Value(20.0002468, 0.0000044),
@@ -383,8 +408,20 @@ BINARIES: dict[StarKey, Binary] = {
         time_scale="BJD",
         frame=JACOBIAN,
         stars=(
-            Star("Aa", Value(1.528, 0.087), Value(1.734, 0.044), Value(6407, 150)),
-            Star("Ab", Value(0.408, 0.024), Value(0.378, 0.023), Value(3561, 150)),
+            Star(
+                "Aa",
+                Value(1.528, 0.087),
+                Value(1.734, 0.044),
+                Value(6407, 150),
+                spectral_type="dF",
+            ),
+            Star(
+                "Ab",
+                Value(0.408, 0.024),
+                Value(0.378, 0.023),
+                Value(3561, 150),
+                spectral_type="dM",
+            ),
         ),
         e_cos_omega=Value(-0.16747, 0.00037),
         e_sin_omega=Value(-0.141, 0.015),
@@ -392,7 +429,7 @@ BINARIES: dict[StarKey, Binary] = {
     ),
     # Kepler-413. Tables 3 and 4, best fit, with the 15.8% and 84.2% levels
     # about the median as errors. Jacobian elements at BJD 2,455,014.46543.
-    # Teff from Sect. 6; neither has an error.
+    # Teff from Sect. 6; neither has an error. Types: "two K+M stars".
     ("gaia", "dr3", "2133352385261516928"): Binary(
         reference="kostov_2014",
         period=Value(10.1161114, 0.0000099, 0.0000101),
@@ -412,12 +449,14 @@ BINARIES: dict[StarKey, Binary] = {
                 Value(0.820, 0.015, 0.014),
                 Value(0.7761, 0.0088, 0.0096),
                 Value(4700),
+                spectral_type="K",
             ),
             Star(
                 "B",
                 Value(0.5423, 0.0081, 0.0073),
                 Value(0.484, 0.027, 0.021),
                 Value(3460),
+                spectral_type="M",
             ),
         ),
         e_cos_omega=Value(0.006169, 0.000038, 0.000037),
@@ -449,6 +488,7 @@ BINARIES: dict[StarKey, Binary] = {
     ),
     # Kepler-1647. Table 4, best fit, Jacobian elements at BJD 2,455,000.
     # Footnote 11: "ω for the primary star is ωbin − π". Teff from Table 2.
+    # Types: "of spectral type approximately F8", "secondary (G-type)".
     ("gaia", "dr3", "2073793420945053824"): Binary(
         reference="kostov_2016",
         period=Value(11.2588179, 0.0000013),
@@ -468,12 +508,20 @@ BINARIES: dict[StarKey, Binary] = {
                 Value(1.2207, 0.0112),
                 Value(1.7903, 0.0055),
                 Value(6210, 100),
+                spectral_type="F8",
             ),
-            Star("B", Value(0.9678, 0.0039), Value(0.9663, 0.0057), Value(5770, 125)),
+            Star(
+                "B",
+                Value(0.9678, 0.0039),
+                Value(0.9663, 0.0057),
+                Value(5770, 125),
+                spectral_type="G",
+            ),
         ),
         osculating_epoch=2455000.0,
     ),
-    # Kepler-1661. Table 3, best fit. Osculating at BJD 2,454,960.
+    # Kepler-1661. Table 3, best fit. Osculating at BJD 2,454,960. Types: "a K
+    # and M star".
     ("gaia", "dr3", "2104078025612319360"): Binary(
         reference="socia_2020",
         period=Value(28.162539, 0.00005),
@@ -488,15 +536,28 @@ BINARIES: dict[StarKey, Binary] = {
         time_scale="BJD",
         frame=NOT_STATED,
         stars=(
-            Star("A", Value(0.841, 0.022), Value(0.762, 0.010), Value(5100, 100)),
-            Star("B", Value(0.262, 0.005), Value(0.276, 0.006), Value(3585, 167)),
+            Star(
+                "A",
+                Value(0.841, 0.022),
+                Value(0.762, 0.010),
+                Value(5100, 100),
+                spectral_type="K",
+            ),
+            Star(
+                "B",
+                Value(0.262, 0.005),
+                Value(0.276, 0.006),
+                Value(3585, 167),
+                spectral_type="M",
+            ),
         ),
         osculating_epoch=2454960.0,
     ),
     # NN Ser, a white dwarf (A) and an M dwarf. Table 8. P is that of
     # Brinkworth et al. 2006 and Teff of A that of Haefner et al. 2004, as
     # the table cites them. R of B is the volume-averaged radius. The paper
-    # gives no epoch, no eccentricity and no Teff of B.
+    # gives no epoch, no eccentricity and no Teff of B. Types: DAO1 and M4 ± 0.5
+    # in Table 8, "cool M dwarf".
     ("gaia", "dr3", "1191504471436192512"): Binary(
         reference="parsons_2010",
         period=Value(0.13008017141, 0.00000000017),
@@ -511,15 +572,23 @@ BINARIES: dict[StarKey, Binary] = {
         time_scale=NOT_STATED,
         frame=NOT_STATED,
         stars=(
-            Star("A", Value(0.535, 0.012), Value(0.0211, 0.0002), Value(57000, 3000)),
-            Star("B", Value(0.111, 0.004), Value(0.149, 0.002), None),
+            Star(
+                "A",
+                Value(0.535, 0.012),
+                Value(0.0211, 0.0002),
+                Value(57000, 3000),
+                spectral_type="DAO1",
+            ),
+            Star(
+                "B", Value(0.111, 0.004), Value(0.149, 0.002), None, spectral_type="dM4"
+            ),
         ),
     ),
     # HW Vir, an sdB (A) and an M dwarf. P and T0 from the ephemeris of
     # Table 7 (HJD); i from Table 3, the same in both models; M and R from
     # Table 5. Teff from Table 3, model 1; Teff of A is fixed there. The
     # two models of Table 3 give different a, so a is left out. The
-    # eccentricity is "negligible".
+    # eccentricity is "negligible". B is "an M6-7 main sequence star".
     ("gaia", "dr3", "3675067076961979264"): Binary(
         reference="lee_2009",
         period=Value(0.11671959933, 0.00000000055),
@@ -534,14 +603,26 @@ BINARIES: dict[StarKey, Binary] = {
         time_scale="HJD",
         frame=NOT_STATED,
         stars=(
-            Star("A", Value(0.485, 0.013), Value(0.183, 0.026), Value(28488, 208)),
-            Star("B", Value(0.142, 0.004), Value(0.175, 0.026), Value(3084, 272)),
+            Star(
+                "A",
+                Value(0.485, 0.013),
+                Value(0.183, 0.026),
+                Value(28488, 208),
+                spectral_type="sdB",
+            ),
+            Star(
+                "B",
+                Value(0.142, 0.004),
+                Value(0.175, 0.026),
+                Value(3084, 272),
+                spectral_type="M6-7V",
+            ),
         ),
     ),
     # RR Cae, a white dwarf (A) and an M dwarf. The linear ephemeris of
     # primary minima (Sect. 3.1) and Table 3. The orbit is fitted as
     # circular. The paper gives the radii and the mass of B as ranges over
-    # the inclination, and no single i; these are left out.
+    # the inclination, and no single i; these are left out. B is "an M4 dwarf".
     ("gaia", "dr3", "4788741548375134336"): Binary(
         reference="maxted_2007",
         period=Value(0.3037036366, 0.0000000047),
@@ -556,13 +637,13 @@ BINARIES: dict[StarKey, Binary] = {
         time_scale="BJD_TDB",
         frame=NOT_STATED,
         stars=(
-            Star("A", Value(0.440, 0.023), None, Value(7540, 175)),
-            Star("B", None, None, Value(3100, 100)),
+            Star("A", Value(0.440, 0.023), None, Value(7540, 175), spectral_type="WD"),
+            Star("B", None, None, Value(3100, 100), spectral_type="dM4"),
         ),
     ),
     # NSVS 14256825, an sdOB (A) and an M dwarf. The ephemeris of primary
     # minima (Eq. 1, TDB) and Table 6, model 2, which the paper prefers.
-    # The orbit is circular.
+    # The orbit is circular. Types: "an sdOB star", and sdOB+dM in the title.
     ("gaia", "dr3", "4245906369913936000"): Binary(
         reference="almeida_2012",
         period=Value(0.110374230, 0.000000002),
@@ -577,13 +658,26 @@ BINARIES: dict[StarKey, Binary] = {
         time_scale="BJD_TDB",
         frame=NOT_STATED,
         stars=(
-            Star("A", Value(0.419, 0.070), Value(0.188, 0.010), Value(42000, 400)),
-            Star("B", Value(0.109, 0.023), Value(0.162, 0.008), Value(2550, 500)),
+            Star(
+                "A",
+                Value(0.419, 0.070),
+                Value(0.188, 0.010),
+                Value(42000, 400),
+                spectral_type="sdOB",
+            ),
+            Star(
+                "B",
+                Value(0.109, 0.023),
+                Value(0.162, 0.008),
+                Value(2550, 500),
+                spectral_type="dM",
+            ),
         ),
     ),
     # DE CVn, a white dwarf (A) and an M dwarf. The ephemeris of primary
     # eclipses (Eq. 1) and Sect. 4.1: most likely values with 68% ranges.
-    # The orbit is taken as circular. The paper gives no Teff of B in K.
+    # The orbit is taken as circular. The paper gives no Teff of B in K. Types:
+    # "DA-type" and "a spectral type of M3V".
     ("gaia", "dr3", "1550299304833675392"): Binary(
         reference="van_den_besselaar_2007",
         period=Value(0.3641394, 0.0000002),
@@ -603,13 +697,21 @@ BINARIES: dict[StarKey, Binary] = {
                 Value(0.51, 0.06, 0.02),
                 Value(0.0136, 0.0008, 0.0002),
                 Value(8000, 1000),
+                spectral_type="DA",
             ),
-            Star("B", Value(0.41, 0.06), Value(0.37, 0.06, 0.007), None),
+            Star(
+                "B",
+                Value(0.41, 0.06),
+                Value(0.37, 0.06, 0.007),
+                None,
+                spectral_type="M3V",
+            ),
         ),
     ),
     # KIC 7177553, the eclipsing pair S1,2 of a quadruple. Table 3. The
     # epoch is the time of periastron. The point has no Gaia, HIP or HD id
-    # in the registry, so the key is its exoplanet.eu host.
+    # in the registry, so the key is its exoplanet.eu host. Types: "all
+    # components of the two systems are main sequence G-type stars".
     ("exoplanet-eu", "catalog", "KIC 7177553 (AB)"): Binary(
         reference="lehmann_2016",
         period=Value(17.996467, 0.000017),
@@ -624,14 +726,27 @@ BINARIES: dict[StarKey, Binary] = {
         time_scale="BJD",
         frame=NOT_STATED,
         stars=(
-            Star("A", Value(1.043, 0.014), Value(0.940, 0.005), Value(5800, 130)),
-            Star("B", Value(0.986, 0.015), Value(0.941, 0.005), Value(5740, 140)),
+            Star(
+                "A",
+                Value(1.043, 0.014),
+                Value(0.940, 0.005),
+                Value(5800, 130),
+                spectral_type="GV",
+            ),
+            Star(
+                "B",
+                Value(0.986, 0.015),
+                Value(0.941, 0.005),
+                Value(5740, 140),
+                spectral_type="GV",
+            ),
         ),
     ),
     # FL Lyr. Tables VII, IX (solution 4) and XVII. The orbit is taken as
     # circular. The paper gives a sin i, not a, and log Teff, not Teff.
     # Kozyreva et al. 2015 is not used: its Kepler elements are only a
-    # template for eclipse timing, with no errors, masses, a or Teff.
+    # template for eclipse timing, with no errors, masses, a or Teff. Types:
+    # F8 + G8 (Table XVII), of "main-sequence eclipsing binaries".
     ("gaia", "dr3", "2130371574879626112"): Binary(
         reference="popper_1986",
         period=Value(2.1781542, 0.0000003),
@@ -646,13 +761,17 @@ BINARIES: dict[StarKey, Binary] = {
         time_scale="JD",
         frame=NOT_STATED,
         stars=(
-            Star("A", Value(1.218, 0.016), Value(1.283, 0.030), None),
-            Star("B", Value(0.958, 0.011), Value(0.963, 0.030), None),
+            Star(
+                "A", Value(1.218, 0.016), Value(1.283, 0.030), None, spectral_type="F8V"
+            ),
+            Star(
+                "B", Value(0.958, 0.011), Value(0.963, 0.030), None, spectral_type="G8V"
+            ),
         ),
     ),
     # TOI-1338 (BEBOP-1). Tables 3 and 4, the posterior medians that the
     # paper adopts. Jacobian elements at BJD 2,455,186. The paper gives Teff
-    # of B only as a ratio to A's (0.5516).
+    # of B only as a ratio to A's (0.5516). B is "the M dwarf secondary".
     ("gaia", "dr3", "5494443978353833088"): Binary(
         reference="kostov_2020",
         period=Value(14.608559, 0.000013, 0.000012),
@@ -674,14 +793,19 @@ BINARIES: dict[StarKey, Binary] = {
                 Value(6040.8, 98.1, 91.5),
             ),
             Star(
-                "B", Value(0.3128, 0.0113, 0.0118), Value(0.3089, 0.0056, 0.0060), None
+                "B",
+                Value(0.3128, 0.0113, 0.0118),
+                Value(0.3089, 0.0056, 0.0060),
+                None,
+                spectral_type="dM",
             ),
         ),
         osculating_epoch=2455186.0,
     ),
     # TIC 172900988 (BEBOP-2). Tables 3, 5 and 6, family 5. The paper keeps
     # six families of solutions and adopts none; family 5 is "formally the
-    # best". Jacobian elements at BJD 2,453,250.
+    # best". Jacobian elements at BJD 2,453,250. Types: "a late-F and early-G
+    # main sequence star", "approximately F9 and G0".
     ("gaia", "dr3", "709709093301608448"): Binary(
         reference="kostov_2021",
         period=Value(19.658173, 0.000025),
@@ -696,15 +820,28 @@ BINARIES: dict[StarKey, Binary] = {
         time_scale="BJD",
         frame=JACOBIAN,
         stars=(
-            Star("A", Value(1.2384, 0.0007), Value(1.3842, 0.0016), Value(6050, 100)),
-            Star("B", Value(1.2019, 0.0007), Value(1.3124, 0.0012), Value(5983, 100)),
+            Star(
+                "A",
+                Value(1.2384, 0.0007),
+                Value(1.3842, 0.0016),
+                Value(6050, 100),
+                spectral_type="F9V",
+            ),
+            Star(
+                "B",
+                Value(1.2019, 0.0007),
+                Value(1.3124, 0.0012),
+                Value(5983, 100),
+                spectral_type="G0V",
+            ),
         ),
         osculating_epoch=2453250.0,
     ),
     # BEBOP-3. Tables 1 and 2. ω is the primary's about the barycentre, in
     # rad in the paper. The paper gives a about the barycentre only (0.0234853
     # and 0.09728 AU). Masses from the HRCCS column, which the paper adopts;
-    # radii from the RV + photometry column. No Teff of B.
+    # radii from the RV + photometry column. No Teff of B. A "has a F9 spectral
+    # classification".
     ("gaia", "dr3", "1141769093744241536"): Binary(
         reference="baycroft_2025",
         period=Value(13.2176657, 0.0000027),
@@ -721,14 +858,20 @@ BINARIES: dict[StarKey, Binary] = {
         time_scale="BJD",
         frame=NOT_STATED,
         stars=(
-            Star("A", Value(1.083, 0.026), Value(1.414, 0.017), Value(6033, 100)),
+            Star(
+                "A",
+                Value(1.083, 0.026),
+                Value(1.414, 0.017),
+                Value(6033, 100),
+                spectral_type="F9",
+            ),
             Star("B", Value(0.2615, 0.0039), Value(0.2811, 0.0033), None),
         ),
     ),
-    # BEBOP-4. Table 1, mean elements. B is a brown dwarf. ω is the
-    # primary's about the barycentre, in rad in the paper. The paper assumes
-    # i, gives a about the barycentre only (0.099063 and 0.325 AU), and gives
-    # no radii and no Teff.
+    # BEBOP-4. Table 1, mean elements. ω is the primary's about the
+    # barycentre, in rad in the paper. The paper assumes i, gives a about the
+    # barycentre only (0.099063 and 0.325 AU), and gives no radii and no Teff.
+    # Its type G3 is that of the system, so neither star takes it.
     ("gaia", "dr3", "3961485079994112896"): Binary(
         reference="triaud_2025",
         period=Value(71.96857, 0.00015),
@@ -777,7 +920,8 @@ BINARIES: dict[StarKey, Binary] = {
     # primary minima) and Table 2, the PHOEBE Legacy column, which has the
     # errors. The masses, a and Teff of A are fixed from Østensen et al. 2010.
     # Baran et al. 2015 is not used: it fits only P and T0, and takes i from
-    # Østensen et al. 2010. The orbit is circular.
+    # Østensen et al. 2010. The orbit is circular. Types: "an sdB + dM eclipsing
+    # binary".
     ("gaia", "dr3", "2080063931448749824"): Binary(
         reference="esmer_2022",
         period=Value(0.125765285, 0.000000001),
@@ -792,8 +936,16 @@ BINARIES: dict[StarKey, Binary] = {
         time_scale="BJD_TDB",
         frame=NOT_STATED,
         stars=(
-            Star("A", Value(0.48), Value(0.203, 0.001), Value(29564)),
-            Star("B", Value(0.12), Value(0.168, 0.001), Value(2829, 1)),
+            Star(
+                "A", Value(0.48), Value(0.203, 0.001), Value(29564), spectral_type="sdB"
+            ),
+            Star(
+                "B",
+                Value(0.12),
+                Value(0.168, 0.001),
+                Value(2829, 1),
+                spectral_type="dM",
+            ),
         ),
     ),
 }

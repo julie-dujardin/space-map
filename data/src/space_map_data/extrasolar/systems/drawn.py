@@ -206,7 +206,8 @@ class _Pair:
     second: int
     orbits: list[Elements] = field(default_factory=list)
     # The two stars of a paper or of OEC, first member first: source →
-    # (first, second), each with the keys of STAR_VALUES and `label`.
+    # (first, second), each with the keys of STAR_VALUES, `label` and
+    # `spectral_type_reference`.
     stars: dict[str, tuple[dict, dict]] = field(default_factory=dict)
     reference: str | None = None
     # The MSC's two masses of the pair, first member first, and their codes.
@@ -228,7 +229,9 @@ def _order(item: Elements) -> tuple:
 
 
 def _star(row: dict) -> dict:
-    return {name: row[name] for name in (*STAR_VALUES, "label")}
+    return {
+        name: row[name] for name in (*STAR_VALUES, "label", "spectral_type_reference")
+    }
 
 
 def _two(stars: list[dict]) -> tuple[dict, dict]:
@@ -1086,14 +1089,21 @@ class Drawer:
                 ((v[name], s) for s, v in given if v.get(name) is not None), None
             )
             values[name], values[f"{name}_source"] = hit or (None, None)
-        paper = pair is not None and LITERATURE in {
-            values[f"{name}_source"] for name in STAR_VALUES
-        }
-        values["references"] = (
-            [{"source": LITERATURE, "reference": pair.reference}]
-            if paper and pair is not None and pair.reference
-            else []
-        )
+        works = []
+        if pair is not None:
+            paper = dict(given).get(LITERATURE, {})
+            works = [
+                paper["spectral_type_reference"]
+                if name == "spectral_type"
+                else pair.reference
+                for name in STAR_VALUES
+                if values[f"{name}_source"] == LITERATURE
+            ]
+        values["references"] = [
+            {"source": LITERATURE, "reference": work}
+            for work in dict.fromkeys(works)
+            if work
+        ]
         values["letter"] = _source_letter(entry, [v.get("label") for _, v in given])
         values["v_mag"], values["g_mag"] = entry["v_mag"], entry["g_mag"]
         return values

@@ -385,9 +385,9 @@ Its names, in this order:
 | `mass` | float32 | solar masses |
 | `radius` | float32 | nominal solar radii |
 | `teff` | float32 | K |
-| `spectral_type` | string | |
+| `spectral_type` | string | a paper's type is what it prints for that star, in the form that the family rules read: `dM` for "M dwarf", `GV` for "main sequence G-type star"; a letter alone (`K`) gives no family |
 | `mass_source`, `radius_source`, `teff_source`, `spectral_type_source` | dict | the source of each value |
-| `references` | list | the works of the values from a paper: item columns `star.references.<field>` (a citation, below) |
+| `references` | list | the works of the values from a paper, also a work that gives only the type: item columns `star.references.<field>` (a citation, below) |
 | `v_mag`, `g_mag` | float32 | V and G of its member (mag), which rank it in the star families |
 
 #### Pair orbits

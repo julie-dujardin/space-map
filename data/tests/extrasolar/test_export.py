@@ -7,6 +7,7 @@ import numpy as np
 import pyarrow as pa
 import pytest
 
+from space_map_data.constants.stars.binaries import BINARIES
 from space_map_data.constants.stars.families import FAMILIES
 from space_map_data.export.extrasolar import (
     build,
@@ -651,6 +652,35 @@ class TestSystemFamilies:
         _, reader = exported
         lists = json.loads((reader.root / FAMILIES_FILE).read_text())["brightest"]
         assert "g-type-main-sequence" not in lists
+
+    def test_a_paper_puts_the_stars_of_kepler_16_in_their_families(self, tmp_path, out):
+        first, second = BINARIES["gaia", "dr3", "2133476355197071616"].stars
+        built = write_registry(
+            tmp_path / "reg",
+            [star(289.076, 51.757)],
+            systems=[
+                Node(
+                    (("held", None, "A"), ("held", None, "B")),
+                    point=0,
+                    held={
+                        "A": Held(star={"spectral_type": first.spectral_type}),
+                        "B": Held(star={"spectral_type": second.spectral_type}),
+                    },
+                )
+            ],
+        )
+        export_extrasolar(built.root, out, workers=1)
+        reader = ExportReader(out / "v1" / "x")
+        a = self._metadata(reader, built.held[0, "A"])
+        b = self._metadata(reader, built.held[0, "B"])
+        assert a["families"] & families.BIT["k-type-main-sequence"]
+        assert a["families"] & families.BIT["main-sequence"]
+        assert a["families"] & families.BIT["dwarf"]
+        assert not a["families"] & self.RED_DWARF
+        assert b["families"] & self.RED_DWARF
+        assert not b["families"] & families.BIT["k-type-main-sequence"]
+        assert (a["spectral_type"], b["spectral_type"]) == ("dK", "dM")
+        assert self._metadata(reader, built.nodes[0])["families"] == 0
 
     def test_the_build_logs_the_held_stars_it_leaves_out(self, tmp_path, out, caplog):
         held = {"A": Held(star={"spectral_type": "G2V"}), "B": Held(star={})}

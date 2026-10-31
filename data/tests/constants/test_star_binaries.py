@@ -6,6 +6,7 @@ import pytest
 
 from space_map_data.constants.stars import binaries
 from space_map_data.constants.stars.binaries import BINARIES, REFERENCES, Value
+from space_map_data.extrasolar import families
 
 
 class TestPaperTable:
@@ -49,7 +50,9 @@ class TestPaperTable:
                 assert 2_400_000 < binary.epoch.value < 2_470_000
 
     def test_every_reference_is_cited(self):
-        assert {b.reference for b in BINARIES.values()} == set(REFERENCES)
+        cited = {b.reference for b in BINARIES.values()}
+        cited |= {b.type_reference for b in BINARIES.values() if b.type_reference}
+        assert cited == set(REFERENCES)
         for reference in REFERENCES.values():
             assert reference.url.startswith("https://doi.org/")
 
@@ -58,6 +61,47 @@ class TestPaperTable:
         assert kepler_16.period == Value(41.079220, 0.000078, 0.000077)
         assert kepler_16.stars[1].radius == Value(0.22623, 0.00059, 0.00053)
         assert kepler_16.osculating_epoch == 2455212.12316
+
+    def test_the_family_rules_read_each_type(self):
+        for binary in BINARIES.values():
+            for star in binary.stars:
+                if star.spectral_type:
+                    letter, _, extra = families.parse_spectral_type(star.spectral_type)
+                    assert (
+                        letter or extra or families.of_spectral_type(star.spectral_type)
+                    )
+
+    @pytest.mark.parametrize(
+        "key, label, family",
+        [
+            ("2133476355197071616", "A", "k-type-main-sequence"),
+            ("2133476355197071616", "B", "red-dwarf"),
+            ("2073478823183937536", "Aa", "f-type-main-sequence"),
+            ("3675067076961979264", "A", "subdwarf-b"),
+            ("3675067076961979264", "B", "red-dwarf"),
+            ("1191504471436192512", "A", "white-dwarf"),
+            ("4245906369913936000", "A", "subdwarf-b"),
+            ("709709093301608448", "B", "g-type-main-sequence"),
+        ],
+    )
+    def test_the_words_of_a_paper_give_their_family(self, key, label, family):
+        stars = {star.label: star for star in BINARIES["gaia", "dr3", key].stars}
+        spectral_type = stars[label].spectral_type
+        assert spectral_type
+        assert family in families.of_spectral_type(spectral_type)
+
+    def test_a_letter_alone_gives_no_family(self):
+        kepler_413 = BINARIES[("gaia", "dr3", "2133352385261516928")]
+        assert kepler_413.stars[0].spectral_type == "K"
+        assert families.of_spectral_type("K") == []
+
+    def test_a_star_with_no_type_in_its_paper_has_none(self):
+        kepler_34 = BINARIES[("gaia", "dr3", "2079692678777827712")]
+        assert all(star.spectral_type is None for star in kepler_34.stars)
+
+    def test_kepler_16_cites_the_work_of_its_types(self):
+        kepler_16 = BINARIES[("gaia", "dr3", "2133476355197071616")]
+        assert kepler_16.type_reference == "triaud_2022"
 
     def test_an_angle_in_radians_is_read_as_degrees(self):
         bebop_3 = BINARIES[("gaia", "dr3", "1141769093744241536")]

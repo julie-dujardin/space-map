@@ -6,7 +6,8 @@ letter. Each entry cites one work of REFERENCES by its key.
 
 HOSTS gives a row the star that a paper says it orbits. The row stays out of
 the planet join, takes no letter and loses its star columns. Its host row
-claims the key of the star, so that the star keeps its one point.
+claims the key of the star, so that the star keeps its one point. A row with
+itself as its star orbits none: the join leaves out a free-floating object.
 
 JOINS makes one planet of two rows that no score can join. The named row
 comes from an earlier catalogue. A row with no star names the row that gives
@@ -103,6 +104,12 @@ REFERENCES: dict[str, Reference] = {
         " of a star (Nature 655, 865)",
         "https://doi.org/10.1038/s41586-026-10751-w",
     ),
+    "joncour_2017": Reference(
+        "Joncour et al. 2017",
+        "Multiplicity and clustering in Taurus star-forming region. I. Unexpected"
+        " ultra-wide pairs of high-order multiplicity in Taurus (A&A 599, A14)",
+        "https://doi.org/10.1051/0004-6361/201629398",
+    ),
     "thompson_2025": Reference(
         "Thompson et al. 2025",
         "On the Orbit of the Binary Brown Dwarf Companion GL229 Ba and Bb"
@@ -127,6 +134,9 @@ _GJ_229_B = HostStar(("simbad", "oid", "864867"), "GJ 229 B", 92.64434, -21.8698
 _HD_97334_B = HostStar(
     ("gaia", "dr3", "761918578311083264"), "HD 97334 B", 168.10552, 35.80287
 )
+_KPNO_TAU_4 = HostStar(
+    ("gaia", "dr3", "151265002954775936"), "KPNO-Tau 4", 66.86667, 26.20131
+)
 _NLTT_31450 = HostStar(
     ("gaia", "dr3", "1514394443389500288"), "NLTT 31450", 189.95550, 32.14722
 )
@@ -147,6 +157,9 @@ HOSTS: dict[tuple[str, str], Host] = {
     # Gl 417 C orbits B at 2.85 AU in 15.65 yr (Tables 2, 3), the a and P of
     # the row, which names the primary.
     (EU, "HD 97334 C"): Host(_HD_97334_B, "dupuy_2014"),
+    # DG Tau is only this brown dwarf's nearest star, at the row's 65,694 AU.
+    # Table C.3 marks them as no pair: DG Tau's nearest star is DG Tau B.
+    (EU, "KPNO-Tau 4"): Host(_KPNO_TAU_4, "joncour_2017"),
 }
 
 # The archive's "HD 160691 c" and "CD-35 2722 B b".

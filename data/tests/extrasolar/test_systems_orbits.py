@@ -300,6 +300,27 @@ class TestOEC:
 class TestLiterature:
     """The paper table as orbit rows."""
 
+    def test_a_star_has_its_type_and_the_work_of_the_type(self):
+        _, stars = orbits.read_literature()
+        rows = [
+            row
+            for row in stars.to_pylist()
+            if row["system"] == "gaia/dr3/2133476355197071616"
+        ]
+        assert [row["spectral_type"] for row in rows] == ["dK", "dM"]
+        assert {row["spectral_type_reference"] for row in rows} == {"triaud_2022"}
+        assert {row["reference"] for row in rows} == {"doyle_2011"}
+
+    def test_a_paper_with_a_type_cites_itself(self):
+        _, stars = orbits.read_literature()
+        rows = [
+            row
+            for row in stars.to_pylist()
+            if row["system"] == "gaia/dr3/3675067076961979264"
+        ]
+        assert [row["spectral_type"] for row in rows] == ["sdB", "M6-7V"]
+        assert {row["spectral_type_reference"] for row in rows} == {"lee_2009"}
+
     def test_computes_omega_and_turns_solar_radii_to_au(self):
         key = ("gaia", "dr3", "1")
         stars = (
