@@ -1947,6 +1947,7 @@
 	"archive_role_naif": "惑星・衛星・宇宙機",
 	"archive_role_naif_pds3": "アーカイブされた宇宙機の軌道",
 	"archive_role_gcat_deep": "公表された軌道要素から導出した軌道",
+	"archive_role_clpds": "ローバーの位置",
 	"archive_role_nsdb": "小惑星の衛星の相互軌道",
 	"source_johnston_role": "小惑星の衛星の一覧・サイズ・発見記録",
 	"source_iau_wgccre_short": "IAU WGCCRE",

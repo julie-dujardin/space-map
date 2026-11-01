@@ -1598,6 +1598,7 @@
 	"archive_role_naif": "planety, księżyce i statki kosmiczne",
 	"archive_role_naif_pds3": "zarchiwizowane trajektorie statków kosmicznych",
 	"archive_role_gcat_deep": "trajektorie wyznaczone z opublikowanych elementów",
+	"archive_role_clpds": "pozycje łazików",
 	"archive_role_nsdb": "orbity wzajemne księżyców planetoid",
 	"source_johnston_role": "spis księżyców planetoid, rozmiary i okoliczności odkrycia",
 	"source_iau_wgccre_name": "Grupa Robocza IAU ds. Współrzędnych Kartograficznych i Elementów Rotacyjnych",

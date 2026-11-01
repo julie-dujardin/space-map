@@ -1575,6 +1575,7 @@
 	"archive_role_naif": "planetas, lunas y naves espaciales",
 	"archive_role_naif_pds3": "trayectorias archivadas de naves espaciales",
 	"archive_role_gcat_deep": "trayectorias derivadas de elementos publicados",
+	"archive_role_clpds": "posiciones de los róveres",
 	"archive_role_nsdb": "órbitas mutuas de satélites de asteroides",
 	"source_johnston_role": "censo de satélites de asteroides, tamaños y datos de descubrimiento",
 	"source_iau_wgccre_name": "Grupo de Trabajo de la IAU sobre coordenadas cartográficas y elementos de rotación",

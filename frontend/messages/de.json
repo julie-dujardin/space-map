@@ -1552,6 +1552,7 @@
 	"archive_role_naif": "Planeten, Monde & Raumfahrzeuge",
 	"archive_role_naif_pds3": "archivierte Raumfahrzeug-Trajektorien",
 	"archive_role_gcat_deep": "aus veröffentlichten Bahnelementen abgeleitete Bahnen",
+	"archive_role_clpds": "Rover-Positionen",
 	"archive_role_nsdb": "gegenseitige Bahnen von Asteroidenmonden",
 	"source_johnston_role": "Verzeichnis der Asteroidenmonde, Größen und Entdeckungsdaten",
 	"source_iau_wgccre_name": "IAU-Arbeitsgruppe für kartografische Koordinaten & Rotationselemente",

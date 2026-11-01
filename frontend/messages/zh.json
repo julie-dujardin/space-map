@@ -1909,6 +1909,7 @@
 	"archive_role_naif": "行星、卫星与航天器",
 	"archive_role_naif_pds3": "存档的航天器轨迹",
 	"archive_role_gcat_deep": "由已发表轨道根数推算的轨迹",
+	"archive_role_clpds": "月球车和火星车的位置",
 	"archive_role_nsdb": "小行星卫星的相互轨道",
 	"source_johnston_role": "小行星卫星普查、尺寸与发现记录",
 	"source_iau_wgccre_short": "IAU WGCCRE",

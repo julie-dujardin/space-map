@@ -57,6 +57,7 @@ export const ORBIT_ARCHIVE_ORGANISATIONS: Record<OrbitArchive, string> = {
 	esa: 'ESA',
 	'jaxa-darts': 'JAXA',
 	'gcat-deepcat': 'McDowell Deep Space Catalog',
+	clpds: 'CNSA',
 	nsdb: 'Natural Satellites Data Base',
 	celestrak: 'CelesTrak',
 	spacetrack: 'Space-Track.org'

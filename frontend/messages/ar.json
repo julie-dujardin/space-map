@@ -2033,6 +2033,7 @@
 	"archive_role_naif": "الكواكب والأقمار والمركبات الفضائية",
 	"archive_role_naif_pds3": "مسارات مركبات فضائية مؤرشفة",
 	"archive_role_gcat_deep": "مسارات مستنتجة من عناصر مدارية منشورة",
+	"archive_role_clpds": "مواقع المركبات الجوالة",
 	"archive_role_nsdb": "المدارات المتبادلة لأقمار الكويكبات",
 	"source_johnston_role": "حصر أقمار الكويكبات وأحجامها وسجل اكتشافها",
 	"source_iau_wgccre_short": "IAU WGCCRE",

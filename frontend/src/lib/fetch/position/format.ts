@@ -133,7 +133,8 @@ export type OrbitArchive =
 	| 'naif-pds3'
 	| 'naif-pds4'
 	| 'jaxa-darts'
-	| 'gcat-deepcat';
+	| 'gcat-deepcat'
+	| 'clpds';
 
 /** Archive byte of a probe's chunk header, by ordinal. Must stay in sync with
  *  `PROBE_ARCHIVE_ORDINAL` in ephemeris.py. Ordinal 0 is a probe no archive
@@ -147,7 +148,8 @@ export const PROBE_ARCHIVES: readonly (OrbitArchive | undefined)[] = [
 	'jaxa-darts',
 	'horizons',
 	'gcat-deepcat',
-	'spacetrack'
+	'spacetrack',
+	'clpds'
 ];
 
 /** Object-ID prefix for every row (elements) or body (chebyshev). Combined

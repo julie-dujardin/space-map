@@ -49,6 +49,7 @@
 		esa: m.provider_esa(),
 		'jaxa-darts': m.provider_jaxa(),
 		'gcat-deepcat': m.source_archive_gcat_deep(),
+		clpds: m.provider_cnsa(),
 		nsdb: m.source_nsdb_name(),
 		celestrak: m.source_celestrak_name(),
 		spacetrack: m.source_spacetrack_name()

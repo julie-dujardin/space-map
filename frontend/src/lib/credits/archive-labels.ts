@@ -66,6 +66,11 @@ const ARCHIVES: Record<string, Archive> = {
 		label: m.source_archive_gcat_deep,
 		url: 'https://planet4589.org/space/deepcat/',
 		role: m.archive_role_gcat_deep
+	},
+	clpds: {
+		label: m.source_archive_clpds,
+		url: 'https://clpds.bao.ac.cn/',
+		role: m.archive_role_clpds
 	}
 };
 

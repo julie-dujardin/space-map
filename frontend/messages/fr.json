@@ -1982,6 +1982,7 @@
 	"archive_role_naif": "planètes, lunes et engins spatiaux",
 	"archive_role_naif_pds3": "trajectoires d'engins spatiaux archivées",
 	"archive_role_gcat_deep": "trajectoires déduites d'éléments publiés",
+	"archive_role_clpds": "positions des rovers",
 	"archive_role_nsdb": "orbites mutuelles des satellites d'astéroïdes",
 	"source_johnston_role": "recensement des satellites d'astéroïdes, tailles et circonstances de découverte",
 	"country_count": [
