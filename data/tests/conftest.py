@@ -114,6 +114,16 @@ def _isolated_stamp_memo(tmp_path, monkeypatch):
     monkeypatch.setattr(content_stamp, "_dirty", 0)
 
 
+@pytest.fixture(autouse=True)
+def _isolated_panorama_digests(tmp_path, monkeypatch):
+    """Keep sphere digests of test files out of the real CACHE_DIR memo."""
+    from space_map_data.export import panoramas
+
+    monkeypatch.setattr(
+        panoramas, "_DIGEST_CACHE_PATH", tmp_path / "panorama_digests.json"
+    )
+
+
 @pytest.fixture
 def engine() -> Iterator[Engine]:
     """Fresh in-memory SQLite with the full schema, scoped to one test.
