@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { page } from '$app/state';
 	import { onDestroy, onMount, setContext, tick, untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import Scene from './Scene.svelte';
@@ -98,6 +99,7 @@
 	import FeaturedBar from './search/FeaturedBar.svelte';
 	import { groupHitPage, isSearchEnabled, localizedName } from '$lib/search/client';
 	import { onOpenSearch } from '$lib/search/proof.svelte';
+	import { parseSearchSuffix } from '$lib/search/url';
 	import { isSearchShortcut } from '$lib/search/shortcut';
 	import { coverageOf } from '$lib/fetch/coverage';
 	import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
@@ -120,6 +122,10 @@
 	import { STAR_VIEW_DISTANCE } from '$lib/scene/focus/star-focus';
 
 	const searchEnabled = isSearchEnabled();
+	/** A link to a search opens on the search, with no panel for the body behind it. */
+	const openedOnSearch = searchEnabled && parseSearchSuffix(page.url.searchParams) !== null;
+	/** The opening view's focus moves are the page's own, not a reader's pick. */
+	let searchLinkOpening = openedOnSearch;
 
 	const appState = createAppState();
 	setContext('appState', appState);
@@ -427,7 +433,7 @@
 
 	/** The opening view has no panel yet. A page of the catalogue opens with
 	 *  one, and its name may not be known: the URL's is not read. */
-	let opening = $state(true);
+	let opening = $state(!openedOnSearch);
 	$effect(() => {
 		if (focusable) opening = false;
 	});
@@ -752,8 +758,7 @@
 	// Everything the panel displaces moves on this, the placeholder frame
 	// included, so the chrome settles at first paint rather than jumping when
 	// the real drawer lands. It also stands in for the collapsed search pill,
-	// which the sidebar covers on desktop: close the sidebar, open search in
-	// its place.
+	// which the sidebar covers on desktop.
 	const sidebarOpen = $derived(Boolean(focusable) || isNav || sidebarPending);
 
 	// Desktop inset: park chips just past the detail sidebar (and the search
@@ -763,13 +768,17 @@
 		sidebarOpen ? 'calc(var(--detail-panel) + 3.5rem)' : 'calc(240px + 2rem)'
 	);
 
+	// Desktop shows the sidebar or search, never both: the one opened last stays.
+	$effect(() => {
+		if (sidebarOpen && !isMobileViewport) searchBar?.collapse();
+	});
+
 	function openSearchBesideSidebar() {
-		if (isNav) closeTravel(false);
-		else closeDetail(false);
+		// Not closeTravel: it lands on a trip's end, whose panel would open.
+		closeDetail(false);
 		searchBar?.open();
 	}
 
-	// The desktop sidebar covers the search bar, so it closes first.
 	function openSearch() {
 		if (sidebarOpen && !isMobileViewport) openSearchBesideSidebar();
 		else searchBar?.open();
@@ -922,6 +931,7 @@
 			.finally(() => {
 				viewOpened = true;
 				cameraPlaced = true;
+				searchLinkOpening = false;
 			});
 	});
 
@@ -1165,7 +1175,7 @@
 					{northRefId}
 					onFocusChange={(body) => {
 						cameraFocus = body;
-						selectedBody = body;
+						if (!searchLinkOpening) selectedBody = body;
 					}}
 					onArrival={(arrival, id, name) => {
 						// A trip's panel tells the rest, as on any navigation inside it.
@@ -1198,7 +1208,9 @@
 			{#if !isMobileViewport}
 				<TimeControls {clock} panelOpen={sidebarOpen} onFitChange={(v) => (timeBarFits = v)} />
 			{/if}
+			<!-- Inert under the sidebar: Tab would open search behind it. -->
 			<div
+				inert={!searchExpanded && sidebarOpen && !isMobileViewport}
 				class="fixed top-[calc(var(--safe-top)_+_1rem)] start-[calc(var(--safe-start)_+_1rem)] end-[calc(var(--safe-end)_+_1rem)] md:end-auto md:w-[min(400px,calc(100vw-7rem))] {searchExpanded
 					? 'z-[55]'
 					: 'z-10'}"

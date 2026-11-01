@@ -811,7 +811,7 @@
 		document.getElementById(optionDomId(highlightedId))?.scrollIntoView({ block: 'nearest' });
 	}
 
-	function collapse() {
+	export function collapse() {
 		filterOpen = false;
 		// A dialog closes whole: collapsed first, its pill would show as it fades.
 		if (onClose) onClose();
