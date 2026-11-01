@@ -31,9 +31,9 @@ function body(id: string, parentId: string, orbitalSource: OrbitalSource): Posit
 	return { data: { id, parentId, orbitalSource } } as unknown as PositionedBody;
 }
 
-function probe(id: string, orbitArchive?: OrbitArchive): PositionedBody {
+function probe(id: string, orbitArchive?: OrbitArchive, parentId = 'naif-10'): PositionedBody {
 	return {
-		data: { id, parentId: 'naif-10', orbitalSource: OrbitalSource.SPICE_PROBE, orbitArchive }
+		data: { id, parentId, orbitalSource: OrbitalSource.SPICE_PROBE, orbitArchive }
 	} as unknown as PositionedBody;
 }
 
@@ -85,6 +85,32 @@ describe('creditedOrbitArchives', () => {
 			probe('probe-3', 'esa')
 		]);
 		expect(creditedOrbitArchives(fakeCtx(credits, null))).toEqual(['esa', 'jaxa-darts']);
+	});
+
+	it('credits a probe in orbit only while its system is in view', () => {
+		const credits = new CreditsStore();
+		credits.recordOrbitSources([probe('probe-1', 'clpds', 'naif-399')]);
+		expect(creditedOrbitArchives(fakeCtx(credits, 'naif-3'))).toEqual(['clpds']);
+		expect(creditedOrbitArchives(fakeCtx(credits, 'naif-4'))).toEqual([]);
+		expect(creditedOrbitArchives(fakeCtx(credits, null))).toEqual([]);
+	});
+
+	it('credits a probe around the Sun only with no system in view', () => {
+		const credits = new CreditsStore();
+		credits.recordOrbitSources([probe('probe-1', 'esa')]);
+		expect(creditedOrbitArchives(fakeCtx(credits, null))).toEqual(['esa']);
+		expect(creditedOrbitArchives(fakeCtx(credits, 'naif-5'))).toEqual([]);
+	});
+
+	it('scopes an archive once, whichever source fed it', () => {
+		const credits = new CreditsStore();
+		credits.recordOrbitSources([
+			body('25544', 'naif-399', OrbitalSource.SPACETRACK),
+			probe('probe-1', 'spacetrack', 'naif-4')
+		]);
+		expect(creditedOrbitArchives(fakeCtx(credits, 'naif-3'))).toEqual(['spacetrack']);
+		expect(creditedOrbitArchives(fakeCtx(credits, 'naif-4'))).toEqual(['spacetrack']);
+		expect(creditedOrbitArchives(fakeCtx(credits, 'naif-5'))).toEqual([]);
 	});
 
 	it('credits nobody once the solar system no longer draws', () => {

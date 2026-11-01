@@ -16,8 +16,9 @@ export interface OrbitSourceInfo {
 	/** Archive carrying the citation's name and home page. Absent for probes:
 	 *  agencies keep their own kernels, so each craft names its archive. */
 	archive?: OrbitArchive;
-	/** Its bodies hang off one system at a time — Earth's satellites, a binary
-	 *  asteroid's moons — so it is credited only while the camera is there. */
+	/** Its bodies hang off one system at a time: Earth's satellites, a binary
+	 *  asteroid's moons, a probe in orbit. It is credited only while the camera
+	 *  is there. */
 	scoped?: boolean;
 }
 
@@ -29,40 +30,38 @@ export const ORBIT_SOURCES: Record<NamedOrbitSource, OrbitSourceInfo> = {
 	[OrbitalSource.SPICE]: { archive: 'naif' },
 	[OrbitalSource.SBDB_MOON]: { archive: 'sbdb', scoped: true },
 	[OrbitalSource.ASTERSAT]: { archive: 'nsdb', scoped: true },
-	[OrbitalSource.SPICE_PROBE]: {},
+	[OrbitalSource.SPICE_PROBE]: { scoped: true },
 	[OrbitalSource.CELESTRAK]: { archive: 'celestrak', scoped: true },
 	[OrbitalSource.SPACETRACK]: { archive: 'spacetrack', scoped: true }
 };
 
-/** Display order wherever sources are listed together. Explicit because the
- *  enum is numeric, and object key order would sort by ordinal instead. */
-export const ORBIT_SOURCE_ORDER: readonly NamedOrbitSource[] = [
-	OrbitalSource.HORIZONS,
-	OrbitalSource.SBDB,
-	OrbitalSource.SPICE,
-	OrbitalSource.SBDB_MOON,
-	OrbitalSource.ASTERSAT,
-	OrbitalSource.SPICE_PROBE,
-	OrbitalSource.CELESTRAK,
-	OrbitalSource.SPACETRACK
-];
-
-/** Organisation each archive is cited as. NASA's archives share one chip. */
+/** Organisation each archive is cited as, in display order. NASA's archives
+ *  share one chip. */
 export const ORBIT_ARCHIVE_ORGANISATIONS: Record<OrbitArchive, string> = {
 	horizons: 'NASA',
 	sbdb: 'NASA',
 	naif: 'NASA',
+	nsdb: 'Natural Satellites Data Base',
+	esa: 'ESA',
 	'naif-pds3': 'NASA',
 	'naif-pds4': 'NASA',
-	esa: 'ESA',
 	'jaxa-darts': 'JAXA',
 	'gcat-deepcat': 'McDowell Deep Space Catalog',
 	clpds: 'CNSA',
-	nsdb: 'Natural Satellites Data Base',
 	celestrak: 'CelesTrak',
 	spacetrack: 'Space-Track.org'
 };
 
+export const ORBIT_ARCHIVE_ORDER = Object.keys(ORBIT_ARCHIVE_ORGANISATIONS) as OrbitArchive[];
+
 export function orbitSourceInfo(source: OrbitalSource): OrbitSourceInfo | undefined {
 	return ORBIT_SOURCES[source as NamedOrbitSource];
+}
+
+/** The archive behind a body's position. */
+export function orbitArchiveOf(data: {
+	orbitalSource: OrbitalSource;
+	orbitArchive?: OrbitArchive;
+}): OrbitArchive | undefined {
+	return orbitSourceInfo(data.orbitalSource)?.archive ?? data.orbitArchive;
 }

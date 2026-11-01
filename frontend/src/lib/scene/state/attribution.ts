@@ -5,48 +5,33 @@
  * control, so an embed credits exactly what the site does.
  */
 
-import { PROBE_ARCHIVES, type OrbitArchive } from '$lib/fetch/position/format';
+import { SUN_ID } from '$lib/constants';
+import type { OrbitArchive } from '$lib/fetch/position/format';
 import type { ContextManager } from './context-manager.svelte';
-import type { ModelCredit } from './credits.svelte';
-import {
-	ORBIT_ARCHIVE_ORGANISATIONS,
-	ORBIT_SOURCE_ORDER,
-	ORBIT_SOURCES,
-	type NamedOrbitSource
-} from './orbit-sources';
+import { WHOLE_SCENE, type ModelCredit } from './credits.svelte';
+import { ORBIT_ARCHIVE_ORDER, ORBIT_ARCHIVE_ORGANISATIONS } from './orbit-sources';
 
 /** Organisation names as they are cited, translated only where the app has a
  *  translation of its own to pass in. */
 export type OrbitArchiveLabels = Record<OrbitArchive, string>;
 
-/** True while a system this scoped source fed is in view. A source recorded
- *  without parents came off the chunk-level path, where crediting it everywhere
- *  beats dropping the citation. */
-function feedsSystemInView(ctx: ContextManager, source: NamedOrbitSource): boolean {
-	const parents = ctx.credits.orbitSourceParents.get(source);
-	if (!parents) return true;
+/** True while a body this archive fed belongs in the view. With no system in
+ *  view, that is a body around the Sun. */
+function feedsView(ctx: ContextManager, archive: OrbitArchive): boolean {
+	const scopes = ctx.credits.orbitFeeds.get(archive);
+	if (!scopes) return false;
+	if (scopes.has(WHOLE_SCENE)) return true;
 	const sysId = ctx.visibility.systemInView;
-	for (const parent of parents) if (ctx.bodies.isInSystem(parent, sysId)) return true;
+	if (!sysId) return scopes.has(SUN_ID);
+	for (const parent of scopes) if (ctx.bodies.isInSystem(parent, sysId)) return true;
 	return false;
 }
 
-/** Which archives belong in the credits right now: every one that fed a body
- *  of the scene, less the system-scoped providers while the camera is
- *  elsewhere, and none once the solar system no longer draws. Several sources
- *  share an archive (SBDB serves both the small bodies and their moons), so
- *  each is listed once. */
+/** The archives in the credits right now, and none once the solar system no
+ *  longer draws. */
 export function creditedOrbitArchives(ctx: ContextManager): OrbitArchive[] {
 	if (!ctx.visibility.systemDrawn) return [];
-	const credits = ctx.credits;
-	const archives = new Set<OrbitArchive>();
-	for (const source of ORBIT_SOURCE_ORDER) {
-		if (!credits.orbitSources.has(source)) continue;
-		const { archive, scoped } = ORBIT_SOURCES[source];
-		if (scoped && !feedsSystemInView(ctx, source)) continue;
-		if (archive) archives.add(archive);
-		else for (const a of PROBE_ARCHIVES) if (a && credits.probeArchives.has(a)) archives.add(a);
-	}
-	return [...archives];
+	return ORBIT_ARCHIVE_ORDER.filter((archive) => feedsView(ctx, archive));
 }
 
 /** Credits for the planetary system in view plus the focused body — the latter

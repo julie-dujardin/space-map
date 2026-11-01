@@ -3,7 +3,7 @@
 	import Link from './kit/Link.svelte';
 	import * as m from '$lib/paraglide/messages.js';
 	import { archiveLabel, archiveUrl } from '$lib/credits/archive-labels';
-	import { orbitSourceInfo } from '$lib/scene/state/orbit-sources';
+	import { orbitArchiveOf } from '$lib/scene/state/orbit-sources';
 	import type { GlobalObjectData, LocalizedObjectData } from '$lib/fetch/objects/object-data';
 	import { ObjectType, type OrbitalElements, type PositionedBody } from '$lib/types/objects';
 	import {
@@ -48,8 +48,7 @@
 
 	// Fallback when the global JSON predates `ephemeris_source`: the archive the
 	// body is cited by carries both its name and its home page.
-	const sourceArchive = (b: PositionedBody | undefined) =>
-		b && (orbitSourceInfo(b.data.orbitalSource)?.archive ?? b.data.orbitArchive);
+	const sourceArchive = (b: PositionedBody | undefined) => b && orbitArchiveOf(b.data);
 
 	interface Props {
 		global: GlobalObjectData | null;

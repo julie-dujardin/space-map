@@ -1,10 +1,13 @@
-import { OrbitalSource, type OrbitArchive } from '$lib/fetch/position/format';
-import { orbitSourceInfo, type NamedOrbitSource } from './orbit-sources';
+import type { OrbitalSource, OrbitArchive } from '$lib/fetch/position/format';
+import { orbitArchiveOf, orbitSourceInfo } from './orbit-sources';
 import type { OrientationReference, OrientationSource } from '$lib/credits/orientation-sources';
 import type { CreditFields, ImageryLayer } from '$lib/credits/imagery-layers';
 import { patchCredits, tileCredit, type TiledMap } from '$lib/credits/tile-credit';
 import type { PositionedBody } from '$lib/types/objects';
 import type { ExtrasolarCredit } from '$lib/fetch/extrasolar/files';
+
+/** The scope of an orbit archive that no one system holds. */
+export const WHOLE_SCENE = 'whole-scene';
 
 /** One credited work behind a body's imagery, recorded as the layer attaches.
  *  `systemId` scopes the bar and the popover to the system in view. */
@@ -62,16 +65,10 @@ export class CreditsStore {
 	stars = $state.raw<readonly ExtrasolarCredit[]>([]);
 	/** The culture and catalogues behind the constellation lines, while they draw. */
 	constellations = $state.raw<readonly ExtrasolarCredit[]>([]);
-	/** Providers contributing to the loaded scene. Reassigned (not mutated) so
-	 *  `$derived` bar consumers recompute. `UNKNOWN` is never added — pre-v3
-	 *  chunks stay silent rather than showing a misleading label. */
-	orbitSources = $state(new Set<OrbitalSource>());
-	/** Parent each scoped source's bodies hang off, so the bar can ask whether
-	 *  the focused system is one the source fed. Reassigned like `orbitSources`. */
-	orbitSourceParents = $state(new Map<NamedOrbitSource, Set<string>>());
-	/** Archives behind the probes of the scene, which the source alone does
-	 *  not name. Reassigned like `orbitSources`. */
-	probeArchives = $state(new Set<OrbitArchive>());
+	/** Each archive behind the loaded scene and where its bodies are: their
+	 *  parents, or `WHOLE_SCENE`. Reassigned so `$derived` bar consumers
+	 *  recompute. */
+	orbitFeeds = $state.raw(new Map<OrbitArchive, Set<string>>());
 
 	/** A layer keeps one credit per body, so whichever path attaches it first —
 	 *  per-system or standalone — wins. A surface or height map whose tile
@@ -136,44 +133,30 @@ export class CreditsStore {
 		this.modelVersion++;
 	}
 
-	/** Fold each body's `orbitalSource` into the reactive set, plus the parent it
-	 *  orbits for the sources scoped to a system and the archive of a probe. */
 	recordOrbitSources(bodies: PositionedBody[]): void {
 		let added = false;
-		let scoped = false;
-		let archived = false;
-		for (const b of bodies) {
-			const src = b.data.orbitalSource;
-			if (src === OrbitalSource.UNKNOWN) continue;
-			if (!this.orbitSources.has(src)) {
-				this.orbitSources.add(src);
-				added = true;
-			}
-			const archive = b.data.orbitArchive;
-			if (archive && !this.probeArchives.has(archive)) {
-				this.probeArchives.add(archive);
-				archived = true;
-			}
-			if (!orbitSourceInfo(src)?.scoped) continue;
-			let parents = this.orbitSourceParents.get(src as NamedOrbitSource);
-			if (!parents) {
-				parents = new Set();
-				this.orbitSourceParents.set(src as NamedOrbitSource, parents);
-			}
-			if (parents.has(b.data.parentId)) continue;
-			parents.add(b.data.parentId);
-			scoped = true;
+		for (const { data } of bodies) {
+			const archive = orbitArchiveOf(data);
+			if (!archive) continue;
+			const scoped = orbitSourceInfo(data.orbitalSource)?.scoped;
+			if (this.addOrbitFeed(archive, scoped ? data.parentId : WHOLE_SCENE)) added = true;
 		}
-		if (added) this.orbitSources = new Set(this.orbitSources);
-		if (scoped) this.orbitSourceParents = new Map(this.orbitSourceParents);
-		if (archived) this.probeArchives = new Set(this.probeArchives);
+		if (added) this.orbitFeeds = new Map(this.orbitFeeds);
 	}
 
-	/** Record one chunk-level orbit source — minor chunks carry a single
-	 *  provider byte for the whole file, and no parent to scope it by. */
-	recordOrbitSource(src: OrbitalSource): void {
-		if (src === OrbitalSource.UNKNOWN || this.orbitSources.has(src)) return;
-		this.orbitSources.add(src);
-		this.orbitSources = new Set(this.orbitSources);
+	/** A minor chunk carries one provider byte for the whole file, and no parent
+	 *  to scope it by: crediting it everywhere beats dropping the citation. */
+	recordOrbitSource(source: OrbitalSource): void {
+		const archive = orbitSourceInfo(source)?.archive;
+		if (archive && this.addOrbitFeed(archive, WHOLE_SCENE)) {
+			this.orbitFeeds = new Map(this.orbitFeeds);
+		}
+	}
+
+	private addOrbitFeed(archive: OrbitArchive, scope: string): boolean {
+		const scopes = this.orbitFeeds.get(archive) ?? new Set();
+		if (scopes.has(scope)) return false;
+		this.orbitFeeds.set(archive, scopes.add(scope));
+		return true;
 	}
 }
