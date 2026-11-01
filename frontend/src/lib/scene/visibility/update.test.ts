@@ -173,6 +173,58 @@ describe('close-range halos and labels', () => {
 	});
 });
 
+describe('a moon at the CLOSE tier', () => {
+	function closeMoon() {
+		const s = scene(ObjectType.MOON);
+		Object.assign(s.ctx.visibility, {
+			focusedSystemId: 'system',
+			isBodyInSystem: () => true,
+			getMoonVisibility: () => VISIBILITY.CLOSE,
+			labelThresholdShare: (id: string, shown: boolean) => s.fades.labelShare(id, shown),
+			orbitThresholdShare: (id: string, shown: boolean) => s.fades.orbitShare(id, shown)
+		});
+		return s;
+	}
+
+	it('keeps the halo and name of a focused moon with no known size', () => {
+		const { bo, frame } = closeMoon();
+		bo.mesh = null;
+		bo.noPhysical = 'radius';
+		frame(400, 16);
+		frame(400, 100);
+		expect(bo.group.visible).toBe(true);
+		expect(bo.label!.visible).toBe(true);
+		expect(bo.label!.element.style.opacity).toBe('');
+		expect(bo.haloShare).toBe(1);
+	});
+
+	it('keeps the name of a focused moon until its disc fills the view', () => {
+		const { bo, frame } = closeMoon();
+		frame(100, 16);
+		frame(100, 100);
+		expect(bo.label!.visible).toBe(true);
+		expect(bo.label!.element.style.opacity).toBe('');
+		frame(400, 100);
+		frame(400, 16);
+		expect(bo.label!.visible).toBe(false);
+	});
+
+	it('keeps the name of another moon of a pixel or more', () => {
+		const { bo, frame } = closeMoon();
+		frame(2, 16, 'other');
+		frame(2, 100, 'other');
+		expect(bo.label!.visible).toBe(true);
+		expect(bo.label!.element.style.opacity).toBe('');
+	});
+
+	it('drops the name of another moon under a pixel', () => {
+		const { bo, frame } = closeMoon();
+		frame(0.5, 16, 'other');
+		frame(0.5, 100, 'other');
+		expect(bo.label!.visible).toBe(false);
+	});
+});
+
 describe('a star of another system', () => {
 	it('keeps its name in the sky of a system only while it is focused or pinned', () => {
 		const { bo, ctx, frame } = scene(ObjectType.EXTRASOLAR);

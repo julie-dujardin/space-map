@@ -17,6 +17,7 @@ import { barycenterPrimaryId } from '$lib/scene/state/bodies.svelte';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import {
 	applyLabelDisplay,
+	keepsCloseLabel,
 	isScreenOccluded,
 	cullOverlappingLabels,
 	labelScreenRect,
@@ -356,12 +357,12 @@ export function updateBodyVisibility(
 	for (const bo of bodyObjects.values()) {
 		const { body, group, trail } = bo;
 		const dist = bo.cachedDist;
+		const screenR = !bo.noPhysical && bo.radiusScene > 0 ? (bo.radiusScene / dist) * projScale : 0;
 		// The one gate for everything the body draws in the main scene.
 		const drawn = isDrawn(bo);
 		bo.root.visible = drawn;
 
 		let showLabel: boolean;
-		let isClose: boolean;
 		const isFocused = body.data.id === focusedBodyId;
 		const isSystemRoot = focusedSystemId !== null && body.data.id === focusedSystemId;
 		const centreShare = ctx.visibility.systemCentres.get(body.data.id);
@@ -389,7 +390,6 @@ export function updateBodyVisibility(
 				: (centreShare ?? ctx.visibility.systemShares.get(body.data.id) ?? 1 - insideShare);
 			const visible = ctx.visibility.starShareOf(body.data.id, isHeldStar) > 0 && zoneShare > 0;
 			group.visible = visible;
-			isClose = false;
 			showLabel = visible;
 		} else if (
 			bo.mesh === null &&
@@ -419,7 +419,6 @@ export function updateBodyVisibility(
 				group.visible = visible;
 				if (trail) trail.visible = visible;
 				showLabel = visible;
-				isClose = false;
 			} else {
 				const vis = ctx.visibility.getPlanetVisibility(body, dist);
 				zoneShare = ctx.visibility.fullRenderingShare(body);
@@ -427,7 +426,6 @@ export function updateBodyVisibility(
 				group.visible = visible;
 				if (trail) trail.visible = visible;
 				showLabel = visible;
-				isClose = false;
 			}
 		} else {
 			// Moons, planets, spacecraft, asteroids, comets, dwarf planets
@@ -441,8 +439,8 @@ export function updateBodyVisibility(
 				: bodyVisFlags(vis, zoneShare > 0, isFocused || isSystemRoot);
 			group.visible = vf.groupVisible;
 			if (trail) trail.visible = vf.orbitVisible;
-			showLabel = vf.showLabel;
-			isClose = vf.isClose;
+			// Decided here so that the threshold fade below follows it.
+			showLabel = vf.showLabel || (vf.isClose && keepsCloseLabel(isFocused, screenR));
 		}
 
 		if (focusedSystemId !== null && ctx.visibility.isBodyInSystem(body, focusedSystemId)) {
@@ -459,7 +457,6 @@ export function updateBodyVisibility(
 		if (!drawn || centreShare === 0) {
 			group.visible = false;
 			showLabel = false;
-			isClose = false;
 		}
 		// A curve whose centre body has no place has nowhere to be drawn.
 		if (trail && (!drawn || body.orbitCenter === null)) trail.visible = false;
@@ -480,7 +477,6 @@ export function updateBodyVisibility(
 			starIsPoint = discShare === 0;
 			(bo.starPoint.material as ShaderMaterial).uniforms.uDistancePc.value = dist / PC_SCENE;
 			group.visible = true;
-			isClose = false;
 			showLabel = true;
 		}
 
@@ -538,14 +534,13 @@ export function updateBodyVisibility(
 			}
 		}
 
-		const screenR = !bo.noPhysical && bo.radiusScene > 0 ? (bo.radiusScene / dist) * projScale : 0;
 		const haloShare = ctx.visibility.haloThresholdShare(body.data.id, screenR < HALO_RADIUS_PX);
 		if (isFocused) ctx.visibility.focusedAtFullSize = drawn && haloShare === 0;
 		if (trail) {
 			trail.userData.haloShare = haloShare;
 			if (haloShare === 0) trail.visible = false;
 		}
-		if (applyLabelDisplay(bo, showLabel, isClose, screenR, haloShare, focusedBodyId)) {
+		if (applyLabelDisplay(bo, showLabel, screenR, haloShare)) {
 			newlyShownLabel = true;
 		}
 		const labelShare = bo.starPoint

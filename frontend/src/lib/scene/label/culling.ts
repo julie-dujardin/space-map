@@ -140,6 +140,12 @@ export function restoreLabel(
 	if (noteStack) noteStack.style.display = '';
 }
 
+/** CLOSE can fire on distant bodies too, so only the focus or a body of 1 px or
+ *  more keeps its label there, until its disc fills most of the view. */
+export function keepsCloseLabel(isFocused: boolean, screenR: number): boolean {
+	return (isFocused || screenR >= 1) && screenR < HALO_RADIUS_PX * HIDE_LABEL_BODY_HALO_FACTOR;
+}
+
 /**
  * Applies label visibility for a body, handling the close-in case where the
  * rendered sphere is large enough to replace the halo indicator. Returns true
@@ -149,28 +155,16 @@ export function restoreLabel(
 export function applyLabelDisplay(
 	bo: BodyObjects,
 	show: boolean,
-	isClose: boolean,
 	screenR: number,
-	haloShare: number,
-	focusedBodyId: string | undefined
+	haloShare: number
 ): boolean {
 	const { label, labelHalo } = bo;
 	if (!label) return false;
 	const wasVisible = label.visible;
 
-	const isFocused = bo.body.data.id === focusedBodyId;
 	// The resolved disc replaces the halo; its name stays on the limb.
 	const hideHaloRing = screenR >= HALO_RADIUS_PX;
 
-	if (!show && isClose) {
-		// CLOSE tier but label was suppressed (e.g. outer moons when zoomed into
-		// their parent system): re-show the label until the sphere fills most
-		// of the screen. Skip unless we're actually zoomed into this body or
-		// it's ≥1px onscreen — CLOSE can fire on distant bodies too.
-		if (isFocused || screenR >= 1) {
-			show = screenR < HALO_RADIUS_PX * HIDE_LABEL_BODY_HALO_FACTOR;
-		}
-	}
 	// Once the disc replaces the halo, the name is anchored on the right limb. If
 	// that limb has left the viewport the name would be off screen anyway (the body
 	// fills the view or sits past the right edge) — drop it.
