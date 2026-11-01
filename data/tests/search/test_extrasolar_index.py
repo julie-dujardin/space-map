@@ -7,10 +7,13 @@ import pytest
 
 from space_map_data.export.extrasolar import planets
 from space_map_data.export.extrasolar.build import export_extrasolar
+from space_map_data.export.extrasolar.reader import ExportReader
+from space_map_data.export.groups.star_lineup import drawable_star_radii
 from space_map_data.extrasolar.systems import drawn
 from space_map_data.search.indices import objects
 from space_map_data.search.indices.catalog import CATALOG_INDEX
 from space_map_data.search.indices.extrasolar import (
+    _mark_drawable,
     build_extrasolar_documents,
     designations,
     host_document,
@@ -64,6 +67,26 @@ class TestExtrasolarDocuments:
             "HD 1",
             f"Gaia DR3 {built.ids[0] * 7}",
         ]
+
+    def test_only_a_star_with_a_size_and_a_colour_is_drawable(self, exported):
+        _, out = exported
+        docs = list(build_extrasolar_documents(out))
+        reader = ExportReader(out / "v1" / "x")
+        hosts = [doc for doc in docs if doc["kind"] == "object"]
+        ids = [int(doc["id"].removeprefix("x-")) for doc in hosts]
+        radii = drawable_star_radii(reader, ids)
+        assert radii
+        assert {
+            int(doc["id"].removeprefix("x-")): doc["diameter_km"] / 2
+            for doc in hosts
+            if doc["object"].get("drawable")
+        } == radii
+
+    def test_no_extrasolar_export_only_leaves_the_stars_undrawable(self, tmp_path):
+        host = {"id": "x-1", "kind": "object", "object": {"id": "x-1"}}
+        stars = [host]
+        _mark_drawable(stars, tmp_path)
+        assert stars == [{"id": "x-1", "kind": "object", "object": {"id": "x-1"}}]
 
     def test_a_planet_document(self, exported):
         built, out = exported
@@ -181,6 +204,7 @@ class TestHostWithAnEntry:
             "type": "star",
             "extrasolar": True,
             "planets": 2,
+            "drawable": True,
             "designations": ["HD 1", f"Gaia DR3 {built.ids[0] * 7}"],
             "aliases_en": ["HD 1"],
         }

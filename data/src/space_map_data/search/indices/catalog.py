@@ -59,6 +59,7 @@ def _catalog_settings() -> dict[str, Any]:
             "object.pha",
             "object.ops_status",
             "object.render_quality",
+            "object.drawable",
             "object.magnitude",
             "object.inception",
             "object.extrasolar",

@@ -152,6 +152,21 @@ def _load_earth_membership(export_dir: Path) -> dict[str, list[str]]:
     return inverted
 
 
+def _load_sized_craft(export_dir: Path) -> set[str]:
+    """The objects whose bundle is the craft itself, with a span to draw it at."""
+    path = export_dir / "v1" / "models" / "index.json"
+    if not path.exists():
+        logger.warning("No model index at %s — no craft is drawable", path)
+        return set()
+    bundles: dict[str, dict[str, Any]] = json.loads(path.read_text())["bundles"]
+    return {
+        attached["id"]
+        for bundle in bundles.values()
+        if bundle.get("kind") != "shape_model" and bundle.get("scale_meters")
+        for attached in bundle["objects"]
+    }
+
+
 def _spacecraft_category(g: dict[str, Any], otype: str) -> str | None:
     """Category slug for a tracked craft, for the search filter. Spacecraft in
     the CelesTrak (NORAD) catalog orbit Earth (`cat-satellites`); the rest are
@@ -242,6 +257,7 @@ def build_object_documents(
 
     localized = _load_localized(objects_dir)
     earth_groups = _load_earth_membership(export_dir)
+    sized_craft = _load_sized_craft(export_dir)
     manual_aliases = read_manual_aliases()
     global_files = sorted(global_dir.glob("*.json.gz"))
     logger.info("Streaming %d global object bundles", len(global_files))
@@ -360,6 +376,11 @@ def build_object_documents(
                 radii_diameter = _radii_diameter_km(g["radii"])
                 if radii_diameter is not None:
                     doc["diameter_km"] = radii_diameter
+            # A star's own size is in the extrasolar export (`extrasolar`).
+            if not obj_id.startswith(STAR_PREFIX) and (
+                obj_id in sized_craft or doc.get("diameter_km")
+            ):
+                obj["drawable"] = True
             thumb = pick_thumbnail(g.get("images"))
             if thumb:
                 doc["thumbnail"] = thumb

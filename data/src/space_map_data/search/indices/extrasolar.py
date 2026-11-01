@@ -33,7 +33,11 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
+from space_map_data.export.extrasolar.build import served
+from space_map_data.export.extrasolar.reader import ExportReader
+from space_map_data.export.groups.star_lineup import drawable_star_radii
 from space_map_data.export.objects.stars import PLANET_ID
+from space_map_data.export.objects.stars import PREFIX as STAR_PREFIX
 
 from .base import extrasolar_pk, planet_pk
 from .objects import build_object_documents
@@ -172,6 +176,8 @@ def build_extrasolar_documents(
     )
     merged = 0
     entries = 0
+    # Held back: whether a star can be drawn is read for all of them at once.
+    stars: list[dict[str, Any]] = []
     for doc in objects:
         if PLANET_ID.match(doc["id"]):
             # The entry of a planet the extrasolar export does not serve has no page.
@@ -186,7 +192,10 @@ def build_extrasolar_documents(
         if (facts := systems.get(doc["id"])) is not None:
             _add_system_facts(doc["object"], facts)
             merged += 1
-        yield doc
+        if doc["id"].startswith(STAR_PREFIX):
+            stars.append(doc)
+        else:
+            yield doc
     logger.info(
         "Put the facts of %d hosts and systems on their object documents, and"
         " the entries of %d planets on their planet documents",
@@ -196,8 +205,28 @@ def build_extrasolar_documents(
     for key, host in hosts.items():
         if (facts := systems.get(key)) is not None:
             _add_system_facts(host["object"], facts)
-        yield host
+        stars.append(host)
+    _mark_drawable(stars, extrasolar_dir)
+    yield from stars
     yield from planets.values()
+
+
+def _mark_drawable(stars: list[dict[str, Any]], extrasolar_dir: Path) -> None:
+    """Give the stars and systems a row can draw the size it draws them at."""
+    if not stars:
+        return
+    root = extrasolar_dir / "v1" / "x"
+    ids = [int(doc["id"].removeprefix(STAR_PREFIX)) for doc in stars]
+    with served(extrasolar_dir):
+        if not (root / "metadata.json").exists():
+            logger.warning("No star is drawable: no export at %s", root)
+            return
+        radii = drawable_star_radii(ExportReader(root), ids)
+    for id_, doc in zip(ids, stars):
+        if id_ in radii:
+            doc["object"]["drawable"] = True
+            doc["diameter_km"] = 2 * radii[id_]
+    logger.info("%d of %d stars and systems can be drawn", len(radii), len(ids))
 
 
 def _read_documents(

@@ -158,6 +158,66 @@ class TestMoons:
         assert docs["naif-65067"]["iau_named"] is False
 
 
+class TestDrawable:
+    """`drawable` marks what the comparison row can size."""
+
+    def documents(self, tmp_path, monkeypatch, entries, bundles, keep=frozenset()):
+        monkeypatch.setattr(objects, "LANGUAGES", ("en",))
+        monkeypatch.setattr(objects, "read_manual_aliases", dict)
+        directory = tmp_path / "v1" / "objects" / "__global__"
+        directory.mkdir(parents=True)
+        (directory / "0.json.gz").write_bytes(
+            gzip.compress(json.dumps(entries).encode())
+        )
+        models = tmp_path / "v1" / "models"
+        models.mkdir()
+        (models / "index.json").write_text(json.dumps({"bundles": bundles}))
+        return {
+            doc["object"]["id"]: doc["object"]
+            for doc in objects.build_object_documents(tmp_path, keep)
+        }
+
+    def test_a_size_or_a_sized_craft(self, tmp_path, monkeypatch):
+        craft = {"type": "spacecraft", "name": "Craft"}
+        docs = self.documents(
+            tmp_path,
+            monkeypatch,
+            {
+                "naif-599": {"type": "planet", "name": "J", "radii": {"a": 71492}},
+                "spkid-1": {"type": "comet", "name": "C", "sbdb": {"diameter": 3.0}},
+                "norad_satcat-1": craft,
+                "norad_satcat-2": craft,
+                "norad_satcat-3": craft,
+            },
+            {
+                "sized": {"scale_meters": 2.0, "objects": [{"id": "norad_satcat-1"}]},
+                "unsized": {"objects": [{"id": "norad_satcat-2"}]},
+            },
+        )
+        drawable = {id_ for id_, obj in docs.items() if obj.get("drawable")}
+        assert drawable == {"naif-599", "spkid-1", "norad_satcat-1"}
+
+    def test_a_shape_model_is_no_craft(self, tmp_path, monkeypatch):
+        docs = self.documents(
+            tmp_path,
+            monkeypatch,
+            {"norad_satcat-1": {"type": "spacecraft", "name": "Craft"}},
+            {
+                "shape": {
+                    "kind": "shape_model",
+                    "scale_meters": 2.0,
+                    "objects": [{"id": "norad_satcat-1"}],
+                }
+            },
+        )
+        assert "drawable" not in docs["norad_satcat-1"]
+
+    def test_a_star_does_not_go_by_its_entry(self, tmp_path, monkeypatch):
+        star = {"type": "star", "name": "S", "radii": {"a": 700000}}
+        docs = self.documents(tmp_path, monkeypatch, {"x-1": star}, {}, {"x-1"})
+        assert "drawable" not in docs["x-1"]
+
+
 class TestExtrasolarStars:
     """A star of the extrasolar catalogue is a document when its entry in the
     base locale has a Wikipedia extract, or when it hosts planets."""
