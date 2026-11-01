@@ -67,6 +67,7 @@ from .extractor import (
     ALIAS_ANGLE_RAD,
     DEFAULT_EPS_DEG,
     ExtractionResult,
+    log_losses,
     manifest_entry,
 )
 from .segments import (
@@ -135,7 +136,8 @@ class _Probe:
     planned: dict[int, str] = field(default_factory=dict)
     pending: int = 0
     extracted: int = 0
-    n_gaps: int = 0
+    unresolved_s: float = 0.0
+    n_lost: int = 0
     claimed_s: float = 0.0
     kept_s: float = 0.0
     error: str | None = None
@@ -631,7 +633,8 @@ class _Run:
                         p.error = p.error or f"shard {r.k}: {r.error}"
                         continue
                     p.extracted += 1
-                    p.n_gaps += r.n_gaps
+                    p.unresolved_s += r.unresolved_s
+                    p.n_lost += r.n_lost
                     p.claimed_s += r.claimed_s
                     p.kept_s += r.kept_s
             for probe_id in touched:
@@ -767,20 +770,7 @@ def _finalize(
             p.extracted,
             len(p.planned),
         )
-    if p.n_gaps:
-        logger.warning(
-            "attitude: %s — %d gap probe(s) hit CK coverage holes",
-            c.frame,
-            p.n_gaps,
-        )
-    if p.claimed_s:
-        logger.warning(
-            "attitude: %s — CK windows claim %.1f d but only %.1f d resolve; "
-            "shrunk to the valid runs",
-            c.frame,
-            p.claimed_s / 86400.0,
-            p.kept_s / 86400.0,
-        )
+    log_losses(c.frame, p.unresolved_s, p.n_lost, p.claimed_s, p.kept_s)
     if manifest is None:
         # The CKs carry this probe's instruments, so a frame that resolves
         # nowhere is the likely cause.

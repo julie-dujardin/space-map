@@ -55,9 +55,8 @@ def download_attitude_for(
     `max_new_bytes` caps newly-fetched CK bytes for the whole mission (shared
     across craft); once hit, the CK loop stops and writes the index for
     whatever landed. FK/SCLK are uncapped (KB-MB scale). The export reads each
-    craft from the index's `spacecraft` array. The top-level fields repeat the
-    first craft for `attitude_benchmark.py`. Never raises, so one uncurated or
-    failed mission can't abort the batch.
+    craft from the index's `spacecraft` array. Never raises, so one uncurated
+    or failed mission can't abort the batch.
     """
     patterns = patterns_for(source.mission)
     if not patterns:
@@ -140,14 +139,9 @@ def download_attitude_for(
             else "no usable spacecraft (CK + FK + SCLK)",
         )
 
-    first = craft[0]
     index = {
         "server": source.server,
         "mission": source.mission,
-        "frame_name": first["frame_name"],
-        "ck_files": first["ck_files"],
-        "fk": first["fk"],
-        "sclk": first["sclk"],
         "spacecraft": craft,
     }
     (mission_dir / ATTITUDE_INDEX_NAME).write_text(

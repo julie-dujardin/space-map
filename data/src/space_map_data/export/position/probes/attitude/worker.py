@@ -152,7 +152,8 @@ class ShardResult:
     probe_id: int
     k: int
     n_keyframes: int
-    n_gaps: int
+    unresolved_s: float
+    n_lost: int
     claimed_s: float
     kept_s: float
     error: str | None
@@ -197,9 +198,16 @@ def _extract_job(job: ShardJob, lo: float, hi: float) -> ShardResult:
         kf = extract_shard(job.frame, job.ck_paths, job.instruments, lo, hi, job.spans)
         save_shard(Path(job.out_path), kf.ets, kf.quats, kf.seg)
     except Exception as exc:
-        return ShardResult(job.probe_id, job.k, 0, 0, 0.0, 0.0, repr(exc))
+        return ShardResult(job.probe_id, job.k, 0, 0.0, 0, 0.0, 0.0, repr(exc))
     return ShardResult(
-        job.probe_id, job.k, len(kf.ets), kf.n_gaps, kf.claimed_s, kf.kept_s, None
+        job.probe_id,
+        job.k,
+        len(kf.ets),
+        kf.unresolved_s,
+        kf.n_lost,
+        kf.claimed_s,
+        kf.kept_s,
+        None,
     )
 
 

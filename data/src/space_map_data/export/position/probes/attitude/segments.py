@@ -80,18 +80,6 @@ def is_spin_plan(segments: list[SpinSegment]) -> bool:
     return any(s.baseline is not None or s.seed_dt != SEED_DT_S for s in segments)
 
 
-def plan_segments(
-    frame: str, t0: float, t1: float, *, alias_angle: float, seed_dt: float
-) -> list[SpinSegment]:
-    """Partition `[t0, t1]` into spans, fitting a baseline per span. Returns
-    a single raw span for a non-spinner."""
-    ets = spin_timeline_ets(t0, t1)
-    omegas = spin_omegas(frame, ets)
-    return segments_from_timeline(
-        frame, t0, t1, ets, omegas, alias_angle=alias_angle, seed_dt=seed_dt
-    )
-
-
 def spin_timeline_ets(t0: float, t1: float) -> np.ndarray:
     """`t0`, then the multiples of a power-of-two step inside `[t0, t1]`.
 
@@ -129,7 +117,7 @@ def segments_from_timeline(
     alias_angle: float,
     seed_dt: float,
 ) -> list[SpinSegment]:
-    """`plan_segments` after the timeline: cut at phase changes, then split
+    """Partition `[t0, t1]` into spans: cut at phase changes, then split
     each phase where its baseline stops holding."""
     if not is_spinner(omegas, alias_angle=alias_angle, seed_dt=seed_dt):
         return [SpinSegment(t0, t1, None, seed_dt)]

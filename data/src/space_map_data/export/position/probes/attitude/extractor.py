@@ -1,29 +1,27 @@
 """Kernels to keyframes: spin spans, adaptive samples, SLERP keyframes.
 
 The caller furnishes SPICE. The export keyframes one 7-day shard at a time
-with `extract_shard`. `extract_attitude` keyframes a whole probe in one call
-and writes its chunks; the benchmark script uses it. A non-spinner is one raw
-span. A spinner (Juno, HUYGENS) has one span per stretch where a fixed-rate
-baseline holds, so the adaptive sampler keyframes a slow residual. Where no
-baseline holds, its span is raw on a short seed step (`segments.py`).
-`manifest_entry` builds the dict for the probe's `__global__` bundle.
+with `extract_shard`. A non-spinner is one raw span. A spinner (Juno, HUYGENS)
+has one span per stretch where a fixed-rate baseline holds, so the adaptive
+sampler keyframes a slow residual. Where no baseline holds, its span is raw on
+a short seed step (`segments.py`). `manifest_entry` builds the dict for the
+probe's `__global__` bundle.
 """
 
 import itertools
 import logging
 import math
 from dataclasses import dataclass
-from pathlib import Path
 
 import numpy as np
 import spiceypy
 
-from .adaptive import MIN_DT_S, SEED_DT_S, adaptive_sample, point_sample
+from .adaptive import MIN_DT_S, adaptive_sample, point_sample
 from .baseline import SpinBaseline
 from .keyframes import extract_keyframes
-from .sample import ck_instrument_ids, ck_windows, craft_instruments
-from .segments import SpinSegment, is_spin_plan, plan_segments
-from .writer import ChunkFile, write_chunks
+from .sample import ck_windows, merge_windows
+from .segments import SpinSegment, is_spin_plan
+from .writer import ChunkFile
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +44,10 @@ VALIDATE_STEP_S = 3600.0
 # A window this short is a lone CK record, which resolves only at its instant.
 # OSIRIS-REx's bus is nothing else for weeks at a time.
 POINT_WINDOW_S = 1.0
+# Short kernel faults and the margins of shrunk windows stay under these. More
+# suggests a missing kernel or frame link.
+UNRESOLVED_WARN_S = 86400.0
+LOST_RECORDS_WARN = 1000
 
 _J2000_JD = 2451545.0
 _S_PER_DAY = 86400.0
@@ -66,94 +68,34 @@ def _et_to_jd(et: float) -> float:
     return _J2000_JD + et / _S_PER_DAY
 
 
-def extract_attitude(
-    out_dir: Path,
-    ck_paths: list[str],
-    bus_instr_id: int,
-    frame_name: str,
-    *,
-    eps_deg: float = DEFAULT_EPS_DEG,
-) -> ExtractionResult:
-    """Extract attitude for one probe and write its chunk files.
-
-    Caller furnishes kernels. `bus_instr_id` is the CK instrument ID
-    (typically `naif_id × 1000`); `frame_name` is FK-registered and
-    resolvable by `pxform("J2000", frame_name, et)`. Coverage is the union
-    of `ck_paths`, partitioned into spin spans, then sampled adaptively and
-    keyframed span-by-span to bound memory over decades.
-
-    No coverage returns an empty result (n_keyframes=0).
-    """
-    windows = ck_windows(ck_paths, bus_instr_id)
-    if not windows:
-        # Some missions' bus frame is a switch frame whose CK segments carry a
-        # sub-instrument ID, not `naif*1000` (Hera delegates to -91002).
-        actual = craft_instruments(
-            ck_instrument_ids(ck_paths) - {bus_instr_id}, bus_instr_id
+def log_losses(
+    frame: str, unresolved_s: float, n_lost: int, claimed_s: float, kept_s: float
+) -> None:
+    """Log what a probe's CKs claim and SPICE does not resolve. Only a loss
+    too large to be round-off or a short fault is a warning."""
+    if unresolved_s:
+        logger.log(
+            logging.WARNING if unresolved_s > UNRESOLVED_WARN_S else logging.INFO,
+            "attitude: %s — %.0f s of CK windows do not resolve",
+            frame,
+            unresolved_s,
         )
-        if actual:
-            logger.info(
-                "attitude: no CK coverage for instrument %d; files carry %s — "
-                "using their union",
-                bus_instr_id,
-                actual,
-            )
-            for instr in actual:
-                windows += ck_windows(ck_paths, instr)
-            windows.sort()
-    windows, claimed, kept = _validate_windows(frame_name, windows)
-    if claimed:
-        logger.warning(
+    if n_lost:
+        logger.log(
+            logging.WARNING if n_lost > LOST_RECORDS_WARN else logging.INFO,
+            "attitude: %s — %d lone CK records do not resolve",
+            frame,
+            n_lost,
+        )
+    if claimed_s:
+        logger.log(
+            logging.WARNING if kept_s < claimed_s / 2.0 else logging.INFO,
             "attitude: %s — CK windows claim %.1f d but only %.1f d resolve; "
             "shrunk to the valid runs",
-            frame_name,
-            claimed / 86400.0,
-            kept / 86400.0,
+            frame,
+            claimed_s / 86400.0,
+            kept_s / 86400.0,
         )
-    if not windows:
-        logger.info("attitude: no CK coverage for instrument %d", bus_instr_id)
-        return ExtractionResult(0, write_chunks(out_dir, []), [], 0.0, 0.0)
-    global_start = windows[0][0]
-    global_end = max(end for _, end in windows)
-
-    segments = plan_segments(
-        frame_name,
-        global_start,
-        global_end,
-        alias_angle=ALIAS_ANGLE_RAD,
-        seed_dt=SEED_DT_S,
-    )
-
-    eps_rad = math.radians(eps_deg)
-    seg_streams: list[tuple[np.ndarray, np.ndarray]] = []
-    n_samples = 0
-    n_gaps = 0
-    for seg in segments:
-        ets, quats, samples, gaps = _keyframe_segment(frame_name, seg, windows, eps_rad)
-        n_samples += samples
-        n_gaps += gaps
-        seg_streams.append((ets, quats))
-
-    if n_gaps:
-        # CK gaps are normal for busy orbiters; one line per probe instead of
-        # per-file to avoid spamming thousands of identical warnings.
-        logger.warning(
-            "attitude: %s — %d gap probe(s) hit CK coverage holes",
-            frame_name,
-            n_gaps,
-        )
-
-    files = write_chunks(out_dir, seg_streams)
-    # Coverage from emitted keyframes, not the CK-claimed window — kernels can
-    # claim years with no resolvable data (Spitzer claims 2000, first keyframe
-    # 2005), and the frontend treats this span as "attitude available".
-    return ExtractionResult(
-        n_keyframes=sum(len(ets) for ets, _ in seg_streams),
-        files=files,
-        segments=segments,
-        coverage_start_jd=files[0].start_jd if files else 0.0,
-        coverage_end_jd=files[-1].end_jd if files else 0.0,
-    )
 
 
 def _resolves(frame_name: str, et: float) -> bool:
@@ -243,7 +185,8 @@ class ShardKeyframes:
     ets: np.ndarray
     quats: np.ndarray
     seg: np.ndarray
-    n_gaps: int
+    unresolved_s: float
+    n_lost: int
     claimed_s: float
     kept_s: float
 
@@ -266,19 +209,22 @@ def extract_shard(
     `spans` holds `(span index, span clipped to the shard)` pairs; a
     non-spinner gives one raw span.
     """
-    windows: list[tuple[float, float]] = []
-    for instr in instruments:
-        windows += ck_windows(ck_paths, instr)
-    windows.sort()
-    windows, claimed, kept = _validate_windows(frame_name, windows, lo, hi)
+    all_windows = [w for instr in instruments for w in ck_windows(ck_paths, instr)]
+    windows, claimed, kept = _validate_windows(
+        frame_name, merge_windows(all_windows), lo, hi
+    )
     eps_rad = math.radians(eps_deg)
     ets_parts: list[np.ndarray] = [np.empty(0)]
     quat_parts: list[np.ndarray] = [np.empty((0, 4))]
     seg_parts: list[np.ndarray] = [np.empty(0, dtype=np.int16)]
-    n_gaps = 0
+    unresolved_s = 0.0
+    n_lost = 0
     for index, seg in spans:
-        ets, quats, _, gaps = _keyframe_segment(frame_name, seg, windows, eps_rad)
-        n_gaps += gaps
+        ets, quats, unresolved, lost = _keyframe_segment(
+            frame_name, seg, windows, eps_rad
+        )
+        unresolved_s += unresolved
+        n_lost += lost
         ets_parts.append(ets)
         quat_parts.append(quats)
         seg_parts.append(np.full(len(ets), index, dtype=np.int16))
@@ -286,7 +232,8 @@ def extract_shard(
         ets=np.concatenate(ets_parts),
         quats=np.concatenate(quat_parts),
         seg=np.concatenate(seg_parts),
-        n_gaps=n_gaps,
+        unresolved_s=unresolved_s,
+        n_lost=n_lost,
         claimed_s=claimed,
         kept_s=kept,
     )
@@ -297,26 +244,26 @@ def _keyframe_segment(
     seg: SpinSegment,
     windows: list[tuple[float, float]],
     eps_rad: float,
-) -> tuple[np.ndarray, np.ndarray, int, int]:
-    """Adaptive-sample + keyframe one span → `(ets, quats, n_samples, n_gaps)`.
+) -> tuple[np.ndarray, np.ndarray, float, int]:
+    """Adaptive-sample + keyframe one span →
+    `(ets, quats, unresolved_s, n_lost)`.
 
     Each CK window is clipped to the span, then tiled to `TILE_S` so one
     call's sample stream stays bounded; `last_et` keeps keyframes
     time-ascending and drops the duplicate sample at each tile boundary. A
-    run of point windows is one stream of their instants. The span's
-    endpoints are sampled in both adjacent spans' frames, so the decoder
+    run of point windows is one stream of their instants. A span's endpoints
+    that resolve are sampled in both adjacent spans' frames, so the decoder
     never SLERPs across the baseline switch.
     """
     transform = seg.baseline.residual if seg.baseline else None
     ets_parts: list[np.ndarray] = []
     quat_parts: list[np.ndarray] = []
     last_et = -math.inf
-    n_samples = 0
-    n_gaps = 0
+    unresolved_s = 0.0
+    n_lost = 0
 
     def keep_keyframes(ets: np.ndarray, stream: np.ndarray) -> None:
-        nonlocal last_et, n_samples
-        n_samples += ets.size
+        nonlocal last_et
         keep = [i for i in extract_keyframes(stream, ets, eps_rad) if ets[i] > last_et]
         if keep:
             ets_parts.append(ets[keep])
@@ -328,19 +275,19 @@ def _keyframe_segment(
             instants = [
                 a for a, _ in run if max(seg.start_et, last_et) <= a <= seg.end_et
             ]
-            ets, stream, gaps = point_sample(frame_name, instants, transform)
-            n_gaps += gaps
+            ets, stream, lost = point_sample(frame_name, instants, transform)
+            n_lost += lost
             keep_keyframes(ets, stream)
             continue
         for win_start, win_end in run:
             start = max(win_start, seg.start_et, last_et)
             end = min(win_end, seg.end_et)
-            while end - start > POINT_WINDOW_S:
+            while start < end:
                 tile_end = min(end, start + TILE_S)
                 # A raw fast spin turns degrees per second and its CK records
                 # kink the rate, so its refinement floor scales with its seed
                 # step.
-                ets, stream, gaps = adaptive_sample(
+                ets, stream, unresolved = adaptive_sample(
                     frame_name,
                     start,
                     tile_end,
@@ -349,12 +296,17 @@ def _keyframe_segment(
                     min_dt=min(MIN_DT_S, seg.seed_dt / 4),
                     transform=transform,
                 )
-                n_gaps += gaps
+                unresolved_s += unresolved
                 keep_keyframes(ets, stream)
                 start = tile_end
     if not quat_parts:
-        return np.empty(0), np.empty((0, 4)), n_samples, n_gaps
-    return np.concatenate(ets_parts), np.concatenate(quat_parts), n_samples, n_gaps
+        return np.empty(0), np.empty((0, 4)), unresolved_s, n_lost
+    return (
+        np.concatenate(ets_parts),
+        np.concatenate(quat_parts),
+        unresolved_s,
+        n_lost,
+    )
 
 
 def _is_point(window: tuple[float, float]) -> bool:

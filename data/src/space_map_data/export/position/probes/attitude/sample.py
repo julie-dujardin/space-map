@@ -58,30 +58,19 @@ def ck_windows(ck_paths: list[str], instr_id: int) -> list[tuple[float, float]]:
         for i in range(spiceypy.wncard(cover)):
             start, end = spiceypy.wnfetd(cover, i)
             windows.append((float(start), float(end)))
-    windows.sort()
+    return merge_windows(windows)
+
+
+def merge_windows(windows: list[tuple[float, float]]) -> list[tuple[float, float]]:
+    """`windows` sorted, with those that overlap made one."""
     merged: list[tuple[float, float]] = []
-    for start, end in windows:
+    for start, end in sorted(windows):
         if merged and start <= merged[-1][1]:
             if end > merged[-1][1]:
                 merged[-1] = (merged[-1][0], end)
             continue
         merged.append((start, end))
     return merged
-
-
-def ck_instrument_ids(ck_paths: list[str]) -> set[int]:
-    """Union of CK instrument IDs present across `ck_paths`."""
-    ids: set[int] = set()
-    cell = _ids_cell()
-    for path in ck_paths:
-        spiceypy.scard(0, cell)
-        try:
-            spiceypy.ckobj(path, cell)
-        except spiceypy.exceptions.SpiceyError:
-            logger.warning("attitude: ckobj failed for %s, skipping", path)
-            continue
-        ids |= {int(cell[i]) for i in range(spiceypy.card(cell))}
-    return ids
 
 
 def ck_segment_coverage(path: str) -> dict[int, list[tuple[float, float]]]:

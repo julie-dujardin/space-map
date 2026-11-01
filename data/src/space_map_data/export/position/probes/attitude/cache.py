@@ -21,7 +21,7 @@ import numpy as np
 from space_map_data.export.sidecar_io import read_sidecar, write_atomic
 
 # The probe cache file and the shard signatures: a bump extracts every shard.
-CACHE_VERSION = 5
+CACHE_VERSION = 6
 # The coverage entries: a bump reads every CK again.
 COVERAGE_VERSION = 5
 # The spin plan: a bump plans every probe again.

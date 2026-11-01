@@ -4,6 +4,7 @@ end-to-end smoke lives in `scripts/probe_orientation_smoke.py`.
 """
 
 import itertools
+import logging
 import math
 import struct
 from pathlib import Path
@@ -523,7 +524,9 @@ class TestAttitudeCache:
                     quats = np.tile([1.0, 0.0, 0.0, 0.0], (4, 1))
                     seg = np.zeros(4, dtype=np.int16)
                     save_shard(Path(job.out_path), ets, quats, seg)
-                    results.append(ShardResult(job.probe_id, k, 4, 0, 0.0, 0.0, None))
+                    results.append(
+                        ShardResult(job.probe_id, k, 4, 0.0, 0, 0.0, 0.0, None)
+                    )
             return ShardTaskResult(results, 0, 0.0)
 
         class Pool(ThreadPoolExecutor):
@@ -897,7 +900,9 @@ class TestSpinPlan:
             ALIAS_ANGLE_RAD,
         )
         from space_map_data.export.position.probes.attitude.segments import (
-            plan_segments,
+            segments_from_timeline,
+            spin_omegas,
+            spin_timeline_ets,
         )
 
         def pxform(_from: str, _to: str, et: float) -> np.ndarray:
@@ -906,8 +911,15 @@ class TestSpinPlan:
 
         monkeypatch.setattr(spiceypy, "pxform", pxform)
         monkeypatch.setattr(spiceypy, "m2q", lambda q: q)
-        return plan_segments(
-            "F", t0, t1, alias_angle=ALIAS_ANGLE_RAD, seed_dt=SEED_DT_S
+        ets = spin_timeline_ets(t0, t1)
+        return segments_from_timeline(
+            "F",
+            t0,
+            t1,
+            ets,
+            spin_omegas("F", ets),
+            alias_angle=ALIAS_ANGLE_RAD,
+            seed_dt=SEED_DT_S,
         )
 
     @staticmethod
@@ -1024,7 +1036,7 @@ def test_raw_span_refines_below_a_second_on_a_short_seed(monkeypatch) -> None:
 
     def fake_sample(frame, t0, t1, eps, *, seed_dt, min_dt, transform):
         floors[seed_dt] = min_dt
-        return np.array([t0, t1]), np.tile(_IDENTITY, (2, 1)), 0
+        return np.array([t0, t1]), np.tile(_IDENTITY, (2, 1)), 0.0
 
     monkeypatch.setattr(extractor, "adaptive_sample", fake_sample)
     for seg in (SpinSegment(0.0, 100.0, None, 1.6), SpinSegment(0.0, 100.0, None)):
@@ -1032,41 +1044,39 @@ def test_raw_span_refines_below_a_second_on_a_short_seed(monkeypatch) -> None:
     assert floors == {1.6: pytest.approx(0.4), 300.0: 1.0}
 
 
+def _spice(monkeypatch, resolves, half_angle=lambda et: 0.25e-3 * et) -> None:
+    """A fake SPICE that resolves where `resolves` says and turns about Z."""
+    import spiceypy
+
+    def pxform(_from: str, _to: str, et: float) -> np.ndarray:
+        if not resolves(et):
+            raise spiceypy.exceptions.SpiceyError("gap")
+        half = half_angle(et)
+        return np.array([math.cos(half), 0.0, 0.0, math.sin(half)])
+
+    monkeypatch.setattr(spiceypy, "pxform", pxform)
+    monkeypatch.setattr(spiceypy, "m2q", lambda q: q)
+
+
+def _keyframes(windows, end: float):
+    from space_map_data.export.position.probes.attitude import extractor
+    from space_map_data.export.position.probes.attitude.segments import SpinSegment
+
+    return extractor._keyframe_segment(
+        "F", SpinSegment(0.0, end, None), windows, math.radians(0.1)
+    )
+
+
 class TestPointWindows:
     """A lone CK record resolves only at its instant, and the sampler must
     still keep it. The fake turns 0.5 mrad per second about Z."""
 
-    @staticmethod
-    def _spice(monkeypatch, resolves) -> None:
-        import spiceypy
-
-        def pxform(_from: str, _to: str, et: float) -> np.ndarray:
-            if not resolves(et):
-                raise spiceypy.exceptions.SpiceyError("gap")
-            half = 0.25e-3 * et
-            return np.array([math.cos(half), 0.0, 0.0, math.sin(half)])
-
-        monkeypatch.setattr(spiceypy, "pxform", pxform)
-        monkeypatch.setattr(spiceypy, "m2q", lambda q: q)
-
-    @staticmethod
-    def _keyframes(windows, end: float):
-        from space_map_data.export.position.probes.attitude import extractor
-        from space_map_data.export.position.probes.attitude.segments import (
-            SpinSegment,
-        )
-
-        return extractor._keyframe_segment(
-            "F", SpinSegment(0.0, end, None), windows, math.radians(0.1)
-        )
-
     def test_point_windows_become_keyframes(self, monkeypatch) -> None:
         points = [(120.0 * i, 120.0 * i) for i in range(1, 500)]
         instants = {a for a, _ in points}
-        self._spice(monkeypatch, instants.__contains__)
-        ets, quats, n_samples, n_gaps = self._keyframes(points, 1e6)
-        assert n_samples == len(points)
-        assert n_gaps == 0
+        _spice(monkeypatch, instants.__contains__)
+        ets, quats, _, n_lost = _keyframes(points, 1e6)
+        assert n_lost == 0
         assert set(ets) <= instants
         assert ets[0] == 120.0
         # A steady turn is one geodesic, so the 90 degree cap sets the cuts.
@@ -1084,27 +1094,149 @@ class TestPointWindows:
                 a for a, _ in points
             }
 
-        self._spice(monkeypatch, covered)
-        ets, _, _, n_gaps = self._keyframes(windows, 1e6)
-        assert n_gaps == 0
+        _spice(monkeypatch, covered)
+        ets, _, unresolved_s, n_lost = _keyframes(windows, 1e6)
+        assert (unresolved_s, n_lost) == (0.0, 0)
         assert np.all(np.diff(ets) > 0)
         assert {1000.0, 4000.0, 6000.0} <= set(ets)
 
     def test_point_outside_the_span_is_left_out(self, monkeypatch) -> None:
-        self._spice(monkeypatch, lambda _: True)
-        ets, _, _, _ = self._keyframes([(10.0, 10.0), (20.0, 20.0), (50.0, 50.0)], 30.0)
+        _spice(monkeypatch, lambda _: True)
+        ets, *_ = _keyframes([(10.0, 10.0), (20.0, 20.0), (50.0, 50.0)], 30.0)
         assert list(ets) == [10.0, 20.0]
 
     def test_instant_that_does_not_resolve_is_left_out_and_counted(
         self, monkeypatch
     ) -> None:
-        self._spice(monkeypatch, lambda et: et != 20.0)
-        ets, _, n_samples, n_gaps = self._keyframes(
+        _spice(monkeypatch, lambda et: et != 20.0)
+        ets, _, _, n_lost = _keyframes(
             [(10.0, 10.0), (20.0, 20.0), (30.0, 30.0)], 100.0
         )
         assert list(ets) == [10.0, 30.0]
-        assert n_samples == 2
-        assert n_gaps == 1
+        assert n_lost == 1
+
+
+class TestDataEdges:
+    """A CK window can hold less than it claims. The keyframes reach its data,
+    and none is invented where it has none."""
+
+    def test_window_edges_just_off_the_data_keep_their_coverage(
+        self, monkeypatch
+    ) -> None:
+        _spice(monkeypatch, lambda et: 100.0 < et < 200.0)
+        ets, quats, unresolved_s, _ = _keyframes([(100.0, 200.0)], 1e6)
+        assert ets[0] == pytest.approx(100.0, abs=1e-3)
+        assert ets[-1] == pytest.approx(200.0, abs=1e-3)
+        assert unresolved_s == pytest.approx(0.0, abs=1e-2)
+        assert not np.any(np.all(np.isclose(np.abs(quats), _IDENTITY), axis=1))
+
+    def test_window_past_its_data_ends_at_the_data(self, monkeypatch) -> None:
+        _spice(monkeypatch, lambda et: 350.0 <= et <= 850.0)
+        ets, _, unresolved_s, _ = _keyframes([(0.0, 1500.0)], 1e6)
+        assert ets[0] == pytest.approx(350.0, abs=1e-3)
+        assert ets[-1] == pytest.approx(850.0, abs=1e-3)
+        assert unresolved_s == pytest.approx(1000.0, abs=1.0)
+
+    def test_data_between_two_seeds_is_found(self, monkeypatch) -> None:
+        _spice(monkeypatch, lambda et: 50.0 <= et <= 200.0)
+        ets, *_ = _keyframes([(0.0, 250.0)], 1e6)
+        assert ets[0] == pytest.approx(50.0, abs=1e-3)
+        assert ets[-1] == pytest.approx(200.0, abs=1e-3)
+
+    def test_window_with_no_data_has_no_keyframes(self, monkeypatch) -> None:
+        _spice(monkeypatch, lambda _: False)
+        ets, quats, unresolved_s, _ = _keyframes([(0.0, 600.0)], 1e6)
+        assert ets.size == 0
+        assert quats.shape == (0, 4)
+        assert unresolved_s == 600.0
+
+    def test_a_hole_ends_at_the_data_on_both_sides(self, monkeypatch) -> None:
+        """SLERP runs only over the hole, whatever the craft does in it."""
+        _spice(
+            monkeypatch,
+            lambda et: not 500.0 < et < 1000.0,
+            lambda et: 1.0 if et >= 750.0 else 0.0,
+        )
+        ets, quats, unresolved_s, _ = _keyframes([(0.0, 1500.0)], 1e6)
+        assert not np.any((ets > 500.001) & (ets < 999.999))
+        assert ets[-1] == 1500.0
+        before = np.flatnonzero(ets <= 500.0)[-1]
+        assert ets[before] == pytest.approx(500.0, abs=1e-3)
+        assert ets[before + 1] == pytest.approx(1000.0, abs=1e-3)
+        assert angle_between(quats[before], _IDENTITY) == pytest.approx(0.0)
+        assert unresolved_s == pytest.approx(500.0, abs=1.0)
+
+    def test_a_jump_stays_narrow(self, monkeypatch) -> None:
+        """A step under the 1 s floor costs a keyframe each side, not a
+        second of SLERP."""
+        _spice(monkeypatch, lambda _: True, lambda et: 0.5 if et >= 100.3 else 0.0)
+        ets, quats, *_ = _keyframes([(0.0, 600.0)], 1e6)
+        i = np.flatnonzero(np.abs(quats[:, 0] - 1.0) < 1e-9)[-1]
+        assert ets[i] == pytest.approx(100.3, abs=2e-3)
+        assert ets[i + 1] - ets[i] <= 1e-3
+
+    def test_smooth_motion_takes_no_keyframes_below_the_floor(
+        self, monkeypatch
+    ) -> None:
+        _spice(monkeypatch, lambda _: True, lambda et: 0.01 * math.sin(et / 2.3))
+        ets, *_ = _keyframes([(0.0, 600.0)], 1e6)
+        assert ets.size > 20
+        assert np.diff(ets).min() > 0.2
+
+    def test_a_small_jump_is_narrowed_too(self, monkeypatch) -> None:
+        step = math.radians(1.2) / 2.0
+        _spice(monkeypatch, lambda _: True, lambda et: step if et >= 100.3 else 0.0)
+        ets, quats, *_ = _keyframes([(0.0, 600.0)], 1e6)
+        i = np.flatnonzero(np.abs(quats[:, 0] - 1.0) < 1e-9)[-1]
+        assert ets[i + 1] - ets[i] <= 2e-3
+
+    def test_the_tail_of_a_tile_is_sampled(self, monkeypatch) -> None:
+        from space_map_data.export.position.probes.attitude import extractor
+
+        monkeypatch.setattr(extractor, "TILE_S", 300.0)
+        _spice(monkeypatch, lambda _: True)
+        ets, *_ = _keyframes([(0.0, 300.5)], 1e6)
+        assert ets[-1] == 300.5
+
+    def test_windows_of_two_instruments_walk_a_hole_once(self, monkeypatch) -> None:
+        from space_map_data.export.position.probes.attitude import extractor
+        from space_map_data.export.position.probes.attitude.segments import (
+            SpinSegment,
+        )
+
+        monkeypatch.setattr(extractor, "ck_windows", lambda _, __: [(0.0, 1000.0)])
+        _spice(monkeypatch, lambda et: et <= 400.0)
+        shard = extractor.extract_shard(
+            "F", [], [1, 2], 0.0, 1000.0, [(0, SpinSegment(0.0, 1000.0, None))]
+        )
+        assert shard.unresolved_s == pytest.approx(600.0, abs=1.0)
+
+    def test_a_hole_over_a_tile_edge_counts_in_full(self, monkeypatch) -> None:
+        from space_map_data.export.position.probes.attitude import extractor
+
+        monkeypatch.setattr(extractor, "TILE_S", 700.0)
+        _spice(monkeypatch, lambda et: not 400.0 < et < 1000.0)
+        *_, unresolved_s, _ = _keyframes([(0.0, 1400.0)], 1e6)
+        assert unresolved_s == pytest.approx(600.0, abs=1.0)
+
+    @pytest.mark.parametrize(
+        ("unresolved_s", "claimed_s", "kept_s", "warnings"),
+        [
+            (61.0, 0.0, 0.0, 0),
+            (2.0 * D, 0.0, 0.0, 1),
+            (0.0, 7.0 * D, 6.0 * D, 0),
+            (0.0, 7.0 * D, 1.0 * D, 1),
+        ],
+    )
+    def test_only_a_large_loss_is_a_warning(
+        self, caplog, unresolved_s, claimed_s, kept_s, warnings
+    ) -> None:
+        from space_map_data.export.position.probes.attitude.extractor import log_losses
+
+        with caplog.at_level(logging.INFO):
+            log_losses("F", unresolved_s, 3, claimed_s, kept_s)
+        assert len(caplog.messages) >= 2
+        assert sum(r.levelno >= logging.WARNING for r in caplog.records) == warnings
 
 
 class TestManifest:
