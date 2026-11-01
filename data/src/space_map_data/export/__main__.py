@@ -12,6 +12,9 @@ from space_map_data.export.nomenclature.quadrangles import export_quadrangles_on
 from space_map_data.export.objects.stars import export_star_objects_only
 from space_map_data.export.panoramas import export_panoramas_only
 from space_map_data.export.pipeline.orchestrator import export, export_probes_only
+from space_map_data.export.position.probes.attitude.orchestrator import (
+    export_attitude_only,
+)
 
 # After the orchestrator: credits imported first hits the import cycle
 # between export.ephemeris and export.objects.
@@ -43,6 +46,7 @@ def cli():
             "spacecraft",
             "panoramas",
             "probes",
+            "attitude",
             "systems",
             "status",
             "credits",
@@ -100,6 +104,9 @@ def cli():
         return
     if args.only == "status":
         export_status_only()
+        return
+    if args.only == "attitude":
+        export_attitude_only()
         return
     with engine_scope() as engine:
         if args.only == "groups":

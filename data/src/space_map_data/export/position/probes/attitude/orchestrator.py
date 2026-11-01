@@ -41,11 +41,12 @@ from space_map_data.download.providers.spice.probes import MISSIONS_DIR
 from space_map_data.download.providers.spice.probes.attitude.ck_kernels import (
     ATTITUDE_INDEX_NAME,
 )
+from space_map_data.export.in_place import patch_global_bundles, refresh_versions
 from space_map_data.export.position.probes.kernels import kernels_from_index
 from space_map_data.export.sidecar_io import mirror_path
 from space_map_data.probes.probe_id import load_registry
 from space_map_data.utils.content_stamp import content_stamps
-from space_map_data.utils.paths import DOWNLOAD_DIR, SOURCES_POSITION_DIR
+from space_map_data.utils.paths import DOWNLOAD_DIR, EXPORT_DIR, SOURCES_POSITION_DIR
 
 from .adaptive import SEED_DT_S
 from .baseline import SpinBaseline
@@ -206,6 +207,31 @@ def write_attitude(
         run.extract(crafts, global_data, summary)
     logger.info("attitude: wrote chunks for %d probes", len(summary))
     return summary
+
+
+def export_attitude_only() -> None:
+    """`space-map-export --only attitude`: the probe attitude chunks, their
+    manifests in the global bundles and a fresh object token."""
+    out_dir = EXPORT_DIR / "v1"
+    if not (out_dir / "metadata.json").exists():
+        raise SystemExit(f"No export in {out_dir}; run a full export first.")
+    global_data = {f"probe-{e['probe_id']}": {} for e in load_registry()}
+    write_attitude(out_dir, global_data)
+
+    def patch(body_id: str, data: dict) -> bool:
+        if body_id not in global_data:
+            return False
+        manifest = global_data[body_id].get("attitude")
+        if data.get("attitude") == manifest:
+            return False
+        if manifest is None:
+            del data["attitude"]
+        else:
+            data["attitude"] = manifest
+        return True
+
+    patch_global_bundles(out_dir, patch)
+    refresh_versions(out_dir, "objects")
 
 
 def _load_crafts(out_dir: Path) -> list[_Craft]:

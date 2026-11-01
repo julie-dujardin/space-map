@@ -91,5 +91,9 @@ SLERP-interpolated residual from the keyframe stream. Spans never share a
 keyframe interpolation: each carries the boundary attitude, so the decoder
 clamps rather than SLERPing across a baseline switch.
 
+`space-map-export --only attitude` rewrites the chunks that changed and the
+`attitude` key on the global object bundles, then refreshes the `objects`
+version token.
+
 `attitude/` is not a content-versioned class — it carries no `?v=` token and
 falls through to the revalidating cache default (see [Caching & versioning](metadata.md#caching--versioning)).

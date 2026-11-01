@@ -5,6 +5,7 @@ end-to-end smoke lives in `scripts/probe_orientation_smoke.py`.
 
 import gzip
 import itertools
+import json
 import logging
 import math
 import struct
@@ -1264,6 +1265,47 @@ class TestDataEdges:
             log_losses("F", unresolved_s, 3, claimed_s, kept_s)
         assert len(caplog.messages) >= 2
         assert sum(r.levelno >= logging.WARNING for r in caplog.records) == warnings
+
+
+class TestExportAttitudeOnly:
+    """The chunks change apart from a full export, so the bundles must follow."""
+
+    def test_bundles_take_the_new_manifests(self, tmp_path, monkeypatch) -> None:
+        from space_map_data.export.position.probes.attitude import orchestrator
+
+        out = tmp_path / "v1"
+        bundle = out / "objects" / "__global__" / "0.json.gz"
+        bundle.parent.mkdir(parents=True)
+        bodies = {
+            "probe-1": {"attitude": {"n_keyframes": 1}},
+            "probe-2": {"attitude": {"n_keyframes": 2}},
+            "probe-3": {},
+            "mars": {"name": "Mars"},
+        }
+        bundle.write_bytes(gzip.compress(json.dumps(bodies).encode()))
+        (out / "metadata.json").write_text('{"versions": {"objects": "old"}}')
+
+        def write_attitude(_out, global_data) -> None:
+            global_data["probe-1"]["attitude"] = {"n_keyframes": 9}
+            global_data["probe-3"]["attitude"] = {"n_keyframes": 3}
+
+        monkeypatch.setattr(orchestrator, "EXPORT_DIR", tmp_path)
+        monkeypatch.setattr(orchestrator, "write_attitude", write_attitude)
+        monkeypatch.setattr(
+            orchestrator,
+            "load_registry",
+            lambda: [{"probe_id": i} for i in (1, 2, 3)],
+        )
+        orchestrator.export_attitude_only()
+
+        assert json.loads(gzip.decompress(bundle.read_bytes())) == {
+            "probe-1": {"attitude": {"n_keyframes": 9}},
+            "probe-2": {},
+            "probe-3": {"attitude": {"n_keyframes": 3}},
+            "mars": {"name": "Mars"},
+        }
+        metadata = json.loads((out / "metadata.json").read_text())
+        assert metadata["versions"]["objects"] != "old"
 
 
 class TestManifest:
