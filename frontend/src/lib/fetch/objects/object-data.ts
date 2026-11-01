@@ -349,6 +349,9 @@ export interface ProbeAttitude {
 		 *  present only when `baselines` is non-null. */
 		baseline_index?: number;
 	}[];
+	/** Gaps of an hour or more in the CK data, as `[start_jd, end_jd]`, in time
+	 *  order. Absent on bundles from before holes were exported. */
+	holes?: [number, number][];
 }
 
 /** What a curated mission event was: the vocabulary states what happened, and

@@ -43,6 +43,7 @@ export class AttitudeTrack {
 	private readonly endJd: number;
 	private readonly baselines: ProbeAttitude['baselines'];
 	private readonly files: ProbeAttitude['files'];
+	private readonly holes: [number, number][];
 	private readonly chunks = new Map<number, AttitudeChunk>();
 	private readonly inflight = new Set<number>();
 	private readonly retries = new RetryBackoff<number>();
@@ -58,6 +59,7 @@ export class AttitudeTrack {
 		this.endJd = manifest.files.length ? manifest.files[manifest.files.length - 1].end_jd : 0;
 		this.baselines = manifest.baselines;
 		this.files = manifest.files;
+		this.holes = manifest.holes ?? [];
 	}
 
 	/** True when app (UTC) `jd` is inside the track's keyframe coverage. */
@@ -67,7 +69,20 @@ export class AttitudeTrack {
 
 	/** Keyframes and file windows are TDB. */
 	private coversTdb(tdb: number): boolean {
-		return tdb >= this.startJd && tdb <= this.endJd && this.files.length > 0;
+		return tdb >= this.startJd && tdb <= this.endJd && this.files.length > 0 && !this.inHole(tdb);
+	}
+
+	/** The CKs hold nothing in a hole, so a SLERP across it would invent motion. */
+	private inHole(tdb: number): boolean {
+		const holes = this.holes;
+		let lo = 0;
+		let hi = holes.length;
+		while (lo < hi) {
+			const mid = (lo + hi) >> 1;
+			if (holes[mid][1] <= tdb) lo = mid + 1;
+			else hi = mid;
+		}
+		return lo < holes.length && holes[lo][0] < tdb;
 	}
 
 	/**
