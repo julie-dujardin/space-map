@@ -436,6 +436,7 @@ class TestPlanetFamilies:
     @pytest.fixture(autouse=True)
     def _no_images(self, monkeypatch):
         monkeypatch.setattr(writer, "collect_object_images", lambda object_id: None)
+        monkeypatch.setattr(writer, "panoramas_block", lambda object_id: None)
 
     def test_a_planet(self):
         families = {"naif-399": ["terrestrial-planet", "goldilocks-planet"]}
