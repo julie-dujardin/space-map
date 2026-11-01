@@ -28,6 +28,7 @@ from space_map_data.probes.probe_id import (
     REGISTRY_PATH as PROBE_IDS_REGISTRY,
 )
 from space_map_data.probes.propagation import AU_KM
+from space_map_data.probes.traverses import load_traverses
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +45,7 @@ ARCHIVE_CELESTRAK = "celestrak"
 ARCHIVE_SPACETRACK = "spacetrack"
 ARCHIVE_GCAT_DEEP = "gcat-deepcat"
 ARCHIVE_NSDB = "nsdb"
+ARCHIVE_CLPDS = "clpds"
 
 # Archive byte of a probe's chunk header, so the scene credits a trajectory
 # without the detail fetch. Must stay in sync with `PROBE_ARCHIVES` in
@@ -58,7 +60,12 @@ PROBE_ARCHIVE_ORDINAL: dict[str | None, int] = {
     ARCHIVE_HORIZONS: 6,
     ARCHIVE_GCAT_DEEP: 7,
     ARCHIVE_SPACETRACK: 8,
+    ARCHIVE_CLPDS: 9,
 }
+
+# The traverse sources that are archives. The other ones are papers, which a
+# scene credit never names.
+_TRAVERSE_ARCHIVES = {"clpds": ARCHIVE_CLPDS}
 
 
 # `server` strings written into `_index.json` by `ProbesDownloader`. Synth
@@ -109,7 +116,8 @@ def load_probe_kernel_sources() -> dict[int, str | None]:
 
     The first source is not always an archive: a probe with no kernels of its
     own is registered under `EVENTS-DB` and only later gains a synthesised
-    trajectory, which lands second in the list and is the thing to credit.
+    trajectory, which lands second in the list and is the thing to credit. A
+    rover with no archived kernels credits the archive of its traverse.
     """
     registry = load_registry()
     if not registry:
@@ -170,6 +178,11 @@ def load_probe_kernel_sources() -> dict[int, str | None]:
             "Unknown probe-archive server(s) %s — extend _SERVER_TO_ARCHIVE",
             sorted(unmapped_servers),
         )
+    for probe_id, traverse in load_traverses().items():
+        if out.get(probe_id) is None:
+            for source in traverse.sources:
+                if source in _TRAVERSE_ARCHIVES:
+                    out[probe_id] = _TRAVERSE_ARCHIVES[source]
     return out
 
 
@@ -297,5 +310,10 @@ EPHEMERIS_ARCHIVES: list[dict[str, str]] = [
         "id": ARCHIVE_GCAT_DEEP,
         "source": "https://planet4589.org/space/deepcat/",
         "organisation": "McDowell, Deep Space Catalog",
+    },
+    {
+        "id": ARCHIVE_CLPDS,
+        "source": "https://clpds.bao.ac.cn/",
+        "organisation": "Lunar and Planetary Data Release System (CNSA / GRAS)",
     },
 ]

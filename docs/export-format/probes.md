@@ -70,6 +70,7 @@ probe's detail bundle. The ids are the ones `ephemeris_source` and
 | 6       | `horizons` |
 | 7       | `gcat-deepcat` |
 | 8       | `spacetrack` |
+| 9       | `clpds` |
 
 An ordinal is never reassigned. A reader that does not know an ordinal
 treats it as `0`.

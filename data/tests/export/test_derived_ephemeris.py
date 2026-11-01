@@ -6,11 +6,13 @@ supports.
 """
 
 import json
+from types import SimpleNamespace
 
 import pytest
 
 from space_map_data.export import ephemeris
 from space_map_data.export.ephemeris import (
+    ARCHIVE_CLPDS,
     ARCHIVE_GCAT_DEEP,
     ARCHIVE_NAIF,
     ARCHIVE_SPACETRACK,
@@ -43,6 +45,7 @@ def _registry(sources):
 @pytest.fixture
 def tree(tmp_path, monkeypatch):
     """A missions tree holding one derived kernel, plus a registry to join."""
+    monkeypatch.setattr(ephemeris, "load_traverses", dict)
     missions = tmp_path / "missions"
     derived = missions / "GCAT-DEEP"
     derived.mkdir(parents=True)
@@ -99,6 +102,36 @@ class TestAccuracy:
 
 class TestCredit:
     """Which archive gets named."""
+
+    def _traverse(self, monkeypatch, *sources):
+        monkeypatch.setattr(
+            ephemeris,
+            "load_traverses",
+            lambda: {PROBE_ID: SimpleNamespace(sources=sources)},
+        )
+
+    def test_rover_with_no_kernels_credits_its_traverse_archive(
+        self, tree, monkeypatch
+    ):
+        tree.write_text(
+            json.dumps(_registry([{"mission": "EVENTS-DB", "naif_id": NAIF}]))
+        )
+        self._traverse(monkeypatch, "clpds")
+        assert load_probe_kernel_sources()[PROBE_ID] == ARCHIVE_CLPDS
+
+    def test_a_kernel_archive_outranks_the_traverse(self, tree, monkeypatch):
+        tree.write_text(
+            json.dumps(_registry([{"mission": "GCAT-DEEP", "naif_id": NAIF}]))
+        )
+        self._traverse(monkeypatch, "clpds")
+        assert load_probe_kernel_sources()[PROBE_ID] == ARCHIVE_GCAT_DEEP
+
+    def test_a_traverse_from_a_paper_credits_no_archive(self, tree, monkeypatch):
+        tree.write_text(
+            json.dumps(_registry([{"mission": "EVENTS-DB", "naif_id": NAIF}]))
+        )
+        self._traverse(monkeypatch, "karachevtseva_2013")
+        assert load_probe_kernel_sources()[PROBE_ID] is None
 
     def test_a_derived_trajectory_credits_the_catalogue(self, tree):
         tree.write_text(
