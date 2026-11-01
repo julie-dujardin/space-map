@@ -37,10 +37,14 @@ components are stored as `int16 × 32767` over `[-1, 1]`.
 
 Smallest-three encoding: the omitted component is recovered as
 `sqrt(max(0, 1 − a² − b² − c²))` and reinserted at slot `idx`. `dt_seconds` is
-float32: dense streams have sub-second keyframe spacing, and an integer-second
-quantum accumulated into multi-minute timeline drift across a chunk. float32
-keeps sub-second precision where spacing is small and tolerates coarse seconds
-over long inertial cruises. The keyframe count per file is `(len − 16) / 11`.
+float32: it keeps sub-second precision where spacing is small and tolerates
+coarse seconds over long inertial cruises. The writer makes each `dt_seconds`
+close on the true time, so the sum of them does not drift. The keyframe count
+per file is `(len − 16) / 11`.
+
+Keyframes come only from instants the CKs resolve. Where a CK has a hole they
+stop at its edges, so a decoder interpolates across it. A jump in a CK is two
+keyframes about a millisecond apart.
 
 ## Manifest entry
 

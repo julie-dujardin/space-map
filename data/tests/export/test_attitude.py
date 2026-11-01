@@ -3,6 +3,7 @@ baseline spin fit — all synthetic, no kernels needed. The cached-CK
 end-to-end smoke lives in `scripts/probe_orientation_smoke.py`.
 """
 
+import gzip
 import itertools
 import logging
 import math
@@ -1114,6 +1115,32 @@ class TestPointWindows:
         )
         assert list(ets) == [10.0, 30.0]
         assert n_lost == 1
+
+
+def test_decoded_chunk_times_do_not_drift(tmp_path) -> None:
+    """Sparse keyframes among dense ones: each float32 dt rounds, the sum may not."""
+    from space_map_data.export.position.probes.attitude.format import unpack_keyframe
+    from space_map_data.export.position.probes.attitude.writer import write_chunks
+
+    rng = np.random.default_rng(1)
+    ets = np.cumsum(rng.choice([0.37, 90.1, 5001.3, 86411.7], 20000)) + 7e8
+    write_chunks(tmp_path, [(ets, np.tile(_IDENTITY, (ets.size, 1)))])
+    buf = gzip.decompress((tmp_path / "0.bin.gz").read_bytes())
+    dts = [
+        unpack_keyframe(buf, HEADER_SIZE + i * KEYFRAME_SIZE)[0] for i in range(20000)
+    ]
+    assert np.abs(np.cumsum(dts) - (ets - ets[0])).max() < 0.02
+
+
+def test_a_long_hole_starts_a_new_chunk(tmp_path) -> None:
+    """The float32 dt across it would round by seconds, and the dense keyframes
+    after it would stack on one decoded instant."""
+    from space_map_data.export.position.probes.attitude.writer import write_chunks
+
+    ets = np.concatenate([[0.0, 1.0], 2.1e8 + np.arange(40) * 0.25])
+    files = write_chunks(tmp_path, [(ets, np.tile(_IDENTITY, (ets.size, 1)))])
+    assert [f.n_keyframes for f in files] == [2, 40]
+    assert files[1].start_jd == pytest.approx(2451545.0 + 2.1e8 / 86400.0)
 
 
 class TestDataEdges:

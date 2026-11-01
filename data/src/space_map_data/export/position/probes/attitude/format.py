@@ -25,8 +25,7 @@ Keyframe (11 bytes, packed back-to-back after the header):
 Reconstruction: the missing component is recovered as
 `sqrt(max(0, 1 - a² - b² - c²))`, with `idx` telling the decoder which slot.
 
-`dt` is float32: an integer-second quantum accumulated multi-minute drift
-across a chunk of sub-second-spaced keyframes.
+`dt` is float32, and the writer makes the sum of the dts track the true times.
 
 Spin baseline (when used) lives in the per-probe manifest, not the file —
 every chunk for a probe shares it, so duplicating it per chunk would waste

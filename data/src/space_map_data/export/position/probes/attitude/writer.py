@@ -30,6 +30,9 @@ from .format import (
 # latency starts to bite on first-focus. Below it, the per-probe file
 # count grows past a few dozen for active orbiters.
 TARGET_RAW_BYTES = 250 * 1024
+# A float32 dt this long rounds by a tenth of a second or more, so a hole this
+# long starts a new chunk, whose header time is float64.
+CHUNK_GAP_S = 2.0**20
 
 _J2000_JD = 2451545.0
 _S_PER_DAY = 86400.0
@@ -94,7 +97,11 @@ def write_chunks(
             # but the invariant is cheap to hold).
             end = start + 1
             budget = HEADER_SIZE + KEYFRAME_SIZE
-            while end < n and budget + KEYFRAME_SIZE <= TARGET_RAW_BYTES:
+            while (
+                end < n
+                and budget + KEYFRAME_SIZE <= TARGET_RAW_BYTES
+                and ets[end] - ets[end - 1] < CHUNK_GAP_S
+            ):
                 budget += KEYFRAME_SIZE
                 end += 1
             files.append(
@@ -121,16 +128,18 @@ def _write_one_chunk(
     end_jd = _et_to_jd(float(ets[end - 1]))
 
     raw = bytearray(pack_header(start_jd))
-    prev_et = float(ets[start])
+    # The decoder sums the float32 dts, so each one closes on the true time. A
+    # plain delta rounds on its own, and the sum drifts by seconds. Each dt
+    # rounds down, so the next one is never negative.
+    decoded_s = 0.0
     for k in range(start, end):
-        et = float(ets[k])
-        # First keyframe has dt=0; subsequent ones are inter-keyframe deltas.
-        # float32 keeps sub-second spacing — integer seconds drifted the
-        # accumulated timeline by minutes across a dense chunk.
-        dt = 0.0 if k == start else max(0.0, et - prev_et)
+        remaining_s = float(ets[k]) - float(ets[start]) - decoded_s
+        dt = float(np.float32(remaining_s))
+        if dt > remaining_s:
+            dt = float(np.nextafter(np.float32(dt), np.float32(0.0)))
+        decoded_s += dt
         idx_three, a, b, c = _smallest_three(quats[k])
         raw.extend(pack_keyframe(dt, idx_three, a, b, c))
-        prev_et = et
 
     # A fixed header time keeps an unchanged chunk byte-identical, so an
     # upload does not send it again.
