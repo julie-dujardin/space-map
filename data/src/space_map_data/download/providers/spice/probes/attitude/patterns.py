@@ -84,8 +84,9 @@ PATTERNS: dict[str, AttitudePattern | list[AttitudePattern]] = {
         estimated_total_mib=170_000,
     ),
     "MCO": AttitudePattern(
-        # Lost mission — only 3 CKs exist; no filter needed.
-        ck_glob="mco_*.bc",
+        # `mco_mapping_sample` is a test product for a phase the craft never
+        # reached; its header says not to use it for real data.
+        ck_glob="mco_cruise*.bc",
         fk_glob="mco*.tf",
         sclk_glob="MCO_SCLKSCET.*.tsc",
         frame_name="MCO_SPACECRAFT",
@@ -203,9 +204,10 @@ PATTERNS: dict[str, AttitudePattern | list[AttitudePattern]] = {
         estimated_total_mib=140,
     ),
     "DEEPIMPACT": AttitudePattern(
-        # Flyby bus; `_p` is predicted, `dii_*` is the separate impactor.
+        # Flyby bus; `_p` and `_p_to` are predicted and load after the flown
+        # record, `dii_*` is the separate impactor.
         ck_glob="dif_sc_*.bc",
-        ck_exclude_glob="*_p.bc",
+        ck_exclude_glob="*_p*.bc",
         fk_glob="di_v*.tf",
         sclk_glob="DIF_SCLKSCET.*.tsc",
         frame_name="DIF_SPACECRAFT",
