@@ -5,6 +5,13 @@ with `pxform("J2000", frame)`. A uniform grid misses a brief fault, so each
 probe is also sampled at its keyframes, between them, and where its stream
 turns fastest. A keyframe at an instant SPICE cannot resolve has no source.
 
+The frontend shows no attitude in a hole of the manifest, so those instants are
+left out of the error figures. They are sampled apart: SPICE resolving one means
+the hole hides data, and a keyframe deep in a hole has no source. The grid
+spreads over the time outside the holes. Its samples with no data are gaps too
+short to be holes, which the frontend interpolates across, or folds of a clock
+kernel.
+
 Run from data/:
     uv run python scripts/attitude_benchmark.py
     uv run python scripts/attitude_benchmark.py --missions GAIA MRO
@@ -65,6 +72,11 @@ BAD_DEG = 1.0
 # so a bracket decodes wider than it is, and a keyframe lands just off its data.
 JUMP_S = 0.02
 NEAR_S = (-FINE_DT_S, FINE_DT_S, -0.1, 0.1)
+# Hole samples stay this far inside the edges, past what `truth_task` looks at.
+HOLE_INSET_S = 2.0
+# An instant whose SCLK ticks come back further off than this is on a fold of
+# the clock kernel: SPICE resolves it, with the attitude of another time.
+CLOCK_FOLD_S = 1.0
 
 
 def iso(jd: float) -> str:
@@ -141,25 +153,66 @@ def reconstruct(
     return q_mul(q_mul(spin, np.array(b["anchor"])), resid)
 
 
+def in_holes(jds: np.ndarray, holes: list[list[float]]) -> np.ndarray:
+    """True for each of `jds` strictly inside a hole: `inHole`."""
+    inside = np.zeros(jds.size, dtype=bool)
+    if holes:
+        table = np.array(holes)
+        i = np.searchsorted(table[:, 1], jds, side="right")
+        some = i < len(table)
+        inside[some] = table[i[some], 0] < jds[some]
+    return inside
+
+
+def hole_jds(holes: list[list[float]], n: int, rng: np.random.Generator) -> np.ndarray:
+    """Instants inside the holes: just inside each edge, and `n` at random,
+    more of them in a long hole."""
+    if not holes:
+        return np.empty(0)
+    table = np.array(holes)
+    days = table[:, 1] - table[:, 0]
+    inset = HOLE_INSET_S / S_PER_DAY
+    at = rng.choice(len(table), n, p=days / days.sum())
+    random = rng.uniform(table[at, 0] + inset, table[at, 1] - inset)
+    return np.concatenate([table[:, 0] + inset, table[:, 1] - inset, random])
+
+
+def grid_jds(start: float, end: float, holes: list[list[float]], n: int) -> np.ndarray:
+    """`n` instants spread evenly over the time outside the holes."""
+    table = np.array(holes).reshape(-1, 2)
+    starts = np.concatenate([[start], table[:, 1]])
+    ends = np.concatenate([table[:, 0], [end]])
+    total = np.cumsum(ends - starts)
+    at = np.linspace(0.0, total[-1], n)
+    i = np.searchsorted(total, at)
+    return ends[i] - (total[i] - at)
+
+
 def sample_jds(
     chunks: list[Chunk], manifest: dict, n: int, rng: np.random.Generator
 ) -> dict[str, np.ndarray]:
-    """The sample instants of one probe, per set."""
+    """The sample instants of one probe that have attitude, per set."""
     times = np.concatenate([c.times for c in chunks])
     quats = np.concatenate([c.quats for c in chunks])
     pair = np.flatnonzero(np.diff(times) * S_PER_DAY > JUMP_S)
+    # A pair across a hole is no motion: the SLERP there never runs.
+    pair = pair[~in_holes((times[pair] + times[pair + 1]) / 2.0, manifest["holes"])]
     dots = np.abs(np.sum(quats[pair] * quats[pair + 1], axis=1))
     rate = 2.0 * np.arccos(np.minimum(1.0, dots)) / (times[pair + 1] - times[pair])
     fastest = pair[np.argsort(rate)[-n:]]
     picks = rng.choice(pair, min(n, pair.size), replace=False) if pair.size else pair
-    return {
-        "grid": np.linspace(manifest["start_jd"], manifest["end_jd"], n),
+    sets = {
+        "grid": grid_jds(
+            manifest["start_jd"], manifest["end_jd"], manifest["holes"], n
+        ),
         "keyframes": times[rng.choice(times.size, min(n, times.size), replace=False)],
         "midpoints": (times[picks] + times[picks + 1]) / 2.0,
         "fastest": np.concatenate(
             [times[fastest], (times[fastest] + times[fastest + 1]) / 2.0]
         ),
+        "hole_edges": np.array(manifest["holes"]).ravel(),
     }
+    return {k: v[~in_holes(v, manifest["holes"])] for k, v in sets.items()}
 
 
 @dataclass(frozen=True)
@@ -171,14 +224,25 @@ class TruthTask:
     ets: np.ndarray
 
 
+def on_clock_fold(clock: int, et: float) -> bool:
+    """True when the SCLK ticks of `et` do not come back to it, or it has none."""
+    try:
+        return abs(spiceypy.sct2e(clock, spiceypy.sce2c(clock, et)) - et) > CLOCK_FOLD_S
+    except spiceypy.exceptions.SpiceyError:
+        return True
+
+
 def truth_task(task: TruthTask) -> np.ndarray:
-    """`pxform` quaternions at `task.ets`; NaN where SPICE cannot resolve.
+    """`pxform` quaternions at `task.ets`; NaN where SPICE cannot resolve, or
+    resolves with the attitude of another time.
 
     A JD cannot hold the exact time of a keyframe at an edge of a CK's data, or
     of a lone CK record, so the data next to an instant stands for it.
     """
 
     def truth(et: float) -> np.ndarray | None:
+        if on_clock_fold(clock, et):
+            return None
         for at in (et, *(et + d for d in NEAR_S)):
             try:
                 return spiceypy.m2q(spiceypy.pxform("J2000", task.frame, at))
@@ -189,6 +253,7 @@ def truth_task(task: TruthTask) -> np.ndarray:
     out = np.full((task.ets.size, 4), np.nan)
     _furnish(task.kernels)
     try:
+        clock = spiceypy.ckmeta(task.instruments[0], "SCLK")
         missed = []
         for i, et in enumerate(task.ets.tolist()):
             q = truth(et)
@@ -250,6 +315,9 @@ class Row:
     err: dict[str, np.ndarray] = field(default_factory=dict)
     worst: list = field(default_factory=list)
     no_truth: dict[str, int] = field(default_factory=dict)
+    n_hole_samples: int = 0
+    hidden: int = 0
+    keyframes_in_holes: int = 0
     seconds: float = 0.0
 
 
@@ -296,12 +364,20 @@ def bench_probe(ex, root: Path, craft, probe, n: int) -> Row | None:
     plan = plan_shards(craft.coverage, craft.ck_names, probe.instruments, span)
     rng = np.random.default_rng(probe.probe_id)
     sets = sample_jds(chunks, manifest, n, rng)
-    all_jds = np.concatenate(list(sets.values()))
+    in_hole = hole_jds(manifest["holes"], n, rng)
+    all_jds = np.concatenate([*sets.values(), in_hole])
     all_truth = truth_at(
         ex, craft, plan, probe.instruments, (all_jds - J2000_JD) * S_PER_DAY
     )
-    cuts = np.cumsum([jds.size for jds in sets.values()])[:-1]
-    for (name, jds), truth in zip(sets.items(), np.split(all_truth, cuts), strict=True):
+    cuts = np.cumsum([jds.size for jds in sets.values()])
+    row.n_hole_samples = in_hole.size
+    row.hidden = int((~np.isnan(all_truth[cuts[-1] :, 0])).sum())
+    inset = HOLE_INSET_S / S_PER_DAY
+    deep = [[a + inset, b - inset] for a, b in manifest["holes"]]
+    row.keyframes_in_holes = sum(int(in_holes(c.times, deep).sum()) for c in chunks)
+    for (name, jds), truth in zip(
+        sets.items(), np.split(all_truth, cuts)[:-1], strict=True
+    ):
         known = ~np.isnan(truth[:, 0])
         row.no_truth[name] = int((~known).sum())
         errs = np.array(
@@ -343,7 +419,14 @@ def summary(row: Row) -> dict | None:
             k: float(v.max()) if v.size else None for k, v in row.err.items()
         },
         "n_no_truth": row.no_truth,
-        "keyframes_no_truth": row.no_truth.get("keyframes", 0),
+        "keyframes_no_truth": row.no_truth.get("keyframes", 0) + row.keyframes_in_holes,
+        "n_holes": len(m["holes"]),
+        "hole_days": sum(b - a for a, b in m["holes"]),
+        "n_hole_samples": row.n_hole_samples,
+        "hidden": row.hidden,
+        "short_gap_pct": 100.0
+        * row.no_truth["grid"]
+        / max(1, row.no_truth["grid"] + row.err["grid"].size),
         "drift_s": row.drift_s,
         "worst": row.worst[:5],
         "seconds": row.seconds,
@@ -363,7 +446,8 @@ def main() -> int:
     print(
         f"{'mission':<14} {'probe':>10} {'coverage':<23} {'spans':>5} {'keyframes':>9} "
         f"{'chk':>4} {'tot_kb':>7} {'max_kb':>6} {'med°':>6} {'p95°':>6} {'p99.9°':>7} "
-        f"{'max°':>7} {'>1°':>5} {'phantom':>7} {'drift_s':>8} {'sec':>4}",
+        f"{'max°':>7} {'>1°':>5} {'phantom':>7} {'holes':>5} {'hole_d':>7} "
+        f"{'hidden':>6} {'gap%':>5} {'drift_s':>8} {'sec':>4}",
         flush=True,
     )
     rows = []
@@ -397,7 +481,10 @@ def main() -> int:
                     f"{s['max_chunk_kb']:>6.0f} {s['err_med_deg']:>6.3f} "
                     f"{s['err_p95_deg']:>6.3f} {s['err_p999_deg']:>7.3f} "
                     f"{s['err_max_deg']:>7.2f} {s['n_over_1_deg']:>5} "
-                    f"{s['keyframes_no_truth']:>7} {s['drift_s']:>8.4f} {s['seconds']:>4.0f}",
+                    f"{s['keyframes_no_truth']:>7} {s['n_holes']:>5} "
+                    f"{s['hole_days']:>7.1f} {s['hidden']:>6} "
+                    f"{s['short_gap_pct']:>5.1f} {s['drift_s']:>8.4f} "
+                    f"{s['seconds']:>4.0f}",
                     flush=True,
                 )
     if args.json:

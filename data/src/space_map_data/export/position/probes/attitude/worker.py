@@ -196,7 +196,7 @@ def shard_task(task: ShardTask) -> ShardTaskResult:
 def _extract_job(job: ShardJob, lo: float, hi: float) -> ShardResult:
     try:
         kf = extract_shard(job.frame, job.ck_paths, job.instruments, lo, hi, job.spans)
-        save_shard(Path(job.out_path), kf.ets, kf.quats, kf.seg)
+        save_shard(Path(job.out_path), kf.ets, kf.quats, kf.seg, kf.runs)
     except Exception as exc:
         return ShardResult(job.probe_id, job.k, 0, 0.0, 0, 0.0, 0.0, repr(exc))
     return ShardResult(

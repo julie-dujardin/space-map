@@ -393,9 +393,10 @@ class TestJoinShards:
         )
 
         q = np.tile([1.0, 0.0, 0.0, 0.0], (3, 1))
-        a = (np.array([0.0, 5.0, 10.0]), q, np.zeros(3, dtype=np.int16))
-        b = (np.array([10.0, 15.0, 20.0]), q, np.zeros(3, dtype=np.int16))
-        [(ets, quats)] = join_shards([a, b], 1)
+        none = np.empty((0, 2))
+        a = (np.array([0.0, 5.0, 10.0]), q, np.zeros(3, dtype=np.int16), none)
+        b = (np.array([10.0, 15.0, 20.0]), q, np.zeros(3, dtype=np.int16), none)
+        [(ets, quats)], _ = join_shards([a, b], 1)
         assert ets.tolist() == [0.0, 5.0, 10.0, 15.0, 20.0]
         assert quats.shape == (5, 4)
 
@@ -406,9 +407,20 @@ class TestJoinShards:
 
         q = np.tile([1.0, 0.0, 0.0, 0.0], (4, 1))
         # The span boundary at 10 is sampled in both spans.
-        a = (np.array([0.0, 10.0, 10.0, 12.0]), q, np.array([0, 0, 1, 1], np.int16))
-        b = (np.array([12.0, 11.0, 14.0, 16.0]), q, np.array([1, 1, 1, 1], np.int16))
-        (e0, _), (e1, _), (e2, _) = join_shards([a, b], 3)
+        none = np.empty((0, 2))
+        a = (
+            np.array([0.0, 10.0, 10.0, 12.0]),
+            q,
+            np.array([0, 0, 1, 1], np.int16),
+            none,
+        )
+        b = (
+            np.array([12.0, 11.0, 14.0, 16.0]),
+            q,
+            np.array([1, 1, 1, 1], np.int16),
+            none,
+        )
+        ((e0, _), (e1, _), (e2, _)), _ = join_shards([a, b], 3)
         assert e0.tolist() == [0.0, 10.0]
         assert e1.tolist() == [10.0, 12.0, 14.0, 16.0]
         assert e2.size == 0
@@ -476,6 +488,7 @@ class TestAttitudeCache:
         bases: list | None = None,
         sclk: str = "s",
         clock: tuple[tuple[float, float, float], ...] | None = ((0.0, 0.0, 1.0),),
+        gap: tuple[float, float] | None = None,
     ):
         from concurrent.futures import ThreadPoolExecutor
         from concurrent.futures.process import BrokenProcessPool
@@ -525,7 +538,11 @@ class TestAttitudeCache:
                     ets = np.linspace(lo, hi, 4)
                     quats = np.tile([1.0, 0.0, 0.0, 0.0], (4, 1))
                     seg = np.zeros(4, dtype=np.int16)
-                    save_shard(Path(job.out_path), ets, quats, seg)
+                    in_shard = gap is not None and lo <= gap[0] < hi
+                    runs = np.array(
+                        [[lo, gap[0]], [gap[1], hi]] if in_shard else [[lo, hi]]
+                    )
+                    save_shard(Path(job.out_path), ets, quats, seg, runs)
                     results.append(
                         ShardResult(job.probe_id, k, 4, 0.0, 0, 0.0, 0.0, None)
                     )
@@ -585,6 +602,23 @@ class TestAttitudeCache:
         assert gd1["probe-7"]["attitude"] == gd2["probe-7"]["attitude"]
         # Four shards of four keyframes, less the three shared edge samples.
         assert gd2["probe-7"]["attitude"]["n_keyframes"] == 13
+
+    def test_holes_reach_the_manifest_and_a_new_minimum_rewrites_it(
+        self, monkeypatch, tmp_path
+    ) -> None:
+        from space_map_data.export.position.probes.attitude import orchestrator
+
+        stamps = {"0.bc": "a", "1.bc": "b"}
+        gap = (4 * D, 5 * D)
+        gd, _, _ = self._run(monkeypatch, tmp_path, stamps, self._calls(), gap=gap)
+        assert gd["probe-7"]["attitude"]["holes"] == [[2451549.0, 2451550.0]]
+
+        monkeypatch.setattr(orchestrator, "HOLE_MIN_S", 2 * D)
+        calls = self._calls()
+        gd, _, _ = self._run(monkeypatch, tmp_path, stamps, calls, gap=gap)
+        assert calls["shards"] == []
+        assert calls["writes"] == 1
+        assert gd["probe-7"]["attitude"]["holes"] == []
 
     def test_changed_ck_extracts_only_its_shards(self, monkeypatch, tmp_path) -> None:
         self._run(monkeypatch, tmp_path, {"0.bc": "a", "1.bc": "b"}, self._calls())
@@ -1038,7 +1072,7 @@ def test_raw_span_refines_below_a_second_on_a_short_seed(monkeypatch) -> None:
 
     def fake_sample(frame, t0, t1, eps, *, seed_dt, min_dt, transform):
         floors[seed_dt] = min_dt
-        return np.array([t0, t1]), np.tile(_IDENTITY, (2, 1)), 0.0
+        return np.array([t0, t1]), np.tile(_IDENTITY, (2, 1)), []
 
     monkeypatch.setattr(extractor, "adaptive_sample", fake_sample)
     for seg in (SpinSegment(0.0, 100.0, None, 1.6), SpinSegment(0.0, 100.0, None)):
@@ -1069,6 +1103,78 @@ def _keyframes(windows, end: float):
     )
 
 
+class TestHoles:
+    """A hole is a stretch with no CK data, which the decoder must not span."""
+
+    def test_a_gap_under_the_minimum_is_not_a_hole(self) -> None:
+        from space_map_data.export.position.probes.attitude.shards import find_holes
+
+        runs = np.array([[0.0, 10.0], [15.0, 20.0], [120.0, 130.0]])
+        assert find_holes(runs, 100.0) == [(20.0, 120.0)]
+        assert find_holes(np.empty((0, 2)), 100.0) == []
+
+    def test_runs_may_nest_and_come_in_any_order(self) -> None:
+        from space_map_data.export.position.probes.attitude.shards import find_holes
+
+        runs = np.array([[500.0, 600.0], [0.0, 400.0], [100.0, 200.0]])
+        assert find_holes(runs, 50.0) == [(400.0, 500.0)]
+
+    def test_lone_records_close_together_are_data(self) -> None:
+        from space_map_data.export.position.probes.attitude.shards import find_holes
+
+        at = np.arange(0.0, 500.0, 60.0)
+        assert find_holes(np.column_stack([at, at]), 100.0) == []
+
+    def test_a_hole_inside_a_window_is_found_to_its_edges(self, monkeypatch) -> None:
+        from space_map_data.export.position.probes.attitude.shards import find_holes
+
+        _spice(monkeypatch, lambda et: not 500.0 < et < 1000.0)
+        _, _, runs, _, _ = _keyframes([(0.0, 1500.0)], 1e6)
+        [(start, end)] = find_holes(np.array(runs), 100.0)
+        assert start == pytest.approx(500.0, abs=1e-3)
+        assert end == pytest.approx(1000.0, abs=1e-3)
+
+    def test_a_hole_outlasts_keyframe_decimation(self, monkeypatch) -> None:
+        """A craft that holds still needs no keyframes at the hole, but the
+        hole is still there."""
+        from space_map_data.export.position.probes.attitude.shards import find_holes
+
+        _spice(monkeypatch, lambda et: not 500.0 < et < 1000.0, lambda _: 0.25)
+        ets, _, runs, _, _ = _keyframes([(0.0, 1500.0)], 1e6)
+        assert ets.tolist() == [0.0, 1500.0]
+        assert len(find_holes(np.array(runs), 100.0)) == 1
+
+    def test_a_tile_edge_is_no_hole_and_a_hole_can_cross_one(self, monkeypatch) -> None:
+        from space_map_data.export.position.probes.attitude import extractor
+        from space_map_data.export.position.probes.attitude.shards import find_holes
+
+        monkeypatch.setattr(extractor, "TILE_S", 700.0)
+        _spice(monkeypatch, lambda et: not 400.0 < et < 1000.0)
+        _, _, runs, _, _ = _keyframes([(0.0, 2800.0)], 1e6)
+        [(start, end)] = find_holes(np.array(runs), 1.0)
+        assert start == pytest.approx(400.0, abs=1e-3)
+        assert end == pytest.approx(1000.0, abs=1e-3)
+
+    def test_a_shard_with_no_cks_is_a_hole(self) -> None:
+        from space_map_data.export.position.probes.attitude.shards import (
+            find_holes,
+            join_shards,
+        )
+
+        def shard(lo: float, hi: float):
+            ets = np.array([lo, hi])
+            quats = np.tile(_IDENTITY, (2, 1))
+            return ets, quats, np.zeros(2, np.int16), np.array([[lo, hi]])
+
+        _, runs = join_shards([shard(0.0, 10.0), shard(30.0, 40.0)], 1)
+        assert find_holes(runs, 5.0) == [(10.0, 30.0)]
+
+    def test_a_shard_with_a_failed_window_has_no_runs(self, monkeypatch) -> None:
+        _spice(monkeypatch, lambda _: False)
+        _, _, runs, _, _ = _keyframes([(0.0, 600.0)], 1e6)
+        assert runs == []
+
+
 class TestPointWindows:
     """A lone CK record resolves only at its instant, and the sampler must
     still keep it. The fake turns 0.5 mrad per second about Z."""
@@ -1077,7 +1183,7 @@ class TestPointWindows:
         points = [(120.0 * i, 120.0 * i) for i in range(1, 500)]
         instants = {a for a, _ in points}
         _spice(monkeypatch, instants.__contains__)
-        ets, quats, _, n_lost = _keyframes(points, 1e6)
+        ets, quats, _, _, n_lost = _keyframes(points, 1e6)
         assert n_lost == 0
         assert set(ets) <= instants
         assert ets[0] == 120.0
@@ -1097,7 +1203,7 @@ class TestPointWindows:
             }
 
         _spice(monkeypatch, covered)
-        ets, _, unresolved_s, n_lost = _keyframes(windows, 1e6)
+        ets, _, _, unresolved_s, n_lost = _keyframes(windows, 1e6)
         assert (unresolved_s, n_lost) == (0.0, 0)
         assert np.all(np.diff(ets) > 0)
         assert {1000.0, 4000.0, 6000.0} <= set(ets)
@@ -1111,7 +1217,7 @@ class TestPointWindows:
         self, monkeypatch
     ) -> None:
         _spice(monkeypatch, lambda et: et != 20.0)
-        ets, _, _, n_lost = _keyframes(
+        ets, _, _, _, n_lost = _keyframes(
             [(10.0, 10.0), (20.0, 20.0), (30.0, 30.0)], 100.0
         )
         assert list(ets) == [10.0, 30.0]
@@ -1152,7 +1258,7 @@ class TestDataEdges:
         self, monkeypatch
     ) -> None:
         _spice(monkeypatch, lambda et: 100.0 < et < 200.0)
-        ets, quats, unresolved_s, _ = _keyframes([(100.0, 200.0)], 1e6)
+        ets, quats, _, unresolved_s, _ = _keyframes([(100.0, 200.0)], 1e6)
         assert ets[0] == pytest.approx(100.0, abs=1e-3)
         assert ets[-1] == pytest.approx(200.0, abs=1e-3)
         assert unresolved_s == pytest.approx(0.0, abs=1e-2)
@@ -1160,7 +1266,7 @@ class TestDataEdges:
 
     def test_window_past_its_data_ends_at_the_data(self, monkeypatch) -> None:
         _spice(monkeypatch, lambda et: 350.0 <= et <= 850.0)
-        ets, _, unresolved_s, _ = _keyframes([(0.0, 1500.0)], 1e6)
+        ets, _, _, unresolved_s, _ = _keyframes([(0.0, 1500.0)], 1e6)
         assert ets[0] == pytest.approx(350.0, abs=1e-3)
         assert ets[-1] == pytest.approx(850.0, abs=1e-3)
         assert unresolved_s == pytest.approx(1000.0, abs=1.0)
@@ -1173,7 +1279,7 @@ class TestDataEdges:
 
     def test_window_with_no_data_has_no_keyframes(self, monkeypatch) -> None:
         _spice(monkeypatch, lambda _: False)
-        ets, quats, unresolved_s, _ = _keyframes([(0.0, 600.0)], 1e6)
+        ets, quats, _, unresolved_s, _ = _keyframes([(0.0, 600.0)], 1e6)
         assert ets.size == 0
         assert quats.shape == (0, 4)
         assert unresolved_s == 600.0
@@ -1185,7 +1291,7 @@ class TestDataEdges:
             lambda et: not 500.0 < et < 1000.0,
             lambda et: 1.0 if et >= 750.0 else 0.0,
         )
-        ets, quats, unresolved_s, _ = _keyframes([(0.0, 1500.0)], 1e6)
+        ets, quats, _, unresolved_s, _ = _keyframes([(0.0, 1500.0)], 1e6)
         assert not np.any((ets > 500.001) & (ets < 999.999))
         assert ets[-1] == 1500.0
         before = np.flatnonzero(ets <= 500.0)[-1]
@@ -1331,7 +1437,8 @@ class TestManifest:
             ChunkFile("1.bin.gz", 2451546.0, 2451547.0, 10, 1),
         ]
         entry = manifest_entry(
-            ExtractionResult(20, files, segments, 2451545.0, 2451547.0), frame_name="F"
+            ExtractionResult(20, files, segments, 2451545.0, 2451547.0, []),
+            frame_name="F",
         )
         raw = entry["baselines"][1]
         assert raw["kind"] == "spin" and raw["rate_rad_s"] == 0.0
@@ -1357,11 +1464,14 @@ class TestManifest:
 
         files = [ChunkFile("0.bin.gz", 2451545.0, 2451546.0, 10, 0)]
         entry = manifest_entry(
-            ExtractionResult(10, files, [SpinSegment(0.0, D, None)], 0.0, 1.0),
+            ExtractionResult(
+                10, files, [SpinSegment(0.0, D, None)], 0.0, 1.0, [(0.0, 43200.0)]
+            ),
             frame_name="F",
         )
         assert entry["baselines"] is None
         assert "baseline_index" not in entry["files"][0]
+        assert entry["holes"] == [[2451545.0, 2451545.5]]
 
 
 def test_solar_orbiter_glob_drops_only_the_yearly_dumps() -> None:

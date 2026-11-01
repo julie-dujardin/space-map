@@ -42,9 +42,10 @@ coarse seconds over long inertial cruises. The writer makes each `dt_seconds`
 close on the true time, so the sum of them does not drift. The keyframe count
 per file is `(len − 16) / 11`.
 
-Keyframes come only from instants the CKs resolve. Where a CK has a hole they
-stop at its edges, so a decoder interpolates across it. A jump in a CK is two
-keyframes about a millisecond apart.
+Keyframes come only from instants the CKs resolve. A jump in a CK is two
+keyframes about a millisecond apart. Two neighbouring keyframes do not always
+have data between them: the manifest's `holes` lists the gaps of an hour or
+more.
 
 ## Manifest entry
 
@@ -81,8 +82,16 @@ interface ProbeAttitude {
     n_keyframes: number;
     baseline_index?: number;  // index into `baselines`; present iff baselines ≠ null
   }[];
+  // Gaps of an hour or more in the CK data, in time order, as
+  // [start_jd, end_jd]. Absent on bundles from before holes were exported.
+  holes?: [number, number][];
 }
 ```
+
+A decoder has no attitude strictly inside a hole, as it has none outside
+`start_jd`..`end_jd`, and does not interpolate across it. The edges of a hole
+are data. A shorter gap is not listed: regular CK cadences reach 30 minutes, so
+a decoder interpolates across it.
 
 To reconstruct the full attitude when `baselines` is present, take the active
 file's `baseline_index`, compose that span's spin baseline at time `t` (`anchor`

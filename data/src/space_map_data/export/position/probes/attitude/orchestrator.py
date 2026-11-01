@@ -79,11 +79,13 @@ from .segments import (
     spin_timeline_ets,
 )
 from .shards import (
+    HOLE_MIN_S,
     Coverage,
     Window,
     clock_signature,
     covering_cks,
     digest,
+    find_holes,
     join_shards,
     plan_shards,
     probe_instruments,
@@ -824,6 +826,7 @@ def _settle_output(c: _Craft, p: _Probe) -> tuple[dict | None, bool]:
         {
             "spin": [segment_json(s) for s in p.segments] if p.spinner else None,
             "shards": planned,
+            "hole_min_s": HOLE_MIN_S,
         }
     )
     output = p.cache.get("output")
@@ -845,7 +848,7 @@ def _settle_output(c: _Craft, p: _Probe) -> tuple[dict | None, bool]:
 def _write_output(c: _Craft, p: _Probe, planned: list[tuple[int, str]]) -> dict | None:
     """Join the planned shards and write the chunks. Returns the manifest, or
     None when there are no keyframes."""
-    streams = join_shards(
+    streams, runs = join_shards(
         (_load_planned_shard(p, k, sig) for k, sig in planned),
         len(p.segments) if p.spinner else 1,
     )
@@ -859,13 +862,14 @@ def _write_output(c: _Craft, p: _Probe, planned: list[tuple[int, str]]) -> dict 
         segments=p.segments,
         coverage_start_jd=files[0].start_jd,
         coverage_end_jd=files[-1].end_jd,
+        holes=find_holes(runs, HOLE_MIN_S),
     )
     return manifest_entry(result, frame_name=c.frame)
 
 
 def _load_planned_shard(
     p: _Probe, k: int, sig: str
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     path = p.meta_dir / SHARD_DIR / shard_name(k, sig)
     try:
         return load_shard(path)

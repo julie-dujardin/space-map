@@ -9,6 +9,7 @@ Everything here is plain data and needs no SPICE.
 """
 
 import hashlib
+import itertools
 import json
 import math
 from collections.abc import Callable, Iterable
@@ -17,10 +18,12 @@ from dataclasses import replace
 import numpy as np
 
 from .extractor import VALIDATE_SPAN_S
-from .sample import craft_instruments
+from .sample import craft_instruments, merge_windows
 from .segments import SpinSegment
 
 SHARD_S = 7 * 86400.0
+# Regular CK cadences reach 30 min, and a fallback at each gap would flicker.
+HOLE_MIN_S = 3600.0
 
 Window = tuple[float, float]
 # CK name -> {instrument id -> SEGMENT-level windows}.
@@ -203,9 +206,11 @@ def shard_signature(
 
 
 def join_shards(
-    parts: Iterable[tuple[np.ndarray, np.ndarray, np.ndarray]], n_spans: int
-) -> list[tuple[np.ndarray, np.ndarray]]:
-    """Join shard keyframes, in shard order, into one stream per spin span.
+    parts: Iterable[tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]],
+    n_spans: int,
+) -> tuple[list[tuple[np.ndarray, np.ndarray]], np.ndarray]:
+    """Join shards, in shard order, into one keyframe stream per spin span and
+    the `(start, end)` data runs of them all.
 
     Adjacent shards share their edge sample, so a keyframe at or before the
     last kept one is dropped. Each stream is strictly rising in time.
@@ -213,7 +218,9 @@ def join_shards(
     ets_out: list[list[np.ndarray]] = [[] for _ in range(n_spans)]
     quats_out: list[list[np.ndarray]] = [[] for _ in range(n_spans)]
     last = [-math.inf] * n_spans
-    for ets, quats, seg in parts:
+    runs: list[np.ndarray] = [np.empty((0, 2))]
+    for ets, quats, seg, shard_runs in parts:
+        runs.append(shard_runs)
         for i in np.unique(seg):
             mask = seg == i
             e, q = ets[mask], quats[mask]
@@ -223,13 +230,20 @@ def join_shards(
                 ets_out[i].append(e[keep])
                 quats_out[i].append(q[keep])
                 last[i] = float(e[keep][-1])
-    return [
+    streams = [
         (
             np.concatenate(ets_out[i]) if ets_out[i] else np.empty(0),
             np.concatenate(quats_out[i]) if quats_out[i] else np.empty((0, 4)),
         )
         for i in range(n_spans)
     ]
+    return streams, np.concatenate(runs)
+
+
+def find_holes(runs: np.ndarray, min_s: float) -> list[Window]:
+    """The gaps of at least `min_s` between `(start, end)` data `runs`."""
+    merged = merge_windows([(a, b) for a, b in runs.tolist()])
+    return [(a[1], b[0]) for a, b in itertools.pairwise(merged) if b[0] - a[1] >= min_s]
 
 
 def split_runs(

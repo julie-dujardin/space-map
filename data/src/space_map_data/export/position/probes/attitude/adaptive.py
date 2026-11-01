@@ -46,8 +46,8 @@ def adaptive_sample(
     seed_dt: float = SEED_DT_S,
     min_dt: float = MIN_DT_S,
     transform: Transform | None = None,
-) -> tuple[np.ndarray, np.ndarray, float]:
-    """Sample `[t0, t1]` adaptively → ascending `(ets, quats, unresolved_s)`.
+) -> tuple[np.ndarray, np.ndarray, list[tuple[float, float]]]:
+    """Sample `[t0, t1]` adaptively → ascending `(ets, quats, unresolved)`.
 
     `transform(et, q_raw)` maps raw J2000->body truth to the stream we keyframe
     (the baseline residual); identity when None. Quats are sign-canonicalised
@@ -55,9 +55,9 @@ def adaptive_sample(
     A sample that does not resolve yields no keyframe, since any value for it
     would be invented, and the samples close in on the edges of the data. A
     stretch of data that falls between all the probes of a seed step stays
-    unseen. `unresolved_s` is the time found to have no data.
+    unseen. `unresolved` holds the stretches found to have no data, in order.
     """
-    unresolved_s = 0.0
+    unresolved: list[tuple[float, float]] = []
     out_t: list[float] = []
     out_q: list[np.ndarray] = []
 
@@ -72,13 +72,12 @@ def adaptive_sample(
     def refine(
         ta: float, qa: np.ndarray | None, tb: float, qb: np.ndarray | None, depth: int
     ) -> None:
-        nonlocal unresolved_s
         if tb - ta <= FINE_DT_S or depth > 40:
             return
         samples = [(et, truth(et)) for et in (ta + f * (tb - ta) for f in PROBE_FRACS)]
         resolved = [q for _, q in samples if q is not None]
         if qa is None and qb is None and not resolved:
-            unresolved_s += tb - ta
+            unresolved.append((ta, tb))
             return
         if qa is None or qb is None or len(resolved) < len(samples):
             cuts = samples
@@ -107,7 +106,7 @@ def adaptive_sample(
 
     quats = np.asarray(out_q).reshape(-1, 4)
     _canonicalise(quats)
-    return np.asarray(out_t), quats, unresolved_s
+    return np.asarray(out_t), quats, unresolved
 
 
 def point_sample(

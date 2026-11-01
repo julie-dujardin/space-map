@@ -62,6 +62,7 @@ class ExtractionResult:
     segments: list[SpinSegment]
     coverage_start_jd: float
     coverage_end_jd: float
+    holes: list[tuple[float, float]]
 
 
 def _et_to_jd(et: float) -> float:
@@ -180,11 +181,13 @@ def scan_window_edge(
 
 @dataclass(frozen=True)
 class ShardKeyframes:
-    """Keyframes of one shard. `seg` is the spin span index of each one."""
+    """Keyframes of one shard. `seg` is the spin span index of each one, and
+    `runs` holds `(start, end)` rows: the stretches where the CKs have data."""
 
     ets: np.ndarray
     quats: np.ndarray
     seg: np.ndarray
+    runs: np.ndarray
     unresolved_s: float
     n_lost: int
     claimed_s: float
@@ -217,12 +220,14 @@ def extract_shard(
     ets_parts: list[np.ndarray] = [np.empty(0)]
     quat_parts: list[np.ndarray] = [np.empty((0, 4))]
     seg_parts: list[np.ndarray] = [np.empty(0, dtype=np.int16)]
+    runs: list[tuple[float, float]] = []
     unresolved_s = 0.0
     n_lost = 0
     for index, seg in spans:
-        ets, quats, unresolved, lost = _keyframe_segment(
+        ets, quats, seg_runs, unresolved, lost = _keyframe_segment(
             frame_name, seg, windows, eps_rad
         )
+        runs += seg_runs
         unresolved_s += unresolved
         n_lost += lost
         ets_parts.append(ets)
@@ -232,6 +237,7 @@ def extract_shard(
         ets=np.concatenate(ets_parts),
         quats=np.concatenate(quat_parts),
         seg=np.concatenate(seg_parts),
+        runs=np.asarray(runs).reshape(-1, 2),
         unresolved_s=unresolved_s,
         n_lost=n_lost,
         claimed_s=claimed,
@@ -244,20 +250,18 @@ def _keyframe_segment(
     seg: SpinSegment,
     windows: list[tuple[float, float]],
     eps_rad: float,
-) -> tuple[np.ndarray, np.ndarray, float, int]:
-    """Adaptive-sample + keyframe one span →
-    `(ets, quats, unresolved_s, n_lost)`.
+) -> tuple[np.ndarray, np.ndarray, list[tuple[float, float]], float, int]:
+    """Keyframe one span → `(ets, quats, runs, unresolved_s, n_lost)`.
 
-    Each CK window is clipped to the span, then tiled to `TILE_S` so one
-    call's sample stream stays bounded; `last_et` keeps keyframes
-    time-ascending and drops the duplicate sample at each tile boundary. A
-    run of point windows is one stream of their instants. A span's endpoints
-    that resolve are sampled in both adjacent spans' frames, so the decoder
-    never SLERPs across the baseline switch.
+    Tiles bound the memory of one sample stream. Each span samples its own
+    endpoints, so the decoder never SLERPs across a baseline switch. `runs`
+    comes from the samples, because decimation can drop the samples at the
+    edges of a hole.
     """
     transform = seg.baseline.residual if seg.baseline else None
     ets_parts: list[np.ndarray] = []
     quat_parts: list[np.ndarray] = []
+    runs: list[tuple[float, float]] = []
     last_et = -math.inf
     unresolved_s = 0.0
     n_lost = 0
@@ -277,6 +281,7 @@ def _keyframe_segment(
             ]
             ets, stream, lost = point_sample(frame_name, instants, transform)
             n_lost += lost
+            runs += [(et, et) for et in ets.tolist()]
             keep_keyframes(ets, stream)
             continue
         for win_start, win_end in run:
@@ -296,17 +301,33 @@ def _keyframe_segment(
                     min_dt=min(MIN_DT_S, seg.seed_dt / 4),
                     transform=transform,
                 )
-                unresolved_s += unresolved
+                unresolved_s += sum(b - a for a, b in unresolved)
+                runs += _data_runs(ets, unresolved)
                 keep_keyframes(ets, stream)
                 start = tile_end
     if not quat_parts:
-        return np.empty(0), np.empty((0, 4)), unresolved_s, n_lost
+        return np.empty(0), np.empty((0, 4)), runs, unresolved_s, n_lost
     return (
         np.concatenate(ets_parts),
         np.concatenate(quat_parts),
+        runs,
         unresolved_s,
         n_lost,
     )
+
+
+def _data_runs(
+    ets: np.ndarray, unresolved: list[tuple[float, float]]
+) -> list[tuple[float, float]]:
+    """The stretches of the ascending samples `ets` that no `unresolved`
+    stretch splits."""
+    if not ets.size:
+        return []
+    cuts = np.unique(np.searchsorted(ets, [a for a, _ in unresolved]))
+    cuts = cuts[(cuts > 0) & (cuts < ets.size)]
+    firsts = np.concatenate([[0], cuts])
+    lasts = np.concatenate([cuts - 1, [ets.size - 1]])
+    return list(zip(ets[firsts].tolist(), ets[lasts].tolist(), strict=True))
 
 
 def _is_point(window: tuple[float, float]) -> bool:
@@ -350,13 +371,16 @@ def manifest_entry(result: ExtractionResult, *, frame_name: str) -> dict:
              "start_jd": float, "end_jd": float}, ...
           ] | null,
           "files": [{"name", "start_jd", "end_jd", "n_keyframes",
-                     "baseline_index"?}, ...]
+                     "baseline_index"?}, ...],
+          "holes": [[start_jd, end_jd], ...]
         }
 
     `baselines` is null for a non-spinner. For a spinner, each file's
     `baseline_index` selects the active span to recompose against. A raw span
     of a spinner has `rate_rad_s` 0, `anchor` [1, 0, 0, 0] and `axis`
-    [0, 0, 1], so it composes to identity.
+    [0, 0, 1], so it composes to identity. `holes` lists the gaps of at least
+    `HOLE_MIN_S` in the CK data, in time order, which a decoder does not
+    interpolate across.
     """
     spinning = is_spin_plan(result.segments)
     baselines = [_baseline_json(seg) for seg in result.segments] if spinning else None
@@ -379,4 +403,5 @@ def manifest_entry(result: ExtractionResult, *, frame_name: str) -> dict:
         "n_keyframes": result.n_keyframes,
         "baselines": baselines,
         "files": files,
+        "holes": [[_et_to_jd(a), _et_to_jd(b)] for a, b in result.holes],
     }

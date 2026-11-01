@@ -3,9 +3,9 @@
 Per probe, under `attitude/<probe>/`:
 - `_attitude_cache.json`: the spin plan, keyed on the full kernel signature,
   and the manifest of the last chunk write, keyed on the shard signatures.
-- `shards/<k>-<sig>.npz`: the keyframes of shard k (`ets`, `quats`, `seg`).
-  The name holds the signature, so a file is never rewritten in place and a
-  crash leaves only whole files.
+- `shards/<k>-<sig>.npz`: the keyframes of shard k (`ets`, `quats`, `seg`) and
+  where its CKs have data (`runs`). The name holds the signature, so a file is
+  never rewritten in place and a crash leaves only whole files.
 
 Per craft, `attitude/_coverage/<frame>.json` holds the SEGMENT-level coverage
 of each CK, and whether its segments need positions to resolve, keyed on its
@@ -21,7 +21,7 @@ import numpy as np
 from space_map_data.export.sidecar_io import read_sidecar, write_atomic
 
 # The probe cache file and the shard signatures: a bump extracts every shard.
-CACHE_VERSION = 6
+CACHE_VERSION = 7
 # The coverage entries: a bump reads every CK again.
 COVERAGE_VERSION = 5
 # The spin plan: a bump plans every probe again.
@@ -53,20 +53,22 @@ def list_shards(meta_dir: Path) -> set[str]:
         return set()
 
 
-def save_shard(path: Path, ets: np.ndarray, quats: np.ndarray, seg: np.ndarray) -> None:
+def save_shard(
+    path: Path, ets: np.ndarray, quats: np.ndarray, seg: np.ndarray, runs: np.ndarray
+) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(f".{path.name}.tmp")
     with tmp.open("wb") as f:
-        np.savez(f, ets=ets, quats=quats, seg=seg)
+        np.savez(f, ets=ets, quats=quats, seg=seg, runs=runs)
         # A name on disk must mean whole content, also after a power loss.
         f.flush()
         os.fsync(f.fileno())
     os.replace(tmp, path)
 
 
-def load_shard(path: Path) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+def load_shard(path: Path) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     with np.load(path) as data:
-        return data["ets"], data["quats"], data["seg"]
+        return data["ets"], data["quats"], data["seg"], data["runs"]
 
 
 def coverage_path(attitude_meta_dir: Path, frame: str) -> Path:
