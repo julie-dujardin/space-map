@@ -81,7 +81,7 @@ export const LITERATURE_PAGE = '/constants/stars/literature.py';
 
 /** Wikidata is credited on its own, as the source of the object metadata. */
 export function isWikidataCredit(credit: ExtrasolarCredit): boolean {
-	return credit.source.includes('//www.wikidata.org/');
+	return credit.source === 'https://www.wikidata.org/';
 }
 
 /** A work cited by author and year names a paper, not who runs a catalogue. */
