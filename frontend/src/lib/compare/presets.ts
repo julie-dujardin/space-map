@@ -4,16 +4,20 @@
  */
 
 import * as m from '$lib/paraglide/messages.js';
+import { fetchBundlePair, GROUP_BUNDLES } from '$lib/fetch/bundle-pair';
+import type { GlobalGroupData } from '$lib/fetch/groups/details';
+import { getLocale } from '$lib/host';
 import { ObjectType, type BodyData } from '$lib/types/objects';
+import { buildLineup, starGeometryFromMember } from '../../components/detail/charts/lineup';
 import { ROCKETS } from './rockets';
 
-export type PresetGroup = 'worlds' | 'craft' | 'probes';
+export type PresetGroup = 'worlds' | 'stars' | 'craft' | 'probes';
 
 export interface ComparePreset {
 	slug: string;
 	label: () => string;
-	/** The heading it is listed under: bodies, craft near Earth, or craft sent
-	 *  away from it. */
+	/** The heading it is listed under: bodies, stars, craft near Earth, or craft
+	 *  sent away from it. */
 	group: PresetGroup;
 	/** Object ids, in no particular order: the row sorts by size. */
 	ids: string[];
@@ -50,6 +54,8 @@ const GIANT_RADIUS_KM = 20000;
 /** Where the moons split: gravity rounds a moon somewhere near this size, and
  *  the two halves are too far apart in scale to share a row. */
 const ROUND_MOON_RADIUS_KM = 200;
+
+const STARS_GROUP = 'cat-stars';
 
 export const COMPARE_PRESETS: ComparePreset[] = [
 	{
@@ -358,14 +364,46 @@ export const COMPARE_PRESETS: ComparePreset[] = [
 	}
 ];
 
-/** The presets under their headings, in order. */
-export const COMPARE_PRESET_GROUPS = (
-	[
-		{ id: 'worlds', label: m.compare_preset_group_worlds },
-		{ id: 'craft', label: m.compare_preset_group_craft },
-		{ id: 'probes', label: m.compare_preset_group_probes }
-	] satisfies { id: PresetGroup; label: () => string }[]
-).map((group) => ({ ...group, presets: COMPARE_PRESETS.filter((p) => p.group === group.id) }));
+/** The Stars page's row: the export keeps that list, so this set follows it.
+ *  Null where the export gives nothing to draw. */
+export function loadStarsPreset(): Promise<ComparePreset | null> {
+	starsPreset ??= readStarsPreset().catch((err: unknown) => {
+		starsPreset = undefined;
+		throw err;
+	});
+	return starsPreset;
+}
+
+/** Kept across mounts: the menu unmounts each time an object is maximized. */
+let starsPreset: Promise<ComparePreset | null> | undefined;
+
+async function readStarsPreset(): Promise<ComparePreset | null> {
+	const { global } = await fetchBundlePair<GlobalGroupData, never>(
+		GROUP_BUNDLES,
+		STARS_GROUP,
+		getLocale(),
+		false
+	);
+	const ids = buildLineup(global?.notable_members ?? [], starGeometryFromMember).map((b) => b.id);
+	if (!ids.length) return null;
+	return { slug: STARS_GROUP, group: 'stars', label: m.compare_preset_known_stars, ids };
+}
+
+/** The presets under their headings, in order. Stars have a heading only with
+ *  their set. */
+export function comparePresetGroups(stars: ComparePreset | null) {
+	const presets = stars ? [...COMPARE_PRESETS, stars] : COMPARE_PRESETS;
+	return (
+		[
+			{ id: 'worlds', label: m.compare_preset_group_worlds },
+			{ id: 'stars', label: m.compare_preset_group_stars },
+			{ id: 'craft', label: m.compare_preset_group_craft },
+			{ id: 'probes', label: m.compare_preset_group_probes }
+		] satisfies { id: PresetGroup; label: () => string }[]
+	)
+		.map((group) => ({ ...group, presets: presets.filter((p) => p.group === group.id) }))
+		.filter((group) => group.presets.length);
+}
 
 /** What the page opens on: a set that fills more than one band, so the way
  *  pages work is visible without the reader having to assemble one. */

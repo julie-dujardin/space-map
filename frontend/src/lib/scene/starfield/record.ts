@@ -64,6 +64,18 @@ export function starRadiusKm(row: TableRow): number | null {
 	return radius === null ? null : radius * SOLAR_RADIUS_KM;
 }
 
+/** The radius a row of stars draws, by the order of `_size` in `star_lineup.py`:
+ *  what Gaia sees of a compact star is mostly its companion. */
+export function lineupRadiusKm(row: TableRow, compact: boolean): number | null {
+	const radius =
+		measuredRadiusSolar(row) ??
+		positiveNumber(row, 'host_radius') ??
+		(compact
+			? null
+			: (positiveNumber(row, 'radius_flame') ?? positiveNumber(row, 'radius_gspphot')));
+	return radius === null ? null : radius * SOLAR_RADIUS_KM;
+}
+
 /** Effective temperature (K): a planet host's catalogue's, else GSP-Phot's. */
 export function starTeff(row: TableRow): number | null {
 	return positiveNumber(row, 'host_teff') ?? positiveNumber(row, 'teff_gspphot');

@@ -12,6 +12,7 @@ import {
 import { STRIP_CAPACITY } from '../members/MemberStrip.svelte';
 import type { LineupBody } from './BodyLineup.svelte';
 import { loadTextureCredits, type TextureSource } from '$lib/credits/texture-credits';
+import { extrasolarBase } from '$lib/fetch/extrasolar/files';
 import {
 	craftTier,
 	fetchBundleMeta,
@@ -91,8 +92,10 @@ export interface LineupHeroSpec {
 	bodies: LineupBody[];
 	ariaLabel: string;
 	perPage?: number;
-	/** See BodyLineup. Set only on a row of stars. */
+	/** See BodyLineup. Set only on a row too wide for one scale. */
 	bandRatio?: number;
+	/** False keeps the row from offering its way out to `/compare`. */
+	compare?: false;
 }
 
 type ImageryCredit = { key: string; label: string; url: string };
@@ -152,7 +155,8 @@ export class LineupHero {
 				bodies,
 				ariaLabel: d.fallbackName(),
 				perPage: STAR_PAGE,
-				bandRatio: STAR_BAND_RATIO
+				bandRatio: STAR_BAND_RATIO,
+				compare: extrasolarBase() === '' ? false : undefined
 			};
 		});
 		// The best-known craft and rockets, whichever kind they are.
@@ -166,7 +170,8 @@ export class LineupHero {
 				bodies: [...this.#rockets, ...craft],
 				ariaLabel: d.fallbackName(),
 				perPage: CRAFT_PAGE,
-				bandRatio: CRAFT_BAND_RATIO
+				bandRatio: CRAFT_BAND_RATIO,
+				compare: false
 			};
 		});
 		const smallBodyBodies = $derived(

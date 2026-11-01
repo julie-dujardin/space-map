@@ -313,8 +313,8 @@ export function toHit(d: RawHit): SearchHit {
 	return toObjectHit(d);
 }
 
-/** Whether a hit is a star or a planet of another system. Neither is a part
- *  of a comparison, nor a trip end where the host serves no extrasolar export.
+/** Whether a hit is a star or a planet of another system. Where the host
+ *  serves no extrasolar export, neither is a comparison entry or a trip end.
  *  A query can leave out the stars by type, but a host of another class (a
  *  pulsar, a white dwarf) only by `object.extrasolar`, which needs that
  *  setting in the index. */
@@ -358,18 +358,49 @@ export async function searchEndpoints(
 	locale: string,
 	limit: number = 8
 ): Promise<EndpointHit[]> {
+	const hits = await searchServed(query, locale, limit, 'kind != "group"', 'kind != "planet"');
+	return hits as EndpointHit[];
+}
+
+/** A search whose extrasolar hits drop out where the host serves no extrasolar
+ *  export: `filter` everywhere, `localFilter` and the types there too. */
+async function searchServed(
+	query: string,
+	locale: string,
+	limit: number,
+	filter: string,
+	localFilter?: string
+): Promise<SearchHit[]> {
 	const c = await getClient();
 	if (!c || !query.trim()) return [];
 	const extrasolar = extrasolarBase() !== '';
+	const local = [filter, ...(localFilter ? [localFilter] : []), NOT_EXTRASOLAR].join(' AND ');
 	const res = await c.index(INDEX).search(query, {
 		limit,
 		locales: [locale],
-		filter: extrasolar
-			? 'kind != "group"'
-			: `kind != "group" AND kind != "planet" AND ${NOT_EXTRASOLAR}`
+		filter: extrasolar ? filter : local
 	});
-	const hits = (res.hits ?? []).map((h) => toHit(h as RawHit)) as EndpointHit[];
+	const hits = (res.hits ?? []).map((h) => toHit(h as RawHit));
 	return extrasolar ? hits : hits.filter((h) => !isExtrasolarHit(h));
+}
+
+/**
+ * What the comparison row can draw. The index marks these (`object.drawable`)
+ * by the test `resolveObject` applies, so a craft with no size never takes a
+ * hit's place.
+ */
+export async function searchDrawable(
+	query: string,
+	locale: string,
+	limit: number = 8
+): Promise<ObjectHit[]> {
+	const hits = await searchServed(
+		query,
+		locale,
+		limit,
+		'kind = "object" AND object.drawable = true'
+	);
+	return hits as ObjectHit[];
 }
 
 /**

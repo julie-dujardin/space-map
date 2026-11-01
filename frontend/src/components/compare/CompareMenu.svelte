@@ -7,6 +7,7 @@
   as well.
 -->
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import CheckIcon from '@lucide/svelte/icons/check';
 	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
 	import ChevronUpIcon from '@lucide/svelte/icons/chevron-up';
@@ -18,13 +19,14 @@
 	import { Switch } from '$lib/components/ui/switch/index.js';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import * as m from '$lib/paraglide/messages.js';
-	import { isSearchEnabled, search, type ObjectHit } from '$lib/search/client';
+	import { extrasolarBase } from '$lib/fetch/extrasolar/files';
+	import { isSearchEnabled, searchDrawable, type ObjectHit } from '$lib/search/client';
 	import { getLocale } from '$lib/host';
-	import { objectTypeLabel } from '$lib/format/object-type';
+	import { typeLabel } from '$lib/search/format';
 	import { formatKm } from '$lib/format/distance';
 	import {
-		COMPARE_PRESETS,
-		COMPARE_PRESET_GROUPS,
+		comparePresetGroups,
+		loadStarsPreset,
 		presetOn,
 		type ComparePreset
 	} from '$lib/compare/presets';
@@ -43,7 +45,8 @@
 	}
 
 	interface Props {
-		/** Ids in the comparison: a hit already there is marked and does nothing. */
+		/** Ids in the comparison: a hit already there is marked, and picking it
+		 *  takes it out. */
 		selected: readonly string[];
 		/** The ones resolved so far, largest first. */
 		listed: ListedObject[];
@@ -63,6 +66,7 @@
 
 	/** Between the parts of a label. */
 	const DOT = ' · ';
+	const MAX_HITS = 12;
 
 	let {
 		selected,
@@ -81,6 +85,9 @@
 	type Section = 'presets' | 'list';
 
 	const enabled = isSearchEnabled();
+	const hasStars = extrasolarBase() !== '';
+	let starsPreset = $state<ComparePreset | null>(null);
+	const presetGroups = $derived(comparePresetGroups(starsPreset));
 
 	let query = $state('');
 	let hits = $state<ObjectHit[]>([]);
@@ -91,7 +98,12 @@
 
 	/** The slugs of the sets that are up. */
 	const up = $derived(
-		new Set(COMPARE_PRESETS.filter((p) => presetOn(p, selected)).map((p) => p.slug))
+		new Set(
+			presetGroups
+				.flatMap((group) => group.presets)
+				.filter((p) => presetOn(p, selected))
+				.map((p) => p.slug)
+		)
 	);
 	/** A query takes the body over; whatever was open comes back once it is cleared. */
 	const showHits = $derived(query.trim() !== '');
@@ -99,6 +111,13 @@
 	$effect(() => {
 		onextend?.(showHits || open !== null);
 		return () => onextend?.(false);
+	});
+
+	onMount(() => {
+		if (!hasStars) return;
+		loadStarsPreset()
+			.then((preset) => (starsPreset = preset))
+			.catch((err) => console.warn('[compare] stars preset failed:', err));
 	});
 
 	/** One request per settled query: typing fires this on every keystroke, and
@@ -115,11 +134,10 @@
 		}
 		searching = true;
 		const timer = setTimeout(() => {
-			search(q, getLocale(), 12)
+			searchDrawable(q, getLocale(), MAX_HITS)
 				.then((found) => {
 					if (mine !== token) return;
-					// A star of another system has no bundle for the comparison to draw.
-					hits = found.filter((h): h is ObjectHit => h.kind === 'object' && !h.extrasolar);
+					hits = found;
 					searching = false;
 				})
 				.catch((err) => {
@@ -215,20 +233,21 @@
 							<li>
 								<button
 									type="button"
-									disabled={already}
-									onclick={() => onadd(hit)}
-									class="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-start hover:bg-accent disabled:opacity-45 disabled:hover:bg-transparent"
+									aria-label={already ? m.compare_remove({ name: hit.name }) : undefined}
+									onclick={() => (already ? onremove(hit.id) : onadd(hit))}
+									class="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-start hover:bg-accent"
 								>
 									<span class="min-w-0 flex-1">
 										<span class="block truncate text-sm font-medium"><bdi>{hit.name}</bdi></span>
 										<span class="block truncate text-[11.5px] text-muted-foreground">
-											{objectTypeLabel(hit.type)}{#if size}{DOT}<bdi>{size}</bdi>{/if}
+											{typeLabel(hit.type)}{#if size}{DOT}<bdi>{size}</bdi>{/if}
 										</span>
 									</span>
 									{#if already}
 										<span class="shrink-0 text-[11.5px] text-muted-foreground"
 											>{m.compare_already()}</span
 										>
+										<XIcon class="size-4 shrink-0 text-muted-foreground" />
 									{:else}
 										<PlusIcon class="size-4 shrink-0 text-muted-foreground" />
 									{/if}
@@ -239,7 +258,7 @@
 				{/if}
 			{:else if open === 'presets'}
 				<div class="flex flex-col gap-2 px-4 py-3">
-					{#each COMPARE_PRESET_GROUPS as group (group.id)}
+					{#each presetGroups as group (group.id)}
 						<div class="flex flex-col">
 							<span class="flex h-6 items-center text-xs font-medium text-muted-foreground"
 								>{group.label()}</span

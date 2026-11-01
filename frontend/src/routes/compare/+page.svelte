@@ -41,6 +41,7 @@
 	} from '../../components/detail/charts/lineup-fit';
 	import { lineupBody, resolveObject, type CompareObject } from '$lib/compare/geometry';
 	import { presetOn, type ComparePreset } from '$lib/compare/presets';
+	import { isStarObjectId } from '$lib/fetch/extrasolar/ids';
 	import type { ObjectHit } from '$lib/search/client';
 	import { formatQuantity } from '$lib/format/quantities';
 	import { formatKm } from '$lib/format/distance';
@@ -233,6 +234,11 @@
 			: Math.min(page, Math.max(0, pages.length - 1))
 	);
 	const current = $derived(pages[pageIndex]);
+	/** Stars stand in space in either theme: a white-hot disc is lost on a bare
+	 *  sheet. */
+	const starry = $derived(
+		!!current && [...current.items, current.previous, current.next].some(drawnAsStar)
+	);
 	const bodies = $derived<LineupBody[]>(
 		current
 			? [
@@ -328,6 +334,16 @@
 	 *  them is also the way to them. */
 	const ghostAt = $derived(laid.find((l) => l.aside === 'start'));
 	const speckAt = $derived(laid.find((l) => l.aside === 'end'));
+
+	const skeletonKind = $derived.by<'body' | 'group' | 'star'>(() => {
+		if (!opened) return 'body';
+		if (rocketBySlug(opened)) return 'group';
+		return isStarObjectId(opened) ? 'star' : 'body';
+	});
+
+	function drawnAsStar(object: CompareObject | undefined): boolean {
+		return !!object?.geometry.photosphere;
+	}
 
 	function colorOf(object: CompareObject): string {
 		return BODY_COLORS[object.id] ?? object.geometry.color ?? DEFAULT_BODY_COLOR;
@@ -703,19 +719,22 @@
 		{/if}
 
 		<!-- The row stands on the stage sheet, and everything over it is inked
-		     from the theme: dark it is the sky the map draws, light a bare sheet. -->
+		     from the theme: dark it is the sky the map draws, light a bare sheet,
+		     and a page of stars is the sky in either. -->
 		<div
 			bind:this={stage}
 			bind:clientWidth={stageWidth}
 			bind:clientHeight={stageHeight}
 			role="group"
 			aria-label={m.compare_lineup_label()}
-			class="relative min-w-0 flex-1 overflow-hidden bg-stage text-foreground"
+			class="relative min-w-0 flex-1 overflow-hidden bg-stage text-foreground {starry
+				? 'stage-sky'
+				: ''}"
 		>
 			<!-- Everything the row is made of moves together when it zooms. A drag
 			     on it turns the body under it, so the pages turn by the buttons
 			     alone. -->
-			<div class="absolute inset-0" style={zoomStyle}>
+			<div class="absolute inset-0 {starry ? 'stage-sky-ink' : ''}" style={zoomStyle}>
 				{#if bodies.length && stageHeight > LABEL_ROW}
 					<!-- The row draws the neighbouring pages too, at its own scale. -->
 					<div bind:this={rowBox} class="relative">
@@ -886,7 +905,10 @@
 
 			<!-- Same corner as the map's, crediting what this page draws. -->
 			<div class="absolute end-0 z-10 max-w-full" style="bottom: var(--safe-bottom)">
-				<CompareCreditBar bodies={comparableBody ? [...bodies, comparableBody] : bodies} />
+				<CompareCreditBar
+					bodies={comparableBody ? [...bodies, comparableBody] : bodies}
+					sky={starry}
+				/>
 			</div>
 
 			<!-- Top left corner, under the scale bar a phone has there. -->
@@ -960,7 +982,7 @@
 			<!-- The panel's own frame while its chunk and payload arrive, so the
 			     room it stands in is never left bare. -->
 			<DrawerSkeleton
-				kind={opened && rocketBySlug(opened) ? 'group' : 'body'}
+				kind={skeletonKind}
 				title={(opened && resolved[opened]?.name) || ''}
 				onClose={() => openObject(null)}
 			/>

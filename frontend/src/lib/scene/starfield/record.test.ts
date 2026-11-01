@@ -9,6 +9,7 @@ import {
 } from '$lib/fetch/extrasolar/__fixtures__/export';
 import { pointSourceRow } from '$lib/fetch/extrasolar/__fixtures__/synthetic';
 import type { PlanetHost, PlanetIndexFile, PlanetSystem } from '$lib/fetch/extrasolar/planets';
+import { SOLAR_RADIUS_KM } from '$lib/math/units';
 import { bpRpFromTeff } from './colour';
 import {
 	absoluteG,
@@ -16,6 +17,7 @@ import {
 	colourBpRp,
 	drawnAbsoluteG,
 	gEstimate,
+	lineupRadiusKm,
 	propagate,
 	starMass,
 	starPlace,
@@ -51,6 +53,20 @@ describe('gEstimate', () => {
 		expect(gEstimate(-1.44, 0.009, -1.0876)).toBeCloseTo(-1.44 - 0.02907 - 0.02385 * 0.009, 4);
 		expect(gEstimate(null, null, 9)).toBeCloseTo(8.72, 6);
 		expect(gEstimate(5, null, null)).toBeNull();
+	});
+});
+
+describe('lineupRadiusKm', () => {
+	it('takes a measurement before a host catalogue, as the lineups do', () => {
+		const row = pointSourceRow({ radius_literature: 3, host_radius: 2, radius_flame: 1 });
+		expect(lineupRadiusKm(row, false)).toBe(3 * SOLAR_RADIUS_KM);
+		expect(starRadiusKm(row)).toBe(2 * SOLAR_RADIUS_KM);
+	});
+
+	it('leaves the Gaia radius of a compact star out', () => {
+		const row = pointSourceRow({ radius_flame: 1 });
+		expect(lineupRadiusKm(row, false)).toBe(SOLAR_RADIUS_KM);
+		expect(lineupRadiusKm(row, true)).toBeNull();
 	});
 });
 

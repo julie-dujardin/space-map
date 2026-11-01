@@ -430,6 +430,22 @@ body {
 	}
 }
 
+/* Stars stand in space in either theme. The tokens bind on :root, so a nested
+   `.dark` does not reach them. The ink stays off the stage's menu, which keeps
+   the page's theme. */
+.stage-sky {
+	--color-stage: oklch(0.15 0.002 286);
+}
+.stage-sky-ink {
+	color: oklch(0.985 0 0);
+	--color-foreground: oklch(0.985 0 0);
+	--color-muted-foreground: oklch(0.708 0 0);
+}
+.stage-sky-ink .bg-popover {
+	--color-foreground: var(--foreground);
+	--color-muted-foreground: var(--muted-foreground);
+}
+
 @custom-variant dark (&:where(.dark, .dark *));
 
 @custom-variant data-open {

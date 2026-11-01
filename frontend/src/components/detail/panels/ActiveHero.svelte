@@ -106,7 +106,7 @@
 			ariaLabel={lineup.hero.ariaLabel}
 			perPage={lineup.hero.perPage}
 			bandRatio={lineup.hero.bandRatio}
-			compare={!lineup.hero.bandRatio}
+			compare={lineup.hero.compare ?? true}
 		/>
 	{/if}
 {/snippet}
@@ -239,7 +239,7 @@
 			ariaLabel={lineup.membersLineup.ariaLabel}
 			perPage={lineup.membersLineup.perPage}
 			bandRatio={lineup.membersLineup.bandRatio}
-			compare={!lineup.membersLineup.bandRatio}
+			compare={lineup.membersLineup.compare ?? true}
 		/>
 	{/if}
 {/snippet}

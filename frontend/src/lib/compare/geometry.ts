@@ -1,16 +1,30 @@
 /**
  * What the comparison row needs to draw one object, whatever it is: a planet,
- * a moon, a small body or a spacecraft.
+ * a moon, a small body, a spacecraft or a star.
  *
  * A size arrives in two steps. The search hit carries a diameter, so a body
  * enters the row the moment it is picked; its own bundle then supplies the
  * measured shape, the pole it tilts on, and the mesh and surface map the scene
  * would draw, and the row redraws on that. A spacecraft has no radius at all,
  * so its size comes from the model index instead; a rocket is nothing but its
- * bundle, and is named by the row itself.
+ * bundle, and is named by the row itself. A star of the extrasolar catalogue
+ * has no bundle to draw from: its catalogue record gives its size and colour.
  */
 
+import { SUN_ID } from '$lib/constants';
+import { familiesOf } from '$lib/fetch/extrasolar/families';
+import { fetchExtrasolarMetadata } from '$lib/fetch/extrasolar/files';
+import { extrasolarIdOf, isStarObjectId } from '$lib/fetch/extrasolar/ids';
+import {
+	extrasolarLookup,
+	POINT_SOURCE_SLUG,
+	systemPrimary,
+	type ExtrasolarRecord
+} from '$lib/fetch/extrasolar/lookup';
+import { starPageName } from '$lib/fetch/extrasolar/star-name';
 import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
+import { starCssColour, teffFromBpRp } from '$lib/scene/starfield/colour';
+import { colourBpRp, lineupRadiusKm, starTeff } from '$lib/scene/starfield/record';
 import { loadSystemsGlobal, nutPrecFor } from '$lib/fetch/systems-global';
 import { iauAngles } from '$lib/math/orientation';
 import { dateToJD } from '$lib/time/jd';
@@ -18,6 +32,7 @@ import { fetchModelIndex, type ModelIndexEntry } from '$lib/fetch/models';
 import type { LineupBody } from '../../components/detail/charts/BodyLineup.svelte';
 import { craftWidthRatio } from '../../components/detail/charts/lineup-fit';
 import { RENDER_HINTS } from '../../components/detail/charts/lineup';
+import { SUN_TEFF } from '../../components/detail/charts/lineup-star';
 import { groupHref } from '$lib/state/page-href';
 import { rocketBodies, rocketBySlug } from './rockets';
 
@@ -93,6 +108,51 @@ async function craftBundleFor(id: string): Promise<CompareObject | null> {
 	return attached ? craftObject(id, '', attached) : null;
 }
 
+/** The families of the compact stars, whose Gaia radii do not count. */
+const COMPACT_FAMILIES = new Set(['neutron-star', 'white-dwarf']);
+/** A star's radius is known to a few percent at best. */
+const RADIUS_DIGITS = 3;
+
+/** The record that holds a star's point: its own, or a star system's primary's. */
+async function pointRecord(record: ExtrasolarRecord): Promise<ExtrasolarRecord | null> {
+	if (record.rows.has(POINT_SOURCE_SLUG)) return record;
+	const primary = systemPrimary(record);
+	if (primary === null) return null;
+	const found = await extrasolarLookup.live(primary);
+	return found.kind === 'live' ? found.record : null;
+}
+
+/** A star of the extrasolar catalogue, sized and coloured as a row of stars is.
+ *  A star system stands for its main star. */
+async function starObject(id: string, seed: { name: string }): Promise<CompareObject | null> {
+	const star = extrasolarIdOf(id);
+	const found = star === null ? null : await extrasolarLookup.live(star);
+	if (found?.kind !== 'live') return null;
+	const record = await pointRecord(found.record);
+	const row = record?.rows.get(POINT_SOURCE_SLUG);
+	if (!record || !row) return null;
+	const { families, familiesEstimated } = record.metadata;
+	const known = (await fetchExtrasolarMetadata())?.families ?? [];
+	const compact = familiesOf(families | familiesEstimated, known).some((slug) =>
+		COMPACT_FAMILIES.has(slug)
+	);
+	const radiusKm = lineupRadiusKm(row, compact);
+	const colour = colourBpRp(row);
+	const teff = starTeff(row) ?? (colour === null ? null : teffFromBpRp(colour));
+	if (radiusKm === null || teff === null) return null;
+	return {
+		id,
+		name: seed.name || (await starPageName(found.record)) || id,
+		type: 'star',
+		radiusKm: Number(radiusKm.toPrecision(RADIUS_DIGITS)),
+		geometry: {
+			texture: false,
+			photosphere: { teff },
+			color: starCssColour(teff, null)
+		}
+	};
+}
+
 /**
  * Everything known about one object's size and appearance. `seed` is what the
  * search hit already said, so a picked object can be drawn before its bundle
@@ -102,6 +162,7 @@ export async function resolveObject(
 	id: string,
 	seed: { name: string; type?: string; diameter_km?: number }
 ): Promise<CompareObject | null> {
+	if (isStarObjectId(id)) return starObject(id, seed);
 	const craft = await craftBundleFor(id);
 	if (craft) return { ...craft, name: seed.name || craft.name };
 
@@ -154,6 +215,7 @@ export async function resolveObject(
 	geometry.color = global?.sbdb?.color ?? global?.color;
 	geometry.geometricAlbedo = global?.sbdb?.geometric_albedo ?? global?.geometric_albedo;
 	geometry.lunarWeightScale = global?.lunar_weight_scale;
+	if (id === SUN_ID) geometry.photosphere = { teff: SUN_TEFF };
 
 	return { id, name, type, radiusKm, geometry: { ...geometry, ...RENDER_HINTS[id] } };
 }
