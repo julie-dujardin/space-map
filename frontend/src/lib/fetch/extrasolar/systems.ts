@@ -5,7 +5,10 @@
  */
 
 import type { CrossId } from './container';
+import type { ValueReference } from '$lib/fetch/objects/object-data';
+import { measuredRadiusSolar } from '$lib/scene/starfield/record';
 import {
+	POINT_SOURCE_SLUG,
 	SYSTEM_SLUG,
 	TableRow,
 	extrasolarLookup,
@@ -169,6 +172,12 @@ export interface SystemNode {
 	orbit: PairOrbit | null;
 	/** On a held star. */
 	star: HeldStarValues | null;
+	/** What a paper or an angular diameter gives for a point, in nominal solar
+	 *  radii. */
+	measuredRadius: number | null;
+	measuredBy: 'paper' | 'angular diameter' | null;
+	/** The papers behind `measuredRadius`, once a system's load fills them. */
+	radiusPapers: ValueReference[];
 }
 
 /** The items of a list column on `row`; each item reads as a row of the item
@@ -286,6 +295,9 @@ export function systemNode(record: ExtrasolarRecord): SystemNode | null {
 	if (!row) return null;
 	const orbit = items(row, 'orbit')?.[0];
 	const star = items(row, 'star')?.[0];
+	const ps = record.rows.get(POINT_SOURCE_SLUG);
+	const measuredRadius = ps ? measuredRadiusSolar(ps) : null;
+	const paper = ps?.number('radius_literature') != null;
 	return {
 		id: record.id,
 		point: row.flag('point')!,
@@ -305,7 +317,10 @@ export function systemNode(record: ExtrasolarRecord): SystemNode | null {
 		members: (items(row, 'members') ?? []).map(member),
 		tree: items(row, 'tree')?.map(treeNode) ?? null,
 		orbit: orbit ? pairOrbit(orbit) : null,
-		star: star ? heldStarValues(star) : null
+		star: star ? heldStarValues(star) : null,
+		measuredRadius,
+		measuredBy: measuredRadius === null ? null : paper ? 'paper' : 'angular diameter',
+		radiusPapers: []
 	};
 }
 

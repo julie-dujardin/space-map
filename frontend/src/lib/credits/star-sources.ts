@@ -206,11 +206,13 @@ export function citationCredits(citations: readonly SystemCitation[]): StarCredi
 
 /** The credits of the catalogues that gave this record its values and `nodes`,
  *  the System rows its panel shows, then the papers that `references` cites
- *  for its values from the literature table. */
+ *  for its values from the literature table. `measured` is the point whose
+ *  measurement the panel shows for a held star. */
 export function starCredits(
 	record: ExtrasolarRecord,
 	references?: GlobalObjectData['references'],
-	nodes: readonly SystemNode[] = []
+	nodes: readonly SystemNode[] = [],
+	measured: SystemNode | null = null
 ): StarCredit[] {
 	const pages = new Set<CreditPage | undefined>();
 	const name = record.metadata.nameSource;
@@ -249,10 +251,12 @@ export function starCredits(
 		if (row.text('atnf_source')) pages.add('atnf').add('simbad');
 		if (oneStar && row.text('xhip_metallicity_source')) pages.add('xhip');
 	}
+	if (measured?.measuredBy === 'angular diameter') pages.add('jmdc');
 	const out = creditsOf(pages, record.credits);
 	const papers = [
 		...(distance?.source === LITERATURE ? (references?.distance ?? []) : []),
-		...(references?.paper_radius ?? [])
+		...(references?.paper_radius ?? []),
+		...(measured?.radiusPapers ?? [])
 	];
 	for (const paper of papers) {
 		out.push({ key: paper.url, label: paper.title, url: paper.url, note: paper.short });

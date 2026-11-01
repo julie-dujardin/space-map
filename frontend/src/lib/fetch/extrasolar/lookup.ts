@@ -375,6 +375,7 @@ export function homeRow(record: ExtrasolarRecord): TableRow | null {
 	return (record.home && record.rows.get(record.home)) || null;
 }
 
+export const POINT_SOURCE_SLUG = 'point-source';
 export const SYSTEM_SLUG = 'system';
 
 /** The ID of the primary point of a star system node. A point that holds

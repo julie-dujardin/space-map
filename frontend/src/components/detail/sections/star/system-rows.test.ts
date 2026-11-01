@@ -184,6 +184,20 @@ describe('a held star', () => {
 		expect(cards.map((c) => c.label)).toEqual(['Diameter', 'Distance', 'Temperature']);
 	});
 
+	it('takes the measurement of its point', () => {
+		const point = systemNodeOf(AB, {
+			point: true,
+			measuredRadius: 2,
+			measuredBy: 'angular diameter',
+			members: [member(A)]
+		});
+		const system: StarSystem = { ...threeStars(), nodes: new Map([[AB, point]]) };
+		const [cards] = systemStats(record, held, 0, system);
+		expect(cards[0].value).toBe('2.78M km');
+		const physical = section(systemSections(record, held, system), 'physical')?.rows;
+		expect(entry(physical, 'Diameter')?.tooltip).not.toContain('Doyle');
+	});
+
 	it('falls back to mass and spectral type', () => {
 		const star = heldValues({ radius: null, teff: null });
 		const [cards] = systemStats(record, { ...held, star }, 0);

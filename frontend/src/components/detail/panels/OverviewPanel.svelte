@@ -64,7 +64,12 @@
 	} from '$lib/fetch/extrasolar/files';
 	import { planetCatalogue, type PlanetSystem } from '$lib/fetch/extrasolar/planets';
 	import { systemNode } from '$lib/fetch/extrasolar/systems';
-	import { nodePlanetCount, systemHosts, type StarSystem } from '$lib/state/star-system';
+	import {
+		measuredPoint,
+		nodePlanetCount,
+		systemHosts,
+		type StarSystem
+	} from '$lib/state/star-system';
 	import type { PlanetAnchor } from '$lib/types/objects';
 
 	type FocusFeatureEntry = Extract<Focusable, { kind: 'feature' }>['feature'];
@@ -289,7 +294,8 @@
 		out.push(...figureCredits);
 		if (star) {
 			const nodes = system ? [...system.nodes.values()] : citedNodes;
-			out.push(...starCredits(star, data?.global?.references, nodes));
+			const measured = systemRow?.star ? measuredPoint(system, systemRow) : null;
+			out.push(...starCredits(star, data?.global?.references, nodes, measured));
 			out.push(
 				...citationCredits(
 					citedNodes.flatMap((n) => [...(n.orbit?.references ?? []), ...(n.star?.references ?? [])])
@@ -337,7 +343,7 @@
 			<FeatureStatCards {feature} detail={load.featureDetail} />
 		{:else if star}
 			<div class="flex flex-col gap-2">
-				{#each systemRow ? systemStats(star, systemRow, planetCount) : starStats(star) as stats, i (i)}
+				{#each systemRow ? systemStats(star, systemRow, planetCount, system) : starStats(star) as stats, i (i)}
 					<StatCardRow {stats} />
 				{/each}
 			</div>

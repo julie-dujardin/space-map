@@ -183,6 +183,7 @@ describe.skipIf(!HAS_EXPORT)("a star's panel rows from its records", () => {
 		const stats = starStats(sirius).map((row) => row.map((s) => [s.label, s.value, s.note]));
 		expect(stats).toEqual([
 			[
+				['Diameter', '2.34M km', undefined],
 				['Distance', '8.6 ly', undefined],
 				['Spectral type', ltrIsolate('A0mA1Va'), undefined]
 			]

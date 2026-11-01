@@ -9,6 +9,7 @@ import {
 	starDistance,
 	type ExtrasolarRecord,
 	type StarDistance,
+	POINT_SOURCE_SLUG,
 	type TableRow
 } from '$lib/fetch/extrasolar/lookup';
 import { PC_AU } from '$lib/scene/starfield/tree';
@@ -44,8 +45,6 @@ import type { Stat } from '../kit/StatCard.svelte';
 import { chooseMetallicity, type MetallicityQuantity } from './metallicity';
 import type { EntityRef } from '$lib/fetch/objects/object-data';
 import type { SystemNode } from '$lib/fetch/extrasolar/systems';
-
-export const POINT_SOURCE_SLUG = 'point-source';
 
 /** Light years in one parsec. */
 export const PC_LY = PC_AU / 63_241.077;

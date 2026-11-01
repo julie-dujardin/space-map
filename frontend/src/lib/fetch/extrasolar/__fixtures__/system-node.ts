@@ -51,6 +51,9 @@ export function systemNodeOf(id: number, values: Partial<SystemNode> = {}): Syst
 		tree: null,
 		orbit: null,
 		star: null,
+		measuredRadius: null,
+		measuredBy: null,
+		radiusPapers: [],
 		...values
 	};
 }

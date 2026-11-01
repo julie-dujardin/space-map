@@ -129,6 +129,18 @@ describe('star sources', () => {
 });
 
 describe('star credits', () => {
+	it('credits the measurement of a held star by its point', () => {
+		const star = pointSourceRecord(
+			[],
+			[{ name: 'JMDC', organisation: 'J', source: `https://example.org${CREDIT_PAGES.jmdc}` }]
+		);
+		const point = systemNodeOf(1, { measuredRadius: 800, measuredBy: 'angular diameter' });
+		expect(starCredits(star, undefined, [], point).map((c) => c.label)).toEqual(['JMDC']);
+		const paper = { short: 'Smith 2020', title: 'Radii', url: 'https://example.org/paper' };
+		const byPaper = { ...point, measuredBy: 'paper' as const, radiusPapers: [paper] };
+		expect(starCredits(star, undefined, [], byPaper).map((c) => c.label)).toEqual(['Radii']);
+	});
+
 	// One credit per page, labelled with its page's key.
 	const credits: ExtrasolarCredit[] = Object.entries(CREDIT_PAGES).map(([key, page]) => ({
 		name: key,
@@ -231,6 +243,7 @@ describe.skipIf(!HAS_EXPORT)('star credits from the real export', () => {
 		// Sirius's [Fe/H] is from PASTEL, by its SIMBAD id, beside XHIP's.
 		expect(await labels(22137869)).toEqual([
 			'The PASTEL catalogue, 2020 version (B/pastel)',
+			'JMDC: JMMC Measured Stellar Diameters Catalogue (II/345)',
 			'SIMBAD astronomical database',
 			'Hipparcos, the new reduction (I/311)',
 			'The Hipparcos and Tycho Catalogues (I/239)',

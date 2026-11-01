@@ -7,7 +7,11 @@
 
 import * as m from '$lib/paraglide/messages.js';
 import { starSourceName } from '$lib/credits/star-sources';
-import { astrometricOrbit, type ExtrasolarRecord } from '$lib/fetch/extrasolar/lookup';
+import {
+	POINT_SOURCE_SLUG,
+	astrometricOrbit,
+	type ExtrasolarRecord
+} from '$lib/fetch/extrasolar/lookup';
 import type {
 	HeldStarValues,
 	PairOrbit,
@@ -22,12 +26,11 @@ import { formatCompactKm } from '$lib/format/distance';
 import { formatUnit, joinParts, sigFigures } from '$lib/format/quantities';
 import { formatTemperature } from '$lib/format/temperature';
 import { SOLAR_RADIUS_KM } from '$lib/math/units';
-import { systemRows, type StarSystem, type SystemRow } from '$lib/state/star-system';
+import { measuredPoint, systemRows, type StarSystem, type SystemRow } from '$lib/state/star-system';
 import type { Stat } from '../kit/StatCard.svelte';
 import { formatJulianDay, formatPeriod } from '../planet/planet-rows';
 import {
 	PC_LY,
-	POINT_SOURCE_SLUG,
 	distanceStat,
 	epochLabel,
 	pointDistanceStat,
@@ -83,6 +86,13 @@ function diameterValue(radius: number): string {
 	return formatCompactKm(2 * radius * SOLAR_RADIUS_KM);
 }
 
+/** A held star's values. A measurement of its point comes before a catalogue's
+ *  radius, as on the page of a star of its own. */
+function heldValues(node: SystemNode, star: HeldStarValues, system: StarSystem | null) {
+	const point = measuredPoint(system, node);
+	return point ? { ...star, radius: point.measuredRadius, radiusSource: null } : star;
+}
+
 function heldStarStats(node: SystemNode, star: HeldStarValues): (Stat | null)[] {
 	const diameter =
 		star.radius === null
@@ -115,8 +125,15 @@ function nodeStats(record: ExtrasolarRecord, node: SystemNode, planets: number):
 }
 
 /** The cards of a node, which holds `planets` planets, or of a held star. */
-export function systemStats(record: ExtrasolarRecord, node: SystemNode, planets: number): Stat[][] {
-	const cards = node.star ? heldStarStats(node, node.star) : nodeStats(record, node, planets);
+export function systemStats(
+	record: ExtrasolarRecord,
+	node: SystemNode,
+	planets: number,
+	system: StarSystem | null = null
+): Stat[][] {
+	const cards = node.star
+		? heldStarStats(node, heldValues(node, node.star, system))
+		: nodeStats(record, node, planets);
 	return [cards.filter((card): card is Stat => card !== null).slice(0, 3)];
 }
 
@@ -318,7 +335,9 @@ export function systemSections(
 	system: StarSystem | null
 ): StarSection[] {
 	if (node.star) {
-		return heldStarSections(node, node.star, system).filter(({ rows }) => rows.length > 0);
+		return heldStarSections(node, heldValues(node, node.star, system), system).filter(
+			({ rows }) => rows.length > 0
+		);
 	}
 	const point = starSections(record, node);
 	return [
