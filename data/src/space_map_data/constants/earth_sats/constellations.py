@@ -1097,8 +1097,8 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
         "sbas", "Q2165162", (SatelliteCategory.NAVIGATION,), group="sbas"
     ),  # generic "constellation"
     ConstellationSpec(
-        "tdrss", "Q3522774", (SatelliteCategory.COMMUNICATIONS,), group="tdrss"
-    ),
+        "tdrss", "Q3522774", (SatelliteCategory.COMMUNICATIONS,), prefix="TDRS"
+    ),  # by name: CelesTrak's tdrss group also lists the craft that use the relays
     ConstellationSpec(
         "argos", "Q649489", (SatelliteCategory.OBSERVATION,), group="argos"
     ),
@@ -1708,7 +1708,6 @@ UNPREFERRED_SLUGS: frozenset[str] = frozenset(
         "cosmos",
         "ses",
         "telesat",
-        "tdrss",  # secondary use of some sats (iss)
         "intelsat",  # Multiple constellations
         *CLASSIFIED_BY_OWNER.values(),
     }
