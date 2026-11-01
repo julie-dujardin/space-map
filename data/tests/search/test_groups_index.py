@@ -4,6 +4,12 @@ import gzip
 import json
 from pathlib import Path
 
+from space_map_data.constants.categories import (
+    MOONS_SLUG,
+    PLANETARY_SYSTEMS_SLUG,
+    PLANETS_SLUG,
+    SOLAR_SYSTEM_SLUG,
+)
 from space_map_data.search.indices.groups import build_group_documents
 
 
@@ -76,3 +82,44 @@ def test_a_culture_needs_no_blurb(tmp_path: Path):
     )
     slugs = [doc["group"]["slug"] for doc in build_group_documents(tmp_path)]
     assert slugs == ["culture-maya", "culture-aztec"]
+
+
+def test_a_constellation_is_a_fleet_or_a_breakup_cloud(tmp_path: Path):
+    base = {"applies_to": "earth_sat", "member_count": 0, "type": "constellation"}
+    _write(
+        tmp_path / "v1" / "groups" / "__global__" / "0.json.gz",
+        {
+            "const-starlink": base | {"parent_category": "cat-satellites"},
+            "const-fengyun-1c": base | {"parent_category": "cat-debris"},
+            "star-giant": {
+                "applies_to": "star",
+                "member_count": 0,
+                "type": "star_family",
+                "parent_families": ["cat-stars"],
+            },
+        },
+    )
+    docs = {
+        doc["group"]["slug"]: doc["group"] for doc in build_group_documents(tmp_path)
+    }
+    assert docs["const-starlink"]["types"] == ["constellation", "fleet"]
+    assert docs["const-fengyun-1c"]["types"] == ["constellation", "breakup_cloud"]
+    assert docs["star-giant"]["types"] == ["star_family"]
+    assert docs["star-giant"]["parents"] == ["cat-stars"]
+    assert "parents" not in docs["const-starlink"]
+
+
+def test_the_solar_system_is_a_planetary_system(tmp_path: Path):
+    base = {"applies_to": "object", "member_count": 0, "type": "category"}
+    _write(
+        tmp_path / "v1" / "groups" / "__global__" / "0.json.gz",
+        {
+            SOLAR_SYSTEM_SLUG: base,
+            MOONS_SLUG: base,
+            PLANETS_SLUG: base | {"solar_member_count": 8},
+        },
+    )
+    docs = {doc["group"]["slug"]: doc for doc in build_group_documents(tmp_path)}
+    assert docs[SOLAR_SYSTEM_SLUG]["classes"] == [PLANETARY_SYSTEMS_SLUG]
+    assert docs[SOLAR_SYSTEM_SLUG]["planet_count"] == 8
+    assert "classes" not in docs[MOONS_SLUG]

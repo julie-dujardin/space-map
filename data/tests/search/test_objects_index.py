@@ -6,10 +6,13 @@ import json
 from space_map_data.search.indices import objects
 from space_map_data.search.indices.base import object_pk
 from space_map_data.search.indices.objects import (
+    _class_pages,
     _date_to_int,
     _inception,
     _load_earth_membership,
+    _load_system_moons,
     _radii_diameter_km,
+    _search_type,
     _small_body_groups,
     _spacecraft_category,
 )
@@ -98,6 +101,30 @@ class TestSpacecraftCategory:
         assert _spacecraft_category({"celestrak": {"ops_status": "+"}}, "moon") is None
 
 
+class TestClassGroups:
+    """The bodies of the Solar System that no catalogue tags with a family."""
+
+    def test_a_planet_is_on_the_pages_above_its_families(self):
+        groups = _class_pages(
+            "naif-599", {"type": "planet", "planet_families": ["jupiter-analogue"]}
+        )
+        assert set(groups) == {
+            "cat-planets",
+            "planet-jupiter-analogue",
+            "planet-cold-jupiter",
+            "planet-gas-giant",
+            "planet-giant-planet",
+        }
+
+    def test_the_sun_has_the_families_of_its_spectral_type(self):
+        groups = _class_pages("naif-10", {"type": "star"})
+        assert {"cat-stars", "star-g-type-main-sequence", "star-dwarf"} <= set(groups)
+        assert "star-classification" not in groups
+
+    def test_another_body_has_none(self):
+        assert _class_pages("naif-301", {"type": "moon"}) == []
+
+
 class TestRadiiDiameterKm:
     """`_radii_diameter_km` gives moons/planets a diameter sort key from PCK radii."""
 
@@ -131,6 +158,43 @@ class TestLoadEarthMembership:
         assert _load_earth_membership(tmp_path) == {}
 
 
+class TestSystemMoons:
+    """`_load_system_moons` joins the Satellite Systems and Moons pages."""
+
+    def test_a_system_has_the_moons_of_its_planet(self, tmp_path):
+        directory = tmp_path / "v1" / "groups" / "__global__"
+        directory.mkdir(parents=True)
+        for number, groups in enumerate(
+            (
+                {"cat-satellite-systems": {"notable_members": [{"id": "naif-5"}]}},
+                {
+                    "cat-moons": {
+                        "moon_counts": [
+                            {"primary_id": "naif-599", "n": 116},
+                            {"primary_id": "naif-999", "n": 5},
+                        ]
+                    }
+                },
+            )
+        ):
+            (directory / f"{number}.json.gz").write_bytes(
+                gzip.compress(json.dumps(groups).encode())
+            )
+        assert _load_system_moons(tmp_path) == {"naif-5": 116}
+
+    def test_no_export(self, tmp_path):
+        assert _load_system_moons(tmp_path) == {}
+
+
+class TestSearchType:
+    def test_one_class_of_asteroid(self):
+        assert _search_type("asteroid_main_belt") == "asteroid"
+        assert _search_type("asteroid") == "asteroid"
+
+    def test_another_type_stays(self):
+        assert _search_type("moon") == "moon"
+
+
 class TestMoons:
     """A moon's IAU flag is the DB's status in its bundle, not a rule on its
     page name."""
@@ -150,12 +214,11 @@ class TestMoons:
         (directory / "0.json.gz").write_bytes(
             gzip.compress(json.dumps(entries).encode())
         )
-        docs = {
-            doc["object"]["id"]: doc["object"]
-            for doc in objects.build_object_documents(tmp_path)
-        }
+        built = list(objects.build_object_documents(tmp_path))
+        docs = {doc["object"]["id"]: doc["object"] for doc in built}
         assert docs["naif-635"]["iau_named"] is True
         assert docs["naif-65067"]["iau_named"] is False
+        assert all(doc["classes"] == ["moon"] for doc in built)
 
 
 class TestDrawable:

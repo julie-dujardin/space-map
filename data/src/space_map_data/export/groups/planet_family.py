@@ -228,6 +228,12 @@ def _plotted(
     return found.point, MEASURED
 
 
+def measured_diameter_km(record: dict) -> float | None:
+    """The diameter of the planet record's radius, when it is measured."""
+    diameter, how = _plotted(record, "radius", JUPITER_DIAMETER_KM)
+    return _round(diameter) if how == MEASURED else None
+
+
 def _planet(
     record: dict,
     object_id: str,
@@ -238,7 +244,6 @@ def _planet(
     """A Solar System planet from its record and its category member
     (``body``), or an exoplanet from its system file record."""
     mass = _plotted(record, "mass", EARTH_MASSES_PER_JUPITER)
-    diameter, how = _plotted(record, "radius", JUPITER_DIAMETER_KM)
     year = record["values"].get("discovery_year")
     entry = body is None and record["object"]
     return _Planet(
@@ -256,7 +261,7 @@ def _planet(
         entry=entry,
         host=record.get("host"),
         body=body,
-        diameter_km=_round(diameter) if how == MEASURED else None,
+        diameter_km=measured_diameter_km(record),
         first_obs=None if year is None else str(year),
         precise_radius=body is not None or _precise_radius(record),
     )

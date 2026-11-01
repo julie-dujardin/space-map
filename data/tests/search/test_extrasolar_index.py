@@ -5,6 +5,12 @@ import json
 
 import pytest
 
+from space_map_data.constants.categories import (
+    PLANETARY_SYSTEMS_SLUG,
+    PLANETS_SLUG,
+    STAR_SYSTEMS_SLUG,
+    STARS_SLUG,
+)
 from space_map_data.export.extrasolar import planets
 from space_map_data.export.extrasolar.build import export_extrasolar
 from space_map_data.export.extrasolar.reader import ExportReader
@@ -134,6 +140,67 @@ class TestExtrasolarDocuments:
         _, out = exported
         for doc in build_extrasolar_documents(out):
             assert all(c.isalnum() or c in "-_" for c in doc["id"]), doc["id"]
+
+
+class TestGroupsAndSizes:
+    """Search files a star and a planet by the pages they are on."""
+
+    @pytest.fixture
+    def docs(self, tmp_path):
+        tagged = [
+            planet(0, 1, period=3.0, radius=1.2, mass_kind="minimum"),
+            planet(0, 2, period=3.0, radius=1.2, **{"class": "brown dwarf"}),
+            planet(0, 3, mass=None, radius=0.25, estimated=["radius"]),
+            planet(1, 1, period=3.0, radius=1.2, **{"class": "brown dwarf"}),
+        ]
+        built = write_registry(tmp_path / "reg", STARS, planets=tagged)
+        out = tmp_path / "out"
+        export_extrasolar(built.root, out, workers=1, cultures_dir=tmp_path / "none")
+        host = built.ids[0]
+        found = {doc["id"]: doc for doc in build_extrasolar_documents(out)}
+        return {
+            "companion_host": found[f"x-{built.ids[1]}"],
+        } | {
+            name: found[f"x-{host}{suffix}"]
+            for name, suffix in (
+                ("host", ""),
+                ("hot", "-b-1"),
+                ("dwarf", "-b-2"),
+                ("estimated", "-b-3"),
+            )
+        }
+
+    def test_a_star_has_its_size(self, docs):
+        assert STARS_SLUG in docs["host"]["classes"]
+        # HOST: 1.1 R☉.
+        assert docs["host"]["diameter_km"] == pytest.approx(2 * 765_000)
+
+    def test_a_host_of_a_planet_is_a_planetary_system(self, docs):
+        assert PLANETARY_SYSTEMS_SLUG in docs["host"]["classes"]
+        # Its brown dwarf does not count.
+        assert docs["host"]["planet_count"] == 2
+
+    def test_a_host_of_a_companion_alone_is_not(self, docs):
+        assert PLANETARY_SYSTEMS_SLUG not in docs["companion_host"]["classes"]
+        assert "planet_count" not in docs["companion_host"]
+
+    def test_a_planet_has_every_family_above_its_own(self, docs):
+        classes = docs["hot"]["classes"]
+        assert PLANETS_SLUG in classes
+        assert {"planet-hot-jupiter", "planet-gas-giant"} <= set(classes)
+        assert "planet-giant-planet" in classes
+
+    def test_an_estimated_family_counts(self, docs):
+        assert "planet-mini-neptune" in docs["estimated"]["classes"]
+
+    def test_only_a_measured_radius_is_a_size(self, docs):
+        assert docs["hot"]["diameter_km"] > 0
+        assert "diameter_km" not in docs["estimated"]
+
+    def test_a_companion_is_filed_with_the_brown_dwarfs(self, docs):
+        classes = docs["dwarf"]["classes"]
+        assert {STARS_SLUG, "star-brown-dwarf", "star-dwarf"} == set(classes)
+        assert PLANETS_SLUG not in classes
 
 
 class TestHostWithAnEntry:
@@ -315,6 +382,15 @@ class TestSystems:
             "stars": 2,
             "designations": [f"Gaia DR3 {built.ids[KEPLER_STAR] * 7}"],
         }
+        # A node has no family and no size: its stars do.
+        assert docs[point]["classes"] == [
+            "binary_star",
+            STAR_SYSTEMS_SLUG,
+            PLANETARY_SYSTEMS_SLUG,
+        ]
+        assert docs[point]["star_count"] == 2
+        assert docs[point]["planet_count"] == 1
+        assert "diameter_km" not in docs[point]
         assert f"x-{built.held[KEPLER, 'A']}" not in docs
         assert f"x-{built.held[KEPLER, 'B']}" not in docs
         assert f"x-{built.nodes[PAIR]}" not in docs
@@ -415,6 +491,8 @@ class TestNames:
             "status": "confirmed",
             "aliases": [],
             "values": {},
+            "families": [],
+            "families_estimated": [],
         }
         doc = planet_document(planet, 7, self._host())
         assert doc["name"] == "alf Cen b"

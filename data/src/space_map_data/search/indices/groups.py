@@ -7,6 +7,13 @@ Source files:
 
 One document per group, all language variants on the same document. The
 index is small (~hundreds of constellations), so we slurp every bundle.
+
+`group.types` is what the Collections filter reads: the type, and for a
+satellite constellation whether it is a fleet or a breakup cloud, since the
+browse tree puts the two under Satellites and Space Debris. `group.parents`
+holds the families above a family, which are the rows of its filter tree. The
+Planetary Systems page lists the Solar System by its page, so `classes` of that
+document files it there, and it has the `planet_count` of a planetary system.
 """
 
 import gzip
@@ -16,6 +23,12 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
+from space_map_data.constants.categories import (
+    DEBRIS_SLUG,
+    PLANETARY_SYSTEMS_SLUG,
+    PLANETS_SLUG,
+    SOLAR_SYSTEM_SLUG,
+)
 from space_map_data.constants.providers import BASE_LOCALE, LANGUAGES
 from space_map_data.constants.stars.cultures import SKY_CULTURE_SLUG_PREFIX
 from space_map_data.export.groups.registry import GroupType
@@ -49,6 +62,16 @@ def _load_bundles(
 
 
 _NEED_A_BLURB = frozenset({GroupType.SKY_CONSTELLATION})
+
+FLEET = "fleet"
+BREAKUP_CLOUD = "breakup_cloud"
+
+
+def _types(group: dict[str, Any]) -> list[str]:
+    if group["type"] != GroupType.CONSTELLATION:
+        return [group["type"]]
+    breakup = group.get("parent_category") == DEBRIS_SLUG
+    return [group["type"], BREAKUP_CLOUD if breakup else FLEET]
 
 
 def build_group_documents(export_dir: Path) -> Iterator[dict[str, Any]]:
@@ -91,6 +114,7 @@ def build_group_documents(export_dir: Path) -> Iterator[dict[str, Any]]:
                     else {}
                 ),
                 "type": g["type"],
+                "types": _types(g),
                 "applies_to": g["applies_to"],
                 "member_count": g.get("member_count", 0),
             },
@@ -99,6 +123,11 @@ def build_group_documents(export_dir: Path) -> Iterator[dict[str, Any]]:
         # ORs this against object.groups).
         if g.get("orbit_classes"):
             doc["group"]["orbit_classes"] = g["orbit_classes"]
+        if g.get("parent_families"):
+            doc["group"]["parents"] = g["parent_families"]
+        if slug == SOLAR_SYSTEM_SLUG:
+            doc["classes"] = [PLANETARY_SYSTEMS_SLUG]
+            doc["planet_count"] = global_by_slug[PLANETS_SLUG]["solar_member_count"]
         # Prominence ranking key — groups don't carry sitelinks_count yet
         # (they have a wikidata_qid for a future backfill); root when present.
         if g.get("sitelinks_count"):

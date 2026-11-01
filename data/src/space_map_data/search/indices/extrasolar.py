@@ -24,20 +24,42 @@ stars, or the ID and name of the held star's system.
 The names are those of the pages (`export.names`), from the `name` and
 `names` of the system files: `name` and `name_{lang}`, and for a planet
 `host_name` and `host_name_{lang}`.
+
+The root `classes` of a document are its type and the class pages it is on. A
+star has the pages of its families, published and estimated. A node of a star
+system has no family: its stars do. A planet of the IAU class `planet` has its
+families. A companion of another class gets no family from the export, but it
+is a brown dwarf or lighter, so the Stars row lists it with the brown dwarfs. A
+host of a planet of the class planet is on the Planetary Systems page, a pair
+that a planet circles too.
+
+The root `star_count` is on a star system and `planet_count`, of the class
+planet alone, on a planetary system, so a range on one leaves that kind of
+system. `object.stars` and `object.planets` are for the client that is live.
 """
 
 import gzip
 import json
 import logging
+from collections import Counter
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
+from space_map_data.constants.categories import (
+    PLANETARY_SYSTEMS_SLUG,
+    STAR_SYSTEMS_SLUG,
+)
 from space_map_data.export.extrasolar.build import served
 from space_map_data.export.extrasolar.reader import ExportReader
+from space_map_data.export.groups.planet_family import PAGES as PLANET_PAGES
+from space_map_data.export.groups.planet_family import measured_diameter_km
+from space_map_data.export.groups.star_family import star_pages
 from space_map_data.export.groups.star_lineup import drawable_star_radii
-from space_map_data.export.objects.stars import PLANET_ID
+from space_map_data.export.objects.stars import PLANET_ID, SYSTEM_TYPES
 from space_map_data.export.objects.stars import PREFIX as STAR_PREFIX
+from space_map_data.extrasolar.exoplanets.iau import PLANET
+from space_map_data.extrasolar.tables import METADATA, SYSTEM
 
 from .base import extrasolar_pk, planet_pk
 from .objects import build_object_documents
@@ -98,6 +120,13 @@ def host_document(host: dict) -> dict[str, Any]:
     } | {f"name_{lang}": n for lang, n in host["names"].items()}
 
 
+def _planet_classes(planet: dict) -> list[str]:
+    if planet["class"] != PLANET:
+        return star_pages(["brown-dwarf"])
+    families = [*planet["families"], *planet["families_estimated"]]
+    return PLANET_PAGES.pages_of(families)
+
+
 def planet_document(planet: dict, system: int, host: dict) -> dict[str, Any]:
     values = planet["values"]
     fields: dict[str, Any] = {
@@ -116,12 +145,17 @@ def planet_document(planet: dict, system: int, host: dict) -> dict[str, Any]:
         if name in values:
             fields[name] = values[name]
     fields |= {f"host_name_{lang}": n for lang, n in host["names"].items()}
-    return {
+    doc: dict[str, Any] = {
         "id": planet_pk(planet["host"], planet["number"]),
         "kind": "planet",
         "name": planet["name"],
         "planet": fields,
+        "classes": _planet_classes(planet),
     } | {f"name_{lang}": n for lang, n in planet["names"].items()}
+    diameter = measured_diameter_km(planet)
+    if diameter is not None:
+        doc["diameter_km"] = diameter
+    return doc
 
 
 # Root fields of an object document that a planet document takes from it.
@@ -158,6 +192,54 @@ def _add_system_facts(obj: dict[str, Any], facts: dict[str, Any]) -> None:
     obj.update(facts)
 
 
+def _add_class_facts(
+    stars: list[dict[str, Any]],
+    planets: dict[str, dict[str, Any]],
+    extrasolar_dir: Path,
+) -> None:
+    """Put the `classes` on each star and system, its stars on each system and
+    the planets of the class planet on each planetary system. A tile holds many
+    of them, so they are read together."""
+    singles = {}
+    systems = {}
+    for doc in stars:
+        id_ = int(doc["id"].removeprefix(STAR_PREFIX))
+        if doc["object"]["type"] in SYSTEM_TYPES.values():
+            doc["classes"] = [doc["object"]["type"], STAR_SYSTEMS_SLUG]
+            systems[id_] = doc
+        else:
+            doc["classes"] = [doc["object"]["type"], *star_pages(())]
+            singles[id_] = doc
+    root = extrasolar_dir / "v1" / "x"
+    with served(extrasolar_dir):
+        if stars and (root / "metadata.json").exists():
+            reader = ExportReader(root)
+            rows = reader.rows(SYSTEM.slug, sorted(systems), ["stars"])
+            for id_, row in rows.items():
+                systems[id_]["star_count"] = row["stars"]
+            bits = [entry["slug"] for entry in reader.metadata["families"]]
+            columns = ["families", "families_estimated"]
+            rows = reader.rows(METADATA.slug, sorted(singles), columns)
+            for id_, row in rows.items():
+                mask = row["families"] | row["families_estimated"]
+                doc = singles[id_]
+                doc["classes"] = [
+                    doc["object"]["type"],
+                    *star_pages(
+                        family for bit, family in enumerate(bits) if mask >> bit & 1
+                    ),
+                ]
+    hosted = Counter(
+        doc["planet"]["host_id"]
+        for doc in planets.values()
+        if doc["planet"]["class"] == PLANET
+    )
+    for doc in stars:
+        if count := hosted[doc["id"]]:
+            doc["classes"].append(PLANETARY_SYSTEMS_SLUG)
+            doc["planet_count"] = count
+
+
 def build_extrasolar_documents(
     extrasolar_dir: Path, export_dir: Path | None = None
 ) -> Iterator[dict[str, Any]]:
@@ -176,7 +258,7 @@ def build_extrasolar_documents(
     )
     merged = 0
     entries = 0
-    # Held back: whether a star can be drawn is read for all of them at once.
+    # Held back: the facts of the stars are read for all of them at once.
     stars: list[dict[str, Any]] = []
     for doc in objects:
         if PLANET_ID.match(doc["id"]):
@@ -206,6 +288,7 @@ def build_extrasolar_documents(
         if (facts := systems.get(key)) is not None:
             _add_system_facts(host["object"], facts)
         stars.append(host)
+    _add_class_facts(stars, planets, extrasolar_dir)
     _mark_drawable(stars, extrasolar_dir)
     yield from stars
     yield from planets.values()

@@ -52,6 +52,18 @@ class FamilyPages:
             return [self.slug(parent) for parent in self.parents[family]]
         return [self.root] if self.root else []
 
+    def pages_of(self, families: Iterable[str]) -> list[str]:
+        """The pages that a member of `families` is on: those of its families
+        and of the families that contain them, and the root page."""
+        pages = dict.fromkeys([self.root] if self.root else [])
+        waiting = [self.slug(family) for family in families]
+        while waiting:
+            slug = waiting.pop()
+            if slug not in pages:
+                pages[slug] = None
+                waiting.extend(self.parent_slugs(slug))
+        return list(pages)
+
     def count(self, out: FamilyGroups, counts: Iterable[tuple[str, int, int]]) -> None:
         """Set the member counts, the stats and the child families of `out`
         from the family, published count and estimated count of each page."""

@@ -357,3 +357,24 @@ class TestBuild:
         empty.numpy.return_value = np.array([], np.int64)
         monkeypatch.setattr(reader, "read", lambda path, token: empty)
         assert reader.rows("metadata", ids, ["families"]) == {}
+
+
+class TestStarPages:
+    def test_a_star_is_on_the_pages_of_every_family_above_its_own(self):
+        assert set(star_family.star_pages(["red-dwarf"])) == {
+            "cat-stars",
+            "star-red-dwarf",
+            "star-main-sequence",
+            "star-dwarf",
+        }
+
+    def test_a_family_with_two_parents_climbs_both(self):
+        assert {"star-horizontal-branch", "star-variable-star"} <= set(
+            star_family.star_pages(["rr-lyrae-variable"])
+        )
+
+    def test_a_star_with_no_family_is_on_the_stars_page(self):
+        assert star_family.star_pages(()) == ["cat-stars"]
+
+    def test_the_root_family_has_no_page(self):
+        assert star_family.star_pages(["classification"]) == ["cat-stars"]

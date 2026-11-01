@@ -16,7 +16,7 @@ import json
 import logging
 import random
 from collections import defaultdict
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field, replace
 from functools import partial
@@ -85,6 +85,11 @@ PLOT_STAGES = ("white-dwarf", "supergiant", "giant", "subgiant", "main-sequence"
 RADIUS_COLUMNS = ("radius_flame", "radius_flame_spec")
 # As on the planet cards: a card shows no uncertainty.
 CARD_PRECISION = 0.1
+
+
+def star_pages(families: Iterable[str]) -> list[str]:
+    """The pages that a star of `families` is on. The root family has no page."""
+    return PAGES.pages_of(family for family in families if family != ROOT_FAMILY)
 
 
 @dataclass

@@ -3,9 +3,15 @@
 A single Meili index over every searchable entity — objects, surface features,
 group/collection pages, launch pads and exoplanets — discriminated by the root
 ``kind`` field. Shared
-fields (name, descriptions, thumbnail, diameter_km, sitelinks_count) live at the
-document root; per-kind fields nest under ``object`` / ``feature`` / ``group``
-(see base.py for the primary-key scheme).
+fields (name, descriptions, thumbnail, diameter_km, sitelinks_count, classes) live
+at the document root; per-kind fields nest under ``object`` / ``feature`` /
+``group`` (see base.py for the primary-key scheme).
+
+``classes`` is what the class filter reads: a document's type and the star,
+planet and system pages it is on. The planets of the Solar System and of other
+stars, two kinds of document, are then one class, and any two classes OR in one
+facet. ``star_count``, ``planet_count`` and ``moon_count`` are each on one kind
+of system only.
 
 Cross-kind ranking leans on ``sitelinks_count`` (Wikidata prominence) as the
 sole tiebreaker after relevance, so the planet Earth outranks earth-related
@@ -48,6 +54,7 @@ def _catalog_settings() -> dict[str, Any]:
         ),
         "filterableAttributes": [
             "kind",
+            "classes",
             "object.id",
             "object.type",
             "object.parent_id",
@@ -69,7 +76,9 @@ def _catalog_settings() -> dict[str, Any]:
             "planet.class",
             "planet.status",
             "planet.discovery_method",
+            "planet.discovery_year",
             "group.type",
+            "group.types",
             "group.applies_to",
             "group.member_count",
             "group.orbit_classes",
@@ -79,6 +88,9 @@ def _catalog_settings() -> dict[str, Any]:
             "feature.quad",
             "pad.site_slug",
             "diameter_km",
+            "star_count",
+            "planet_count",
+            "moon_count",
         ],
         "sortableAttributes": [
             "sitelinks_count",

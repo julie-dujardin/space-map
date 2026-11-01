@@ -21,6 +21,11 @@ entry (`x-<id>`, `x-<host>-b-<n>`) are in the same bundles. A star or a
 system is indexed when its entry in the base locale has a Wikipedia extract,
 as the sitemap lists it, or when it hosts planets. A planet's document is built in `extrasolar`, which
 puts the names of its entry on it.
+
+The root `classes` of a document are its type and the class pages it is on, for
+the class filter. Search has one class of asteroid: the orbit classes in
+`object.groups` tell them apart. A satellite system is the document of its
+barycenter, with the `moon_count` of its planet.
 """
 
 import gzip
@@ -35,13 +40,18 @@ from space_map_data.constants.categories import (
     DEBRIS_SLUG,
     MOONS_SLUG,
     PROBES_SLUG,
+    SATELLITE_SYSTEMS_SLUG,
     SATELLITES_SLUG,
 )
 from space_map_data.constants.providers import BASE_LOCALE, LANGUAGES
+from space_map_data.constants.stars.families import SUN_SPECTRAL_TYPE
+from space_map_data.export.groups.planet_family import PAGES as PLANET_PAGES
+from space_map_data.export.groups.star_family import star_pages
 from space_map_data.export.images import pick_thumbnail
 from space_map_data.export.names import SYSTEM_PRIMARIES
 from space_map_data.export.objects.stars import PREFIX as STAR_PREFIX
 from space_map_data.export.objects.stars import has_description
+from space_map_data.extrasolar.families import of_spectral_type
 from space_map_data.utils.manual_overlay import read_manual_aliases
 
 from .base import object_pk
@@ -73,6 +83,7 @@ _ALWAYS_INDEX = frozenset(
 # the IAU's WGPSN; everything else orbits a minor planet — dwarf planets
 # included, Pluto being minor planet 134340 — and is named by the WGSBN.
 _PLANET_IDS = frozenset(f"naif-{n}99" for n in range(1, 9))
+_SUN_ID = "naif-10"
 
 
 def _load_localized(
@@ -167,6 +178,25 @@ def _load_sized_craft(export_dir: Path) -> set[str]:
     }
 
 
+def _load_system_moons(export_dir: Path) -> dict[str, int]:
+    """The moons of each satellite system, by object ID: the Satellite Systems
+    page lists the systems, the Moons page counts the moons of their planets."""
+    pages: dict[str, dict[str, Any]] = {}
+    for bundle in (export_dir / "v1" / "groups" / "__global__").glob("*.json.gz"):
+        groups = json.loads(gzip.decompress(bundle.read_bytes()))
+        for slug in (SATELLITE_SYSTEMS_SLUG, MOONS_SLUG):
+            if slug in groups:
+                pages[slug] = groups[slug]
+    moons = pages.get(MOONS_SLUG, {}).get("moon_counts", ())
+    counts = {row["primary_id"]: row["n"] for row in moons}
+    systems = pages.get(SATELLITE_SYSTEMS_SLUG, {}).get("notable_members", ())
+    return {member["id"]: counts[SYSTEM_PRIMARIES[member["id"]]] for member in systems}
+
+
+def _search_type(otype: str) -> str:
+    return "asteroid" if otype.startswith("asteroid_") else otype
+
+
 def _spacecraft_category(g: dict[str, Any], otype: str) -> str | None:
     """Category slug for a tracked craft, for the search filter. Spacecraft in
     the CelesTrak (NORAD) catalog orbit Earth (`cat-satellites`); the rest are
@@ -177,6 +207,16 @@ def _spacecraft_category(g: dict[str, Any], otype: str) -> str | None:
     if otype != "spacecraft":
         return None
     return SATELLITES_SLUG if g.get("celestrak") else PROBES_SLUG
+
+
+def _class_pages(obj_id: str, g: dict[str, Any]) -> list[str]:
+    """The pages of a Solar System planet or the Sun, which no catalogue tags.
+    The stars of the extrasolar catalogue get theirs in `extrasolar`."""
+    if g.get("type") == "planet" and obj_id in _PLANET_IDS:
+        return PLANET_PAGES.pages_of(g.get("planet_families", ()))
+    if obj_id == _SUN_ID:
+        return star_pages(of_spectral_type(SUN_SPECTRAL_TYPE))
+    return []
 
 
 def _small_body_groups(sbdb: dict[str, Any]) -> list[str]:
@@ -258,6 +298,7 @@ def build_object_documents(
     localized = _load_localized(objects_dir)
     earth_groups = _load_earth_membership(export_dir)
     sized_craft = _load_sized_craft(export_dir)
+    system_moons = _load_system_moons(export_dir)
     manual_aliases = read_manual_aliases()
     global_files = sorted(global_dir.glob("*.json.gz"))
     logger.info("Streaming %d global object bundles", len(global_files))
@@ -300,7 +341,7 @@ def build_object_documents(
             # Object-specific fields live under the nested `object` key; the
             # natural id rides along so the frontend can route without re-parsing
             # the URL-form primary key.
-            obj: dict[str, Any] = {"id": obj_id, "type": otype}
+            obj: dict[str, Any] = {"id": obj_id, "type": _search_type(otype)}
 
             parent_id = (g.get("orbit") or {}).get("parent_id")
             if parent_id:
@@ -365,7 +406,11 @@ def build_object_documents(
                 "kind": "object",
                 "name": g["name"],
                 "object": obj,
+                "classes": [obj["type"], *_class_pages(obj_id, g)],
             }
+            if obj_id in system_moons:
+                doc["classes"].append(SATELLITE_SYSTEMS_SLUG)
+                doc["moon_count"] = system_moons[obj_id]
 
             # Root, shared across kinds: prominence (ranking key), size, image.
             if g.get("sitelinks_count"):
