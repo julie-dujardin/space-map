@@ -25,7 +25,8 @@
 		>
 			<ChevronLeftIcon class="size-3.5 rtl:rotate-180" />
 		</button>
-		<span class="tabular-nums">{page + 1}/{pageCount}</span>
+		<!-- Baseline-aligned, so the pager takes its baseline from this text and not from an icon. -->
+		<span class="self-baseline tabular-nums">{page + 1}/{pageCount}</span>
 		<button
 			type="button"
 			onclick={() => onpage(Math.min(pageCount - 1, page + 1))}
