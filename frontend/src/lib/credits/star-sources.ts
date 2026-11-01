@@ -27,7 +27,12 @@ import {
 import type { Planet } from '$lib/fetch/extrasolar/planets';
 import type { SystemCitation, SystemNode } from '$lib/fetch/extrasolar/systems';
 import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
-import type { Reference } from './credits-payload';
+import {
+	REFERENCE_SECTIONS,
+	type Credits,
+	type Reference,
+	type ReferenceSection
+} from './credits-payload';
 
 const SOURCE_NAMES: Record<string, () => string> = {
 	'gaia-dr3': m.source_gaia_dr3_name,
@@ -332,6 +337,26 @@ export function starPaperReferences(credits: readonly ExtrasolarCredit[]): Refer
 				]
 			: []
 	);
+}
+
+/** The rows of a section of the references. The star section leads with the
+ *  papers of the catalogues. */
+export function referenceRows(
+	credits: Credits,
+	section: ReferenceSection,
+	starPapers: readonly Reference[]
+): Reference[] {
+	const rows = credits[section] ?? [];
+	if (section !== 'star_references') return rows;
+	const listed = new Set(starPapers.map((ref) => ref.url));
+	return [...starPapers, ...rows.filter((ref) => !listed.has(ref.url))];
+}
+
+/** The number of distinct works that /credits lists as references. */
+export function referenceCount(credits: Credits, stars: readonly ExtrasolarCredit[]): number {
+	const papers = starPaperReferences(stars);
+	const rows = REFERENCE_SECTIONS.flatMap(({ key }) => referenceRows(credits, key, papers));
+	return new Set(rows.map((ref) => ref.url)).size;
 }
 
 /** The credits of the star catalogues for /credits; none where the host

@@ -7,11 +7,12 @@
 	import type { AboutData } from '$lib/about/data-payload';
 
 	interface Props {
-		data: { report: Promise<AboutData> };
+		data: { report: Promise<AboutData>; references: Promise<number> };
 	}
 
 	let { data }: Props = $props();
 	const report = streamed<AboutData>(() => data.report);
+	const references = streamed<number>(() => data.references);
 </script>
 
 <svelte:head>
@@ -20,7 +21,7 @@
 
 <SitePage current="data" title={m.about_data_page_title()}>
 	{#if report.value}
-		<DataReport data={report.value} />
+		<DataReport data={report.value} references={references.value} />
 	{:else if report.error}
 		<p class="text-sm text-muted-foreground">{m.detail_error_body()}</p>
 	{:else}

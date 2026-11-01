@@ -206,7 +206,67 @@ describe('totals', () => {
 			tiles: 72,
 			rings: 1,
 			models: 11,
-			size_bytes: 300 + 100 + 5040 + 500 + 40 + 40 + 7 + 40 + 40 + 90
+			size_bytes: 300 + 100 + 5040 + 500 + 40 + 40 + 7 + 40 + 40 + 90,
+			datasets: 2
 		});
+	});
+});
+
+describe('totals: datasets', () => {
+	const empty: AboutData = {
+		generated_at: '2026-10-13T18:00:00+00:00',
+		names: {},
+		worlds: 0,
+		objects: [],
+		systems: [],
+		rings: [],
+		models: { worlds: [], craft: [] }
+	};
+
+	it('counts a source of the objects once, and leaves out the umbrella keys', () => {
+		const sources = [
+			{ key: 'gaia-dr3', objects: 3 },
+			{ key: 'literature', objects: 2 },
+			{ key: 'star-systems', objects: 1 }
+		];
+		const kind = { id: 'star', count: 6, size_bytes: 1, localized: {}, sources };
+		const data = { ...empty, objects: [kind, { ...kind, id: 'planet' }] };
+		expect(totals(data).datasets).toBe(1);
+	});
+
+	it('counts a page shared by two maps once, and a patch of its own', () => {
+		const patched = pyramid({
+			patches: [
+				{
+					id: 'site',
+					name: 'Site',
+					source: 'https://example.org/site',
+					organisation: 'NASA',
+					max_level: 5,
+					lat: 0,
+					lon: 0,
+					tiles: 1,
+					size_bytes: 1
+				}
+			]
+		});
+		const worlds = [{ id: 'naif-499', name: 'Mars', maps: [map({ tiles: patched }), map()] }];
+		const systems = [{ id: 'naif-4', name: 'Mars', worlds }];
+		expect(totals({ ...empty, systems }).datasets).toBe(2);
+	});
+
+	it('counts world shapes but not craft models, and skips a model with no page', () => {
+		const model = (source?: string) => ({
+			slug: 'm',
+			tiers: [],
+			sources: [{ organisation: 'NASA', source }]
+		});
+		const shape = (source?: string) => ({ ...model(source), provenance: 'missions' });
+		const craft = { ...model('https://example.org/craft'), objects: 1 };
+		const models = {
+			worlds: [{ id: 'b', name: 'Bennu', models: [shape('https://example.org/shape'), shape()] }],
+			craft: [{ kind: 'probe', models: [craft] }]
+		};
+		expect(totals({ ...empty, models }).datasets).toBe(1);
 	});
 });

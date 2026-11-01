@@ -39,9 +39,11 @@
 
 	interface Props {
 		data: AboutData;
+		/** The count of /credits, which loads apart from the payload. */
+		references?: number | null;
 	}
 
-	let { data }: Props = $props();
+	let { data, references }: Props = $props();
 
 	/** One row of a table. The meaning of its figures is that of the header
 	 *  above it. */
@@ -333,14 +335,24 @@
 		}
 	]);
 
-	// Six figures, so that every width shows full rows.
+	// Six figures of what the map serves, so that every width shows full rows.
 	const stats = $derived([
 		{ label: m.about_data_objects(), value: count(sum.objects) },
 		{ label: m.about_data_mapped_worlds(), value: count(sum.worlds) },
-		{ label: m.about_data_column_tiles(), value: count(sum.tiles) },
 		{ label: m.tab_rings(), value: count(sum.rings) },
+		{ label: m.about_data_map_tiles(), value: count(sum.tiles) },
 		{ label: m.status_section_models(), value: count(sum.models) },
 		{ label: m.about_data_column_size(), value: formatBytes(sum.size_bytes) }
+	]);
+
+	// What it is made from.
+	const origins = $derived([
+		{
+			label: m.about_data_raw_downloads(),
+			value: data.download_bytes === undefined ? EM_DASH : formatBytes(data.download_bytes)
+		},
+		{ label: m.about_data_datasets(), value: count(sum.datasets) },
+		{ label: m.credits_group_references(), value: references ? count(references) : EM_DASH }
 	]);
 </script>
 
@@ -467,16 +479,10 @@
 	</h3>
 {/snippet}
 
-<div class="relative text-sm leading-relaxed">
-	<PageContents entries={contents} />
-
-	<p class="-mt-6 mb-2 text-xs text-muted-subtle">
-		{m.status_generated({ date: formatIsoDate(data.generated_at) })}
-	</p>
-
-	<dl class="mt-6 grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3 lg:grid-cols-6">
-		{#each stats as stat (stat.label)}
-			<div>
+{#snippet figures(rows: { label: string; value: string }[], columns: string)}
+	<dl class="mt-6 grid gap-x-6 gap-y-4 lg:grid-cols-6 {columns}">
+		{#each rows as stat (stat.label)}
+			<div class="flex flex-col justify-end">
 				<dt class="text-xs font-semibold uppercase tracking-wider text-muted-subtle">
 					{stat.label}
 				</dt>
@@ -484,6 +490,17 @@
 			</div>
 		{/each}
 	</dl>
+{/snippet}
+
+<div class="relative text-sm leading-relaxed">
+	<PageContents entries={contents} />
+
+	<p class="-mt-6 mb-2 text-xs text-muted-subtle">
+		{m.status_generated({ date: formatIsoDate(data.generated_at) })}
+	</p>
+
+	{@render figures(stats, 'grid-cols-2 sm:grid-cols-3')}
+	{@render figures(origins, 'grid-cols-3')}
 
 	{@render section('objects', m.about_data_objects())}
 	<div class={TABLE}>

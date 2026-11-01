@@ -14,7 +14,7 @@
 		type Reference,
 		type ReferenceSection
 	} from '$lib/credits/credits-payload';
-	import { starPaperReferences } from '$lib/credits/star-sources';
+	import { referenceRows, starPaperReferences } from '$lib/credits/star-sources';
 	import { IMAGERY_LAYERS, layerLabel, type ImageryLayer } from '$lib/credits/imagery-layers';
 	import { patchCredits, tileCredit } from '$lib/credits/tile-credit';
 	import PageContents, { type ContentsEntry } from '../nav/PageContents.svelte';
@@ -111,15 +111,12 @@
 	const catalogues = $derived(stars.filter((credit) => !isPaperCredit(credit)));
 	const starPapers = $derived(starPaperReferences(stars));
 
-	function referenceRows(section: ReferenceSection): Reference[] {
-		const rows = credits[section] ?? [];
-		if (section !== 'star_references') return rows;
-		const listed = new Set(starPapers.map((ref) => ref.url));
-		return [...starPapers, ...rows.filter((ref) => !listed.has(ref.url))];
+	function sectionRows(section: ReferenceSection): Reference[] {
+		return referenceRows(credits, section, starPapers);
 	}
 
 	const references = $derived(
-		REFERENCE_SECTIONS.filter((section) => referenceRows(section.key).length > 0)
+		REFERENCE_SECTIONS.filter((section) => sectionRows(section.key).length > 0)
 	);
 
 	const hasModels = $derived(!!credits.models?.length || !!credits.model_contributors?.length);
@@ -412,7 +409,7 @@
 				<section>
 					{@render sectionHeader(section.key, section.label())}
 					<ul class="space-y-1">
-						{#each referenceRows(section.key) as ref (ref.url)}
+						{#each sectionRows(section.key) as ref (ref.url)}
 							<li>
 								{@render link(ref.url, ref.title, ref.contribution)}
 								{#if ref.license}<span class="text-xs text-muted-foreground">

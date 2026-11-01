@@ -19,6 +19,7 @@ import {
 	starCredits,
 	starSourceName
 } from './star-sources';
+import { referenceCount } from './star-sources';
 
 describe('star sources', () => {
 	it('names the sources the tables name', () => {
@@ -385,5 +386,30 @@ describe('inSceneCredits', () => {
 			}
 		];
 		expect(credits.filter(inSceneCredits).map((c) => c.name)).toEqual(['Gaia Data Release 3']);
+	});
+});
+
+describe('referenceCount', () => {
+	const credit = (organisation: string, source: string, citation?: string) => ({
+		name: organisation,
+		organisation,
+		source,
+		citation
+	});
+	const row = (url: string) => ({ title: url, url, contribution: 'x' });
+
+	it('counts a work of two sections once, and the papers of the catalogues', () => {
+		const credits = {
+			systems: [],
+			ephemeris_archives: [],
+			ring_references: [row('https://doi.org/a')],
+			star_references: [row('https://doi.org/a'), row('https://doi.org/b')]
+		};
+		const stars = [
+			credit('Tokovinin 2018', 'https://doi.org/b', 'Tokovinin 2018, cited'),
+			credit('Hunt & Reffert 2024', 'https://doi.org/c', 'Hunt & Reffert 2024, cited'),
+			credit('ESA', 'https://example.org/catalogue', 'ESA 1997')
+		];
+		expect(referenceCount(credits, stars)).toBe(3);
 	});
 });

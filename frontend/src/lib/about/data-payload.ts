@@ -216,6 +216,8 @@ export interface AboutData {
 	/** Bodies with a map, a ring or a shape model. Shapes from light curves do
 	 *  not count. */
 	worlds: number;
+	/** Bytes of the raw downloads. Absent from a file of an older export. */
+	download_bytes?: number;
 	objects: ObjectKind[];
 	/** The maps. */
 	systems: DataSystem[];
@@ -325,6 +327,31 @@ export interface DataTotals {
 	rings: number;
 	models: number;
 	size_bytes: number;
+	datasets: number;
+}
+
+// Object source keys that stand for many works or catalogues, not for one.
+const UMBRELLA_SOURCES = new Set(['literature', 'star-systems']);
+
+/** The distinct sources of the objects, maps, rings and world shapes. A craft
+ *  model is a model, not a dataset. */
+function datasetCount(data: AboutData): number {
+	const sources = new Set<string | undefined>();
+	for (const key of data.objects.flatMap((kind) => kind.sources.map((source) => source.key))) {
+		if (!UMBRELLA_SOURCES.has(key)) sources.add(key);
+	}
+	for (const map of data.systems.flatMap((system) => system.worlds).flatMap((w) => w.maps)) {
+		sources.add(map.source);
+		for (const patch of map.tiles?.patches ?? []) sources.add(patch.source);
+	}
+	for (const credit of data.rings.flatMap((world) => world.rings).flatMap((r) => r.sources)) {
+		sources.add(credit.source);
+	}
+	for (const model of data.models.worlds.flatMap((world) => world.models)) {
+		for (const credit of model.sources) sources.add(credit.source);
+	}
+	sources.delete(undefined);
+	return sources.size;
 }
 
 export function totals(data: AboutData): DataTotals {
@@ -336,7 +363,8 @@ export function totals(data: AboutData): DataTotals {
 		tiles: 0,
 		rings: 0,
 		models: 0,
-		size_bytes: 0
+		size_bytes: 0,
+		datasets: datasetCount(data)
 	};
 	for (const kind of data.objects) {
 		sum.objects += kind.count;
