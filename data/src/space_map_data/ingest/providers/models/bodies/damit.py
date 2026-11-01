@@ -145,7 +145,7 @@ class DamitProcessor:
 
     def process(self, *, force: bool) -> None:
         if not self.available():
-            log.info(
+            log.warning(
                 "DAMIT archive/tables absent (%s) — skipping lightcurve tier",
                 config.DAMIT_DIR,
             )
