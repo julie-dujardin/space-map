@@ -17,6 +17,18 @@ function drawsFat(lineWidth: number): boolean {
 	return lineWidth > 1 || renderPixelRatio() >= FAT_TRAIL_MIN_PIXEL_RATIO;
 }
 
+/** Every open trail draws only the part nearest the body. So do these types. */
+function drawsPartialTrail(objectType: ObjectType, isOpenCurve: boolean): boolean {
+	return (
+		isOpenCurve ||
+		objectType === ObjectType.DWARF_PLANET ||
+		objectType === ObjectType.MOON ||
+		objectType === ObjectType.SPACECRAFT ||
+		objectType === ObjectType.COMET ||
+		isAsteroid(objectType)
+	);
+}
+
 /**
  * Write a trail-buffer's contents into `posArr`, prefixed by a live-head
  * vertex at the body's current position — keeps the brightest vertex on the
@@ -62,12 +74,7 @@ function makeBufferTrail(
 	const cy = orbitCenter?.[1] ?? 0;
 	const cz = orbitCenter?.[2] ?? 0;
 
-	const useTrail =
-		data.objectType === ObjectType.SPACECRAFT ||
-		data.objectType === ObjectType.DWARF_PLANET ||
-		data.objectType === ObjectType.MOON ||
-		data.objectType === ObjectType.COMET ||
-		isAsteroid(data.objectType);
+	const useTrail = drawsPartialTrail(data.objectType, true);
 
 	const geomCap = trailBuffer.capacity + 1;
 	const posArr = new Float32Array(geomCap * 3);
@@ -79,6 +86,7 @@ function makeBufferTrail(
 		writeTrailAlphas(
 			fullAlphas.subarray(0, total) as Float32Array,
 			trailAlphas.subarray(0, total) as Float32Array,
+			posArr,
 			true,
 			useTrail
 		);
@@ -137,13 +145,7 @@ export function makeTrail(
 	const cy = orbitCenter?.[1] ?? 0;
 	const cz = orbitCenter?.[2] ?? 0;
 
-	const useTrail =
-		isOpenCurve ||
-		data.objectType === ObjectType.DWARF_PLANET ||
-		data.objectType === ObjectType.MOON ||
-		data.objectType === ObjectType.SPACECRAFT ||
-		data.objectType === ObjectType.COMET ||
-		isAsteroid(data.objectType);
+	const useTrail = drawsPartialTrail(data.objectType, isOpenCurve);
 
 	const validPoints = curve ? buildTrailPoints(body, curve, isOpenCurve, cx, cy, cz, start) : [];
 	if (curve && validPoints.length < 2) return makeEmptyTrail();
@@ -152,15 +154,6 @@ export function makeTrail(
 	// trails growing after the first tick) don't hit refreshTrail's
 	// `posAttr.count < validPoints.length` early-return.
 	const bufferCapacity = curve ? Math.max(validPoints.length, curve.length) : NUM_TRAIL_POINTS + 1;
-	const fullAlphas = new Float32Array(bufferCapacity);
-	const trailAlphas = new Float32Array(bufferCapacity);
-	writeTrailAlphas(
-		fullAlphas.subarray(0, validPoints.length) as Float32Array,
-		trailAlphas.subarray(0, validPoints.length) as Float32Array,
-		isOpenCurve,
-		useTrail
-	);
-
 	// Store vertices basis-relative (world − basis) so magnitudes stay small
 	// near the focused body — avoids Float32 cancellation even for distant
 	// outer-solar-system bodies, via the shader's (vertex + uCenterOffset).
@@ -173,6 +166,16 @@ export function makeTrail(
 		posArr[k * 3 + 1] = validPoints[k][1] + by;
 		posArr[k * 3 + 2] = validPoints[k][2] + bz;
 	}
+
+	const fullAlphas = new Float32Array(bufferCapacity);
+	const trailAlphas = new Float32Array(bufferCapacity);
+	writeTrailAlphas(
+		fullAlphas.subarray(0, validPoints.length) as Float32Array,
+		trailAlphas.subarray(0, validPoints.length) as Float32Array,
+		posArr,
+		isOpenCurve,
+		useTrail
+	);
 
 	const isFat = drawsFat(lineWidth);
 	const obj = isFat

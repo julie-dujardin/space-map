@@ -235,6 +235,7 @@ export function commitTrail(
 	writeTrailAlphas(
 		fullArr.subarray(0, n) as Float32Array,
 		trailArr.subarray(0, n) as Float32Array,
+		posArr,
 		isOpenCurve,
 		useTrail
 	);

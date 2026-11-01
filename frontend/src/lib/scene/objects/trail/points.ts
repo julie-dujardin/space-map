@@ -66,34 +66,44 @@ export function buildTrailPoints(
 	return points.filter((p) => p.every(Number.isFinite));
 }
 
+/** Length of the segment that ends on vertex `k`. */
+function segmentLength(posArr: Float32Array, k: number): number {
+	const i = k * 3;
+	return Math.hypot(
+		posArr[i] - posArr[i - 3],
+		posArr[i + 1] - posArr[i - 2],
+		posArr[i + 2] - posArr[i - 1]
+	);
+}
+
 /**
- * Fill `fullArr` with the full-orbit fade and `trailArr` with the partial
- * fade (~1/3 of the orbit from the body); non-trail bodies copy the full ramp.
+ * Fill `fullArr` with the fade of the whole trail and `trailArr` with the fade
+ * of its nearest third. A body with no partial trail copies the full ramp.
  *
- * `isOpenCurve` sets only the full ramp's floor: open curves (SGP4 window,
- * chebyshev buffer) fade to 0 since the oldest sample is the tail tip; closed
- * curves (Kepler ellipse) fade to a non-zero floor so the loop seam doesn't pop.
+ * An open curve is measured by length, because its vertices can be few and
+ * unevenly spaced, and it fades to 0 at its tip. A closed curve is measured by
+ * vertex and fades to a floor, so that the loop seam stays hidden.
  */
 export function writeTrailAlphas(
 	fullArr: Float32Array,
 	trailArr: Float32Array,
+	posArr: Float32Array,
 	isOpenCurve: boolean,
 	useTrail: boolean
 ): void {
 	const fullMax = 0.55;
 	const fullMin = isOpenCurve ? 0 : fullMax / 3;
+	const trailMax = 0.35;
 	const last = fullArr.length - 1;
-	for (let k = 0; k < fullArr.length; k++) {
-		fullArr[k] = fullMax - (last > 0 ? k / last : 0) * (fullMax - fullMin);
+	// `fullArr` holds the distance from the body until the ramps replace it.
+	fullArr[0] = 0;
+	for (let k = 1; k <= last; k++) {
+		fullArr[k] = fullArr[k - 1] + (isOpenCurve ? segmentLength(posArr, k) : 1);
 	}
-	if (useTrail) {
-		const trailLen = Math.round(NUM_TRAIL_POINTS / 3);
-		const trailMax = 0.35;
-		trailArr.fill(0);
-		for (let k = 0; k < Math.min(trailLen, trailArr.length); k++) {
-			trailArr[k] = trailMax - (k / (trailLen - 1)) * trailMax;
-		}
-	} else {
-		trailArr.set(fullArr);
+	const end = fullArr[last];
+	for (let k = 0; k <= last; k++) {
+		const share = end > 0 ? fullArr[k] / end : 0;
+		fullArr[k] = fullMax - share * (fullMax - fullMin);
+		trailArr[k] = useTrail ? trailMax * Math.max(0, 1 - 3 * share) : fullArr[k];
 	}
 }
