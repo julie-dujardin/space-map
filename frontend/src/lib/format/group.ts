@@ -67,6 +67,19 @@ export function groupTypeLabelPlural(type: GroupType): string {
 	return GROUP_TYPE_NAME[type].many();
 }
 
+/** Where the Collections filter names a type its own way. Satellite
+ *  constellations are two rows there, and a star constellation is a figure. */
+const COLLECTION_TYPE_NAME: Record<string, () => string> = {
+	fleet: m.group_type_plural_fleet,
+	breakup_cloud: m.group_type_plural_breakup_cloud,
+	sky_constellation: m.group_stat_figures
+};
+
+/** A value of the Collections filter. */
+export function collectionTypeLabel(type: string): string {
+	return COLLECTION_TYPE_NAME[type]?.() ?? groupTypeLabelPlural(type as GroupType);
+}
+
 /** Badge label for an organization's operator/manufacturer role tag. */
 export function organizationRoleLabel(role: OrganizationRole): string {
 	return role === 'operator' ? m.group_type_operator() : m.group_type_manufacturer();

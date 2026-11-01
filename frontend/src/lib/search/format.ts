@@ -36,17 +36,7 @@ export function capitalize(s: string): string {
 }
 
 /** Everything the Sun holds directly: naming that parent says nothing. */
-const HELIOCENTRIC_TYPES = new Set([
-	'planet',
-	'dwarf_planet',
-	'comet',
-	'asteroid',
-	'asteroid_inner',
-	'asteroid_main_belt',
-	'asteroid_trojan',
-	'asteroid_centaur',
-	'asteroid_tno'
-]);
+const HELIOCENTRIC_TYPES = new Set(['planet', 'dwarf_planet', 'comet', 'asteroid']);
 const SELF_EXPLANATORY_TYPES = new Set(['star', 'spacecraft', 'undocumented']);
 
 /** A class as a type key: "brown dwarf" is `brown_dwarf`. */
@@ -96,17 +86,23 @@ function systemFact(hit: SearchHit): string | null {
 	if (hit.kind !== 'object') return null;
 	const type = typeLabel(hit.type);
 	if (hit.system_name) return m.search_secondary_in_system({ type, system: hit.system_name });
-	if (hit.stars === undefined) return null;
+	if (hit.star_count === undefined) return null;
 	const stars = m.search_secondary_system({
 		type,
-		stars: m.system_star_count({ count: hit.stars })
+		stars: m.system_star_count({ count: hit.star_count })
 	});
-	return hit.planets ? `${stars} · ${m.exoplanet_planet_count({ count: hit.planets })}` : stars;
+	return hit.planet_count
+		? `${stars} · ${m.exoplanet_planet_count({ count: hit.planet_count })}`
+		: stars;
 }
 
 /** The line under a result's name: its own description when it has one, else
  *  what it is and what it belongs to. A star system's facts lead the line. */
 export function secondaryText(hit: SearchHit, resolve: HitLabelResolvers): string {
+	// Its description only calls a satellite system a barycenter.
+	if (hit.kind === 'object' && hit.moon_count !== undefined) {
+		return m.moons_count_moon({ count: hit.moon_count });
+	}
 	const desc = localizedDescription(hit, getLocale());
 	const fact = systemFact(hit);
 	if (desc) return fact ? `${fact} · ${desc}` : desc;
@@ -127,10 +123,10 @@ export function secondaryText(hit: SearchHit, resolve: HitLabelResolvers): strin
 			parent: planetHostName(hit, getLocale())
 		});
 	}
-	if (hit.extrasolar) {
+	if (hit.planet_count) {
 		return m.search_secondary_planet_host({
 			type: typeLabel(hit.type),
-			planets: m.exoplanet_planet_count({ count: hit.planets ?? 0 })
+			planets: m.exoplanet_planet_count({ count: hit.planet_count })
 		});
 	}
 	if (hit.id.startsWith('norad_satcat-')) {

@@ -36,7 +36,8 @@ const HOST = {
 	id: 'x-27424668',
 	kind: 'object',
 	name: 'Proxima Centauri',
-	object: { id: 'x-27424668', type: 'star', extrasolar: true, planets: 3 }
+	planet_count: 3,
+	object: { id: 'x-27424668', type: 'star', extrasolar: true }
 };
 const resolve = { bodyName: (id: string) => id, featureTypeLabel: (code: string) => code };
 
@@ -68,9 +69,18 @@ describe('extrasolar search hits', () => {
 
 	it('reads a host as an object of the catalogue, with its planets', () => {
 		const hit = toHit(HOST);
-		expect(hit).toMatchObject({ kind: 'object', id: 'x-27424668', extrasolar: true, planets: 3 });
+		expect(hit).toMatchObject({
+			kind: 'object',
+			id: 'x-27424668',
+			extrasolar: true,
+			planet_count: 3
+		});
 		expect(secondaryText(hit, resolve)).toBe('star with 3 planets');
-		const pulsar = toHit({ ...HOST, object: { ...HOST.object, type: 'pulsar', planets: 1 } });
+		const pulsar = toHit({
+			...HOST,
+			planet_count: 1,
+			object: { ...HOST.object, type: 'pulsar' }
+		});
 		expect(secondaryText(pulsar, resolve)).toBe('pulsar with 1 planet');
 	});
 
@@ -113,7 +123,6 @@ describe('endpoint search', () => {
 	it('says which system a star is in, ahead of its description', () => {
 		const object = {
 			...HOST.object,
-			planets: undefined,
 			system_id: 'x-1',
 			system_name: 'Kepler-16'
 		};
@@ -123,12 +132,24 @@ describe('endpoint search', () => {
 	});
 
 	it('counts the stars of a system, with its planets', () => {
-		const object = { ...HOST.object, type: 'binary_star', planets: undefined, stars: 2 };
-		expect(secondaryText(toHit({ ...HOST, object }), resolve)).toBe('binary star · 2 stars');
-		const hosts = { ...object, planets: 1 };
-		expect(secondaryText(toHit({ ...HOST, object: hosts }), resolve)).toBe(
+		const object = { ...HOST.object, type: 'binary_star' };
+		const system = { ...HOST, object, planet_count: undefined, star_count: 2 };
+		expect(secondaryText(toHit(system), resolve)).toBe('binary star · 2 stars');
+		expect(secondaryText(toHit({ ...system, planet_count: 1 }), resolve)).toBe(
 			'binary star · 2 stars · 1 planet'
 		);
+	});
+
+	it('counts the moons of a satellite system', () => {
+		const object = { id: 'naif-5', type: 'barycenter' };
+		const system = { id: 'b-naif-5', kind: 'object', name: 'Jupiter system', object };
+		const hit = toHit({ ...system, moon_count: 116, description_en: 'barycenter' });
+		expect(secondaryText(hit, resolve)).toBe('116 moons');
+	});
+
+	it('gives a star with a companion alone no planets', () => {
+		const star = { ...HOST, planet_count: undefined };
+		expect(secondaryText(toHit(star), resolve)).toBe('star');
 	});
 
 	it('leaves the line of a star in no system, and of a system with no name', () => {

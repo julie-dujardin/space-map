@@ -38,9 +38,8 @@
 	// Right-aligned value tied to the active sort. Objects/features only — group
 	// rows show their member count instead (handled inside ResultRow).
 	function metricFor(hit: SearchHit): { value: string; unit?: string } | undefined {
-		// A group shows its member count inside ResultRow. A pad and a planet
-		// have no figure here.
-		if (hit.kind === 'group' || hit.kind === 'pad' || hit.kind === 'planet') return undefined;
+		// A group shows its member count inside ResultRow. A pad has no figure.
+		if (hit.kind === 'group' || hit.kind === 'pad') return undefined;
 		switch (model.sort) {
 			case 'size':
 				return hit.diameter_km != null
@@ -51,6 +50,9 @@
 					? { value: hit.magnitude.toFixed(1), unit: 'H' }
 					: undefined;
 			case 'date':
+				if (hit.kind === 'planet') {
+					return hit.discovery_year != null ? { value: String(hit.discovery_year) } : undefined;
+				}
 				return hit.kind === 'object' && hit.inception != null
 					? { value: String(inceptionYear(hit.inception)) }
 					: undefined;

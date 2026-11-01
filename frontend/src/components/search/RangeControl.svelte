@@ -22,7 +22,7 @@
 	const posMax = $derived(value.max != null ? toPos(def, value.max) : 1);
 	const active = $derived(hasBound(value));
 
-	const stepAttr = $derived(def.unit === 'year' ? 1 : def.unit === 'mag' ? 0.1 : 'any');
+	const stepAttr = $derived(def.unit === 'km' ? 'any' : def.unit === 'mag' ? 0.1 : 1);
 	const unitSuffix = $derived(def.unit === 'km' ? m.unit_symbol_kilometre() : '');
 
 	function setEdge(edge: 'min' | 'max', v: number | undefined): void {

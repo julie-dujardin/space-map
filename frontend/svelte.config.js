@@ -3,9 +3,10 @@ import adapter from '@sveltejs/adapter-cloudflare';
 const dev = process.env.NODE_ENV !== 'production';
 
 // `https:` covers all prod endpoints without baking hostnames in; blob: is
-// GLTFLoader fetching embedded textures. Dev adds Meili + Vite HMR.
+// GLTFLoader fetching embedded textures. Dev adds Vite HMR and Meili, on any
+// port since a worktree can run its own.
 const connectSrc = ['self', 'https:', 'blob:'];
-if (dev) connectSrc.push('http://127.0.0.1:7700', 'http://localhost:7700', 'ws:', 'wss:');
+if (dev) connectSrc.push('http://127.0.0.1:*', 'http://localhost:*', 'ws:', 'wss:');
 
 // Cloudflare serves the Turnstile script and its frame from here only.
 const TURNSTILE = 'https://challenges.cloudflare.com';

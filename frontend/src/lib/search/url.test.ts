@@ -100,6 +100,17 @@ describe('range facets', () => {
 		).toBe('&f=date:1990..');
 	});
 
+	it('round-trips the count of a kind of system', () => {
+		const suffix = serializeSearchSuffix({
+			...base,
+			filters: { ranges: { planets: { min: 3 }, moons: { max: 20 } } }
+		});
+		expect(suffix).toBe('&f=planets:3..;moons:..20');
+		const parsed = parseSearchSuffix(new URLSearchParams(suffix));
+		expect(parsed?.filters.ranges?.planets).toEqual({ min: 3 });
+		expect(parsed?.filters.ranges?.moons).toEqual({ max: 20 });
+	});
+
 	it('skips a range with no bounds set', () => {
 		expect(serializeSearchSuffix({ ...base, filters: { ranges: { diameter: {} } } })).toBe('');
 	});

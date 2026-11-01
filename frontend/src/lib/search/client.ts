@@ -51,8 +51,9 @@ export interface ObjectHit extends BaseHit {
 	priority?: number;
 	designations?: string[];
 	ops_status?: string;
-	/** Group slugs this object belongs to (small-body class/flags + earth-sat
-	 *  collections) — the filter key behind a group's "show all members". */
+	/** Group slugs this object belongs to (small-body class/flags, earth-sat
+	 *  collections, families) — the filter key behind a group's "show all
+	 *  members". */
 	groups?: string[];
 	/** Wikidata sitelink count; prominence rank for member listings. */
 	sitelinks_count?: number;
@@ -63,10 +64,12 @@ export interface ObjectHit extends BaseHit {
 	inception?: number;
 	/** An object of the extrasolar catalogue that has planets or a star system. */
 	extrasolar?: boolean;
-	/** How many planets it has. */
-	planets?: number;
-	/** How many stars the star system has, on a system. */
-	stars?: number;
+	/** Its planets of the IAU class planet, on a planetary system. */
+	planet_count?: number;
+	/** Its stars, on a star system. */
+	star_count?: number;
+	/** The moons of its planet, on a satellite system. */
+	moon_count?: number;
 	/** The key of the system, on a held star. */
 	system_id?: string;
 	/** The name of the system, on a held star; null when it has none. */
@@ -91,6 +94,7 @@ export interface PlanetHit extends BaseHit {
 	aliases?: string[];
 	discovery_year?: number;
 	discovery_method?: string;
+	diameter_km?: number;
 }
 
 /** Constellation / organization / asteroid-class collection. The Meili primary
@@ -107,6 +111,8 @@ export interface GroupHit extends BaseHit {
 	/** A constellation: the culture slug and the figure of its page. */
 	culture?: string;
 	figure?: string;
+	/** A family: the pages of the families that contain it, else its category. */
+	parents?: string[];
 }
 
 /** The page a group hit opens. */
@@ -290,7 +296,8 @@ function toGroupHit(d: RawHit): GroupHit {
 		applies_to: g.applies_to as string,
 		member_count: (g.member_count as number) ?? 0,
 		culture: g.culture as string | undefined,
-		figure: g.figure as string | undefined
+		figure: g.figure as string | undefined,
+		parents: g.parents as string[] | undefined
 	} as GroupHit;
 }
 
@@ -412,19 +419,7 @@ export async function searchDrawable(
  * barycentre is a place rather than a body. A star of the extrasolar
  * catalogue has no orbit the kernel can read.
  */
-const NAVIGABLE_TYPES = [
-	'star',
-	'planet',
-	'dwarf_planet',
-	'moon',
-	'comet',
-	'asteroid',
-	'asteroid_inner',
-	'asteroid_main_belt',
-	'asteroid_trojan',
-	'asteroid_centaur',
-	'asteroid_tno'
-] as const;
+const NAVIGABLE_TYPES = ['star', 'planet', 'dwarf_planet', 'moon', 'comet', 'asteroid'] as const;
 
 /**
  * Bodies the Δv map can draw, for its origin and destination pickers.
@@ -497,8 +492,7 @@ async function searchMemberPage(
 // cat-moons/satellites/probes). Filter on `object.type` instead — mirrors the
 // export's "comet classes → comets, else asteroids" split.
 const CATEGORY_MEMBER_FILTER: Record<string, string> = {
-	'cat-asteroids':
-		'object.type IN ["asteroid", "asteroid_inner", "asteroid_main_belt", "asteroid_trojan", "asteroid_centaur", "asteroid_tno"]',
+	'cat-asteroids': 'object.type = "asteroid"',
 	'cat-comets': 'object.type = "comet"',
 	'cat-spacecraft': 'object.groups IN ["cat-satellites", "cat-probes"]',
 	'cat-solar-system': 'kind = "object"'
@@ -596,8 +590,8 @@ export function searchChildMembers(
 export type SortId = 'relevance' | 'name' | 'size' | 'brightness' | 'date';
 
 /** Numeric range facets. Values are in display units (km, magnitude H, calendar
- *  year); `RANGE_FIELDS` maps them to the Meili attribute(s)/value. */
-export type RangeFacet = 'diameter' | 'magnitude' | 'inception';
+ *  year, a count); `RANGE_FIELDS` maps them to the Meili attribute(s)/value. */
+export type RangeFacet = 'diameter' | 'magnitude' | 'inception' | 'stars' | 'planets' | 'moons';
 export interface RangeBound {
 	min?: number;
 	max?: number;
@@ -627,8 +621,10 @@ interface FacetSpec {
 export const ARRAY_FACETS = {
 	/** object | feature | group */
 	kind: { attr: 'kind', token: 'kind', faceted: true },
-	type: { attr: 'object.type', token: 'type', faceted: true },
-	/** Group slugs: orbit class, constellation, country, … */
+	/** A document's type and its star, planet and system pages, so that any two
+	 *  classes OR. */
+	type: { attr: 'classes', token: 'type', faceted: true },
+	/** Group slugs: orbit class, constellation, country, family, category, … */
 	groups: { attr: 'object.groups', token: 'groups', faceted: true },
 	/** The body a moon orbits. */
 	moonHost: { attr: 'object.moon_host', token: 'mhost', faceted: true },
@@ -641,8 +637,8 @@ export const ARRAY_FACETS = {
 	/** IAU quadrangle code, scoped to one body. Not faceted: the Surface tab's
 	 *  hero gets its per-cell counts from the exported quadrangle index. */
 	featureQuad: { attr: 'feature.quad', token: 'fquad', faceted: false },
-	/** Collection kinds. */
-	groupType: { attr: 'group.type', token: 'gtype', faceted: true }
+	/** Collection types, and the fleets and breakup clouds of `constellation`. */
+	groupType: { attr: 'group.types', token: 'gtype', faceted: true }
 } as const satisfies Record<string, FacetSpec>;
 
 /** Boolean flags, serialized as a bare `f=` token. */
@@ -677,11 +673,19 @@ const yearSpan = (v: number, edge: 'min' | 'max') =>
 
 // A facet with several targets ORs across them: each kind dates by whatever
 // field it actually has, so one year slider covers objects (discovery/launch)
-// and surface features (IAU name approval) alike.
+// surface features (IAU name approval) and planets alike.
 const RANGE_FIELDS: Record<RangeFacet, RangeTarget[]> = {
 	diameter: [{ field: 'diameter_km' }],
 	magnitude: [{ field: 'object.magnitude' }],
-	inception: [{ field: 'object.inception', encode: yearSpan }, { field: 'feature.named' }]
+	inception: [
+		{ field: 'object.inception', encode: yearSpan },
+		{ field: 'feature.named' },
+		{ field: 'planet.discovery_year' }
+	],
+	// Each is on one kind of system only, so a range leaves that kind.
+	stars: [{ field: 'star_count' }],
+	planets: [{ field: 'planet_count' }],
+	moons: [{ field: 'moon_count' }]
 };
 
 /** A facet value → match-count map, keyed by facet attribute. */
@@ -893,8 +897,10 @@ export async function catalogCount(): Promise<number | null> {
 	}
 }
 
-// Every group/collection doc, fetched once per locale to label the filter
-// tree (slug → name/type) without a round-trip per facet value. ~830 docs.
+// The groups an object can be filtered by, fetched once per locale to label
+// the filter tree (slug → name/type) without a round-trip per facet value.
+// These types tag no object, and without them the rest fit under maxTotalHits.
+const UNTAGGING_GROUP_TYPES = ['feature_type', 'sky_culture', 'sky_constellation'];
 const groupCatalogCache = new Map<string, GroupHit[]>();
 
 export async function fetchGroupCatalog(locale: string): Promise<GroupHit[]> {
@@ -903,9 +909,9 @@ export async function fetchGroupCatalog(locale: string): Promise<GroupHit[]> {
 	const c = await getClient();
 	if (!c) return [];
 	const res = await c.index(INDEX).search('', {
-		filter: 'kind = "group"',
+		filter: `kind = "group" AND group.type NOT IN [${UNTAGGING_GROUP_TYPES.map(quote).join(', ')}]`,
 		sort: ['group.member_count:desc'],
-		limit: 1000,
+		limit: MAX_TOTAL_HITS,
 		locales: [locale]
 	});
 	const groups = (res.hits ?? []).map((h) => toGroupHit(h as RawHit));

@@ -26,6 +26,13 @@ describe('range scales', () => {
 		}
 	});
 
+	it('snaps a count to a whole number', () => {
+		for (const facet of ['stars', 'planets', 'moons'] as const) {
+			const d = rangeDef(facet);
+			for (let p = 0; p <= 1; p += 0.05) expect(Number.isInteger(fromPos(d, p))).toBe(true);
+		}
+	});
+
 	it('round-trips a snapped value through pos', () => {
 		const d = rangeDef('diameter');
 		const v = fromPos(d, 0.5); // log midpoint, 2 sig figs

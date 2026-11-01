@@ -5,11 +5,11 @@ const INDEX = 'catalog';
 // faceted cost, to measure its weight.
 const FACETS = [
 	'kind',
-	'object.type',
+	'classes',
 	'object.groups',
 	'object.neo',
 	'object.pha',
-	'group.type',
+	'group.types',
 	'feature.type'
 ].filter((f) => !(__ENV.DROP_GROUPS_FACET === '1' && f === 'object.groups'));
 

@@ -45,7 +45,10 @@ const TOKEN_TO_FLAG = new Map<string, BoolFacet>(
 const RANGE_FACETS: [RangeFacet, string][] = [
 	['diameter', 'diameter'],
 	['magnitude', 'mag'],
-	['inception', 'date']
+	['inception', 'date'],
+	['stars', 'stars'],
+	['planets', 'planets'],
+	['moons', 'moons']
 ];
 const RANGE_TOKEN_TO_FACET = new Map(RANGE_FACETS.map(([f, t]) => [t, f]));
 

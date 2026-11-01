@@ -15,17 +15,23 @@ const MIN_QUERY = 2;
 const DEBOUNCE_MS = 180;
 const LIMIT = 10;
 
+type HitGroupKind = Exclude<SearchHit['kind'], 'planet'>;
+
 /** Group order, and each group's heading. */
-const KINDS: { kind: SearchHit['kind']; label: () => string }[] = [
+const KINDS: { kind: HitGroupKind; label: () => string }[] = [
 	{ kind: 'object', label: m.search_kind_object },
 	{ kind: 'feature', label: m.search_kind_feature },
 	{ kind: 'group', label: m.search_kind_group },
-	{ kind: 'pad', label: m.group_pads },
-	{ kind: 'planet', label: m.search_kind_planet }
+	{ kind: 'pad', label: m.group_pads }
 ];
 
+/** A planet ranks with the objects, wherever its star is. */
+function groupKind(hit: SearchHit): HitGroupKind {
+	return hit.kind === 'planet' ? 'object' : hit.kind;
+}
+
 export interface HitGroup {
-	kind: SearchHit['kind'];
+	kind: HitGroupKind;
 	label: string;
 	/** `index` is the row's place in the walk of the arrow keys. */
 	rows: { hit: SearchHit; index: number }[];
@@ -45,7 +51,7 @@ export class QuickSearch {
 		let index = 0;
 		const out: HitGroup[] = [];
 		for (const { kind, label } of KINDS) {
-			const hits = this.hits.filter((h) => h.kind === kind);
+			const hits = this.hits.filter((h) => groupKind(h) === kind);
 			if (hits.length)
 				out.push({ kind, label: label(), rows: hits.map((hit) => ({ hit, index: index++ })) });
 		}

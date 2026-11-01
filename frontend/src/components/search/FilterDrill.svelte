@@ -29,7 +29,10 @@
 	const atRoot = $derived(path.length === 0);
 	const shown = $derived(current.children ?? []);
 	const leaves = $derived(current.leaves ?? []);
+	const sections = $derived((current.sections ?? []).filter((s) => s.leaves.length > 0));
 	const ranges = $derived(current.ranges ?? []);
+	// Apart from the {#if} below: Svelte drops the parens of `(A || B) && C`.
+	const hasControls = $derived(leaves.length > 0 || ranges.length > 0);
 
 	function leafChecked(leaf: FilterLeaf): boolean {
 		return leaf.kind === 'bool'
@@ -41,11 +44,15 @@
 		else model.toggleValues(leaf.facet, leaf.values);
 	}
 	// Active selections anywhere under a node (its leaves + ranges + descendants).
-	function activeUnder(node: FilterNode): number {
-		let n = (node.leaves ?? []).filter(leafChecked).length;
-		for (const f of node.ranges ?? []) if (hasBound(model.rangeOf(f))) n++;
-		for (const child of node.children ?? []) n += activeUnder(child);
-		return n;
+	// By value: a family with two parents shows under both, and counts once.
+	function activeUnder(node: FilterNode, seen = new Set<string>()): number {
+		const own = [...(node.leaves ?? []), ...(node.sections ?? []).flatMap((s) => s.leaves)];
+		for (const leaf of own.filter(leafChecked)) {
+			seen.add(leaf.kind === 'bool' ? leaf.facet : `${leaf.facet}:${leaf.values}`);
+		}
+		for (const f of node.ranges ?? []) if (hasBound(model.rangeOf(f))) seen.add(f);
+		for (const child of node.children ?? []) activeUnder(child, seen);
+		return seen.size;
 	}
 
 	let dialogEl = $state<HTMLDivElement | null>(null);
@@ -70,6 +77,31 @@
 		}
 	}
 </script>
+
+{#snippet leafRow(leaf: FilterLeaf)}
+	{@const checked = leafChecked(leaf)}
+	<button
+		type="button"
+		role="checkbox"
+		aria-checked={checked}
+		class="flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-start transition-colors hover:bg-accent"
+		onclick={() => toggleLeaf(leaf)}
+	>
+		<span
+			class="grid size-4 shrink-0 place-items-center rounded border {checked
+				? 'border-foreground bg-foreground text-background'
+				: 'border-muted-foreground'}"
+		>
+			{#if checked}<CheckIcon class="size-3" />{/if}
+		</span>
+		<span class="min-w-0 flex-1 truncate text-sm text-foreground">{capitalize(leaf.label)}</span>
+		{#if leaf.count != null}
+			<span class="shrink-0 font-mono text-[11px] tabular-nums text-muted-foreground"
+				>{formatCompactNumber(leaf.count)}</span
+			>
+		{/if}
+	</button>
+{/snippet}
 
 <div
 	bind:this={dialogEl}
@@ -97,29 +129,7 @@
 
 	<div class="no-scrollbar overflow-y-auto p-1.5" bind:this={listEl}>
 		{#each leaves as leaf (leaf.id)}
-			{@const checked = leafChecked(leaf)}
-			<button
-				type="button"
-				role="checkbox"
-				aria-checked={checked}
-				class="flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-start transition-colors hover:bg-accent"
-				onclick={() => toggleLeaf(leaf)}
-			>
-				<span
-					class="grid size-4 shrink-0 place-items-center rounded border {checked
-						? 'border-foreground bg-foreground text-background'
-						: 'border-muted-foreground'}"
-				>
-					{#if checked}<CheckIcon class="size-3" />{/if}
-				</span>
-				<span class="min-w-0 flex-1 truncate text-sm text-foreground">{capitalize(leaf.label)}</span
-				>
-				{#if leaf.count != null}
-					<span class="shrink-0 font-mono text-[11px] tabular-nums text-muted-foreground"
-						>{formatCompactNumber(leaf.count)}</span
-					>
-				{/if}
-			</button>
+			{@render leafRow(leaf)}
 		{/each}
 
 		{#each ranges as facet, i (facet)}
@@ -129,13 +139,13 @@
 			{/if}
 			<RangeControl
 				{def}
-				label={messages[def.labelKey]?.() ?? facet}
+				label={capitalize(messages[def.labelKey]?.() ?? facet)}
 				value={model.rangeOf(facet)}
 				onchange={(b) => model.setRange(facet, b)}
 			/>
 		{/each}
 
-		{#if (leaves.length > 0 || ranges.length > 0) && shown.length > 0}
+		{#if hasControls && shown.length > 0}
 			<div class="my-1 border-t border-border"></div>
 		{/if}
 
@@ -160,6 +170,19 @@
 				{/if}
 				<ChevronRightIcon class="size-4 text-muted-foreground rtl:rotate-180" />
 			</button>
+		{/each}
+
+		{#each sections as section (section.id)}
+			<div role="group" aria-label={section.label}>
+				{#if section.label}
+					<p class="px-2 pb-1 pt-2.5 text-xs font-medium text-muted-foreground">{section.label}</p>
+				{:else if shown.length > 0}
+					<div class="my-1 border-t border-border"></div>
+				{/if}
+				{#each section.leaves as leaf (leaf.id)}
+					{@render leafRow(leaf)}
+				{/each}
+			</div>
 		{/each}
 	</div>
 </div>

@@ -1,5 +1,5 @@
 /** Range descriptors + slider scale math (display value ↔ position in [0,1]).
- *  Scales: diameter log (~7 decades), inception reverse-log (dense recent
+ *  Scales: diameter log (~11 decades), inception reverse-log (dense recent
  *  decades), magnitude linear (H is already log and goes negative). */
 
 import type { RangeFacet } from './client';
@@ -8,10 +8,18 @@ export type ScaleKind = 'log' | 'linear' | 'revlog';
 
 export interface RangeDef {
 	facet: RangeFacet;
-	/** i18n key for the label (magnitude has its own; the rest reuse sort labels). */
-	labelKey: 'search_sort_size' | 'search_range_magnitude' | 'search_sort_date';
-	/** 'km' renders a unit suffix; 'mag'/'year' show the bare number. */
-	unit: 'km' | 'mag' | 'year';
+	/** i18n key for the label (magnitude has its own; the rest reuse sort and
+	 *  class labels). */
+	labelKey:
+		| 'search_sort_size'
+		| 'search_range_magnitude'
+		| 'search_sort_date'
+		| 'search_cat_star'
+		| 'search_cat_planet'
+		| 'search_cat_moon';
+	/** 'km' renders a unit suffix; the others show the bare number. A 'count'
+	 *  snaps to whole numbers. */
+	unit: 'km' | 'mag' | 'year' | 'count';
 	/** Slider domain in display units. */
 	lo: number;
 	hi: number;
@@ -26,7 +34,7 @@ export const RANGE_DEFS: RangeDef[] = [
 		labelKey: 'search_sort_size',
 		unit: 'km',
 		lo: 0.01,
-		hi: 150000,
+		hi: 3e9,
 		scale: 'log'
 	},
 	{
@@ -46,7 +54,10 @@ export const RANGE_DEFS: RangeDef[] = [
 		lo: 1700,
 		hi: 2026,
 		scale: 'revlog'
-	}
+	},
+	{ facet: 'stars', labelKey: 'search_cat_star', unit: 'count', lo: 2, hi: 7, scale: 'linear' },
+	{ facet: 'planets', labelKey: 'search_cat_planet', unit: 'count', lo: 1, hi: 9, scale: 'linear' },
+	{ facet: 'moons', labelKey: 'search_cat_moon', unit: 'count', lo: 1, hi: 300, scale: 'log' }
 ];
 
 export function rangeDef(facet: RangeFacet): RangeDef {
@@ -71,6 +82,11 @@ export function toPos(def: RangeDef, v: number): number {
 
 /** Slider position in [0,1] → a snapped, human-friendly display value. */
 export function fromPos(def: RangeDef, p: number): number {
+	const v = snappedValue(def, p);
+	return def.unit === 'count' ? Math.round(v) : v;
+}
+
+function snappedValue(def: RangeDef, p: number): number {
 	const { lo, hi, scale } = def;
 	const t = clamp01(p);
 	if (scale === 'log') {
