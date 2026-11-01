@@ -1,6 +1,7 @@
 {
     "files.exclude": {
-        "**/__pycache__": true
+        "**/__pycache__": true,
+        "**/.claude/worktrees": true
     },
     "search.exclude": {
         "**/__pycache__": true
