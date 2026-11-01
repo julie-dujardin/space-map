@@ -5,11 +5,13 @@ how fine it is, and how many files and bytes it takes. A patch of a tile
 pyramid is a row of its own. The shapes that come from light curves are one
 row together. The figures of a map, a ring or a model come from the metadata
 that ingest writes for its bundle, so there is no pass over the tiles or the
-meshes. The objects are measured from their files, see `about_objects`.
+meshes. The objects are measured from their files, see `about_objects`. The
+raw downloads are measured with a walk of their tree.
 """
 
 import logging
 import math
+import os
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -41,7 +43,12 @@ from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.ingest.providers.models.config import MODEL_CATALOGS
 from space_map_data.ingest.providers.textures.tiles import HEIGHT_LEVELS
 from space_map_data.models.object import Object
-from space_map_data.utils.paths import DOWNLOAD_DIR, EXPORT_DIR, EXTRASOLAR_DIR
+from space_map_data.utils.paths import (
+    DOWNLOAD_DIR,
+    EXPORT_DIR,
+    EXTRASOLAR_DIR,
+    SOURCES_DIR,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +74,20 @@ _CRAFT_KINDS = (
 def _figures(value: float, digits: int = 4) -> float:
     """``value`` to ``digits`` significant figures."""
     return float(f"{value:.{digits}g}")
+
+
+def tree_bytes(root: Path) -> int:
+    """Bytes of the files below ``root``. A link is not a file of the tree."""
+    total = 0
+    pending = [root]
+    while pending:
+        with os.scandir(pending.pop()) as entries:
+            for entry in entries:
+                if entry.is_dir(follow_symlinks=False):
+                    pending.append(Path(entry.path))
+                elif entry.is_file(follow_symlinks=False):
+                    total += entry.stat(follow_symlinks=False).st_size
+    return total
 
 
 def equator_radius_km(radii: dict) -> float:
@@ -480,9 +501,11 @@ def build_about_data(
     rings: dict[str, list[dict]],
     models: dict[str, dict],
     extrasolar_dir: Path,
+    sources_dir: Path,
 ) -> dict:
     """The payload. The objects are one row for each kind, with the
-    extrasolar export below `extrasolar_dir`.
+    extrasolar export below `extrasolar_dir`. `sources_dir` holds the raw
+    downloads.
     The maps are grouped by planetary system. The rings and the shape models
     are lists of worlds in the same order. The rows have the English names of
     the pages (`export.names`), and `names` holds the other languages."""
@@ -546,6 +569,7 @@ def build_about_data(
         # The bodies with a map, a ring or a shape model. Shapes from light
         # curves do not count: the models figure already holds them.
         "worlds": len(placed),
+        "download_bytes": tree_bytes(sources_dir),
         "objects": object_rows(out_dir, extrasolar_dir),
         "systems": systems,
         "rings": _world_rows(
@@ -592,6 +616,7 @@ def write_about_data(
         rings,
         models,
         EXTRASOLAR_DIR,
+        SOURCES_DIR,
     )
     (out_dir / "about-data.json").write_bytes(
         orjson.dumps(payload, option=orjson.OPT_INDENT_2)
@@ -602,7 +627,7 @@ def write_about_data(
     logger.info(
         "Wrote about-data.json (%d objects in %d kinds, %d worlds, %d maps, "
         "%d with tiles, %d patches, %d ring bundles, %d shape models, "
-        "%d from light curves, %d other models) in %.1fs",
+        "%d from light curves, %d other models, %d bytes of downloads) in %.1fs",
         sum(row["count"] for row in payload["objects"]),
         len(payload["objects"]),
         payload["worlds"],
@@ -613,6 +638,7 @@ def write_about_data(
         sum(len(world["models"]) for world in model_block["worlds"]),
         model_block.get("lightcurve", {}).get("models", 0),
         sum(len(group["models"]) for group in model_block["craft"]),
+        payload["download_bytes"],
         time.monotonic() - t0,
     )
 

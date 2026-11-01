@@ -20,6 +20,7 @@ from space_map_data.export.about_data import (
     ring_row,
     shape_row,
     tier_rows,
+    tree_bytes,
 )
 from space_map_data.export.names import ObjectNames
 from space_map_data.models.object import ObjectType
@@ -137,6 +138,27 @@ def _shape(slug: str, object_id: str, provenance: str = "missions", **extra) -> 
         "exports": {"high": _mesh(900, 30), "low": _mesh(300, 10)},
         **extra,
     }
+
+
+class TestTreeBytes:
+    """The size of the raw downloads."""
+
+    def test_adds_the_files_of_every_level(self, tmp_path):
+        (tmp_path / "stars" / "gaia").mkdir(parents=True)
+        (tmp_path / "top.bin").write_bytes(b"12345")
+        (tmp_path / "stars" / "gaia" / "deep.bin").write_bytes(b"123")
+        assert tree_bytes(tmp_path) == 8
+
+    def test_link_does_not_add_its_target(self, tmp_path):
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        (outside / "big.bin").write_bytes(b"123456789")
+        tree = tmp_path / "tree"
+        tree.mkdir()
+        (tree / "file.bin").write_bytes(b"1")
+        (tree / "to-dir").symlink_to(outside)
+        (tree / "to-file").symlink_to(outside / "big.bin")
+        assert tree_bytes(tree) == 1
 
 
 class TestGroundScale:
@@ -472,6 +494,7 @@ class TestBuild:
             rings or {},
             models or {},
             tmp_path / "space-map-extrasolar",
+            tmp_path,
         )
 
     def test_planet_before_its_moons_and_standalones_last(self, session, tmp_path):
@@ -635,6 +658,7 @@ class TestNames:
             {},
             {},
             tmp_path / "space-map-extrasolar",
+            tmp_path,
         )
         (system,) = payload["systems"]
         assert (system["name"], system["worlds"][0]["name"]) == ("Mars", "Mars")
