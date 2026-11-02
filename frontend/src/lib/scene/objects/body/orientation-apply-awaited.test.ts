@@ -9,6 +9,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import type { PositionedBody } from '$lib/types/objects';
+import { isDrawn, type BodyObjects } from '$lib/scene/types';
 
 const MIMAS_SPIN = {
 	pole_ra_0: 40.66,
@@ -67,14 +68,28 @@ describe('joinAwaitedNutation', () => {
 		const ctx = context([mimas]);
 		apply.applyBodyOrientation(mimas, MIMAS_SPIN, MIMAS_SUMS, ctx);
 		expect(mimas.nutPrec).toBeUndefined();
-		expect(ctx.bodies.nutationAwaited.get('naif-601')).toEqual({ body: mimas, sums: MIMAS_SUMS });
+		expect(ctx.bodies.nutationAwaited.get('naif-601')).toBe(mimas);
+		expect(mimas.nutPrecAwaited).toEqual(MIMAS_SUMS);
 
 		await globalJsonLoads();
 		const placed = ctx.bodies.dataVersion;
 		expect(apply.joinAwaitedNutation(ctx)).toEqual([mimas]);
 		expect(mimas.nutPrec).toEqual({ ...MIMAS_SUMS, angles: SATURN_ANGLES, phaseDegree: 1 });
+		expect(mimas.nutPrecAwaited).toBeUndefined();
 		expect(ctx.bodies.nutationAwaited.size).toBe(0);
 		expect(ctx.bodies.dataVersion).toBe(placed + 1);
+	});
+
+	it('does not draw the body till its terms are joined', async () => {
+		const mimas = { ...bodyOf('naif-601'), position: [0, 0, 0] } as PositionedBody;
+		const bo = { body: mimas } as BodyObjects;
+		const ctx = context([mimas]);
+		expect(isDrawn(bo)).toBe(true);
+		apply.applyBodyOrientation(mimas, MIMAS_SPIN, MIMAS_SUMS, ctx);
+		expect(isDrawn(bo)).toBe(false);
+		await globalJsonLoads();
+		apply.joinAwaitedNutation(ctx);
+		expect(isDrawn(bo)).toBe(true);
 	});
 
 	it('joins the body it was given, which the scene may hold under no id', async () => {
@@ -93,7 +108,8 @@ describe('joinAwaitedNutation', () => {
 		await globalJsonIsNotThere();
 		expect(apply.joinAwaitedNutation(ctx)).toEqual([]);
 		expect(mimas.nutPrec).toBeUndefined();
-		// The measures answer again, as they did before the wait.
+		// The body is drawn, and the measures answer again, as before the wait.
+		expect(mimas.nutPrecAwaited).toBeUndefined();
 		expect(ctx.bodies.nutationAwaited.size).toBe(0);
 	});
 

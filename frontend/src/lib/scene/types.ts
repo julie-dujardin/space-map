@@ -94,10 +94,10 @@ export function typePriority(type: ObjectType): number {
 	}
 }
 
-/** True when the scene draws the body: it has a place, and it is not the
- *  hidden half of a carried pair. */
+/** True when the scene draws the body: it has a place, it is not the hidden
+ *  half of a carried pair, and its spin does not wait on its nutation terms. */
 export function isDrawn(bo: BodyObjects): boolean {
-	return bo.body.position !== null && !bo.carried;
+	return bo.body.position !== null && !bo.carried && !bo.body.nutPrecAwaited;
 }
 
 export interface BodyObjects {

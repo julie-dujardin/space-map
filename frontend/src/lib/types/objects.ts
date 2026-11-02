@@ -2,7 +2,13 @@ import type { SatRec } from 'satellite.js';
 import type { SGP4Inputs } from '$lib/math/orbit/sgp4';
 import type { Quaternion } from 'three';
 import { OrbitalSource, type OrbitArchive } from '$lib/fetch/position/format';
-import type { LandedHeading, NutPrec, Orientation, PointingSpec } from '$lib/math/orientation';
+import type {
+	LandedHeading,
+	NutPrec,
+	NutPrecSums,
+	Orientation,
+	PointingSpec
+} from '$lib/math/orientation';
 import type { AttitudeTrack } from '$lib/fetch/attitude/track';
 import type { TrailBuffer } from '$lib/fetch/position/trail-buffer';
 import type { ExtrasolarRecord } from '$lib/fetch/extrasolar/lookup';
@@ -190,6 +196,10 @@ export interface PositionedBody {
 	orientation?: Orientation;
 	/** IAU nutation/precession sums (per-body coefficients + system-shared angles). */
 	nutPrec?: NutPrec;
+	/** Nutation sums that wait on the angles of a global.json that has not
+	 *  loaded. The body is not drawn till it does: its spin is off by its terms
+	 *  (Mimas's by 45° in 2026), and it would be seen to turn. */
+	nutPrecAwaited?: NutPrecSums;
 	/** Semi-axes (km) of the ellipsoid the mesh is drawn as. Unset while the
 	 *  mesh is a sphere. */
 	drawnRadii?: { a: number; b: number; c: number };

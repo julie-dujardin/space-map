@@ -12,7 +12,7 @@ type Orientation = NonNullable<GlobalObjectData['orientation']>;
  * on the body is placed again. The nutation terms come with it, as a spin
  * without them can be tens of degrees off (Mimas). Where global.json, which
  * holds the angles the terms pair with, has not loaded, the sums are kept for
- * {@link joinAwaitedNutation}.
+ * {@link joinAwaitedNutation}, and the body is not drawn till then.
  */
 export function applyBodyOrientation(
 	body: PositionedBody,
@@ -24,7 +24,8 @@ export function applyBodyOrientation(
 	const id = body.data.id;
 	body.orientation = orientation;
 	body.nutPrec = nutPrecFor(id, nutPrec);
-	if (nutPrecAwaited(id, nutPrec)) ctx?.bodies.nutationAwaited.set(id, { body, sums: nutPrec });
+	body.nutPrecAwaited = nutPrecAwaited(id, nutPrec) ? nutPrec : undefined;
+	if (body.nutPrecAwaited) ctx?.bodies.nutationAwaited.set(id, body);
 	else ctx?.bodies.nutationAwaited.delete(id);
 	if (ctx) ctx.bodies.dataVersion++;
 	ctx?.credits.registerOrientation({
@@ -38,17 +39,20 @@ export function applyBodyOrientation(
 /**
  * Settle the bodies whose spin came while global.json had not loaded, now
  * that it has, or will not: each takes its nutation terms where the file came
- * in, and goes on without them where it did not. Returns the bodies whose spin
- * changed, which the caller turns: Mimas's by 45° in 2026.
+ * in, and goes on without them where it did not. Each is drawn from then on.
+ * Returns the bodies whose spin changed, which the caller turns before they
+ * show: Mimas's by 45° in 2026.
  */
 export function joinAwaitedNutation(ctx: ContextManager): PositionedBody[] {
 	const awaited = ctx.bodies.nutationAwaited;
 	const turned: PositionedBody[] = [];
-	for (const { body, sums } of awaited.values()) {
-		body.nutPrec = nutPrecFor(body.data.id, sums);
+	for (const body of awaited.values()) {
+		body.nutPrec = nutPrecFor(body.data.id, body.nutPrecAwaited);
+		body.nutPrecAwaited = undefined;
 		if (body.nutPrec) turned.push(body);
 	}
+	const settled = awaited.size > 0;
 	awaited.clear();
-	if (turned.length) ctx.bodies.dataVersion++;
+	if (settled) ctx.bodies.dataVersion++;
 	return turned;
 }

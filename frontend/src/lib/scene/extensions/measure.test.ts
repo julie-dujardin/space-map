@@ -36,12 +36,10 @@ function fakeCtx(
 	} as unknown as ContextManager;
 }
 
-const SUMS = { ra: [1], dec: [2], pm: [3] };
-
 describe('anchorDistanceKm', () => {
 	it('is null from a place on a body whose nutation terms have not loaded', () => {
 		const ctx = fakeCtx({ a: { position: [0, 0, 0] }, b: { position: [AU_SCALE, 0, 0] } });
-		ctx.bodies.nutationAwaited.set('a', { body: ctx.getBody('a')!, sums: SUMS });
+		ctx.bodies.nutationAwaited.set('a', ctx.getBody('a')!);
 		expect(
 			anchorDistanceKm({ body: 'a', latitude: 0, longitude: 0 }, { body: 'b' }, ctx, 0)
 		).toBeNull();
@@ -157,7 +155,7 @@ describe('subsolarPoint', () => {
 
 	it('is null while the nutation terms of the spin have not loaded', () => {
 		const ctx = fakeCtx({ 'naif-10': { position: [0, 0, 0] }, rock: { position: [1, 0, 0] } });
-		ctx.bodies.nutationAwaited.set('rock', { body: ctx.getBody('rock')!, sums: SUMS });
+		ctx.bodies.nutationAwaited.set('rock', ctx.getBody('rock')!);
 		expect(subsolarPoint('rock', ctx, JD)).toBeNull();
 		ctx.bodies.nutationAwaited.delete('rock');
 		expect(subsolarPoint('rock', ctx, JD)).not.toBeNull();
