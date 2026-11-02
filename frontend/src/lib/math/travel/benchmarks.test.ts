@@ -16,21 +16,31 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { AU_KM } from '$lib/math/units';
+import { AU_KM, LIGHT_YEAR_KM, SPEED_OF_LIGHT_KM_S } from '$lib/math/units';
+import { radiusFromMassEarth } from '$lib/travel/extrasolar-end';
 import { findAssistRoute } from './assist';
-import { escapeSpeed, sphereOfInfluenceKm } from './body';
+import { escapeSpeed, muFromElements, sphereOfInfluenceKm, type TravelBody } from './body';
 import { GM_SUN_KM3_S2, SEC_PER_DAY } from './constants';
 import { solveFlyby, turnAngleRad } from './flyby';
+import {
+	buildInterstellarCruiseRoute,
+	buildInterstellarTorchRoute,
+	type InterstellarCruiseOptions,
+	type SystemEnd
+} from './interstellar';
 import { solveLambert } from './lambert';
 import {
+	arrivalCost,
 	ascentDv,
 	circularSpeed,
 	injectionDv,
+	orbitPeriodHours,
+	orbitSpeedAtRadius,
 	parkingRadiusKm,
 	periapsisRaiseDv
 } from './maneuvers';
 import { computePorkchop } from './porkchop';
-import { buildRoute } from './route';
+import { buildRoute, routeShipDays, type Route } from './route';
 import { hohmannArcDays, systemArcBounds } from './system-transfer';
 import type { ArrivalMode } from './maneuvers';
 import {
@@ -127,6 +137,114 @@ function lunarRoute(arrivalMode: ArrivalMode) {
 
 function lunarLegDv(kind: string, arrivalMode: ArrivalMode): number {
 	return lunarRoute(arrivalMode).legs.find((leg) => leg.kind === kind)?.dvKms ?? NaN;
+}
+
+const YEAR_S = 365.25 * SEC_PER_DAY;
+const YEAR_DAYS = 365.25;
+const G0_MS2 = 9.80665;
+/** The FAQ's own g, 1.03 ly/yr². */
+const FAQ_ACCEL_MS2 = (1.03 * LIGHT_YEAR_KM * 1000) / YEAR_S ** 2;
+/** A held arc stands 1 au off the star at each end. */
+const HELD_STAND_OFF_KM = 2 * AU_KM;
+
+/** A star at `km` on the x axis, with no planet. `massSolar` null leaves its μ unknown. */
+function starAt(km: number, massSolar: number | null = 1): SystemEnd {
+	const mu = massSolar === null ? undefined : massSolar * GM_SUN_KM3_S2;
+	return {
+		body: {
+			id: `x-${km}`,
+			mu: mu ?? 0,
+			muEstimated: true,
+			radiusKm: 700_000,
+			elements: { a: 0, e: 0, i: 0, om: 0, w: 0, ma: 0, n: 0, epoch: J2000 }
+		},
+		starKm: [km, 0, 0],
+		starMu: mu,
+		atStar: true
+	};
+}
+
+/** The held arc of `ly` light-years between two stars, as flown. */
+function heldArc(ly: number, accelMs2: number, arrivalMode: 'rendezvous' | 'flyby'): Route {
+	const far = starAt(ly * LIGHT_YEAR_KM + HELD_STAND_OFF_KM);
+	const options = { departureMode: 'rendezvous', arrivalMode } as const;
+	const route = buildInterstellarTorchRoute(starAt(0), far, J2000, accelMs2, options);
+	if (!route) throw new Error(`no held arc of ${ly} ly`);
+	return route;
+}
+
+/** Propellant per kilogram of payload, for a perfect rocket at light speed. */
+const fuelPerKg = (route: Route) => Math.expm1(route.totalDvKms / SPEED_OF_LIGHT_KM_S);
+
+/** A body on a round orbit of `aAu` about a star of `mu`. */
+function roundOrbit(id: string, aAu: number, mu: number, ma = 0): TravelBody {
+	const n = (Math.sqrt(mu / (aAu * AU_KM) ** 3) * SEC_PER_DAY * 180) / Math.PI;
+	return {
+		id,
+		mu: 4e5,
+		muEstimated: true,
+		radiusKm: 6_500,
+		elements: { a: aAu, e: 0, i: 0, om: 0, w: 0, ma, n, epoch: J2000 }
+	};
+}
+
+const AT_EARTH: SystemEnd = {
+	body: EARTH,
+	starKm: [0, 0, 0],
+	starMu: GM_SUN_KM3_S2,
+	atStar: false
+};
+const ROUND_EARTH: SystemEnd = {
+	...AT_EARTH,
+	body: { ...EARTH, elements: roundOrbit('naif-399', 1, GM_SUN_KM3_S2).elements }
+};
+/** Four light-years out, opposite `ROUND_EARTH` at J2000. An orbit that only just
+ *  escapes leaves there on the side of the Sun away from where it started. */
+const BEYOND = starAt(-4 * LIGHT_YEAR_KM);
+
+/** The least Δv budget from a 200 km orbit that leaves the Sun, on a pass of `BEYOND`. */
+function solarEscape(from: SystemEnd, options: InterstellarCruiseOptions = {}): Route {
+	const orbit = { rPeriKm: 6578.1, rApoKm: 6578.1 };
+	const leave = (dvKms: number) =>
+		buildInterstellarCruiseRoute(
+			from,
+			BEYOND,
+			J2000,
+			{ kind: 'budget', dvKms },
+			{ departureMode: 'orbit', arrivalMode: 'flyby', departureOrbit: orbit, ...options }
+		);
+	let lo = 1;
+	let hi = 80;
+	for (let i = 0; i < 40; i++) {
+		const mid = (lo + hi) / 2;
+		if (typeof leave(mid) === 'string') lo = mid;
+		else hi = mid;
+	}
+	return leave(hi) as Route;
+}
+
+/** TRAPPIST-1, Agol et al. 2021, Tables 2, 6, 7. */
+const TRAPPIST_MU = 0.0898 * GM_SUN_KM3_S2;
+const TRAPPIST_D_AU = 0.02227;
+const TRAPPIST_E_AU = 0.02925;
+
+/** Δv of a transfer from d to e on round orbits, against a closed-form Hohmann. The
+ *  arc sweeps 179.5°, because an exact half turn leaves its plane undefined. */
+function trappistTransferDv(): number {
+	const from = roundOrbit('x-d', TRAPPIST_D_AU, TRAPPIST_MU);
+	const days = hohmannTransferDays(
+		from,
+		roundOrbit('x-e', TRAPPIST_E_AU, TRAPPIST_MU),
+		TRAPPIST_MU
+	)!;
+	const motion = roundOrbit('x-e', TRAPPIST_E_AU, TRAPPIST_MU).elements.n;
+	const to = roundOrbit('x-e', TRAPPIST_E_AU, TRAPPIST_MU, 179.5 - motion * days);
+	const route = buildRoute(from, to, J2000, days, {
+		departureMode: 'rendezvous',
+		arrivalMode: 'rendezvous',
+		centralMu: TRAPPIST_MU
+	});
+	return route?.totalDvKms ?? NaN;
 }
 
 const EARTH_ORBIT_KM = EARTH.elements.a * AU_KM;
@@ -390,6 +508,237 @@ const BENCHMARKS: Benchmark[] = [
 		unit: 'km/s',
 		tolerance: 0.005,
 		compute: () => lambertHohmannDepartureDv(EARTH_ORBIT_KM, JUPITER_ORBIT_KM)
+	},
+	{
+		quantity: 'ship time, 4.3 ly with a stop, at 1.03 ly/yr²',
+		source: 'Gibbs & Baez, The Relativistic Rocket, table of stops',
+		expected: 3.6,
+		unit: 'yr',
+		tolerance: 0.02,
+		compute: () => routeShipDays(heldArc(4.3, FAQ_ACCEL_MS2, 'rendezvous')) / YEAR_DAYS
+	},
+	{
+		quantity: 'ship time, 27 ly with a stop, at 1.03 ly/yr²',
+		source: 'Gibbs & Baez, The Relativistic Rocket, table of stops',
+		expected: 6.6,
+		unit: 'yr',
+		tolerance: 0.01,
+		compute: () => routeShipDays(heldArc(27, FAQ_ACCEL_MS2, 'rendezvous')) / YEAR_DAYS
+	},
+	{
+		quantity: 'Earth time, 1839 ly on one burn, at 1.03 ly/yr²',
+		source: 'Gibbs & Baez, The Relativistic Rocket, first table',
+		expected: 1840,
+		unit: 'yr',
+		tolerance: 1e-3,
+		compute: () => heldArc(1839, FAQ_ACCEL_MS2, 'flyby').tofDays / YEAR_DAYS
+	},
+	{
+		quantity: 'γ, 113,242 ly on one burn, at 1.03 ly/yr²',
+		source: 'Gibbs & Baez, The Relativistic Rocket, first table',
+		expected: 116_641,
+		unit: '',
+		tolerance: 1e-4,
+		compute: () => heldArc(113_242, FAQ_ACCEL_MS2, 'flyby').interstellar!.gamma
+	},
+	{
+		quantity: 'propellant per kg of payload, 27 ly with a stop',
+		source: 'Gibbs & Baez, The Relativistic Rocket, table of stops',
+		expected: 886,
+		unit: 'kg',
+		tolerance: 5e-3,
+		compute: () => fuelPerKg(heldArc(27, FAQ_ACCEL_MS2, 'rendezvous'))
+	},
+	{
+		quantity: 'propellant per kg of payload, 30,000 ly on one burn',
+		source: 'Gibbs & Baez, The Relativistic Rocket, table of passes',
+		expected: 62_000,
+		unit: 'kg',
+		tolerance: 0.01,
+		compute: () => fuelPerKg(heldArc(30_000, FAQ_ACCEL_MS2, 'flyby'))
+	},
+	{
+		quantity: 'Earth time, 6000 ly with a stop, at 0.1 g',
+		source: 'Closed form: t = 2(c/a)√(γ² − 1), γ = 1 + a(d/2)/c²',
+		expected: 6019.34312,
+		unit: 'yr',
+		tolerance: 1e-6,
+		compute: () => heldArc(6000, 0.1 * G0_MS2, 'rendezvous').tofDays / YEAR_DAYS
+	},
+	{
+		quantity: 'ship time, 6000 ly with a stop, at 0.1 g',
+		source: 'Closed form: τ = 2(c/a) acosh γ',
+		expected: 124.61426,
+		unit: 'yr',
+		tolerance: 1e-6,
+		compute: () => routeShipDays(heldArc(6000, 0.1 * G0_MS2, 'rendezvous')) / YEAR_DAYS
+	},
+	{
+		quantity: 'γ, 6000 ly with a stop, at 0.1 g',
+		source: 'Closed form: γ = 1 + a(d/2)/c²',
+		expected: 310.68858,
+		unit: '',
+		tolerance: 1e-6,
+		compute: () => heldArc(6000, 0.1 * G0_MS2, 'rendezvous').interstellar!.gamma
+	},
+	{
+		quantity: 'escape from a 300 km Earth orbit',
+		source: 'Beals et al. 1988, NASA-CR-184718, Project Longshot',
+		expected: 3.2002,
+		unit: 'km/s',
+		tolerance: 1e-3,
+		compute: () => injectionDv(EARTH.mu, 6678.1, 0)
+	},
+	{
+		quantity: 'leaving the Sun from a 200 km orbit, on a round orbit',
+		source: 'Closed form: excess (√2 − 1)v of Earth, through the well of Earth',
+		expected: 8.75,
+		unit: 'km/s',
+		tolerance: 1e-3,
+		compute: () => solarEscape(ROUND_EARTH).totalDvKms
+	},
+	{
+		quantity: 'excess speed against Earth to leave the solar system',
+		source: 'Beals et al. 1988, NASA-CR-184718, Project Longshot',
+		expected: 12.4273,
+		unit: 'km/s',
+		tolerance: 0.01,
+		compute: () => solarEscape(AT_EARTH, { launchWindow: true }).vInfDepKms
+	},
+	{
+		quantity: 'γ at 0.2 c',
+		source: 'Lubin 2016, arXiv 1604.01356: 1/√(1 − 0.04)',
+		expected: 1.02062,
+		unit: '',
+		tolerance: 1e-5,
+		compute: () => {
+			const route = buildInterstellarCruiseRoute(
+				starAt(0, null),
+				starAt(4.37 * LIGHT_YEAR_KM),
+				J2000,
+				{ kind: 'budget', dvKms: SPEED_OF_LIGHT_KM_S * Math.atanh(0.2) },
+				{ departureMode: 'rendezvous', arrivalMode: 'flyby' }
+			) as Route;
+			return route.interstellar!.gamma;
+		}
+	},
+	{
+		quantity: 'arrival at Proxima b in low orbit, at 63.691 km/s',
+		// m sin i of 1.055 Earth masses and the radius of Chen & Kipping, as in the
+		// catalogue, on Faria et al. 2022.
+		source: 'Closed form: √(v∞² + v_esc²) − v_circ at the parking orbit',
+		expected: 56.7587,
+		unit: 'km/s',
+		tolerance: 1e-4,
+		compute: () =>
+			arrivalCost(
+				{
+					...roundOrbit('x-b', 0.04848, 0.1221 * GM_SUN_KM3_S2),
+					mu: 420_523.267682,
+					radiusKm: 6527.2196
+				},
+				63.691,
+				'low-orbit'
+			).captureKms
+	},
+	{
+		quantity: 'closing speed of a tangent meeting, on a round orbit, as a share of the closed form',
+		source: 'Closed form: √(v² + v_esc²) − v_circ at the orbit',
+		expected: 1,
+		unit: '',
+		tolerance: 1e-3,
+		compute: () => {
+			const mu = 0.122 * GM_SUN_KM3_S2;
+			const star = { ...starAt(4.24 * LIGHT_YEAR_KM, 0.122), atStar: false };
+			const target = { ...star, body: roundOrbit('x-b', 0.0485, mu) };
+			const route = buildInterstellarCruiseRoute(
+				AT_EARTH,
+				target,
+				J2000,
+				{ kind: 'budget', dvKms: 120 },
+				{ departureMode: 'orbit', arrivalMode: 'low-orbit' }
+			) as Route;
+			const rKm = 0.0485 * AU_KM;
+			const fall = Math.hypot(route.interstellar!.rapidityKms, Math.sqrt((2 * mu) / rKm));
+			return route.vInfArrKms / (fall - Math.sqrt(mu / rKm));
+		}
+	},
+	{
+		quantity: 'TRAPPIST-1 d to e, Hohmann time',
+		source: 'Agol et al. 2021, 10.3847/PSJ/abd022, by Kepler’s third law',
+		expected: 2.5197,
+		unit: 'days',
+		tolerance: 1e-4,
+		compute: () =>
+			hohmannTransferDays(
+				roundOrbit('x-d', TRAPPIST_D_AU, TRAPPIST_MU),
+				roundOrbit('x-e', TRAPPIST_E_AU, TRAPPIST_MU),
+				TRAPPIST_MU
+			) ?? NaN
+	},
+	{
+		quantity: 'TRAPPIST-1 d to e, Δv on round orbits, with no wells',
+		source: 'Agol et al. 2021, 10.3847/PSJ/abd022, by closed-form Hohmann',
+		expected: 7.587,
+		unit: 'km/s',
+		tolerance: 1e-3,
+		compute: trappistTransferDv
+	},
+	{
+		quantity: 'mass of TRAPPIST-1 from the period and semi-major axis of b',
+		source: 'Agol et al. 2021, 10.3847/PSJ/abd022: 0.0898 ± 0.0023',
+		expected: 0.0898,
+		unit: 'solar masses',
+		tolerance: 0.01,
+		compute: () => {
+			const b = { a: 0.01154, e: 0, i: 0, om: 0, w: 0, ma: 0, n: 360 / 1.510826, epoch: J2000 };
+			return muFromElements(b) / GM_SUN_KM3_S2;
+		}
+	},
+	{
+		quantity: 'period of a round orbit of 1000 au about the Sun',
+		source: 'Kepler’s third law',
+		expected: 31_623.374,
+		unit: 'yr',
+		tolerance: 1e-5,
+		compute: () =>
+			orbitPeriodHours(GM_SUN_KM3_S2, { rPeriKm: 1000 * AU_KM, rApoKm: 1000 * AU_KM }) /
+			(24 * YEAR_DAYS)
+	},
+	{
+		quantity: 'speed on a round orbit of 1000 au about the Sun',
+		source: 'Closed form: √(μ/r)',
+		expected: 0.941875,
+		unit: 'km/s',
+		tolerance: 1e-5,
+		compute: () => {
+			const orbit = { rPeriKm: 1000 * AU_KM, rApoKm: 1000 * AU_KM };
+			return orbitSpeedAtRadius(GM_SUN_KM3_S2, orbit, orbit.rPeriKm);
+		}
+	},
+	{
+		quantity: 'radius of a body of 1 Earth mass',
+		source: 'Chen & Kipping 2017, 10.3847/1538-4357/834/1/17, Table 1',
+		expected: 1.008,
+		unit: 'Earth radii',
+		tolerance: 1e-3,
+		compute: () => radiusFromMassEarth(1)
+	},
+	{
+		quantity: 'radius of a body of 2.04 Earth masses',
+		source: 'Chen & Kipping 2017, 10.3847/1538-4357/834/1/17, Table 1',
+		expected: 1.2298,
+		unit: 'Earth radii',
+		tolerance: 1e-3,
+		compute: () => radiusFromMassEarth(2.04)
+	},
+	{
+		quantity: 'radius of a body of 131.6 Earth masses',
+		source: 'Chen & Kipping 2017, 10.3847/1538-4357/834/1/17, Table 1',
+		expected: 14.31,
+		unit: 'Earth radii',
+		tolerance: 1e-3,
+		compute: () => radiusFromMassEarth(131.6)
 	}
 ];
 

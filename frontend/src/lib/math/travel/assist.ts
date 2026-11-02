@@ -79,9 +79,9 @@ export function buildAssistRoute(
 	const flybyJd = departJd + tof1Days;
 	const arriveJd = flybyJd + tof2Days;
 
-	const from = elementsToState(departure.elements, departJd, centralMu);
-	const mid = elementsToState(via.elements, flybyJd, centralMu);
-	const to = elementsToState(target.elements, arriveJd, centralMu);
+	const from = elementsToState(departure.elements, departJd);
+	const mid = elementsToState(via.elements, flybyJd);
+	const to = elementsToState(target.elements, arriveJd);
 	if (!from || !mid || !to) return null;
 
 	const normal = cross(from.r, from.v);
@@ -214,7 +214,7 @@ function approach(
 	departureSiteLatDeg: number | undefined
 ): Approach | null {
 	const flybyJd = departJd + tof1Days;
-	const mid = elementsToState(via.elements, flybyJd, centralMu);
+	const mid = elementsToState(via.elements, flybyJd);
 	if (!mid) return null;
 	const normal = cross(from.r, from.v);
 	const arc1 = solveLambert(from.r, mid.r, tof1Days * SEC_PER_DAY, centralMu, normal);
@@ -269,7 +269,7 @@ function tailCostKms(
 	soiKm: number,
 	ceiling: number
 ): number {
-	const to = elementsToState(target.elements, app.flybyJd + tof2Days, centralMu);
+	const to = elementsToState(target.elements, app.flybyJd + tof2Days);
 	if (!to) return NaN;
 	const arc2 = solveLambert(app.midR, to.r, tof2Days * SEC_PER_DAY, centralMu, app.normal);
 	if (!arc2) return NaN;
@@ -355,7 +355,7 @@ export function searchAssist(
 
 	for (let i = 0; i < departSteps; i++) {
 		const departJd = departFromJd + i * departStep;
-		const from = elementsToState(departure.elements, departJd, centralMu);
+		const from = elementsToState(departure.elements, departJd);
 		if (!from) continue;
 		for (let j = 0; j < tof1Steps; j++) {
 			const tof1 = tof1MinDays + j * tof1Step;

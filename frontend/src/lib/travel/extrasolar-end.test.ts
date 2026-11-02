@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { extrasolarLookup, type ExtrasolarRecord } from '$lib/fetch/extrasolar/lookup';
+import { HAS_EXPORT, diskSource } from '$lib/fetch/extrasolar/__fixtures__/export';
+import {
+	ExtrasolarLookup,
+	extrasolarLookup,
+	type ExtrasolarRecord
+} from '$lib/fetch/extrasolar/lookup';
 import { PlanetIndex, planetCatalogue, type PlanetSystem } from '$lib/fetch/extrasolar/planets';
 import {
 	pointSourceRecord,
@@ -7,9 +12,21 @@ import {
 	systemRow
 } from '$lib/fetch/extrasolar/__fixtures__/record';
 import type { ColumnSpec } from '$lib/fetch/extrasolar/__fixtures__/writer';
-import { GM_SUN_KM3_S2, norm } from '$lib/math/travel';
-import { AU_KM } from '$lib/math/units';
-import { makePlanetBodies } from '$lib/scene/exoplanets/bodies';
+import { elementsOffset } from '$lib/math/orbit/offset';
+import {
+	GM_SUN_KM3_S2,
+	buildInterstellarCruiseRoute,
+	buildInterstellarTorchRoute,
+	eclipticToScene,
+	endPlaceKm,
+	norm,
+	sub,
+	type Route,
+	type Vec3
+} from '$lib/math/travel';
+import { heldLine } from '$lib/math/travel/interstellar';
+import { AU_KM, SOLAR_RADIUS_KM } from '$lib/math/units';
+import { hostScene, makePlanetBodies } from '$lib/scene/exoplanets/bodies';
 import {
 	ALPHA_CEN,
 	INDEX,
@@ -216,6 +233,91 @@ describe('the end of a trip between two systems', () => {
 	});
 });
 
+describe('the place of an end on the map', () => {
+	/** About 150 m. A place a parsec out holds no finer digits than this. */
+	const SAME_PLACE = 1e-8;
+	const HOST = ALPHA_CEN.hosts[0];
+	const SIZE = { radius: 0.1, mass: 0.003 };
+	const file = (el: ReturnType<typeof elements> | null): PlanetSystem => ({
+		...ALPHA_CEN,
+		hosts: [HOST],
+		planets: [planet(HOST.id, 1, el, SIZE)]
+	});
+
+	/** The kernel's view of the planet of `system`, and the scene's body of it. */
+	function kernelEnd(system: PlanetSystem) {
+		const body = makePlanetBodies(system)[0];
+		const end = extrasolarEndOf(body)!;
+		return { body, end: systemEndOf(extrasolarTravelBody(end)!, end, []) };
+	}
+
+	/** Where the scene draws `body` at `jd`: the place of its host and its offset. */
+	function drawn(body: PositionedBody, jd: number): Vec3 {
+		const [x, y, z] = hostScene(HOST)!;
+		const [dx, dy, dz] = elementsOffset(body.data, jd) as Vec3;
+		return [x + dx, y + dy, z + dz];
+	}
+
+	const expectSamePlace = (at: Vec3, scene: Vec3) =>
+		expect(norm(sub(eclipticToScene(at), scene))).toBeLessThan(SAME_PLACE);
+
+	it('is where the scene draws a planet with an orbit', () => {
+		const { body, end } = kernelEnd(file(elements(0.0485, { e: 0.3, i: 70, om: 200, w: 120 })));
+		for (const jd of [2400000, 2451545, 2460000, 2500000, 3e7]) {
+			expectSamePlace(endPlaceKm(end, jd), drawn(body, jd));
+		}
+	});
+
+	it('is where the scene holds a planet with an orbit and no period', () => {
+		const { body, end } = kernelEnd(file(elements(2, { e: 0.3, n: 0 })));
+		for (const jd of [2451545, 2460000, 3e7]) {
+			expectSamePlace(endPlaceKm(end, jd), drawn(body, jd));
+		}
+	});
+
+	it('is where the scene holds a planet with no published orbit', () => {
+		const { body, end } = kernelEnd(file(null));
+		expect(extrasolarEndOf(body)!.planet!.orbitKnown).toBe(false);
+		expectSamePlace(endPlaceKm(end, 2460000), drawn(body, 2460000));
+		// With no mass for the host, the place is the same.
+		const unknown = { ...end, starMu: undefined };
+		expectSamePlace(endPlaceKm(unknown, 2460000), drawn(body, 2460000));
+	});
+
+	it.each([
+		['a known mass', GM_SUN_KM3_S2],
+		['no known mass', undefined]
+	])('flies to and from a planet with no published orbit, its star of %s', (_, starMu) => {
+		const { end } = kernelEnd(file(null));
+		const lone = { ...end, starMu };
+		const home = systemEndOf(
+			{
+				id: 'naif-399',
+				mu: GM_EARTH,
+				muEstimated: false,
+				radiusKm: 6378,
+				elements: { a: 1, e: 0, i: 0, om: 0, w: 0, ma: 0, n: 0.9856, epoch: 2451545 }
+			},
+			null,
+			[]
+		);
+		const options = { departureMode: 'orbit', arrivalMode: 'low-orbit' } as const;
+		const drive = { kind: 'budget', dvKms: 80 } as const;
+		for (const [from, to] of [
+			[home, lone],
+			[lone, home]
+		]) {
+			const held = buildInterstellarTorchRoute(from, to, 2460000, 9.8, options)!;
+			expect(held.interstellar!.distanceKm).toBeGreaterThan(0);
+			const coast = buildInterstellarCruiseRoute(from, to, 2460000, drive, {
+				...options,
+				launchWindow: true
+			}) as Route;
+			expect(coast.tofDays).toBeGreaterThan(0);
+		}
+	});
+});
+
 describe('resolving an end from the export', () => {
 	it('reads a planet through the planet files, as its live body', async () => {
 		vi.spyOn(planetCatalogue, 'planet').mockResolvedValue({
@@ -293,5 +395,42 @@ describe('resolving an end from the export', () => {
 		vi.spyOn(planetCatalogue, 'planet').mockResolvedValue(null);
 		expect(await resolveExtrasolarEnd('x-21238067')).toBeNull();
 		expect(await resolveExtrasolarEnd('x-21238067-b-9')).toBeNull();
+	});
+});
+
+describe.skipIf(!HAS_EXPORT)('a real giant at a point of several stars', () => {
+	const lookup = new ExtrasolarLookup(diskSource());
+	const BETELGEUSE = 22821649;
+	const VY_CMA = 26993020;
+
+	async function end(id: number) {
+		vi.spyOn(extrasolarLookup, 'live').mockImplementation((x) => lookup.live(x));
+		vi.spyOn(planetCatalogue, 'index').mockResolvedValue(null);
+		return (await resolveExtrasolarEnd(`x-${id}`))!;
+	}
+
+	it('stops clear of Betelgeuse', async () => {
+		const star = await end(BETELGEUSE);
+		expect(star.star.radiusKm! / SOLAR_RADIUS_KM).toBeCloseTo(725.5, 1);
+		const target = systemEndOf(extrasolarTravelBody(star)!, star, []);
+		const home = systemEndOf(
+			{
+				id: 'naif-399',
+				mu: GM_EARTH,
+				muEstimated: false,
+				radiusKm: 6378,
+				elements: { a: 1, e: 0, i: 0, om: 0, w: 0, ma: 0, n: 0.9856, epoch: 2451545 }
+			},
+			null,
+			[]
+		);
+		const options = { departureMode: 'orbit', arrivalMode: 'rendezvous' } as const;
+		const route = buildInterstellarTorchRoute(home, target, 2460000, 9.8, options)!;
+		const { targetStandOffKm } = heldLine(home, target, { ...options, ...route });
+		expect(norm(targetStandOffKm) / star.star.radiusKm!).toBeCloseTo(2, 9);
+	});
+
+	it('gives VY CMa the radius of its paper', async () => {
+		expect((await end(VY_CMA)).star.radiusKm! / SOLAR_RADIUS_KM).toBeCloseTo(1420, 3);
 	});
 });

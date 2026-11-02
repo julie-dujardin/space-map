@@ -1,48 +1,45 @@
 /**
- * Routes between two star systems.
+ * Routes between two star systems. A trip runs between the real places of its two
+ * ends on its two dates, and no line runs to the centre of a star.
  *
- * The stars do not move, so the crossing is the straight line between them.
- * The time spent in the wells of the two stars is left out.
+ * The stars do not move.
  *
- * An end in the well of a planet, such as the Moon, is at the place of its
- * planet about the star. Below, "the body" of such an end is that planet. The
- * craft leaves the moon and then coasts out of the planet's well with no burn,
- * as on the Δv map. An arrival at a moon is the same in reverse.
+ * The Sun is at the barycentre here. Its offset is about 0.01 au, which moves no
+ * price and no date. Only the drawing adds it, because the line must touch the body
+ * that the map places.
  *
- * A craft with a held drive flies a relativistic arc at constant proper
- * acceleration. To stop, it burns, coasts and burns again. For a flyby, it
- * burns and coasts. Ship time and Earth time differ on this arc. Each end uses
- * the departure and arrival costs of every other route. The star wells and the
- * speeds of the bodies about their stars are left out of its cost. They are
- * tens of km/s, and the burns are thousands.
+ * An end in the well of a planet, such as the Moon, takes the place of its planet.
+ * The craft coasts through that well with no burn, as on the Δv map.
  *
- * A craft with a Δv budget spends it at departure and coasts. A trip that
- * stops keeps back the Δv to brake.
- * - The departure is a hyperbola about the origin's star that passes the body
- *   and leaves toward the target star. The craft leaves the body at the excess
- *   speed that puts it on that hyperbola, so the body's place and velocity at
- *   the date set the cost. A launch window searches one orbital period of the
- *   body for the date of the fastest coast.
- * - A planet with no period moves at the mean motion that the μ of its star
- *   gives.
- * - The arrival at a planet is a hyperbola about its star with the periastron
- *   at the periastron of the planet. The craft meets the planet there and pays
- *   the capture costs of the planet. The approach lies in the plane of the
- *   planet's orbit.
- * - A craft that holds station at a star is on the orbit with the periastron
- *   at 1 au and the speed of escape there. It brakes into that orbit at the
- *   periastron, and leaves from there.
+ * A rapidity figure is the rapidity times c, in km/s. A rocket adds its Δv to this
+ * figure, so burns and hyperbolas are priced in it, and it can pass c. At tens of
+ * km/s it equals the speed to a rounding error. Every speed on a route is a real
+ * speed below c, and {@link speedOfRapidity} alone makes one.
  *
- * A launcher has no Δv after the launch, so it only flies by. It uses the
- * highest launch energy its curve gives with the payload.
+ * A held drive flies a straight relativistic arc at constant proper acceleration.
+ * The star wells and the speeds of the bodies stay out of its cost, because they
+ * are tens of km/s and the burns are thousands. A stop reaches its end at rest, so
+ * it flies no pass through the air.
  *
- * No route for a low-thrust drive: its escape is a spiral, which this
- * impulsive model cannot show. No route for a craft with neither a held drive
- * nor a Δv budget, or when no craft is picked.
+ * A craft with a Δv budget spends it at departure and coasts on a hyperbola about
+ * each star and a straight line between them. The time on all three counts.
+ * - The speed of the body at each end sets the cost, so a launch window searches
+ *   one orbital period of the body for the date of the fastest coast.
+ * - A coast of millennia reaches any date for a small change of speed, so a trip
+ *   that stops picks the phase of the least closing speed.
+ * - A flyby pays nothing at the meeting, so it keeps its speed and meets the planet
+ *   where the planet is.
+ * - A planet with no period stays where the map holds it, with the speed of the
+ *   orbit that the μ of its star gives at that place.
+ * - A launcher has no Δv after the launch, so it only flies by.
+ *
+ * A low-thrust drive has no route, because its escape is a spiral and this
+ * impulsive model cannot show one.
  */
 
+import { clockJd, elementsJd } from '$lib/math/orbit/position';
 import { AU_KM, SPEED_OF_LIGHT_KM_S } from '$lib/math/units';
-import { muFromElements, type TravelBody } from './body';
+import type { TravelBody } from './body';
 import { COAST_SPAN } from './brachistochrone';
 import { SEC_PER_DAY } from './constants';
 import {
@@ -50,27 +47,60 @@ import {
 	captureDv,
 	characteristicEnergy,
 	departureCost,
+	endArrivalOrbit,
+	endDepartureOrbit,
 	NO_ARRIVAL_COST,
 	periapsisSpeed,
 	surfaceSite,
 	vInfInside,
+	type AeroAssist,
 	type ArrivalCost,
 	type ArrivalMode,
-	type DepartureCost
+	type DepartureCost,
+	type DepartureMode,
+	type EndOrbit
 } from './maneuvers';
+import { propagateState } from './propagate';
 import {
 	arrivalLegs,
 	finishRoute,
 	routeEndJd,
+	type ConicSpan,
+	type InterstellarCrossing,
 	type Route,
 	type RouteLeg,
 	type RouteOptions
 } from './route';
 import { elementsToState, type StateVector } from './state';
-import { add, cross, dot, norm, normalize, scale, sub, type Vec3 } from './vec3';
+import {
+	add,
+	cross,
+	dot,
+	norm,
+	normalize,
+	perpendicularTo,
+	rotateAbout,
+	scale,
+	sub,
+	type Vec3
+} from './vec3';
 import { constantThrustAccelMs2, dvWithPayloadKms, isLowThrust, type Vehicle } from './vehicles';
 
 const C_KMS = SPEED_OF_LIGHT_KM_S;
+
+/** The fastest speed a double holds below c, km/s. tanh rounds to 1 past φ ≈ 19. */
+const TOP_SPEED_KMS = C_KMS * (1 - Number.EPSILON / 2);
+
+/** The real speed at a rapidity figure, km/s. */
+export function speedOfRapidity(rapidityKms: number): number {
+	return Math.min(C_KMS * Math.tanh(rapidityKms / C_KMS), TOP_SPEED_KMS);
+}
+
+/** The rapidity figure of a real speed, km/s. A price that starts from a speed
+ *  on a route reads it through this. */
+export function rapidityOfSpeed(speedKms: number): number {
+	return C_KMS * Math.atanh(speedKms / C_KMS);
+}
 
 /** A well between an end and its star, such as Earth's for the Moon. */
 export interface Well {
@@ -86,7 +116,8 @@ export interface SystemEnd {
 	 *  the orbit about its star of the body that holds its wells, or its own
 	 *  when it has none. */
 	body: TravelBody;
-	/** Position of its star, km, ecliptic J2000 from the solar-system barycentre. */
+	/** Position of its star, km, ecliptic J2000 from the solar-system barycentre.
+	 *  The Sun is at the barycentre. */
 	starKm: Vec3;
 	/** μ of its star, km³/s². Absent when unknown. The period of the orbit then gives it. */
 	starMu?: number;
@@ -181,15 +212,112 @@ function bisect(lo: number, hi: number, below: (x: number) => boolean): { lo: nu
 	}
 }
 
-/** Distance between the two stars, km. */
-function starDistanceKm(origin: SystemEnd, target: SystemEnd): number {
-	return norm(sub(target.starKm, origin.starKm));
+/** Mean motion of an end's body about its star, degrees per day. A planet with
+ *  no period takes the one that the μ of its star gives. 0 at a star, and when
+ *  neither is known. */
+function meanMotionOf(end: SystemEnd): number {
+	if (end.atStar) return 0;
+	const { a, n } = end.body.elements;
+	if (n > 0) return n;
+	const aKm = a * AU_KM;
+	const mu = end.starMu ?? 0;
+	return mu > 0 && aKm > 0 ? (Math.sqrt(mu / aKm ** 3) * SEC_PER_DAY * 180) / Math.PI : 0;
 }
 
-/** Excess speed against the end itself, for `vInfKms` against the body that
- *  holds its wells. */
-function throughWells(end: SystemEnd, vInfKms: number): number {
-	return (end.wells ?? []).reduce((v, well) => vInfInside(v, well.mu, well.radiusKm), vInfKms);
+/** False at a star, and for a planet the map holds at one place. */
+function movesOnOrbit(end: SystemEnd): boolean {
+	const { n, q } = end.body.elements;
+	return !end.atStar && (n > 0 || q != null);
+}
+
+/** Place and velocity of an end that is not at its star, as the map draws them.
+ *  Null when it has no known motion. The map holds a planet with no period at
+ *  its place at the epoch, so that planet has one state on every date. */
+function drawnStateAt(end: SystemEnd, jd: number): StateVector | null {
+	const { elements } = end.body;
+	if (movesOnOrbit(end)) return elementsToState(elements, jd);
+	const n = meanMotionOf(end);
+	if (!(n > 0)) return null;
+	return elementsToState({ ...elements, n }, clockJd(elements, elements.epoch));
+}
+
+/** The state of an end about its star at `jd`. A hyperbola about the star reads
+ *  its μ, the star's own where it is known. */
+function orbitStateAt(end: SystemEnd, jd: number): StateVector | null {
+	if (end.atStar) return null;
+	const state = drawnStateAt(end, jd);
+	return state && { ...state, mu: end.starMu ?? state.mu };
+}
+
+/** Where an end is at `jd`, km, ecliptic J2000 from the solar-system barycentre.
+ *  This is the place the map gives it. A solar end is about the Sun. With no
+ *  motion known, any mean motion gives the place at the epoch. With no orbit, the
+ *  end is at its star. */
+export function endPlaceKm(end: SystemEnd, jd: number): Vec3 {
+	if (end.atStar) return end.starKm;
+	const { elements } = end.body;
+	const state =
+		orbitStateAt(end, jd) ??
+		elementsToState({ ...elements, n: 1 }, clockJd(elements, elements.epoch));
+	return state ? add(end.starKm, state.r) : end.starKm;
+}
+
+/** `orbit` if the end can hold it. An orbit about a star of unknown μ has no price. */
+function orbitAt(end: SystemEnd, orbit: EndOrbit | undefined): EndOrbit | undefined {
+	return end.atStar && !end.starMu ? undefined : orbit;
+}
+
+/** Least periastron of the orbit that holds station at a star, km. */
+const STAR_PASS_KM = AU_KM;
+
+/** Periastron of that orbit at a giant, in radii of the star. It clears the star
+ *  by one radius. */
+const STAR_PASS_RADII = 2;
+
+/** Periastron of the orbit that holds station at `star`, km. */
+function starHoldKm(star: TravelBody): number {
+	return Math.max(STAR_PASS_KM, STAR_PASS_RADII * star.radiusKm);
+}
+
+/** The part of the gap between two stars that one end can take, so that two ends
+ *  never cross. The nearer star has the stronger pull over all of it, up to a mass
+ *  ratio of 9. */
+const JOIN_SHARE = 1 / 4;
+
+/** Most passes that fix an arrival date against the target's place. Each pass
+ *  cuts the error by the ratio of the target's speed to the craft's. */
+const ARRIVAL_PASSES = 32;
+
+/** The change in an arrival date that ends those passes, days. */
+const ARRIVAL_TOLERANCE_DAYS = 1e-9;
+
+/** The arrival date of a flight whose length depends on that date. */
+function settledArrivalJd(departJd: number, flightDays: (arriveJd: number) => number): number {
+	let arriveJd = departJd;
+	for (let pass = 0; pass < ARRIVAL_PASSES; pass++) {
+		const next = departJd + flightDays(arriveJd);
+		const change = Math.abs(next - arriveJd);
+		arriveJd = next;
+		if (change < ARRIVAL_TOLERANCE_DAYS) break;
+	}
+	return arriveJd;
+}
+
+/** The excess against the end itself, for `excessKms` against the body that
+ *  holds its wells. Both are rapidity figures. */
+function throughWells(end: SystemEnd, excessKms: number): number {
+	return (end.wells ?? []).reduce((v, well) => vInfInside(v, well.mu, well.radiusKm), excessKms);
+}
+
+/** What a held arc can ask of the air at an end it meets at `excessKms`. A stop
+ *  there has no speed left to shed, so no pass is flown or drawn. */
+export function crossingAero(aero: AeroAssist, excessKms: number): AeroAssist {
+	return excessKms > 0 ? aero : 'none';
+}
+
+/** The speed at which a craft meets an atmosphere, as a real speed. */
+function entrySpeedOf(cost: ArrivalCost): number | undefined {
+	return cost.entrySpeedKms === undefined ? undefined : speedOfRapidity(cost.entrySpeedKms);
 }
 
 // --- the held drive ------------------------------------------------------------
@@ -217,8 +345,100 @@ function rapidityWithCoast(
 ): number {
 	if (!(coastSeconds > 0)) return flatOut;
 	const covered = (phi: number) =>
-		burns * burnDistanceKm(phi, accelKmS2) + C_KMS * Math.tanh(phi) * coastSeconds;
+		burns * burnDistanceKm(phi, accelKmS2) + speedOfRapidity(C_KMS * phi) * coastSeconds;
 	return bisect(0, flatOut, (phi) => covered(phi) < distanceKm).hi;
+}
+
+/** A relativistic arc over one distance. */
+interface HeldFlight {
+	/** Rapidity at the end of the boost. */
+	phi: number;
+	peakKms: number;
+	burnSeconds: number;
+	burnShipSeconds: number;
+	coastSeconds: number;
+	/** Earth time of the whole arc. */
+	seconds: number;
+}
+
+/** The arc of `burns` burns over `distanceKm`, at `share` of the coast span. */
+function heldFlight(
+	distanceKm: number,
+	accelKmS2: number,
+	burns: number,
+	share: number
+): HeldFlight {
+	const hold = C_KMS / accelKmS2;
+	const flatOut = rapidityOver(distanceKm / burns, accelKmS2);
+	const askedSeconds = share * COAST_SPAN * burns * hold * Math.sinh(flatOut);
+	const phi = rapidityWithCoast(distanceKm, accelKmS2, burns, askedSeconds, flatOut);
+	const peakKms = speedOfRapidity(C_KMS * phi);
+	const burnSeconds = hold * Math.sinh(phi);
+	const coastSeconds =
+		askedSeconds > 0
+			? Math.max(0, distanceKm - burns * burnDistanceKm(phi, accelKmS2)) / peakKms
+			: 0;
+	return {
+		phi,
+		peakKms,
+		burnSeconds,
+		burnShipSeconds: hold * phi,
+		coastSeconds,
+		seconds: burns * burnSeconds + coastSeconds
+	};
+}
+
+/** What a route echoes that fixes where its crossing runs. */
+type CrossingFlight = Pick<
+	Route,
+	'departJd' | 'arriveJd' | 'departureMode' | 'arrivalMode' | 'departureOrbit' | 'targetOrbit'
+>;
+
+/** The straight line of a held arc, km, in the frame of the route. */
+export interface HeldLine {
+	originKm: Vec3;
+	targetKm: Vec3;
+	distanceKm: number;
+	/** From the place of the origin end to the start of the line. Zero except at a
+	 *  star, and kept apart so that a far star keeps every digit. */
+	originStandOffKm: Vec3;
+	/** From the place of the target end to the end of the line. */
+	targetStandOffKm: Vec3;
+}
+
+/** Where a held arc stands off the star of `end`, from the star, on the line to
+ *  `towardKm`. A close binary leaves it less room than the hold. */
+function standOffKm(end: SystemEnd, placeKm: Vec3, towardKm: Vec3): Vec3 {
+	const line = sub(towardKm, placeKm);
+	return scale(normalize(line), Math.min(starHoldKm(end.body), norm(line) * JOIN_SHARE));
+}
+
+/**
+ * The line a held arc flies between its two ends. It never reaches the centre of a
+ * star. A star with an orbit on the route keeps its place, and the drawing stops
+ * the line at the ring. Any other star gives the point of the hold on the side of
+ * the other end.
+ */
+export function heldLine(origin: SystemEnd, target: SystemEnd, flight: CrossingFlight): HeldLine {
+	const { departJd, arriveJd, departureMode, arrivalMode, departureOrbit, targetOrbit } = flight;
+	const fromKm = endPlaceKm(origin, departJd);
+	const toKm = endPlaceKm(target, arriveJd);
+	const leavesRing =
+		departureOrbit && endDepartureOrbit(origin.body, departureMode, departureOrbit);
+	const reachesRing = targetOrbit && endArrivalOrbit(target.body, arrivalMode, targetOrbit);
+	const originStandOffKm: Vec3 =
+		origin.atStar && !leavesRing ? standOffKm(origin, fromKm, toKm) : [0, 0, 0];
+	const targetStandOffKm: Vec3 =
+		target.atStar && !reachesRing ? standOffKm(target, toKm, fromKm) : [0, 0, 0];
+	const originKm = add(fromKm, originStandOffKm);
+	const targetKm = add(toKm, targetStandOffKm);
+	return {
+		originKm,
+		targetKm,
+		distanceKm: norm(sub(targetKm, originKm)),
+		originStandOffKm,
+		targetStandOffKm
+	};
 }
 
 /**
@@ -228,7 +448,7 @@ function rapidityWithCoast(
  * {@link COAST_SPAN} times as long as the flat-out crossing on the Earth's
  * clock. No geometry ends the span between stars, so 1 always means that coast.
  *
- * Null when the drive pushes nothing, or both stars are in one place.
+ * Null when the drive pushes nothing, or both ends are in one place.
  */
 export function buildInterstellarTorchRoute(
 	origin: SystemEnd,
@@ -244,69 +464,69 @@ export function buildInterstellarTorchRoute(
 		coastFraction = 0
 	} = options;
 	const accelKmS2 = accelMs2 / 1000;
-	const distanceKm = starDistanceKm(origin, target);
-	if (!(accelKmS2 > 0) || !(distanceKm > 0)) return null;
+	if (!(accelKmS2 > 0)) return null;
 
 	// A flyby keeps its speed, so it never turns round to brake.
 	const flips = arrivalMode !== 'flyby';
 	const burns = flips ? 2 : 1;
-	const hold = C_KMS / accelKmS2;
-	const flatOut = rapidityOver(distanceKm / burns, accelKmS2);
 	const share = Math.min(Math.max(coastFraction, 0), 1);
-	const askedSeconds = share * COAST_SPAN * burns * hold * Math.sinh(flatOut);
-	const phi = rapidityWithCoast(distanceKm, accelKmS2, burns, askedSeconds, flatOut);
+	const departureOrbit = orbitAt(origin, options.departureOrbit);
+	const targetOrbit = orbitAt(target, options.targetOrbit);
+	const flight = { departJd, departureMode, arrivalMode, departureOrbit, targetOrbit };
+	const lineTo = (arriveJd: number) => heldLine(origin, target, { ...flight, arriveJd });
+	const arcTo = (jd: number) => heldFlight(lineTo(jd).distanceKm, accelKmS2, burns, share);
+	const flownDays = (jd: number) => arcTo(jd).seconds / SEC_PER_DAY;
+	const placedJd = settledArrivalJd(departJd, flownDays);
+	const { originKm, targetKm, distanceKm } = lineTo(placedJd);
+	if (!(distanceKm > 0)) return null;
 
-	const peakKms = C_KMS * Math.tanh(phi);
-	const gamma = Math.cosh(phi);
-	const burnSeconds = hold * Math.sinh(phi);
-	const burnShipSeconds = hold * phi;
-	const coastSeconds =
-		askedSeconds > 0
-			? Math.max(0, distanceKm - burns * burnDistanceKm(phi, accelKmS2)) / peakKms
-			: 0;
+	const arc = arcTo(placedJd);
+	const gamma = Math.cosh(arc.phi);
+	const rapidityKms = C_KMS * arc.phi;
 
-	const vInfDepKms = throughWells(origin, 0);
-	const vInfArrKms = throughWells(target, flips ? 0 : peakKms);
+	const excessDepKms = throughWells(origin, 0);
+	const excessArrKms = throughWells(target, flips ? 0 : rapidityKms);
+	const air = crossingAero(aero, excessArrKms);
 	const dep = departureCost(
 		origin.body,
-		vInfDepKms,
+		excessDepKms,
 		departureMode,
-		options.departureOrbit,
+		departureOrbit,
 		surfaceSite(origin.body, options.departureSiteLatDeg, null)
 	);
 	const arr = arrivalCost(
 		target.body,
-		vInfArrKms,
+		excessArrKms,
 		arrivalMode,
-		aero,
-		options.targetOrbit,
+		air,
+		targetOrbit,
 		surfaceSite(target.body, options.targetSiteLatDeg, null)
 	);
 
 	// Proper acceleration times proper time, which is c times the rapidity. The
 	// rocket equation spends this figure, and it can be more than c.
-	const burnDvKms = accelKmS2 * burnShipSeconds;
+	const burnDvKms = accelKmS2 * arc.burnShipSeconds;
 	const burn = {
 		dvKms: burnDvKms,
-		days: burnSeconds / SEC_PER_DAY,
-		shipDays: burnShipSeconds / SEC_PER_DAY
+		days: arc.burnSeconds / SEC_PER_DAY,
+		shipDays: arc.burnShipSeconds / SEC_PER_DAY
 	};
 	const legs: RouteLeg[] = [];
 	if (dep.ascentKms > 0) legs.push({ kind: 'ascent', dvKms: dep.ascentKms, days: 0 });
 	legs.push({ kind: 'injection', dvKms: dep.injectionKms, days: 0 });
 	legs.push({ kind: 'boost', ...burn });
-	if (coastSeconds > 0) {
+	if (arc.coastSeconds > 0) {
 		legs.push({
 			kind: 'cruise',
 			dvKms: 0,
-			days: coastSeconds / SEC_PER_DAY,
-			shipDays: coastSeconds / gamma / SEC_PER_DAY
+			days: arc.coastSeconds / SEC_PER_DAY,
+			shipDays: arc.coastSeconds / gamma / SEC_PER_DAY
 		});
 	}
 	if (flips) legs.push({ kind: 'brake', ...burn });
 	legs.push(...arrivalLegs(arr, arrivalMode));
 
-	const tofDays = (burns * burnSeconds + coastSeconds) / SEC_PER_DAY;
+	const tofDays = arc.seconds / SEC_PER_DAY;
 	return finishRoute(
 		{
 			departureId: origin.body.id,
@@ -315,24 +535,25 @@ export function buildInterstellarTorchRoute(
 			arriveJd: departJd + tofDays,
 			tofDays,
 			ascentKms: dep.ascentKms,
-			c3Km2S2: characteristicEnergy(vInfDepKms),
-			vInfDepKms,
-			vInfArrKms,
+			c3Km2S2: characteristicEnergy(excessDepKms),
+			vInfDepKms: speedOfRapidity(excessDepKms),
+			vInfArrKms: speedOfRapidity(excessArrKms),
 			departureMode,
 			arrivalMode,
-			departureOrbit: options.departureOrbit,
-			targetOrbit: options.targetOrbit,
+			departureOrbit,
+			targetOrbit,
 			aero,
-			entrySpeedKms: arr.entrySpeedKms,
+			entrySpeedKms: entrySpeedOf(arr),
 			constantThrust: accelMs2,
-			peakSpeedKms: peakKms,
+			peakSpeedKms: arc.peakKms,
 			coastFraction: share,
 			interstellar: {
 				distanceKm,
-				cruiseKms: peakKms,
+				cruiseKms: arc.peakKms,
 				gamma,
-				originKm: origin.starKm,
-				targetKm: target.starKm
+				rapidityKms,
+				originKm,
+				targetKm
 			}
 		},
 		legs
@@ -341,8 +562,9 @@ export function buildInterstellarTorchRoute(
 
 // --- the coast -----------------------------------------------------------------
 
-/** Periastron of the orbit that holds station at a star, km. */
-const STAR_PASS_KM = AU_KM;
+/** Radius where a hyperbola joins the line, km, with room for it. The speed of
+ *  escape from a solar mass is 1.3 km/s here, and a custom orbit stops here. */
+const JOIN_KM = 1000 * AU_KM;
 
 /** Cruise speeds on the grid that brackets the fastest coast at one date. */
 const CRUISE_GRID = 64;
@@ -350,8 +572,18 @@ const CRUISE_GRID = 64;
 /** The lowest cruise speed on that grid, as a part of one step. */
 const GRID_FLOOR = 1e-6;
 
-/** Departure dates sampled in one orbital period of the origin body. */
+/** Dates sampled in one orbital period of a body. */
 const WINDOW_SAMPLES = 48;
+
+/** Most rounds that solve the speed of a coast and its meeting for each other. */
+const MEETING_ROUNDS = 6;
+
+/** The gain in speed that ends those rounds, km/s. */
+const SETTLED_KMS = 1e-3;
+
+/** The closest the long way round a star comes to it, as a part of the radius it
+ *  starts from. A fast craft can only go that way on a hairpin past the star. */
+const LONG_WAY_PASS = 0.01;
 
 /** Halvings of the step that polish a point of a grid. */
 const POLISH_PASSES = 24;
@@ -367,28 +599,10 @@ export interface InterstellarCruiseOptions extends InterstellarOptions {
 	launchWindow?: boolean;
 }
 
-/** Mean motion of an end's body about its star, degrees per day. A planet with
- *  no period takes the one that the μ of its star gives. 0 at a star, and when
- *  neither is known. */
-function meanMotionOf(end: SystemEnd): number {
-	if (end.atStar) return 0;
-	const { a, n } = end.body.elements;
-	if (n > 0) return n;
-	const aKm = a * AU_KM;
-	const mu = end.starMu ?? 0;
-	return mu > 0 && aKm > 0 ? (Math.sqrt(mu / aKm ** 3) * SEC_PER_DAY * 180) / Math.PI : 0;
-}
-
-/** Place and velocity of an end about its star at `jd`. Null when it has no motion. */
-function orbitStateAt(end: SystemEnd, jd: number): StateVector | null {
-	const n = meanMotionOf(end);
-	return n > 0 ? elementsToState({ ...end.body.elements, n }, jd, end.starMu) : null;
-}
-
 /**
  * Velocity at the unit vector `out` from a star of `mu`, on the hyperbola that
  * turns `sweep` radians about `normal` from there to its outbound asymptote at
- * `cruiseKms`.
+ * `speedKms`.
  *
  * With s = √(e² − 1) and k = r·v∞²/μ, the orbit equation at ν = ν∞ − sweep
  * gives s² − k·sin(sweep)·s − k(1 − cos sweep) = 0. The second form of the
@@ -400,27 +614,34 @@ function sweptVelocity(
 	sweep: number,
 	rKm: number,
 	mu: number,
-	cruiseKms: number
+	speedKms: number
 ): Vec3 {
-	const k = (rKm * cruiseKms * cruiseKms) / mu;
+	const k = (rKm * speedKms * speedKms) / mu;
 	const sinSweep = Math.sin(sweep);
 	const versine = 2 * Math.sin(sweep / 2) ** 2;
 	const root = Math.sqrt((k * sinSweep) ** 2 + 4 * k * versine);
 	const s = sinSweep >= 0 ? (k * sinSweep + root) / 2 : (2 * k * versine) / (root - k * sinSweep);
-	const transverse = (s * cruiseKms) / k;
-	const radial = Math.sqrt(Math.max(0, cruiseKms ** 2 + (2 * mu) / rKm - transverse ** 2));
+	const transverse = (s * speedKms) / k;
+	const radial = Math.sqrt(Math.max(0, speedKms ** 2 + (2 * mu) / rKm - transverse ** 2));
 	// Past the periastron (ν > 0) the craft climbs out. Before it, it falls in.
 	const outward = sweep < Math.acos(-1 / Math.sqrt(1 + s * s)) ? 1 : -1;
 	return add(scale(out, outward * radial), scale(cross(normal, out), transverse));
 }
 
+/** Periapsis of the hyperbola of excess speed `speedKms` through `r` at `v`, km. */
+function periapsisKm(r: Vec3, v: Vec3, mu: number, speedKms: number): number {
+	const h = norm(cross(r, v));
+	const latusKm = (h * h) / mu;
+	return latusKm / (1 + Math.sqrt(1 + (latusKm * speedKms ** 2) / mu));
+}
+
 /**
- * The least excess speed against the body at `state` that puts the craft on a
- * hyperbola about its star that leaves along `toward` at `cruiseKms`. The
- * hyperbola lies in the plane of the body's place and `toward`, and it can go
- * round the star either way.
+ * The velocity at `state` nearest its own that puts a craft on a hyperbola about
+ * the star that leaves along `toward` at `speedKms`. The hyperbola lies in the
+ * plane of the place and `toward`. It can go round the star either way, unless
+ * the long way is a dive at the star.
  */
-function departureExcessKms(state: StateVector, toward: Vec3, cruiseKms: number): number {
+function departureVelocity(state: StateVector, toward: Vec3, speedKms: number): Vec3 {
 	const { r, v, mu } = state;
 	const rKm = norm(r);
 	const out = scale(r, 1 / rKm);
@@ -428,41 +649,119 @@ function departureExcessKms(state: StateVector, toward: Vec3, cruiseKms: number)
 	// On the line of the radius every plane holds the path, so take the body's own.
 	const normal = normalize(norm(plane) > 1e-12 ? plane : cross(out, v));
 	const angle = Math.atan2(norm(plane), dot(out, toward));
-	const excess = (n: Vec3, sweep: number) =>
-		norm(sub(sweptVelocity(out, n, sweep, rKm, mu, cruiseKms), v));
-	const one = excess(normal, angle);
-	return angle > 0 ? Math.min(one, excess(scale(normal, -1), 2 * Math.PI - angle)) : one;
+	const one = sweptVelocity(out, normal, angle, rKm, mu, speedKms);
+	if (!(angle > 0)) return one;
+	const other = sweptVelocity(out, scale(normal, -1), 2 * Math.PI - angle, rKm, mu, speedKms);
+	if (norm(sub(one, v)) <= norm(sub(other, v))) return one;
+	return periapsisKm(r, other, mu, speedKms) < LONG_WAY_PASS * rKm ? one : other;
 }
 
-/** Δv at the periastron between a hyperbola of excess speed `vInfKms` and the
- *  orbit that holds station at a star of `mu`. That orbit has the speed of
- *  escape there. It is the limit of the bound orbits, so its burn is the least. */
-function starPassKms(mu: number, vInfKms: number): number {
-	return captureDv(mu, STAR_PASS_KM, Infinity, vInfKms);
+/** The least excess speed against the body at `state` that leaves along `toward`. */
+function departureExcessKms(state: StateVector, toward: Vec3, speedKms: number): number {
+	return norm(sub(departureVelocity(state, toward, speedKms), state.v));
 }
 
-/** Where a coast meets a planet. */
-interface Periastron {
-	rKm: number;
-	/** Speed of the planet there, km/s. */
-	speedKms: number;
-	/** μ of the star, km³/s². */
-	mu: number;
+/** An arrival walked backward is a departure from a body that moves the other way. */
+function walkedBack(state: StateVector): StateVector {
+	return { ...state, v: scale(state.v, -1) };
+}
+
+/** Δv at the periastron between a hyperbola of excess `excessKms` and the orbit
+ *  that holds station at `star`, of `mu`. That orbit has the speed of escape
+ *  there. It is the limit of the bound orbits, so its burn is the least. */
+function starPassKms(star: TravelBody, mu: number, excessKms: number): number {
+	return captureDv(mu, starHoldKm(star), Infinity, excessKms);
+}
+
+/** Radius of the pass at the star of `end`, km. */
+function starPassRadiusKm(
+	end: SystemEnd,
+	mode: ArrivalMode | DepartureMode,
+	orbit: EndOrbit | undefined
+): number {
+	return orbit && mode !== 'rendezvous' && mode !== 'flyby' ? orbit.rPeriKm : starHoldKm(end.body);
+}
+
+/** Where a coast meets its target. */
+interface Meeting {
+	/** A date on which the target is there. */
+	jd: number;
+	placeKm: Vec3;
+	/** The closing speed of a coast, as a rapidity figure. `from` is the unit
+	 *  vector from the meeting to the origin. */
+	closingKms: (from: Vec3, rapidityKms: number) => number;
+}
+
+/** The meeting with an end at its place on `jd`, on the hyperbola that comes in
+ *  from `from`. With no state known, the coast keeps its whole speed. */
+function meetingAt(end: SystemEnd, jd: number): Meeting {
+	const state = orbitStateAt(end, jd);
+	const back = state && walkedBack(state);
+	return {
+		jd,
+		placeKm: endPlaceKm(end, jd),
+		closingKms: (from, kms) => (back ? departureExcessKms(back, from, kms) : kms)
+	};
 }
 
 /**
- * The periastron of a planet's orbit, or null at a star. A coast of millennia
- * meets the planet at any point of its orbit for a tiny change of the
- * departure date. The periastron is the cheapest point, where the well of the
- * star is deepest and the planet is fastest.
+ * The meeting at the periastron passage `jd` of a planet, on a hyperbola tangent
+ * to its orbit. This closing speed is the difference of the two speeds. No other
+ * meeting has a lower one: two velocities differ by at least their speeds, and
+ * that difference is least where the well of the star is deepest. So a craft that
+ * cannot pay for this meeting cannot pay for any.
  */
-function periastronOf(end: SystemEnd): Periastron | null {
+function tangentMeeting(end: SystemEnd, jd: number): Meeting {
+	const state = orbitStateAt(end, jd);
+	return {
+		...meetingAt(end, jd),
+		closingKms: (_from, kms) =>
+			state ? Math.abs(periapsisSpeed(state.mu, norm(state.r), kms) - norm(state.v)) : kms
+	};
+}
+
+/** The first periastron passage of an end at or after `jd`. Null when it has
+ *  none to wait for: a star, a planet the map holds still, or an open orbit. */
+function periastronPassageJd(end: SystemEnd, jd: number): number | null {
 	if (end.atStar) return null;
 	const { elements } = end.body;
-	const rKm = elements.a * (1 - elements.e) * AU_KM;
-	if (!(rKm > 0)) return null;
-	const mu = end.starMu ?? (elements.n > 0 ? muFromElements(elements) : 0);
-	return { rKm, speedKms: Math.sqrt((mu * (1 + elements.e)) / rKm), mu };
+	const { e, ma, n, epoch } = elements;
+	if (!(n > 0) || !(e < 1)) return null;
+	const turns = Math.ceil((ma + n * (elementsJd(elements, jd) - epoch)) / 360);
+	return clockJd(elements, epoch + (360 * turns - ma) / n);
+}
+
+/** The first date at or after `jd` on which an end has its phase of `phaseJd`. */
+function nextPassageJd(end: SystemEnd, phaseJd: number, jd: number): number {
+	const periodDays = 360 / end.body.elements.n;
+	return phaseJd + Math.ceil((jd - phaseJd) / periodDays) * periodDays;
+}
+
+/**
+ * The date in one period of a planet from its periastron after `nearJd` of the
+ * meeting with the least closing speed, for a coast from `fromKm`. The steps are
+ * even in eccentric anomaly, because a long ellipse passes its periastron in a
+ * small part of its period.
+ */
+function bestMeetingJd(
+	target: SystemEnd,
+	fromKm: Vec3,
+	nearJd: number,
+	rapidityKms: number
+): number {
+	const { e, n } = target.body.elements;
+	const periastronJd = periastronPassageJd(target, nearJd)!;
+	const jdAt = (anomaly: number) =>
+		periastronJd + ((anomaly - e * Math.sin(anomaly)) * 180) / Math.PI / n;
+	const closingAt = (anomaly: number) => {
+		const met = meetingAt(target, jdAt(anomaly));
+		return met.closingKms(normalize(sub(fromKm, met.placeKm)), rapidityKms);
+	};
+	const step = (2 * Math.PI) / WINDOW_SAMPLES;
+	const anomalies = Array.from({ length: WINDOW_SAMPLES }, (_, i) => i * step);
+	const closings = anomalies.map(closingAt);
+	const start = anomalies[closings.indexOf(Math.min(...closings))];
+	return jdAt(polish(closingAt, start, step, -Infinity, Infinity));
 }
 
 /** How a coast meets the target. */
@@ -470,37 +769,44 @@ interface CoastArrival {
 	legs: RouteLeg[];
 	/** Δv of those legs, km/s. */
 	spendKms: number;
-	/** Speed against the end itself, km/s. */
-	vInfKms: number;
+	/** Excess against the end itself, as a rapidity figure. */
+	excessKms: number;
 	cost: ArrivalCost;
 }
 
 /**
- * The arrival from a coast at `cruiseKms`. A trip to a planet falls in to the
- * periastron of the planet and meets the planet there at the difference of
- * the two speeds. A trip to a moon then falls down the planet's well to it. A
- * trip that stops at a star brakes into the orbit that holds station there.
+ * The arrival at `met` from a coast at `rapidityKms`, which comes in from `from`.
+ * A trip to a planet meets it at the closing speed of the meeting. A trip to a
+ * moon then falls down the planet's well to it. A trip that stops at a star
+ * brakes into the orbit it asks for, or else into the orbit that holds station
+ * there.
  */
 function coastArrival(
 	target: SystemEnd,
-	cruiseKms: number,
+	met: Meeting,
+	from: Vec3,
+	rapidityKms: number,
 	mode: ArrivalMode,
 	options: InterstellarOptions
 ): CoastArrival {
-	const at = periastronOf(target);
-	if (!at) {
+	if (target.atStar) {
 		const cost =
 			mode === 'flyby'
 				? NO_ARRIVAL_COST
-				: { ...NO_ARRIVAL_COST, captureKms: starPassKms(target.starMu ?? 0, cruiseKms) };
+				: options.targetOrbit && mode !== 'rendezvous'
+					? arrivalCost(target.body, rapidityKms, mode, 'none', options.targetOrbit)
+					: {
+							...NO_ARRIVAL_COST,
+							captureKms: starPassKms(target.body, target.starMu ?? 0, rapidityKms)
+						};
 		const legs = arrivalLegs(cost, mode);
-		return { legs, spendKms: spendOf(legs), vInfKms: cruiseKms, cost };
+		return { legs, spendKms: spendOf(legs), excessKms: rapidityKms, cost };
 	}
-	const vInfKms = throughWells(target, periapsisSpeed(at.mu, at.rKm, cruiseKms) - at.speedKms);
+	const excessKms = throughWells(target, met.closingKms(from, rapidityKms));
 	const site = surfaceSite(target.body, options.targetSiteLatDeg, null);
-	const cost = arrivalCost(target.body, vInfKms, mode, options.aero, options.targetOrbit, site);
+	const cost = arrivalCost(target.body, excessKms, mode, options.aero, options.targetOrbit, site);
 	const legs = arrivalLegs(cost, mode);
-	return { legs, spendKms: spendOf(legs), vInfKms, cost };
+	return { legs, spendKms: spendOf(legs), excessKms, cost };
 }
 
 function spendOf(legs: readonly RouteLeg[]): number {
@@ -509,18 +815,55 @@ function spendOf(legs: readonly RouteLeg[]): number {
 
 /** How a coast leaves its origin. */
 interface Leaving {
-	/** Excess speed against the origin end itself, km/s. */
-	vInfKms: number;
+	/** Excess against the origin end itself, as a rapidity figure. */
+	excessKms: number;
 	cost: DepartureCost;
+}
+
+/** How a coast leaves a star: from the orbit it asks for, or else from the
+ *  orbit that holds station there. */
+function leaveStar(
+	star: SystemEnd,
+	rapidityKms: number,
+	mode: DepartureMode,
+	orbit: EndOrbit | undefined
+): Leaving {
+	const cost =
+		orbit && mode === 'orbit'
+			? departureCost(star.body, rapidityKms, mode, orbit)
+			: {
+					ascentKms: 0,
+					injectionKms: starPassKms(star.body, star.starMu ?? 0, rapidityKms),
+					turnKms: 0,
+					turnDeg: 0
+				};
+	return { excessKms: rapidityKms, cost };
 }
 
 /** The fastest coast that leaves at one date. */
 interface CoastPlan {
 	departJd: number;
-	/** Classical speed on the coast, km/s. This is c times the rapidity. */
-	cruiseKms: number;
-	leaving: Leaving;
-	arrival: CoastArrival;
+	rapidityKms: number;
+}
+
+/** What a coast flies to one meeting. */
+interface MeetingPlan {
+	plan: CoastPlan | InterstellarRefusal;
+	met: Meeting;
+}
+
+/** A coast as it flies, with its speed fixed by the meeting. */
+interface FlownCoast extends CoastPlan {
+	arriveJd: number;
+}
+
+/** The rapidity figure of a plan, 0 on a refusal. */
+function planKms(plan: CoastPlan | InterstellarRefusal): number {
+	return typeof plan === 'string' ? 0 : plan.rapidityKms;
+}
+
+function faster(a: MeetingPlan, b: MeetingPlan): MeetingPlan {
+	return planKms(b.plan) > planKms(a.plan) ? b : a;
 }
 
 /** Move `x` toward the least `f` by halving `step` in turn, inside [`min`, `max`].
@@ -549,33 +892,33 @@ function polish(
 }
 
 /**
- * The highest cruise speed whose spend stays within `limit`, km/s, or null.
+ * The highest rapidity figure whose spend stays within `limit`, km/s, or null.
  *
  * The spend can fall before it rises, because a faster hyperbola bends less
- * and can line up better with the body's motion. A grid of speeds finds the
+ * and can line up better with the body's motion. A grid of figures finds the
  * cheap stretch, and a bisection finds where the spend passes the limit above
  * it.
  */
 function fastestWithin(
-	spend: (kms: number) => number,
+	spend: (rapidityKms: number) => number,
 	limit: number,
 	scaleKms: number
 ): number | null {
 	let topKms = 2 * scaleKms + 1;
 	for (let i = 0; i < BRACKET_DOUBLINGS && spend(topKms) <= limit; i++) topKms *= 2;
 	const step = topKms / CRUISE_GRID;
-	const speeds = Array.from({ length: CRUISE_GRID + 1 }, (_, i) => step * Math.max(i, GRID_FLOOR));
-	const spends = speeds.map(spend);
+	const figures = Array.from({ length: CRUISE_GRID + 1 }, (_, i) => step * Math.max(i, GRID_FLOOR));
+	const spends = figures.map(spend);
 	let last = spends.findLastIndex((value) => value <= limit);
 	let lo: number;
-	if (last >= 0) lo = speeds[last];
+	if (last >= 0) lo = figures[last];
 	else {
-		// A narrow dip under the limit can fall between two speeds of the grid.
+		// A narrow dip under the limit can fall between two figures of the grid.
 		last = spends.indexOf(Math.min(...spends));
-		lo = polish(spend, speeds[last], step, speeds[0], topKms);
+		lo = polish(spend, figures[last], step, figures[0], topKms);
 		if (spend(lo) > limit) return null;
 	}
-	const hi = speeds[Math.min(last + 1, CRUISE_GRID)];
+	const hi = figures[Math.min(last + 1, CRUISE_GRID)];
 	return bisect(lo, hi, (kms) => spend(kms) <= limit).lo;
 }
 
@@ -593,29 +936,206 @@ function bestDate(
 		const plan = planAt(fromJd + i * step);
 		if (typeof plan === 'string') {
 			if (plan === 'cannot-stop') refusal = plan;
-		} else if (!best || plan.cruiseKms > best.cruiseKms) best = plan;
+		} else if (!best || plan.rapidityKms > best.rapidityKms) best = plan;
 	}
 	if (!best) return refusal;
 	const slowness = (jd: number) => {
 		const plan = planAt(jd);
-		return typeof plan === 'string' ? Infinity : -plan.cruiseKms;
+		return typeof plan === 'string' ? Infinity : -plan.rapidityKms;
 	};
 	const jd = polish(slowness, best.departJd, step, fromJd, fromJd + periodDays);
 	const polished = jd === best.departJd ? best : planAt(jd);
 	return typeof polished === 'string' ? best : polished;
 }
 
+/** One hyperbola of a coast, seen from its star. */
+export interface WellConic {
+	/** Place of the star, km, in the frame of the route. */
+	starKm: Vec3;
+	/** μ of the star, km³/s². */
+	mu: number;
+	/** The inner end of the hyperbola, km, about the star. This is the body, or
+	 *  the periapsis at a star. On the long way round the path goes nearer the
+	 *  star from here. */
+	r: Vec3;
+	/** Velocity at `r`, km/s, on the way to the join. The craft flies a hyperbola
+	 *  of arrival in reverse. */
+	v: Vec3;
+	/** Excess speed of the hyperbola, km/s. */
+	speedKms: number;
+	/** Time between `r` and the join, s. */
+	seconds: number;
+	/** Where it meets the line, km, in the frame of the route. */
+	joinKm: Vec3;
+}
+
+/** The three stretches of a coast. A hyperbola is null when the end has no
+ *  star of known μ, and the line then runs to the place of the end. */
+export interface CoastShape {
+	/** Place of the origin end at departure, km. */
+	originKm: Vec3;
+	/** Place of the target end at arrival, km. */
+	targetKm: Vec3;
+	departure: WellConic | null;
+	arrival: WellConic | null;
+	/** Start of the line, km. */
+	lineFromKm: Vec3;
+	/** End of the line, km. */
+	lineToKm: Vec3;
+	/** Time on all three stretches, s. */
+	seconds: number;
+}
+
+/** Radius where a hyperbola from `innerKm` joins the line, km. It stops at
+ *  `innerKm` when the gap between the two stars leaves it no room. */
+function joinRadiusKm(innerKm: number, gapKm: number): number {
+	return Math.max(innerKm, Math.min(Math.max(JOIN_KM, 2 * innerKm), gapKm * JOIN_SHARE));
+}
+
+/** A hyperbola, with its time as Kepler's equation gives it. */
+export interface Hyperbola {
+	/** Semi-major axis, km, as a positive figure. */
+	aKm: number;
+	e: number;
+	/** Semi-latus rectum, km. */
+	latusKm: number;
+	/** The hyperbolic anomaly at a radius, on the way out. */
+	anomalyAt(km: number): number;
+	/** Seconds between two hyperbolic anomalies. */
+	secondsBetween(fromH: number, toH: number): number;
+}
+
+/** The hyperbola through `state` of excess speed `speedKms`. The time needs no
+ *  iteration when the radius is known. */
+export function hyperbolaThrough(state: StateVector, speedKms: number): Hyperbola {
+	const { r, v, mu } = state;
+	const aKm = mu / speedKms ** 2;
+	const h = cross(r, v);
+	const e = Math.sqrt(1 + (dot(h, h) * speedKms ** 2) / mu ** 2);
+	const kepler = (H: number) => e * Math.sinh(H) - H;
+	return {
+		aKm,
+		e,
+		latusKm: dot(h, h) / mu,
+		anomalyAt: (km) => Math.acosh(Math.max(1, (km / aKm + 1) / e)),
+		secondsBetween: (fromH, toH) => Math.sqrt(aKm ** 3 / mu) * (kepler(toH) - kepler(fromH))
+	};
+}
+
+/** Seconds on the hyperbola through `state`, from there out to `toKm`. */
+function secondsOut(state: StateVector, speedKms: number, toKm: number): number {
+	const { r, v } = state;
+	const rKm = norm(r);
+	if (!(toKm > rKm)) return 0;
+	const { anomalyAt, secondsBetween } = hyperbolaThrough(state, speedKms);
+	return secondsBetween(Math.sign(dot(r, v)) * anomalyAt(rKm), anomalyAt(toKm));
+}
+
+/** The periapsis at `passKm` of a hyperbola that leaves along `out`. A star has
+ *  no plane of its own here, so any plane through `out` serves. */
+function starPassState(mu: number, out: Vec3, speedKms: number, passKm: number): StateVector {
+	const normal = perpendicularTo(out);
+	const e = 1 + (passKm * speedKms ** 2) / mu;
+	const inward = rotateAbout(out, normal, -Math.acos(-1 / e));
+	const speed = periapsisSpeed(mu, passKm, speedKms);
+	return { r: scale(inward, passKm), v: scale(cross(normal, inward), speed), mu };
+}
+
+/** The hyperbola between an end and the join. `state` is the end's body, or null. */
+function wellConic(
+	end: SystemEnd,
+	state: StateVector | null,
+	out: Vec3,
+	speedKms: number,
+	passKm: number,
+	gapKm: number
+): WellConic | null {
+	const leaving = state
+		? { ...state, v: departureVelocity(state, out, speedKms) }
+		: end.atStar && end.starMu
+			? starPassState(end.starMu, out, speedKms, passKm)
+			: null;
+	if (!leaving) return null;
+	const { r, v, mu } = leaving;
+	const seconds = secondsOut(leaving, speedKms, joinRadiusKm(norm(r), gapKm));
+	const joinKm = add(end.starKm, propagateState(r, v, seconds, mu) ?? r);
+	return { starKm: end.starKm, mu, r, v, speedKms, seconds, joinKm };
+}
+
+/** The shape of a coast at the real speed `speedKms`. */
+function flightShape(
+	origin: SystemEnd,
+	target: SystemEnd,
+	flight: CrossingFlight,
+	speedKms: number
+): CoastShape {
+	const { departJd, arriveJd } = flight;
+	const originKm = endPlaceKm(origin, departJd);
+	const targetKm = endPlaceKm(target, arriveJd);
+	const along = normalize(sub(targetKm, originKm));
+	const gapKm = norm(sub(target.starKm, origin.starKm));
+	const conic = (end: SystemEnd, state: StateVector | null, out: Vec3, passKm: number) =>
+		wellConic(end, state, out, speedKms, passKm, gapKm);
+
+	const departure = conic(
+		origin,
+		orbitStateAt(origin, departJd),
+		along,
+		starPassRadiusKm(origin, flight.departureMode, flight.departureOrbit)
+	);
+	const met = orbitStateAt(target, arriveJd);
+	const arrival = conic(
+		target,
+		met && walkedBack(met),
+		scale(along, -1),
+		starPassRadiusKm(target, flight.arrivalMode, flight.targetOrbit)
+	);
+
+	const lineFromKm = departure?.joinKm ?? originKm;
+	const lineToKm = arrival?.joinKm ?? targetKm;
+	const seconds =
+		(departure?.seconds ?? 0) +
+		norm(sub(lineToKm, lineFromKm)) / speedKms +
+		(arrival?.seconds ?? 0);
+	return { originKm, targetKm, departure, arrival, lineFromKm, lineToKm, seconds };
+}
+
+/** The rapidity figure below `topKms` that flies in `days`. */
+function rapidityForDays(flownDays: (kms: number) => number, days: number, topKms: number): number {
+	let lo = topKms;
+	for (let i = 0; i < BRACKET_DOUBLINGS && flownDays(lo) <= days; i++) lo /= 2;
+	return bisect(lo, topKms, (kms) => flownDays(kms) > days).hi;
+}
+
+/** Length of the path of a coast, km. A hyperbola counts as its chord. */
+function flownKmOf({ departure, arrival, lineFromKm, lineToKm }: CoastShape): number {
+	const chordKm = (conic: WellConic | null) =>
+		conic ? norm(sub(conic.joinKm, add(conic.starKm, conic.r))) : 0;
+	return chordKm(departure) + norm(sub(lineToKm, lineFromKm)) + chordKm(arrival);
+}
+
+/** A hyperbola as a route keeps it. */
+function conicSpan(conic: WellConic | null, placeKm: Vec3): ConicSpan {
+	return conic
+		? { days: conic.seconds / SEC_PER_DAY, km: norm(sub(conic.joinKm, placeKm)) }
+		: { days: 0, km: 0 };
+}
+
 /**
  * The coast between two systems for a craft with a Δv budget or a launch curve.
  *
- * The craft leaves at the highest cruise speed its Δv allows, after it keeps
- * back what the arrival needs. The ascent is not spent from the budget. It
- * belongs to whatever launched the craft. A launcher has no Δv after the
- * launch, so it can only fly by. The time spent in the two wells is left out of
- * the crossing.
+ * The craft leaves at the highest cruise speed its Δv allows after it keeps back
+ * what the arrival needs. A trip that stops then slows just enough to reach the next
+ * passage of the best phase. It meets the planet where the planet is when no such
+ * speed is in reach, or when the orbit is longer than the trip. The ascent belongs
+ * to whatever launched the craft, so the budget does not pay for it.
+ *
+ * The first search prices the arrival at the tangent meeting, which no meeting
+ * beats, so its refusal is final. Then the speed and the phase are solved in
+ * turn, because a search of the phases at each speed costs too much.
  *
  * A refusal when the craft cannot escape or cannot stop. Null when the two
- * stars are in one place.
+ * ends are in one place.
  */
 export function buildInterstellarCruiseRoute(
 	origin: SystemEnd,
@@ -625,65 +1145,189 @@ export function buildInterstellarCruiseRoute(
 	options: InterstellarCruiseOptions = {}
 ): Route | InterstellarRefusal | null {
 	const { departureMode = 'surface', arrivalMode = 'capture', aero = 'none' } = options;
-	const distanceKm = starDistanceKm(origin, target);
-	if (!(distanceKm > 0)) return null;
-	const toward = scale(sub(target.starKm, origin.starKm), 1 / distanceKm);
+	const passageJd = periastronPassageJd(target, departJd);
+	const phased = passageJd !== null;
+	const first = phased ? tangentMeeting(target, passageJd) : meetingAt(target, departJd);
+	if (!(norm(sub(first.placeKm, endPlaceKm(origin, departJd))) > 0)) return null;
 	const stops = arrivalMode !== 'flyby';
 	const site = surfaceSite(origin.body, options.departureSiteLatDeg, null);
+	const departureOrbit = orbitAt(origin, options.departureOrbit);
+	const targetOrbit = orbitAt(target, options.targetOrbit);
+	const arrivalOptions = { ...options, targetOrbit };
 
-	const leave = (state: StateVector | null, cruiseKms: number): Leaving => {
-		if (origin.atStar) {
-			const injectionKms = starPassKms(origin.starMu ?? 0, cruiseKms);
-			return { vInfKms: cruiseKms, cost: { ascentKms: 0, injectionKms, turnKms: 0, turnDeg: 0 } };
-		}
-		const vInfKms = throughWells(
-			origin,
-			state ? departureExcessKms(state, toward, cruiseKms) : cruiseKms
-		);
-		const cost = departureCost(origin.body, vInfKms, departureMode, options.departureOrbit, site);
-		return { vInfKms, cost };
+	/** The way to leave on `jd` for `met`, at any rapidity figure. */
+	const leaverAt = (jd: number, met: Meeting) => {
+		const state = orbitStateAt(origin, jd);
+		const toward = normalize(sub(met.placeKm, endPlaceKm(origin, jd)));
+		return (rapidityKms: number): Leaving => {
+			if (origin.atStar) return leaveStar(origin, rapidityKms, departureMode, departureOrbit);
+			const excessKms = throughWells(
+				origin,
+				state ? departureExcessKms(state, toward, rapidityKms) : rapidityKms
+			);
+			const cost = departureCost(origin.body, excessKms, departureMode, departureOrbit, site);
+			return { excessKms, cost };
+		};
 	};
-	const arrive = (cruiseKms: number) => coastArrival(target, cruiseKms, arrivalMode, options);
+	/** The way to arrive at `met` from a departure on `jd`, at any rapidity figure. */
+	const arriverAt = (jd: number, met: Meeting) => {
+		const from = normalize(sub(endPlaceKm(origin, jd), met.placeKm));
+		return (rapidityKms: number) =>
+			coastArrival(target, met, from, rapidityKms, arrivalMode, arrivalOptions);
+	};
 
 	// A launcher is held to its excess speed, a craft with a budget to its Δv.
 	const launched = drive.kind === 'launch';
 	const limit =
 		(launched ? Math.sqrt(Math.max(0, drive.c3Km2S2)) : drive.dvKms) * (1 - LIMIT_MARGIN);
-	const leaveSpend = ({ vInfKms, cost }: Leaving) => (launched ? vInfKms : cost.injectionKms);
-
-	const planAt = (jd: number): CoastPlan | InterstellarRefusal => {
+	const leaveSpend = ({ excessKms, cost }: Leaving) => (launched ? excessKms : cost.injectionKms);
+	const spendOn = (jd: number, met: Meeting) => {
+		const leaver = leaverAt(jd, met);
+		const arriver = arriverAt(jd, met);
+		return (kms: number) => leaveSpend(leaver(kms)) + (launched ? 0 : arriver(kms).spendKms);
+	};
+	const scaleAt = (jd: number) => {
 		const state = orbitStateAt(origin, jd);
-		const scaleKms = limit + (state ? norm(state.v) : 0);
-		const leaveOnly = (kms: number) => leaveSpend(leave(state, kms));
-		const spend = (kms: number) => leaveOnly(kms) + (launched ? 0 : arrive(kms).spendKms);
-		const cruiseKms = launched && stops ? null : fastestWithin(spend, limit, scaleKms);
-		if (cruiseKms === null) {
-			return fastestWithin(leaveOnly, limit, scaleKms) === null ? 'cannot-escape' : 'cannot-stop';
-		}
-		return {
-			departJd: jd,
-			cruiseKms,
-			leaving: leave(state, cruiseKms),
-			arrival: arrive(cruiseKms)
-		};
+		return state ? limit + norm(state.v) : limit;
 	};
 
-	const periodDays = 360 / meanMotionOf(origin);
-	const plan =
-		options.launchWindow && Number.isFinite(periodDays)
-			? bestDate(planAt, departJd, periodDays)
-			: planAt(departJd);
-	if (typeof plan === 'string') return plan;
+	const planAt = (jd: number, met: Meeting): CoastPlan | InterstellarRefusal => {
+		const scaleKms = scaleAt(jd);
+		const rapidityKms = launched && stops ? null : fastestWithin(spendOn(jd, met), limit, scaleKms);
+		if (rapidityKms === null) {
+			const leaver = leaverAt(jd, met);
+			const leaves = (kms: number) => leaveSpend(leaver(kms));
+			return fastestWithin(leaves, limit, scaleKms) === null ? 'cannot-escape' : 'cannot-stop';
+		}
+		return { departJd: jd, rapidityKms };
+	};
 
-	const { leaving, arrival } = plan;
+	const periodDays = origin.atStar ? Infinity : 360 / origin.body.elements.n;
+	const windowed = options.launchWindow && Number.isFinite(periodDays);
+	const search = (met: Meeting) =>
+		windowed ? bestDate((jd) => planAt(jd, met), departJd, periodDays) : planAt(departJd, met);
+
+	/**
+	 * The speed of a coast from `jd` and its best meeting, each solved for the
+	 * other from the speed `fromKms`. A better meeting costs less at the same
+	 * speed, so the speed only rises. A meeting the craft cannot pay for says
+	 * little about the speed, so the next round tries half of it.
+	 */
+	const settled = (jd: number, fromKms: number): MeetingPlan => {
+		const fromKm = endPlaceKm(origin, jd);
+		const gapKm = norm(sub(target.starKm, fromKm));
+		let kms = fromKms;
+		let best: MeetingPlan | null = null;
+		for (let round = 0; round < MEETING_ROUNDS; round++) {
+			const nearJd = jd + gapKm / speedOfRapidity(kms) / SEC_PER_DAY;
+			const met = meetingAt(target, bestMeetingJd(target, fromKm, nearJd, kms));
+			const next = { plan: planAt(jd, met), met };
+			const gainKms = planKms(next.plan) - (best ? planKms(best.plan) : 0);
+			if (gainKms < 0) break;
+			best = next;
+			if (typeof next.plan === 'string') kms /= 2;
+			else if (gainKms < SETTLED_KMS) break;
+			else kms = next.plan.rapidityKms;
+		}
+		return best!;
+	};
+
+	/** The speed and the meeting of a coast on the date of a tangent plan. */
+	const settledPlan = (tangent: CoastPlan | InterstellarRefusal): MeetingPlan =>
+		phased && stops && typeof tangent !== 'string'
+			? settled(tangent.departJd, tangent.rapidityKms)
+			: { plan: tangent, met: first };
+
+	/** The plan of a window from the tangent plan of its best date. */
+	const windowPlan = (tangent: CoastPlan): MeetingPlan => {
+		const found = settledPlan(tangent);
+		// The tangent price overrates the speed, and the best date moves with it. A
+		// flyby pays nothing at the meeting, so its date stands.
+		if (!phased || !stops) return found;
+		const wider = faster(found, { plan: search(found.met), met: found.met });
+		if (typeof wider.plan === 'string') return wider;
+		return faster(wider, settled(wider.plan.departJd, wider.plan.rapidityKms));
+	};
+
+	const flightFrom = (leaveJd: number) => ({
+		departJd: leaveJd,
+		departureMode,
+		arrivalMode,
+		departureOrbit,
+		targetOrbit
+	});
+	const shapeAt = (leaveJd: number, kms: number, jd: number) =>
+		flightShape(origin, target, { ...flightFrom(leaveJd), arriveJd: jd }, speedOfRapidity(kms));
+
+	/** The coast that a plan flies. */
+	const flownFrom = ({ plan, met }: MeetingPlan): FlownCoast | InterstellarRefusal => {
+		if (typeof plan === 'string') return plan;
+		const { departJd: leaveJd, rapidityKms: fastestKms } = plan;
+		const flownDays = (kms: number, jd: number) => shapeAt(leaveJd, kms, jd).seconds / SEC_PER_DAY;
+
+		/** The coast slowed to the next passage of the phase, or null. */
+		const atPassage = () => {
+			const earliestJd = leaveJd + flownDays(fastestKms, met.jd);
+			const jd = nextPassageJd(target, met.jd, earliestJd);
+			if (jd - earliestJd > earliestJd - leaveJd) return null;
+			const kms = rapidityForDays((x) => flownDays(x, jd), jd - leaveJd, fastestKms);
+			return spendOn(leaveJd, meetingAt(target, jd))(kms) <= limit
+				? { rapidityKms: kms, arriveJd: jd }
+				: null;
+		};
+		const arrivalAt = (kms: number) => settledArrivalJd(leaveJd, (jd) => flownDays(kms, jd));
+		/** The coast that meets the target at its real place on the date it gets there, or null. */
+		const whereItIs = () => {
+			const spendThere = (kms: number) => spendOn(leaveJd, meetingAt(target, arrivalAt(kms)))(kms);
+			const kms = movesOnOrbit(target)
+				? fastestWithin(spendThere, limit, scaleAt(leaveJd))
+				: fastestKms;
+			return kms === null ? null : { rapidityKms: kms, arriveJd: arrivalAt(kms) };
+		};
+		/** {@link whereItIs} for a flyby, whose meeting only turns its line a little.
+		 *  So the speed and the date are solved in turn, which saves a settled date on
+		 *  each step of the search. The same date twice keeps the coast in its limit. */
+		const flyingBy = () => {
+			let jd = arrivalAt(fastestKms);
+			for (let round = 0; movesOnOrbit(target) && round < MEETING_ROUNDS; round++) {
+				const kms = fastestWithin(spendOn(leaveJd, meetingAt(target, jd)), limit, scaleAt(leaveJd));
+				if (kms === null) break;
+				const next = arrivalAt(kms);
+				if (next === jd) return { rapidityKms: kms, arriveJd: jd };
+				jd = next;
+			}
+			return whereItIs();
+		};
+
+		// A flyby pays nothing at the meeting, so no phase is worth a slower coast.
+		const flown = stops ? ((phased ? atPassage() : null) ?? whereItIs()) : flyingBy();
+		if (!flown) return stops ? 'cannot-stop' : 'cannot-escape';
+		return { departJd: leaveJd, ...flown };
+	};
+
+	/** The fastest coast on offer. The window ranks its dates before the meeting
+	 *  slows them, so the first date can still beat the date it picks. */
+	const fastestCoast = (tangent: CoastPlan): FlownCoast | InterstellarRefusal => {
+		if (!windowed) return flownFrom(settledPlan(tangent));
+		const picked = flownFrom(windowPlan(tangent));
+		const onFirstDate = flownFrom(settledPlan(planAt(departJd, first)));
+		return planKms(onFirstDate) > planKms(picked) ? onFirstDate : picked;
+	};
+
+	const firstPlan = search(first);
+	if (typeof firstPlan === 'string') return firstPlan;
+	const coast = fastestCoast(firstPlan);
+	if (typeof coast === 'string') return coast;
+	const { departJd: leaveJd, rapidityKms, arriveJd } = coast;
+
+	const meeting = meetingAt(target, arriveJd);
+	const leaving = leaverAt(leaveJd, meeting)(rapidityKms);
+	const arrival = arriverAt(leaveJd, meeting)(rapidityKms);
+	const shape = shapeAt(leaveJd, rapidityKms, arriveJd);
+	const { originKm, targetKm } = shape;
 	const dep = leaving.cost;
-	// A rocket gains c times a rapidity for its Δv, so the classical speed of the
-	// plan is that figure. Read as one, a coast stays below c at any budget. At
-	// tens of km/s the two speeds differ by a rounding error.
-	const rapidity = plan.cruiseKms / C_KMS;
-	const cruiseKms = C_KMS * Math.tanh(rapidity);
-	const gamma = Math.cosh(rapidity);
-	const tofDays = distanceKm / cruiseKms / SEC_PER_DAY;
+	const gamma = Math.cosh(rapidityKms / C_KMS);
+	const tofDays = arriveJd - leaveJd;
 
 	const legs: RouteLeg[] = [];
 	if (dep.ascentKms > 0) legs.push({ kind: 'ascent', dvKms: dep.ascentKms, days: 0 });
@@ -695,29 +1339,48 @@ export function buildInterstellarCruiseRoute(
 		{
 			departureId: origin.body.id,
 			targetId: target.body.id,
-			departJd: plan.departJd,
-			arriveJd: plan.departJd + tofDays,
+			departJd: leaveJd,
+			arriveJd,
 			tofDays,
 			ascentKms: dep.ascentKms,
-			c3Km2S2: characteristicEnergy(leaving.vInfKms),
-			vInfDepKms: leaving.vInfKms,
-			vInfArrKms: arrival.vInfKms,
+			c3Km2S2: characteristicEnergy(leaving.excessKms),
+			vInfDepKms: speedOfRapidity(leaving.excessKms),
+			vInfArrKms: speedOfRapidity(arrival.excessKms),
 			departureMode,
 			arrivalMode,
-			departureOrbit: options.departureOrbit,
-			targetOrbit: options.targetOrbit,
+			departureOrbit,
+			targetOrbit,
 			aero,
-			entrySpeedKms: arrival.cost.entrySpeedKms,
+			entrySpeedKms: entrySpeedOf(arrival.cost),
 			interstellar: {
-				distanceKm,
-				cruiseKms,
+				distanceKm: norm(sub(targetKm, originKm)),
+				cruiseKms: speedOfRapidity(rapidityKms),
 				gamma,
-				originKm: origin.starKm,
-				targetKm: target.starKm
+				rapidityKms,
+				originKm,
+				targetKm,
+				conics: {
+					departure: conicSpan(shape.departure, originKm),
+					arrival: conicSpan(shape.arrival, targetKm),
+					flownKm: flownKmOf(shape)
+				}
 			}
 		},
 		legs
 	);
+}
+
+/** The stretches of a coast, rebuilt from its route and its two ends. Null on a
+ *  held arc, and on any other route. */
+export function coastShape(route: Route, origin: SystemEnd, target: SystemEnd): CoastShape | null {
+	const crossing = route.interstellar;
+	return crossing?.conics ? flightShape(origin, target, route, crossing.cruiseKms) : null;
+}
+
+/** Where a hyperbola is `seconds` on from its inner end, km, in the frame of the
+ *  route. */
+export function conicPlaceKm(conic: WellConic, seconds: number): Vec3 {
+	return add(conic.starKm, propagateState(conic.r, conic.v, seconds, conic.mu) ?? conic.r);
 }
 
 /**
@@ -752,7 +1415,7 @@ interface HeldArc {
 	burns: number;
 	/** Length of one burn, km. */
 	burnKm: number;
-	/** Distance from the origin's star where the coast ends, km. */
+	/** Distance from the origin end where the coast ends, km. */
 	coastEndKm: number;
 }
 
@@ -770,16 +1433,17 @@ function heldArcOf(route: Route, totalKm: number): HeldArc | null {
 /** A stretch of a crossing between two systems. */
 export interface CrossingStretch {
 	kind: 'boost' | 'cruise' | 'brake';
-	/** Distance from the origin's star at which it starts, km. */
+	/** Distance along the crossing from the origin end at which it starts, km. */
 	fromKm: number;
-	/** Distance from the origin's star at which it ends, km. */
+	/** Distance along the crossing from the origin end at which it ends, km. */
 	toKm: number;
 }
 
 /**
  * The stretches of a crossing between two systems, in flight order, one for
- * each leg of the crossing. A coast is one stretch. A held drive has a boost, a
- * cruise when it coasts, and a brake when it stops. Null on any other route.
+ * each leg of the crossing. A coast is one stretch, whatever its shape: see
+ * {@link coastShape}. A held drive has a boost, a cruise when it coasts, and a
+ * brake when it stops. Null on any other route.
  */
 export function crossingStretches(route: Route): CrossingStretch[] | null {
 	const crossing = route.interstellar;
@@ -798,13 +1462,33 @@ export function crossingStretches(route: Route): CrossingStretch[] | null {
 		stretches.push({ kind: leg.kind, fromKm: at, toKm: at + lengthKm });
 		at += lengthKm;
 	}
-	// The last stretch ends at the target's star, whatever the rounding.
+	// The last stretch ends at the target, whatever the rounding.
 	if (stretches.length > 0) stretches[stretches.length - 1].toKm = totalKm;
 	return stretches;
 }
 
-/** Time from departure until the craft is `distanceKm` from the origin's star
- *  on a route between two systems, days, on the Earth's clock and on the
+/** Time from departure until a coast is `x` km along its crossing, s. The pace
+ *  on a hyperbola is even here, because it is a tiny part of the crossing. A ring
+ *  wider than the gap between the ends leaves the line no room between the spans,
+ *  so the pace is then even on the whole crossing. */
+function coastSecondsAt(route: Route, x: number): number {
+	const { distanceKm, conics } = route.interstellar!;
+	const { departure, arrival } = conics!;
+	const tofSeconds = route.tofDays * SEC_PER_DAY;
+	const lineKm = distanceKm - departure.km - arrival.km;
+	if (!(lineKm > 0)) return (x / distanceKm) * tofSeconds;
+	const outSeconds = departure.days * SEC_PER_DAY;
+	const inSeconds = arrival.days * SEC_PER_DAY;
+	if (x < departure.km) return (x / departure.km) * outSeconds;
+	if (x > distanceKm - arrival.km) {
+		return tofSeconds - ((distanceKm - x) / arrival.km) * inSeconds;
+	}
+	const lineSeconds = tofSeconds - outSeconds - inSeconds;
+	return outSeconds + ((x - departure.km) / lineKm) * lineSeconds;
+}
+
+/** Time from departure until the craft is `distanceKm` along a route between
+ *  two systems from its origin end, days, on the Earth's clock and on the
  *  ship's. Null on any other route. */
 export function crossingElapsed(
 	route: Route,
@@ -821,13 +1505,13 @@ export function crossingElapsed(
 
 	const arc = heldArcOf(route, totalKm);
 	if (!arc) {
-		const seconds = x / crossing.cruiseKms;
+		const seconds = coastSecondsAt(route, x);
 		return done(seconds, seconds / crossing.gamma);
 	}
 
 	const { accelKmS2, phi, burnKm, coastEndKm } = arc;
 	const hold = C_KMS / accelKmS2;
-	const speedKms = C_KMS * Math.tanh(phi);
+	const speedKms = speedOfRapidity(C_KMS * phi);
 	const gamma = Math.cosh(phi);
 	const burnFor = (km: number) => {
 		const p = rapidityOver(km, accelKmS2);
@@ -852,9 +1536,14 @@ export function crossingElapsed(
 	);
 }
 
+/** Length of the path a craft flies over a crossing, km. */
+export function crossingFlownKm(crossing: InterstellarCrossing): number {
+	return crossing.conics?.flownKm ?? crossing.distanceKm;
+}
+
 /** How a crossing meets the matter at rest along it. */
 export interface CrossingSweep {
-	/** Distance from the origin's star where the craft first has its peak speed, km. */
+	/** Distance from the origin end where the craft first has its peak speed, km. */
 	peakAtKm: number;
 	/** γ − 1 at the peak speed. */
 	peakExcess: number;
@@ -870,10 +1559,10 @@ export function crossingSweep(route: Route): CrossingSweep | null {
 	if (!crossing) return null;
 	const arc = heldArcOf(route, crossing.distanceKm);
 	if (!arc) {
-		const peakExcess = lorentzExcess(crossing.cruiseKms);
-		return { peakAtKm: 0, peakExcess, excessKm: peakExcess * crossing.distanceKm };
+		const peakExcess = lorentzExcess(crossing.rapidityKms / C_KMS);
+		return { peakAtKm: 0, peakExcess, excessKm: peakExcess * crossingFlownKm(crossing) };
 	}
-	const peakExcess = 2 * Math.sinh(arc.phi / 2) ** 2;
+	const peakExcess = lorentzExcess(arc.phi);
 	// Over a burn from rest the integral is (c²/a)(cosh φ − 1)²/2.
 	const burnExcessKm = ((C_KMS * C_KMS) / arc.accelKmS2) * (peakExcess ** 2 / 2);
 	return {
@@ -883,11 +1572,9 @@ export function crossingSweep(route: Route): CrossingSweep | null {
 	};
 }
 
-/** γ − 1 at `speedKms`, in a form that keeps its digits at low speed. */
-function lorentzExcess(speedKms: number): number {
-	const beta = speedKms / C_KMS;
-	const root = Math.sqrt((1 - beta) * (1 + beta));
-	return (beta * beta) / (root * (1 + root));
+/** γ − 1 at rapidity `phi`, in a form that keeps its digits at low speed. */
+function lorentzExcess(phi: number): number {
+	return 2 * Math.sinh(phi / 2) ** 2;
 }
 
 /** A rate per ship second that depends only on the rapidity φ of the craft. */
@@ -901,7 +1588,7 @@ export interface RapidityRate {
 
 /**
  * The total of `rate` over the ship time of a crossing between two systems,
- * from `fromKm` to `toKm` from the origin's star. Null on any other route.
+ * from `fromKm` to `toKm` along it from the origin end. Null on any other route.
  */
 export function crossingIntegral(
 	route: Route,
@@ -918,10 +1605,14 @@ export function crossingIntegral(
 	const coast = (phi: number, km: number) => (rate.at(phi) * km) / (C_KMS * Math.sinh(phi));
 
 	const arc = heldArcOf(route, totalKm);
-	if (!arc) return coast(Math.atanh(crossing.cruiseKms / C_KMS), hi - lo);
+	if (!arc) {
+		// The time in a well is not in proportion to its length.
+		const seconds = coastSecondsAt(route, hi) - coastSecondsAt(route, lo);
+		return (rate.at(crossing.rapidityKms / C_KMS) * seconds) / crossing.gamma;
+	}
 
 	const { accelKmS2, phi, burnKm, coastEndKm } = arc;
-	// Each distance is from the end where the burn is at rest. The brake ends at the target's star.
+	// Each distance is from the end where the burn is at rest. The brake ends at the target.
 	const burn = (nearKm: number, farKm: number) =>
 		(C_KMS / accelKmS2) *
 		(rate.fromRest(rapidityOver(farKm, accelKmS2)) -

@@ -12,6 +12,7 @@ import {
 	DUST_MASS_KG_M3,
 	grainMassKg,
 	INTERSTELLAR_DOSE_SV_PER_DAY,
+	crossingFlownKm,
 	largestGrainRadiusM,
 	MEASURED_GRAIN_RADIUS_M,
 	routeShipDays,
@@ -21,7 +22,7 @@ import {
 	type Vehicle
 } from '$lib/math/travel';
 import { G0_M_S2, GM_SUN_KM3_S2 } from '$lib/math/travel/constants';
-import { LIGHT_YEAR_KM, SPEED_OF_LIGHT_KM_S } from '$lib/math/units';
+import { AU_KM, LIGHT_YEAR_KM, SPEED_OF_LIGHT_KM_S } from '$lib/math/units';
 import { signalDelaySeconds } from './arrival-stats';
 import { craftPositionAt } from '$lib/math/travel/path-sample';
 import { hohmannTransferDays, nextTransferWindows } from '$lib/math/travel/windows';
@@ -650,11 +651,52 @@ describe('a crossing between two stars', () => {
 		expect(shield.frontIceM).toBeCloseTo(shield.sideIceM, 2);
 	});
 
-	it('gives the signal lag at arrival as the distance between the stars', () => {
+	describe('on a coast from a ring wider than the gap between the ends', () => {
+		const SUN: SystemEnd = {
+			...PROXIMA,
+			body: { ...PROXIMA.body, id: 'naif-10' },
+			starKm: [0, 0, 0]
+		};
+		const NEARBY: SystemEnd = { ...PROXIMA, starKm: [20 * AU_KM, 0, 5 * AU_KM] };
+		const route = buildInterstellarCruiseRoute(
+			SUN,
+			NEARBY,
+			J2000,
+			{ kind: 'budget', dvKms: 130_000 },
+			{
+				departureMode: 'orbit',
+				departureOrbit: { rPeriKm: 900 * AU_KM, rApoKm: 900 * AU_KM },
+				arrivalMode: 'rendezvous'
+			}
+		) as Route;
+		const hazards = routeHazards(SUN.body, NEARBY.body, route, context);
+		const flownKm = crossingFlownKm(route.interstellar!);
+
+		it('flies far more than the gap', () => {
+			expect(flownKm / route.interstellar!.distanceKm).toBeGreaterThan(40);
+		});
+
+		it('reads the signal lag over the path flown', () => {
+			const lag = of(hazards, 'signal-lag')!;
+			expect(lag.peak / (flownKm / SPEED_OF_LIGHT_KM_S)).toBeCloseTo(1, 9);
+			expect(lag.startJd).toBeGreaterThan(route.departJd);
+			expect(lag.startJd).toBeLessThan(route.arriveJd);
+		});
+
+		it('reads the dust over the path flown', () => {
+			const { radiusM, energyJPerM2 } = of(hazards, 'dust')!.dust!;
+			expect(radiusM).toBe(largestGrainRadiusM(flownKm));
+			const excess = route.interstellar!.gamma - 1;
+			const sweptJ = DUST_MASS_KG_M3 * flownKm * 1000 * excess * (SPEED_OF_LIGHT_KM_S * 1000) ** 2;
+			expect(energyJPerM2 / sweptJ).toBeCloseTo(1, 9);
+		});
+	});
+
+	it('gives the signal lag at arrival as the distance between the ends', () => {
 		const lag = routeHazards(EARTH, PROXIMA.body, torch, context).find(
 			(h) => h.kind === 'signal-lag'
 		)!;
-		const seconds = (4.24 * LIGHT_YEAR_KM) / SPEED_OF_LIGHT_KM_S;
+		const seconds = torch.interstellar!.distanceKm / SPEED_OF_LIGHT_KM_S;
 		expect(lag.peak).toBeCloseTo(seconds, 0);
 		expect(lag.severity).toBe('caution');
 		expect(lag.endJd).toBe(torch.arriveJd);
@@ -685,7 +727,7 @@ describe('a crossing between two stars', () => {
 		it('gives the largest grain expected to hit, at the peak speed', () => {
 			const dust = dustOf(torch);
 			const { radiusM, massKg, extrapolated } = dust.dust!;
-			expect(radiusM).toBe(largestGrainRadiusM(4.24 * LIGHT_YEAR_KM));
+			expect(radiusM).toBe(largestGrainRadiusM(torch.interstellar!.distanceKm));
 			expect(massKg).toBe(grainMassKg(radiusM));
 			expect(extrapolated).toBe(radiusM > MEASURED_GRAIN_RADIUS_M);
 			const gamma = torch.interstellar!.gamma;

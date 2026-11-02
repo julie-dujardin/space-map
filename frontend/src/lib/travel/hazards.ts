@@ -24,6 +24,7 @@ import {
 	cosmicRayBoost,
 	crossingElapsed,
 	crossingIntegral,
+	crossingFlownKm,
 	crossingSweep,
 	DEFAULT_SHIELDING_G_CM2,
 	DUST_MASS_KG_M3,
@@ -608,7 +609,7 @@ function scan(
 		// sample at nought AU reporting an infinity of sunlight.
 		const { from, to } = crossingWindow(path, index);
 		for (let i = from; i < to; i++) {
-			const sample = sampleAt(arc.points[i], arc.jds[i], departure, centralMu, originAtCenter);
+			const sample = sampleAt(arc.points[i], arc.jds[i], departure, originAtCenter);
 			if (sample) samples.push(sample);
 		}
 	}
@@ -617,19 +618,11 @@ function scan(
 
 /** One point on the trajectory turned into the figures the thresholds are read
  *  against. Null when the origin's position at that date is unavailable. */
-function sampleAt(
-	r: Vec3,
-	jd: number,
-	origin: TravelBody,
-	centralMu: number,
-	originAtCenter: boolean
-): Sample | null {
+function sampleAt(r: Vec3, jd: number, origin: TravelBody, originAtCenter: boolean): Sample | null {
 	const au = norm(r) / AU_KM;
 	if (!(au > 0) || !Number.isFinite(au)) return null;
 
-	const home = originAtCenter
-		? { r: [0, 0, 0] as Vec3 }
-		: elementsToState(origin.elements, jd, centralMu);
+	const home = originAtCenter ? { r: [0, 0, 0] as Vec3 } : elementsToState(origin.elements, jd);
 	if (!home) return null;
 	const toCraft = sub(r, home.r);
 	const separationKm = norm(toCraft);
@@ -709,8 +702,8 @@ function crossingHazards(route: Route): Hazard[] {
 	return sortHazards(hazards);
 }
 
-/** When the craft is `distanceKm` from the origin's star, JD, and the ship time
- *  until then, days. */
+/** When the craft is `distanceKm` along the crossing from the origin end, JD,
+ *  and the ship time until then, days. */
 function crossingAt(route: Route, distanceKm: number): { jd: number; shipDays: number } {
 	const elapsed = crossingElapsed(route, distanceKm)!;
 	return { jd: route.departJd + elapsed.days, shipDays: elapsed.shipDays };
@@ -784,7 +777,7 @@ const C_M_S = SPEED_OF_LIGHT_KM_S * 1000;
  */
 function crossingDust(route: Route): Hazard | null {
 	const sweep = crossingSweep(route)!;
-	const radiusM = largestGrainRadiusM(route.interstellar!.distanceKm);
+	const radiusM = largestGrainRadiusM(crossingFlownKm(route.interstellar!));
 	const massKg = grainMassKg(radiusM);
 	const energyJ = sweep.peakExcess * massKg * C_M_S * C_M_S;
 	const severity = severityFor(energyJ, DUST_GRAIN_J, 'rising');
@@ -828,13 +821,16 @@ function crossingGas(route: Route): Hazard | null {
 	};
 }
 
-/** Light time back to the origin's star. The stars do not move, so at arrival
- *  it is the distance between them. */
+/** Light time back along the path flown. `crossingAt` reads the distance between
+ *  the ends, so the date of the first threshold takes its share of that. */
 function crossingLag(route: Route): Hazard | null {
-	const peak = route.interstellar!.distanceKm / SPEED_OF_LIGHT_KM_S;
+	const crossing = route.interstellar!;
+	const flownKm = crossingFlownKm(crossing);
+	const peak = flownKm / SPEED_OF_LIGHT_KM_S;
 	const severity = severityFor(peak, LAG_SECONDS, 'rising');
 	if (!severity) return null;
-	const start = crossingAt(route, mildest(LAG_SECONDS) * SPEED_OF_LIGHT_KM_S);
+	const thresholdKm = mildest(LAG_SECONDS) * SPEED_OF_LIGHT_KM_S;
+	const start = crossingAt(route, (thresholdKm / flownKm) * crossing.distanceKm);
 	return {
 		kind: 'signal-lag',
 		severity,

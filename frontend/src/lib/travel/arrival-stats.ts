@@ -10,7 +10,6 @@ import {
 	elementsToState,
 	norm,
 	sub,
-	travelConstants,
 	type Route,
 	type TravelBody
 } from '$lib/math/travel';
@@ -24,8 +23,8 @@ export function signalDelaySeconds(
 	route: Route
 ): number | null {
 	if (route.interstellar) return route.interstellar.distanceKm / SPEED_OF_LIGHT_KM_S;
-	const from = elementsToState(origin.elements, route.arriveJd, travelConstants.GM_SUN_KM3_S2);
-	const to = elementsToState(target.elements, route.arriveJd, travelConstants.GM_SUN_KM3_S2);
+	const from = elementsToState(origin.elements, route.arriveJd);
+	const to = elementsToState(target.elements, route.arriveJd);
 	if (!from || !to) return null;
 	const separation = norm(sub(to.r, from.r));
 	if (!Number.isFinite(separation)) return null;

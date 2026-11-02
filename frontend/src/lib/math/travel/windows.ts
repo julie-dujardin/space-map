@@ -52,8 +52,8 @@ export function crossingTimeDays(
 	jd: number,
 	mu = GM_SUN_KM3_S2
 ): number | null {
-	const sA = elementsToState(a.elements, jd, mu);
-	const sB = elementsToState(b.elements, jd, mu);
+	const sA = elementsToState(a.elements, jd);
+	const sB = elementsToState(b.elements, jd);
 	if (!sA || !sB) return null;
 	const aT = (radius(sA.r) + radius(sB.r)) / 2;
 	if (!(aT > 0)) return null;
@@ -98,8 +98,8 @@ export function transferScale(
 	jd: number,
 	mu = GM_SUN_KM3_S2
 ): TransferScale | null {
-	const sA = elementsToState(a.elements, jd, mu);
-	const sB = elementsToState(b.elements, jd, mu);
+	const sA = elementsToState(a.elements, jd);
+	const sB = elementsToState(b.elements, jd);
 	if (!sA || !sB) return null;
 	const rA = radius(sA.r);
 	const rB = radius(sB.r);
@@ -183,8 +183,8 @@ export function nextTransferWindows(
 	// The lead is measured about the departure orbit's own normal, the way the
 	// transfer goes round: about ecliptic north, a near-polar orbit flips it.
 	const offset = (jd: number): number | null => {
-		const sA = elementsToState(a.elements, jd, mu);
-		const sB = elementsToState(b.elements, jd, mu);
+		const sA = elementsToState(a.elements, jd);
+		const sB = elementsToState(b.elements, jd);
 		if (!sA || !sB) return null;
 		const normal = normalize(cross(sA.r, sA.v));
 		return wrapPi(angleAbout(sA.r, sB.r, normal) - phase);

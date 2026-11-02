@@ -57,8 +57,8 @@ describe('buildTrajectoryPath', () => {
 		const path = buildTrajectoryPath(EARTH, MARS, route, { centerId: SUN })!;
 		expect(path).not.toBeNull();
 
-		const earthAt = elementsToState(EARTH.elements, route.departJd, GM_SUN_KM3_S2)!;
-		const marsAt = elementsToState(MARS.elements, route.arriveJd, GM_SUN_KM3_S2)!;
+		const earthAt = elementsToState(EARTH.elements, route.departJd)!;
+		const marsAt = elementsToState(MARS.elements, route.arriveJd)!;
 		const points = path.arcs[0].points;
 		expect(relative(points[0], earthAt.r)).toBeLessThan(1e-9);
 		expect(relative(points[points.length - 1], marsAt.r)).toBeLessThan(1e-9);
@@ -79,14 +79,14 @@ describe('buildTrajectoryPath', () => {
 	it('marks the meeting at the destination rather than where it is today', () => {
 		const route = buildRoute(EARTH, MARS, MARS_WINDOW, MARS_TOF)!;
 		const path = buildTrajectoryPath(EARTH, MARS, route, { centerId: SUN })!;
-		const marsNow = elementsToState(MARS.elements, route.departJd, GM_SUN_KM3_S2)!;
+		const marsNow = elementsToState(MARS.elements, route.departJd)!;
 
 		// The date is the arrival's, corrected by the passage: the craft is at
 		// periapsis hours before the crossing would have reached the centre.
 		expect(path.meeting.jd).toBeLessThanOrEqual(route.arriveJd);
 		expect(path.meeting.jd).toBeGreaterThan(route.arriveJd - 1);
 		expect(path.meeting.bodyId).toBe(MARS.id);
-		const marsThen = elementsToState(MARS.elements, path.meeting.jd, GM_SUN_KM3_S2)!;
+		const marsThen = elementsToState(MARS.elements, path.meeting.jd)!;
 		expect(relative(path.meeting.r, marsThen.r)).toBeLessThan(1e-9);
 		// Mars covers most of a radian over a transfer, so the two are nowhere
 		// near each other — which is the whole reason to draw the meeting.
@@ -125,7 +125,7 @@ describe('buildTrajectoryPath', () => {
 		const pass = path.arcs[1];
 		const soi = soiOf(VENUS, GM_SUN_KM3_S2);
 
-		const venusAt = (jd: number) => elementsToState(VENUS.elements, jd, GM_SUN_KM3_S2)!.r;
+		const venusAt = (jd: number) => elementsToState(VENUS.elements, jd)!.r;
 		const radii = pass.points.map((point, i) => norm(sub(point, venusAt(pass.jds[i]))));
 		let low = Infinity;
 		let lowest = 0;
@@ -221,8 +221,8 @@ describe('buildTrajectoryPath', () => {
 		expect(points).toHaveLength(180);
 		for (const point of points) expect(Number.isFinite(norm(point))).toBe(true);
 		// Ends on the two bodies, the same contract every other arc keeps.
-		const from = elementsToState(PARABOLIC_COMET.elements, route.departJd, GM_SUN_KM3_S2)!;
-		const to = elementsToState(PARABOLIC_COMET_FAR.elements, route.arriveJd, GM_SUN_KM3_S2)!;
+		const from = elementsToState(PARABOLIC_COMET.elements, route.departJd)!;
+		const to = elementsToState(PARABOLIC_COMET_FAR.elements, route.arriveJd)!;
 		expect(relative(points[0], from.r)).toBeLessThan(1e-9);
 		expect(relative(points[points.length - 1], to.r)).toBeLessThan(1e-9);
 	});
@@ -468,7 +468,7 @@ describe('end orbits', () => {
 			arrivalMode: 'low-orbit'
 		})!;
 		const path = buildTrajectoryPath(EARTH, MARS, route, { centerId: SUN })!;
-		const earthAt = elementsToState(EARTH.elements, route.departJd, GM_SUN_KM3_S2)!;
+		const earthAt = elementsToState(EARTH.elements, route.departJd)!;
 		expect(relative(path.endOrbits[0].center, earthAt.r)).toBeLessThan(1e-9);
 		expect(relative(path.endOrbits[1].center, path.meeting.r)).toBeLessThan(1e-9);
 	});
@@ -550,7 +550,7 @@ describe('end orbits', () => {
 		// against the body on that sample's own date — not against where the body
 		// ends up — and the first sample dropped is inside it.
 		const spheres = (body: typeof EARTH, index: number) => {
-			const state = elementsToState(body.elements, arc.jds[index], GM_SUN_KM3_S2)!;
+			const state = elementsToState(body.elements, arc.jds[index])!;
 			return norm(sub(arc.points[index], state.r)) / soiOf(body, GM_SUN_KM3_S2);
 		};
 		expect(spheres(EARTH, departure.trimFrom)).toBeGreaterThanOrEqual(1);
@@ -576,7 +576,7 @@ describe('end orbits', () => {
 		expect(arrival.periJd).toBeGreaterThan(route.arriveJd - 1);
 		expect(path.meeting.jd).toBe(arrival.periJd);
 		// And the shifted meeting is a real place on Mars' orbit, not an offset.
-		const mars = elementsToState(MARS.elements, arrival.periJd, GM_SUN_KM3_S2)!;
+		const mars = elementsToState(MARS.elements, arrival.periJd)!;
 		expect(relative(arrival.center, mars.r)).toBeLessThan(1e-9);
 	});
 
@@ -624,7 +624,7 @@ describe('end orbits', () => {
 			const body = end.bodyId === EARTH.id ? EARTH : MARS;
 			for (let i = 0; i < end.jds.length; i++) {
 				const jd = end.jds[i];
-				const here = elementsToState(body.elements, jd, GM_SUN_KM3_S2)!.r;
+				const here = elementsToState(body.elements, jd)!.r;
 				const fromBody = craftPositionAt(planet, jd)!;
 				expect(fromBody.centerId).toBe(body.id);
 				const fromSun = craftPositionAt(solar, jd)!;
@@ -1036,7 +1036,7 @@ describe('craftPositionAt', () => {
 		const at = craftPositionAt(path, flyby.jd)!.r;
 		// Mid-pass the craft rides the passage arc, well inside the sphere of
 		// influence of the body it is swinging past.
-		const venusAt = elementsToState(VENUS.elements, flyby.jd, GM_SUN_KM3_S2)!.r;
+		const venusAt = elementsToState(VENUS.elements, flyby.jd)!.r;
 		expect(norm(sub(at, venusAt))).toBeLessThan(soiOf(VENUS, GM_SUN_KM3_S2));
 	});
 });
@@ -1308,16 +1308,17 @@ describe('a crossing between two systems', () => {
 	it('runs straight from star to star, ends exactly on the two places', () => {
 		const route = torch(0);
 		const path = buildTrajectoryPath(EARTH, TAU_CETI.body, route, { centerId: SSB })!;
-		expect(path.arcs[0].points[0]).toEqual([0, 0, 0]);
-		expect(path.arcs.at(-1)!.points.at(-1)).toEqual(TAU_CETI.starKm);
-		expect(path.meeting.r).toEqual(TAU_CETI.starKm);
+		const { originKm: start, targetKm } = route.interstellar!;
+		expect(path.arcs[0].points[0]).toEqual(start);
+		expect(path.arcs.at(-1)!.points.at(-1)).toEqual(targetKm);
+		expect(path.meeting.r).toEqual(targetKm);
 		expect(path.stops.map((stop) => stop.bodyId)).toEqual([EARTH.id, TAU_CETI.body.id]);
 		expect(path.endOrbits).toEqual([]);
-		// Every sample is on the line between the two stars.
-		const axis = normalize(TAU_CETI.starKm);
+		// Every sample is on the line between the two ends.
+		const axis = normalize(sub(TAU_CETI.starKm, start));
 		for (const arc of path.arcs) {
 			for (const point of arc.points) {
-				expect(norm(cross(point, axis)) / LIGHT_YEAR_KM).toBeLessThan(1e-9);
+				expect(norm(cross(sub(point, start), axis)) / LIGHT_YEAR_KM).toBeLessThan(1e-9);
 			}
 		}
 	});
@@ -1327,8 +1328,8 @@ describe('a crossing between two systems', () => {
 		const path = buildTrajectoryPath(EARTH, TAU_CETI.body, route, { centerId: SSB })!;
 		expect(path.arcs.map((arc) => arc.kind)).toEqual(['boost', 'brake']);
 		const [boost, brake] = path.arcs;
-		expect(boost.points.at(-1)).toEqual(brake.points[0]);
-		expect(norm(boost.points.at(-1)!) / norm(TAU_CETI.starKm)).toBeCloseTo(0.5, 9);
+		expect(relative(boost.points.at(-1)!, brake.points[0])).toBeLessThan(1e-15);
+		expect(norm(boost.points.at(-1)!) / norm(TAU_CETI.starKm)).toBeCloseTo(0.5, 5);
 		// The arcs end on the dates of their legs, which the timeline reads.
 		const boostLeg = route.legs.find((leg) => leg.kind === 'boost')!;
 		expect(boost.startJd).toBe(route.departJd);
@@ -1381,7 +1382,7 @@ describe('a crossing between two systems', () => {
 		expect(path.arcs.map((arc) => arc.kind)).toEqual(['cruise']);
 		expect(path.arcs[0].endJd).toBe(route.arriveJd);
 		const middle = (route.departJd + route.arriveJd) / 2;
-		expect(share(path, middle)).toBeCloseTo(0.5, 9);
+		expect(share(path, middle)).toBeCloseTo(0.5, 5);
 	});
 
 	it('measures a trip between two other stars from the star it leaves', () => {
@@ -1394,7 +1395,8 @@ describe('a crossing between two systems', () => {
 			centerKm: PROXIMA.starKm
 		})!;
 		expect(path.centerId).toBe(PROXIMA.body.id);
-		expect(path.arcs[0].points[0]).toEqual([0, 0, 0]);
-		expect(relative(path.meeting.r, sub(TAU_CETI.starKm, PROXIMA.starKm))).toBeLessThan(1e-15);
+		const gapKm = sub(TAU_CETI.starKm, PROXIMA.starKm);
+		expect(norm(path.arcs[0].points[0]) / AU_KM).toBeCloseTo(1, 6);
+		expect(norm(sub(path.meeting.r, gapKm)) / AU_KM).toBeCloseTo(1, 6);
 	});
 });

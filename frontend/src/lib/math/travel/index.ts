@@ -101,6 +101,7 @@ export type { ConstantThrustOptions } from './brachistochrone';
 export { buildConstantThrustRoute } from './brachistochrone';
 
 export type {
+	CoastShape,
 	CrossingSweep,
 	InterstellarCruiseOptions,
 	InterstellarDrive,
@@ -109,16 +110,23 @@ export type {
 	InterstellarTorchOptions,
 	RapidityRate,
 	SystemEnd,
-	Well
+	Well,
+	WellConic
 } from './interstellar';
 export {
 	buildInterstellarCruiseRoute,
 	buildInterstellarTorchRoute,
+	coastShape,
+	conicPlaceKm,
 	crossingElapsed,
 	crossingIntegral,
+	crossingFlownKm,
 	crossingSweep,
+	endPlaceKm,
 	fastestCrossingEndJd,
-	interstellarDrive
+	interstellarDrive,
+	rapidityOfSpeed,
+	speedOfRapidity
 } from './interstellar';
 
 export {

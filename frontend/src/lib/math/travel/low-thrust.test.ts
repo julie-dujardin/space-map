@@ -162,8 +162,8 @@ describe('buildLowThrustRoute', () => {
 	it('leaves on the date the spiral comes out where the target is', () => {
 		const route = buildLowThrustRoute(EARTH, MARS, J2000, DAWN, options)!;
 		const rebuilt = rebuildSpiral(EARTH, MARS, route, { arrivalMode: 'low-orbit' })!;
-		const from = elementsToState(EARTH.elements, rebuilt.startJd, GM_SUN_KM3_S2)!;
-		const to = elementsToState(MARS.elements, route.arriveJd, GM_SUN_KM3_S2)!;
+		const from = elementsToState(EARTH.elements, rebuilt.startJd)!;
+		const to = elementsToState(MARS.elements, route.arriveJd)!;
 
 		const lonFrom = Math.atan2(from.r[1], from.r[0]);
 		const lonTo = Math.atan2(to.r[1], to.r[0]);
@@ -261,7 +261,7 @@ describe('buildLowThrustRoute', () => {
 		// Each end rides with its body: the spiral itself is thousands of loops
 		// inside a dot, and where that dot is, is what a transfer picture can say.
 		const climbEnd = path.arcs[0].points[path.arcs[0].points.length - 1];
-		const earthThen = elementsToState(EARTH.elements, path.arcs[0].endJd, GM_SUN_KM3_S2)!;
+		const earthThen = elementsToState(EARTH.elements, path.arcs[0].endJd)!;
 		expect(norm(sub(climbEnd, earthThen.r))).toBeLessThan(1);
 
 		// The craft has to be somewhere for every day of the trip, not just vanish

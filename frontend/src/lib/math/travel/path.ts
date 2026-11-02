@@ -470,8 +470,8 @@ function buildCrossing(
 		return heldDrivePath(departure, target, route, centerId, centralMu, samples);
 	}
 
-	const from = elementsToState(departure.elements, route.departJd, centralMu);
-	const to = elementsToState(target.elements, route.arriveJd, centralMu);
+	const from = elementsToState(departure.elements, route.departJd);
+	const to = elementsToState(target.elements, route.arriveJd);
 	if (!from || !to) return null;
 
 	const departureStop: PathStop = {
@@ -494,7 +494,7 @@ function buildCrossing(
 	if (flyby) {
 		const via = vias.find((body) => body.id === flyby.bodyId);
 		if (!via) return null;
-		const mid = elementsToState(via.elements, flyby.jd, centralMu);
+		const mid = elementsToState(via.elements, flyby.jd);
 		if (!mid) return null;
 
 		const tof1 = flyby.jd - route.departJd;
@@ -750,16 +750,16 @@ function endApproaches(
 		};
 	}
 
-	const from = elementsToState(departure.elements, route.departJd, centralMu);
-	const to = elementsToState(target.elements, route.arriveJd, centralMu);
+	const from = elementsToState(departure.elements, route.departJd);
+	const to = elementsToState(target.elements, route.arriveJd);
 	if (!from || !to) return {};
-	const departureAt = (jd: number) => elementsToState(departure.elements, jd, centralMu)?.r ?? null;
-	const targetAt = (jd: number) => elementsToState(target.elements, jd, centralMu)?.r ?? null;
+	const departureAt = (jd: number) => elementsToState(departure.elements, jd)?.r ?? null;
+	const targetAt = (jd: number) => elementsToState(target.elements, jd)?.r ?? null;
 
 	const flyby = route.flybys?.[0];
 	if (flyby) {
 		const via = vias.find((body) => body.id === flyby.bodyId);
-		const mid = via ? elementsToState(via.elements, flyby.jd, centralMu) : null;
+		const mid = via ? elementsToState(via.elements, flyby.jd) : null;
 		if (!mid) return {};
 		const normal = cross(from.r, from.v);
 		const out = solveLambert(
@@ -853,7 +853,7 @@ function heldDriveApproaches(
 	options: PathOptions,
 	path: PathGeometry
 ): { from?: EndApproach; to?: EndApproach } {
-	const { centralMu = GM_SUN_KM3_S2, systemPrimary } = options;
+	const { systemPrimary } = options;
 	const last = path.arcs[path.arcs.length - 1];
 	if (route.constantThrust == null || !last || last.points.length < 2) return {};
 	// Inside one system the crossing already runs between the primary's parking
@@ -863,7 +863,7 @@ function heldDriveApproaches(
 	const inSystem = systemPrimary === 'departure';
 	const targetAt = inSystem
 		? (jd: number) => relativeState(target, departure, jd)?.r ?? null
-		: (jd: number) => elementsToState(target.elements, jd, centralMu)?.r ?? null;
+		: (jd: number) => elementsToState(target.elements, jd)?.r ?? null;
 	const craftAt = arcCraftAt(path.arcs);
 
 	const from: EndApproach | undefined =
@@ -871,7 +871,7 @@ function heldDriveApproaches(
 			? undefined
 			: {
 					vInf: [0, 0, 0],
-					bodyAt: (jd) => elementsToState(departure.elements, jd, centralMu)?.r ?? null,
+					bodyAt: (jd) => elementsToState(departure.elements, jd)?.r ?? null,
 					craftAt,
 					jd: route.departJd,
 					drive: {
@@ -905,7 +905,7 @@ function endCenters(
 	route: Route,
 	options: PathOptions
 ): { from: Vec3; to: Vec3 } | null {
-	const { centralMu = GM_SUN_KM3_S2, systemPrimary } = options;
+	const { systemPrimary } = options;
 	// Both ends are the body the frame is centred on, so both are the origin.
 	if (options.orbitChange) return { from: [0, 0, 0], to: [0, 0, 0] };
 	// Inside one system the primary *is* the frame, so it sits at the origin and
@@ -919,8 +919,8 @@ function endCenters(
 		const center: Vec3 = [0, 0, 0];
 		return outbound ? { from: center, to: state.r } : { from: state.r, to: center };
 	}
-	const from = elementsToState(departure.elements, route.departJd, centralMu);
-	const to = elementsToState(target.elements, route.arriveJd, centralMu);
+	const from = elementsToState(departure.elements, route.departJd);
+	const to = elementsToState(target.elements, route.arriveJd);
 	if (!from || !to) return null;
 	return { from: from.r, to: to.r };
 }
@@ -2281,7 +2281,7 @@ function assistPassage(pass: {
 	const outward = branch(eOut);
 	if (!(inward.fallDays > 0) || !(outward.fallDays > 0)) return null;
 
-	const viaAt = (jd: number) => elementsToState(via.elements, jd, centralMu)?.r ?? null;
+	const viaAt = (jd: number) => elementsToState(via.elements, jd)?.r ?? null;
 	const chase = (v: Vec3, vInf: Vec3, leaving: boolean) =>
 		soiCrossingJd(
 			{
@@ -2450,8 +2450,8 @@ function heldDrivePath(
 	centralMu: number,
 	samples: number
 ): PathGeometry | null {
-	const from = elementsToState(departure.elements, route.departJd, centralMu);
-	const to = elementsToState(target.elements, route.arriveJd, centralMu);
+	const from = elementsToState(departure.elements, route.departJd);
+	const to = elementsToState(target.elements, route.arriveJd);
 	if (!from || !to) return null;
 
 	const burnDays = route.legs.find((leg) => leg.kind === 'boost')?.days;
@@ -2499,7 +2499,7 @@ function ridingWith(
 	const jds: number[] = [];
 	for (let i = 0; i < RIDING_SAMPLES; i++) {
 		const jd = fromJd + ((toJd - fromJd) * i) / (RIDING_SAMPLES - 1);
-		const state = elementsToState(body.elements, jd, centralMu);
+		const state = elementsToState(body.elements, jd);
 		if (!state) return null;
 		points.push(state.r);
 		jds.push(jd);
@@ -2540,8 +2540,8 @@ function spiralPath(
 	const revolutions = transfer.sweepRad / (Math.PI * 2);
 	if (!(revolutions <= SPIRAL_MAX_REVOLUTIONS)) return null;
 
-	const from = elementsToState(departure.elements, startJd, centralMu);
-	const to = elementsToState(target.elements, route.arriveJd, centralMu);
+	const from = elementsToState(departure.elements, startJd);
+	const to = elementsToState(target.elements, route.arriveJd);
 	if (!from || !to) return null;
 
 	const u0 = normalize(from.r);

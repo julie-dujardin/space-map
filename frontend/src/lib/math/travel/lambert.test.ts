@@ -24,8 +24,8 @@ function heliocentric(aAu: number, e: number, i = 0, om = 0, w = 0, ma = 0): Orb
  * solver, the frame, or the units shows up here.
  */
 function expectRecoversOrbit(el: OrbitalElements, jd1: number, jd2: number, digits = 6) {
-	const s1 = elementsToState(el, jd1, GM_SUN_KM3_S2)!;
-	const s2 = elementsToState(el, jd2, GM_SUN_KM3_S2)!;
+	const s1 = elementsToState(el, jd1)!;
+	const s2 = elementsToState(el, jd2)!;
 	const normal = cross(s1.r, s1.v);
 	const arc = solveLambert(s1.r, s2.r, (jd2 - jd1) * SEC_PER_DAY, GM_SUN_KM3_S2, normal)!;
 	expect(arc).not.toBeNull();
@@ -64,8 +64,8 @@ describe('solveLambert', () => {
 		// Geometry alone cannot tell which way round the transfer goes, so a
 		// retrograde orbit needs the caller to give its normal.
 		const el = heliocentric(1.5, 0.2, 165, 30, 60, 0);
-		const s1 = elementsToState(el, J2000, GM_SUN_KM3_S2)!;
-		const s2 = elementsToState(el, J2000 + 120, GM_SUN_KM3_S2)!;
+		const s1 = elementsToState(el, J2000)!;
+		const s2 = elementsToState(el, J2000 + 120)!;
 		const arc = solveLambert(s1.r, s2.r, 120 * SEC_PER_DAY, GM_SUN_KM3_S2)!;
 		expect(norm(sub(arc.v1, s1.v)) / norm(s1.v)).toBeGreaterThan(0.1);
 	});
@@ -126,12 +126,8 @@ describe('transferArc', () => {
 		norm(sub(arc.v1, from.v)) + norm(sub(arc.v2, to.v));
 
 	it('goes round the way the departure goes when the target goes the same way', () => {
-		const from = elementsToState(heliocentric(1, 0.0167), J2000, GM_SUN_KM3_S2)!;
-		const to = elementsToState(
-			heliocentric(1.524, 0.0934, 1.85, 49.6),
-			J2000 + 259,
-			GM_SUN_KM3_S2
-		)!;
+		const from = elementsToState(heliocentric(1, 0.0167), J2000)!;
+		const to = elementsToState(heliocentric(1.524, 0.0934, 1.85, 49.6), J2000 + 259)!;
 		const tof = 259 * SEC_PER_DAY;
 		const along = solveLambert(from.r, to.r, tof, GM_SUN_KM3_S2, cross(from.r, from.v))!;
 		expect(transferArc(from, to, tof, GM_SUN_KM3_S2)).toEqual(along);
@@ -140,8 +136,8 @@ describe('transferArc', () => {
 	it('takes the cheaper way between orbits that go round in opposite senses', () => {
 		// From a slow retrograde orbit in to a fast prograde one: turning the
 		// craft round at the start costs less than meeting the target head-on.
-		const from = elementsToState(heliocentric(5, 0, 180), J2000, GM_SUN_KM3_S2)!;
-		const to = elementsToState(heliocentric(1, 0, 0, 0, 0, 100), J2000 + 900, GM_SUN_KM3_S2)!;
+		const from = elementsToState(heliocentric(5, 0, 180), J2000)!;
+		const to = elementsToState(heliocentric(1, 0, 0, 0, 0, 100), J2000 + 900)!;
 		const tof = 900 * SEC_PER_DAY;
 		const normal = cross(from.r, from.v);
 		const along = solveLambert(from.r, to.r, tof, GM_SUN_KM3_S2, normal)!;

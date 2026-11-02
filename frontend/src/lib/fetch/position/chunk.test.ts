@@ -14,9 +14,17 @@ import { ObjectType } from '$lib/types/objects';
 
 const SUN_GM = 132712440041.94;
 const EARTH_MOON_GM = 403503.2355;
+const JOVIAN_SYSTEM_GM = 126712764.1;
 
 vi.mock('$lib/fetch/systems-global', () => ({
-	getGmKm3s2: (naif: number) => (naif === 0 ? SUN_GM : naif === 3 ? EARTH_MOON_GM : undefined)
+	getGmKm3s2: (naif: number) =>
+		naif === 0 || naif === 10
+			? SUN_GM
+			: naif === 3
+				? EARTH_MOON_GM
+				: naif === 5
+					? JOVIAN_SYSTEM_GM
+					: undefined
 }));
 
 const { ChunkLoader } = await import('./chunk');
@@ -78,9 +86,9 @@ const FIRST = chunk(utcToTdb(JD), NEAR_KM);
 const SECOND = chunk(utcToTdb(LATER), FAR_KM);
 const withoutEarth = (records: ChebyshevBody[]) => records.filter((r) => r.naifId !== 399);
 
-/** The Moon as the loader builds it at `JD`, over a store that answers each
+/** The bodies as the loader builds them at `JD`, over a store that answers each
  *  date with the records of the chunk that covers it. */
-function moonOver(records: ChebyshevBody[]) {
+function loaded(records: ChebyshevBody[]) {
 	const covers = (r: ChebyshevBody, jd: number) => r.startJds[0] <= jd && jd < r.endJds[0];
 	const store = {
 		bodiesAt: (jd: number) =>
@@ -89,8 +97,11 @@ function moonOver(records: ChebyshevBody[]) {
 				.map((body) => ({ zone: 'major', body, startJd: body.startJds[0], endJd: body.endJds[0] })),
 		body: (id: string, jd: number) => records.find((r) => r.id === id && covers(r, jd)) ?? null
 	} as unknown as ChebyshevStore;
-	const bodies = new ChunkLoader(store).processChebyshev(jdToDate(JD), new Map());
-	return bodies.find((b) => b.data.id === 'naif-301')!;
+	return new ChunkLoader(store).processChebyshev(jdToDate(JD), new Map());
+}
+
+function moonOver(records: ChebyshevBody[]) {
+	return loaded(records).find((b) => b.data.id === 'naif-301')!;
 }
 
 describe('ChunkLoader.processChebyshev, a moon', () => {
@@ -128,5 +139,35 @@ describe('ChunkLoader.processChebyshev, a moon', () => {
 		const moon = moonOver([...FIRST, ...withoutEarth(SECOND)]);
 		expect(moon.orbitElements).toBeDefined();
 		expect(moon.rederiveElements!(LATER)).toBeNull();
+	});
+});
+
+describe('ChunkLoader.processChebyshev, a planet about the Sun', () => {
+	const MID = utcToTdb(JD);
+	const R_KM = 5.2 * AU_KM;
+	const SUM_GM = SUN_GM + JOVIAN_SYSTEM_GM;
+	/** A barycentre `naif` on a circle under `gm`, with the Sun at the origin of the file. */
+	const onCircle = (naif: number, gm: number) => [
+		record(10, 0, ObjectType.STAR, MID, 0, 0),
+		record(naif, 0, ObjectType.BARYCENTER, MID, R_KM, Math.sqrt(gm / R_KM) * DAY_S)
+	];
+	const body = (naif: number, gm: number) =>
+		loaded(onCircle(naif, gm)).find((b) => b.data.id === `naif-${naif}`)!.data;
+
+	it('fits the Sun-centred orbit with the GM of the Sun plus the GM of its system', () => {
+		const { helioElements } = body(5, SUM_GM);
+		expect(helioElements!.a).toBeCloseTo(5.2, 9);
+		expect(helioElements!.e).toBeLessThan(1e-9);
+		const motion = Math.sqrt(SUM_GM / R_KM ** 3) * DAY_S * (180 / Math.PI);
+		expect(helioElements!.n / motion).toBeCloseTo(1, 9);
+	});
+
+	it('keeps the GM of the Sun alone for the ellipse that the map redraws', () => {
+		const { a } = body(5, SUM_GM);
+		expect(a / 5.2).toBeCloseTo(1 / (2 - SUM_GM / SUN_GM), 9);
+	});
+
+	it('takes the GM of the Sun alone for a body with no GM', () => {
+		expect(body(7, SUN_GM).helioElements!.a).toBeCloseTo(5.2, 9);
 	});
 });

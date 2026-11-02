@@ -126,18 +126,36 @@ export interface RouteLeg {
 	absorbedKms?: number;
 }
 
+/** One hyperbola of a coast between two systems, as the hazards read it. */
+export interface ConicSpan {
+	/** Time on the hyperbola, days. */
+	days: number;
+	/** Length of the crossing that it covers, km. */
+	km: number;
+}
+
 /** What a crossing between two star systems adds to a route. */
 export interface InterstellarCrossing {
-	/** Distance between the two stars, km. */
+	/** Distance from `originKm` to `targetKm`, km. */
 	distanceKm: number;
-	/** Speed against the stars on the coast, km/s. On a held arc this is the peak. */
+	/** Speed against the stars on the coast, km/s, below c. On a held arc this is the peak. */
 	cruiseKms: number;
 	/** Lorentz factor at that speed. */
 	gamma: number;
-	/** Position of the origin's star, km, ecliptic J2000 from the solar-system barycentre. */
+	/** The rapidity at that speed times c, km/s. This figure can pass c. See
+	 *  `speedOfRapidity`. */
+	rapidityKms: number;
+	/** Place of the origin end at departure, km, ecliptic J2000 from the
+	 *  solar-system barycentre. The Sun is at the barycentre in this frame. A held
+	 *  arc starts short of a star: see `heldLine`. */
 	originKm: Vec3;
-	/** Position of the target's star, km, in the same frame. */
+	/** Place of the target end at arrival, km, in the same frame. A held arc stops
+	 *  short of a star: see `heldLine`. */
 	targetKm: Vec3;
+	/** The hyperbolas at the two ends of a coast. Absent on a held arc. `flownKm` is
+	 *  the length of the path, which a ring wider than the gap makes longer than
+	 *  `distanceKm`. */
+	conics?: { departure: ConicSpan; arrival: ConicSpan; flownKm: number };
 }
 
 export interface Route {
@@ -151,8 +169,11 @@ export interface Route {
 	totalDvKms: number;
 	/** Total excluding ascent — what a craft already in orbit has to find. */
 	inSpaceDvKms: number;
-	/** Launch energy, km²/s² — the number launch vehicles are rated against. */
+	/** Launch energy, km²/s². A launch vehicle is rated against this figure. On a
+	 *  crossing it is a costed figure, so it can pass c². */
 	c3Km2S2: number;
+	/** Excess speed at each end, km/s. This is a real speed, below c. A price that
+	 *  starts from it on a crossing reads it through `rapidityOfSpeed`. */
 	vInfDepKms: number;
 	vInfArrKms: number;
 	departureMode: DepartureMode;
@@ -424,8 +445,8 @@ export function buildRoute(
 	}
 
 	const arriveJd = departJd + tofDays;
-	const from = elementsToState(departure.elements, departJd, centralMu);
-	const to = elementsToState(target.elements, arriveJd, centralMu);
+	const from = elementsToState(departure.elements, departJd);
+	const to = elementsToState(target.elements, arriveJd);
 	if (!from || !to) return null;
 
 	const arc = transferArc(from, to, tofDays * SEC_PER_DAY, centralMu);

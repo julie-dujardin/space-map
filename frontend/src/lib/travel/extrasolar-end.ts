@@ -20,7 +20,12 @@ import {
 	planetObjectId,
 	planetOfObjectId
 } from '$lib/fetch/extrasolar/ids';
-import { extrasolarLookup, homeRow, systemPrimary } from '$lib/fetch/extrasolar/lookup';
+import {
+	extrasolarLookup,
+	homeRow,
+	systemPrimary,
+	type ExtrasolarRecord
+} from '$lib/fetch/extrasolar/lookup';
 import { planetCatalogue, type Planet } from '$lib/fetch/extrasolar/planets';
 import {
 	GM_SUN_KM3_S2,
@@ -33,7 +38,7 @@ import { JUPITER_RADIUS_KM, SOLAR_RADIUS_KM } from '$lib/math/units';
 import { sceneToEcliptic } from '$lib/scene/extensions/camera';
 import { hostScene, makePlanetBodies } from '$lib/scene/exoplanets/bodies';
 import { makeStarBody } from '$lib/scene/focus/star-focus';
-import { starMass, type StarMass } from '$lib/scene/starfield/record';
+import { measuredRadiusSolar, starMass, type StarMass } from '$lib/scene/starfield/record';
 import type {
 	BodyData,
 	OrbitalElements,
@@ -178,6 +183,14 @@ function muOf(mass: StarMass | null): number | null {
 	return mass && mass.solar * GM_SUN_KM3_S2;
 }
 
+/** The measured radius of a point of several stars, km. The scene draws no sphere
+ *  for such a point, and a trip must still stop clear of what the point measures. */
+function pointRadiusKm(record: ExtrasolarRecord): number | null {
+	const home = homeRow(record);
+	const radius = home && measuredRadiusSolar(home);
+	return radius && radius * SOLAR_RADIUS_KM;
+}
+
 function starEnd(body: PositionedBody, star: StarAnchor): ExtrasolarEnd | null {
 	if (!star.scene) return null;
 	return {
@@ -187,7 +200,7 @@ function starEnd(body: PositionedBody, star: StarAnchor): ExtrasolarEnd | null {
 			id: body.data.id,
 			positionKm: sceneToEcliptic(star.scene),
 			muKm3S2: muOf(starMass(homeRow(star.record))),
-			radiusKm: star.radiusKm,
+			radiusKm: star.radiusKm ?? pointRadiusKm(star.record),
 			class: star.record.metadata.class
 		},
 		planet: null
@@ -214,7 +227,10 @@ function planetEnd(
 			id: extrasolarObjectId(anchor.host),
 			positionKm: sceneToEcliptic(at),
 			muKm3S2: muOf(starMass(host && homeRow(host.record), planet)),
-			radiusKm: host?.radiusKm ?? (fitRadius && fitRadius * SOLAR_RADIUS_KM),
+			radiusKm:
+				host?.radiusKm ??
+				(fitRadius && fitRadius * SOLAR_RADIUS_KM) ??
+				(host && pointRadiusKm(host.record)),
 			class: hostRecord.class
 		},
 		planet: {
@@ -301,8 +317,8 @@ export async function resolveExtrasolarEnd(objectId: string): Promise<Extrasolar
 	}
 }
 
-/** The kernel's view of an end; null for a planet with no size. A star is met
- *  or passed, so no price reads its μ. */
+/** The kernel's view of an end; null for a planet with no size. A star of
+ *  unknown mass has a μ of 0, and the kernel prices no orbit about it. */
 export function extrasolarTravelBody(end: ExtrasolarEnd): TravelBody | null {
 	const { body, star, planet } = end;
 	if (!planet) {
@@ -332,9 +348,10 @@ export function extrasolarTravelBody(end: ExtrasolarEnd): TravelBody | null {
 }
 
 /** The kernel's view of an end on a trip between two systems. `extrasolar` is
- *  null for an end in the solar system, whose star is taken to be at the
- *  barycentre. `wells` are the wells of such an end below the Sun (see
- *  `wellsAbove`). The catalogue has no moons of other stars. */
+ *  null for an end in the solar system. The kernel keeps the Sun at the
+ *  barycentre, so that `endPlaceKm` of such an end is its place about the Sun.
+ *  `wells` are the wells of such an end below the Sun (see `wellsAbove`). The
+ *  catalogue has no moons of other stars. */
 export function systemEndOf(
 	body: TravelBody,
 	extrasolar: ExtrasolarEnd | null,

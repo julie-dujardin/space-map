@@ -39,17 +39,16 @@ const SSB_NAIF_ID = 0;
 const SUN_NAIF_ID = 10;
 
 /**
- * Osculating Keplerian elements from a chebyshev body's state at `jd`, with
- * the parent's GM. Null when the parent has no GM, the sample misses, or the
- * state degenerates. Drives the trail curve through the same kepler path as
- * SBDB-sourced bodies (see `processChebyshev`); re-invoked periodically via
- * `PositionedBody.rederiveElements` to keep the ellipse aligned as time advances.
+ * Osculating elements of a chebyshev body at `jd`, about `parentId` or about
+ * `origin` when given. μ is the parent's GM plus `ownGm`. Null when the parent
+ * has no GM, the sample misses, or the state degenerates.
  */
 function chebyshevOsculatingElements(
 	body: ChebyshevBody,
 	parentId: number,
 	jd: number,
-	origin?: ChebyshevBody
+	origin?: ChebyshevBody,
+	ownGm = 0
 ): OrbitalElements | null {
 	const gmKm3s2 = getGmKm3s2(parentId);
 	if (!gmKm3s2) return null;
@@ -57,7 +56,7 @@ function chebyshevOsculatingElements(
 	if (!state) return null;
 	const from = origin ? chebyshevStateKm(origin, jd) : null;
 	if (origin && !from) return null;
-	const muAuDay2 = gmKm3s2 * KM3_S2_TO_AU3_DAY2;
+	const muAuDay2 = (gmKm3s2 + ownGm) * KM3_S2_TO_AU3_DAY2;
 	const r: [number, number, number] = [
 		(state.position[0] - (from?.position[0] ?? 0)) / AU_KM,
 		(state.position[1] - (from?.position[1] ?? 0)) / AU_KM,
@@ -72,12 +71,10 @@ function chebyshevOsculatingElements(
 }
 
 /**
- * The Sun-centred orbit of a body the ephemeris places against the barycentre.
- * The SSB-relative fit isn't a real orbit — nothing goes round the barycentre,
- * and it absorbs the Sun's wobble into the semi-major axis (Venus comes out
- * 1.5% wide), walking a propagated position tens of millions of km off over a
- * few years. Fine for a redrawn ellipse, ruinous for the trajectory planner —
- * so heliocentric bodies get a second fit against the Sun's GM instead.
+ * The Sun-centred orbit of a body that the ephemeris places against the
+ * barycentre, for the planner. A fit against the barycentre puts the Sun's
+ * wobble into the semi-major axis. Motion relative to the Sun runs on the GM of
+ * the Sun plus the GM of the body. A barycentre's GM is that of its whole system.
  */
 function chebyshevHelioElements(
 	body: ChebyshevBody,
@@ -85,7 +82,7 @@ function chebyshevHelioElements(
 	sun: ChebyshevBody | null
 ): OrbitalElements | null {
 	if (!sun || body.parentId !== SSB_NAIF_ID || body.naifId === SUN_NAIF_ID) return null;
-	return chebyshevOsculatingElements(body, SUN_NAIF_ID, jd, sun);
+	return chebyshevOsculatingElements(body, SUN_NAIF_ID, jd, sun, getGmKm3s2(body.naifId));
 }
 
 /** Build the URL for an elements-payload position file. Static parted zones

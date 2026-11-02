@@ -1165,7 +1165,7 @@ describe('TravelPanelState between two systems', () => {
 			'constant-thrust-custom'
 		]);
 		const flatOut = panel.offered[0].route;
-		expect(flatOut.interstellar?.distanceKm).toBeCloseTo(4.24 * LIGHT_YEAR_KM, 0);
+		expect(flatOut.interstellar!.distanceKm / (4.24 * LIGHT_YEAR_KM)).toBeCloseTo(1, 4);
 		expect(panel.feasibility(flatOut)?.status).toBe('ok');
 	});
 

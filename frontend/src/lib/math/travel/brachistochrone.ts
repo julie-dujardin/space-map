@@ -46,8 +46,7 @@ const AT_REST: StateVector = { r: [0, 0, 0], v: [0, 0, 0], mu: 0 };
 function frameEnds(
 	departure: TravelBody,
 	target: TravelBody,
-	systemPrimary: RouteOptions['systemPrimary'],
-	centralMu: number
+	systemPrimary: RouteOptions['systemPrimary']
 ): { from: Ephemeris; to: Ephemeris } {
 	if (systemPrimary === 'departure') {
 		return { from: () => AT_REST, to: (jd) => relativeState(target, departure, jd) };
@@ -56,8 +55,8 @@ function frameEnds(
 		return { from: (jd) => relativeState(departure, target, jd), to: () => AT_REST };
 	}
 	return {
-		from: (jd) => elementsToState(departure.elements, jd, centralMu),
-		to: (jd) => elementsToState(target.elements, jd, centralMu)
+		from: (jd) => elementsToState(departure.elements, jd),
+		to: (jd) => elementsToState(target.elements, jd)
 	};
 }
 
@@ -169,7 +168,7 @@ export function solveConstantThrustArc(
 	const accelKmS2 = accelMs2 / 1000;
 	if (!(accelKmS2 > 0)) return null;
 
-	const { from, to } = frameEnds(departure, target, systemPrimary, centralMu);
+	const { from, to } = frameEnds(departure, target, systemPrimary);
 	const start = from(departJd);
 	const here = to(departJd);
 	if (!start || !here) return null;

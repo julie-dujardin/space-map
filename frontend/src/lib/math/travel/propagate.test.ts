@@ -10,7 +10,7 @@ const EARTH_YEAR_SEC = 365.256363 * SEC_PER_DAY;
 
 describe('propagateState', () => {
 	it('walks Earth round its own orbit back to where it started', () => {
-		const state = elementsToState(EARTH.elements, J2000, GM_SUN_KM3_S2)!;
+		const state = elementsToState(EARTH.elements, J2000)!;
 		const after = propagateState(state.r, state.v, EARTH_YEAR_SEC, GM_SUN_KM3_S2)!;
 		expect(after).not.toBeNull();
 		// A sidereal year returns it to within a fraction of a percent of 1 AU of
@@ -19,18 +19,18 @@ describe('propagateState', () => {
 	});
 
 	it('agrees with the element propagator across a quarter orbit', () => {
-		const state = elementsToState(EARTH.elements, J2000, GM_SUN_KM3_S2)!;
+		const state = elementsToState(EARTH.elements, J2000)!;
 		const quarter = EARTH_YEAR_SEC / 4;
 		const walked = propagateState(state.r, state.v, quarter, GM_SUN_KM3_S2)!;
-		const expected = elementsToState(EARTH.elements, J2000 + quarter / SEC_PER_DAY, GM_SUN_KM3_S2)!;
+		const expected = elementsToState(EARTH.elements, J2000 + quarter / SEC_PER_DAY)!;
 		expect(norm(sub(walked, expected.r)) / norm(expected.r)).toBeLessThan(1e-6);
 	});
 
 	it('runs backwards as readily as forwards', () => {
-		const state = elementsToState(MARS.elements, J2000, GM_SUN_KM3_S2)!;
+		const state = elementsToState(MARS.elements, J2000)!;
 		const forward = propagateState(state.r, state.v, 100 * SEC_PER_DAY, GM_SUN_KM3_S2)!;
 		const back = propagateState(state.r, state.v, -100 * SEC_PER_DAY, GM_SUN_KM3_S2)!;
-		const expected = elementsToState(MARS.elements, J2000 - 100, GM_SUN_KM3_S2)!;
+		const expected = elementsToState(MARS.elements, J2000 - 100)!;
 		expect(norm(sub(back, expected.r)) / norm(expected.r)).toBeLessThan(1e-6);
 		// Distinct directions, so the sign is genuinely being read.
 		expect(norm(sub(forward, back))).toBeGreaterThan(1e7);
@@ -38,8 +38,8 @@ describe('propagateState', () => {
 
 	it('lands a Lambert arc on the position it was solved to reach', () => {
 		const tofDays = 260;
-		const from = elementsToState(EARTH.elements, J2000, GM_SUN_KM3_S2)!;
-		const to = elementsToState(MARS.elements, J2000 + tofDays, GM_SUN_KM3_S2)!;
+		const from = elementsToState(EARTH.elements, J2000)!;
+		const to = elementsToState(MARS.elements, J2000 + tofDays)!;
 		const arc = solveLambert(from.r, to.r, tofDays * SEC_PER_DAY, GM_SUN_KM3_S2)!;
 		const flown = propagateState(from.r, arc.v1, tofDays * SEC_PER_DAY, GM_SUN_KM3_S2)!;
 		// The two solvers are independent, so this closing is what says the arc
@@ -85,12 +85,12 @@ describe('propagateState', () => {
 	});
 
 	it('returns the position it was given for no elapsed time', () => {
-		const state = elementsToState(EARTH.elements, J2000, GM_SUN_KM3_S2)!;
+		const state = elementsToState(EARTH.elements, J2000)!;
 		expect(propagateState(state.r, state.v, 0, GM_SUN_KM3_S2)).toEqual(state.r);
 	});
 
 	describe('propagateFull', () => {
-		const state = elementsToState(EARTH.elements, J2000, GM_SUN_KM3_S2)!;
+		const state = elementsToState(EARTH.elements, J2000)!;
 
 		// The velocity is what a coasting craft hands to whatever burns next, so it
 		// has to be the arc's own and not a difference quotient off two positions.
@@ -112,7 +112,7 @@ describe('propagateState', () => {
 		it('agrees with the ephemeris it was seeded from', () => {
 			const days = 90;
 			const walked = propagateFull(state.r, state.v, days * SEC_PER_DAY, GM_SUN_KM3_S2)!;
-			const direct = elementsToState(EARTH.elements, J2000 + days, GM_SUN_KM3_S2)!;
+			const direct = elementsToState(EARTH.elements, J2000 + days)!;
 			// Mean elements are not a Kepler propagation of themselves, so this is a
 			// sanity bound rather than an identity.
 			expect(norm(sub(walked.r, direct.r)) / norm(direct.r)).toBeLessThan(1e-3);

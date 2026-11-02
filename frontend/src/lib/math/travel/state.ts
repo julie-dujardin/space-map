@@ -24,7 +24,7 @@ export interface StateVector {
 	r: Vec3;
 	/** Velocity in the same frame, km/s. */
 	v: Vec3;
-	/** Gravitational parameter the state was built with, km³/s². */
+	/** μ of the orbit, km³/s²: n²a³, or the Sun's on a parabola. */
 	mu: number;
 }
 
@@ -91,44 +91,30 @@ export function eclipticToScene(r: Vec3): Vec3 {
 
 /**
  * Position and velocity at `jd`, in the parent-centred ecliptic J2000 frame.
- * `muKm3S2` should be supplied whenever a trustworthy value exists (the SPICE
- * PCK GMs the export ships); without it μ is recovered from Kepler's third
- * law using the packed mean motion, float32 in the binary and so good to
- * roughly seven digits — fine for a Δv estimate, not ephemeris work. Mean
- * anomaly is always propagated with the packed mean motion rather than one
- * re-derived from μ, so positions agree with what the renderer draws. Returns
- * null when the elements are unusable.
+ * Speed and motion both read `n` and `a`, so that a body moves as the map draws
+ * it, whatever its central mass. A parabola has neither. Only a heliocentric
+ * comet has one, so it takes the Sun's μ. Null when the elements are unusable.
  */
-export function elementsToState(
-	el: OrbitalElements,
-	jd: number,
-	muKm3S2?: number
-): StateVector | null {
+export function elementsToState(el: OrbitalElements, jd: number): StateVector | null {
 	const { a, e, ma, n, epoch, q, tp } = el;
 	const t = elementsJd(el, jd);
 	const { om, w } = propagateOrbitAngles(el, jd);
 	const equatorial = el.equatorial ?? false;
 
-	// Parabolic elements carry q/tp instead of a/n, and only ever describe
-	// heliocentric comets — hence the Sun's μ as the fallback.
 	if (!isFinite(a) || a === 0 || !isFinite(n) || n <= 0) {
 		if (q == null || tp == null || !isFinite(q) || !isFinite(tp) || q <= 0) return null;
 		const solved = solveBarker(q, tp, t);
 		if (!solved) return null;
-		const mu = muKm3S2 && muKm3S2 > 0 ? muKm3S2 : GM_SUN_KM3_S2;
 		const rKm = solved.r * AU_KM;
 		const pKm = 2 * q * AU_KM; // semi-latus rectum of a parabola
-		return buildState(rKm, solved.nu, pKm, 1, mu, w, el.i, om, equatorial);
+		return buildState(rKm, solved.nu, pKm, 1, GM_SUN_KM3_S2, w, el.i, om, equatorial);
 	}
 
 	if (!isFinite(e) || !isFinite(ma)) return null;
 
 	const aKm = a * AU_KM;
 	const nRadPerSec = (n * DEG2RAD) / SEC_PER_DAY;
-	const mu =
-		muKm3S2 && muKm3S2 > 0
-			? muKm3S2
-			: nRadPerSec * nRadPerSec * Math.abs(aKm) * Math.abs(aKm) * Math.abs(aKm);
+	const mu = nRadPerSec * nRadPerSec * Math.abs(aKm) * Math.abs(aKm) * Math.abs(aKm);
 	if (!isFinite(mu) || mu <= 0) return null;
 
 	const M = (ma + n * (t - epoch)) * DEG2RAD;

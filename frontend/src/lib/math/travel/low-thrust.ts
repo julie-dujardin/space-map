@@ -287,8 +287,8 @@ function spiralPlan(
 		};
 	}
 
-	const from = elementsToState(departure.elements, jd, centralMu);
-	const to = elementsToState(target.elements, jd, centralMu);
+	const from = elementsToState(departure.elements, jd);
+	const to = elementsToState(target.elements, jd);
 	if (!from || !to) return null;
 
 	const r0 = circularRadiusKm(departure);
@@ -370,18 +370,17 @@ function phasedDeparture(
 	target: TravelBody,
 	earliestJd: number,
 	escapeDays: number,
-	transfer: SpiralTransfer,
-	centralMu: number
+	transfer: SpiralTransfer
 ): number | null {
-	const reference = elementsToState(departure.elements, earliestJd + escapeDays, centralMu);
+	const reference = elementsToState(departure.elements, earliestJd + escapeDays);
 	if (!reference) return null;
 	const basis = planeBasis(reference);
 	if (!basis) return null;
 
 	const cruiseDays = transfer.days;
 	const miss = (departJd: number): number | null => {
-		const from = elementsToState(departure.elements, departJd + escapeDays, centralMu);
-		const to = elementsToState(target.elements, departJd + escapeDays + cruiseDays, centralMu);
+		const from = elementsToState(departure.elements, departJd + escapeDays);
+		const to = elementsToState(target.elements, departJd + escapeDays + cruiseDays);
 		if (!from || !to) return null;
 		return wrapPi(angleIn(basis, from.r) + transfer.sweepRad - angleIn(basis, to.r));
 	};
@@ -482,7 +481,7 @@ export function buildLowThrustRoute(
 	const captureDays = spiralDays(shape.captureKms, captureDrive);
 
 	const departJd = shape.phased
-		? phasedDeparture(departure, target, earliestJd, escapeDays, transfer, centralMu)
+		? phasedDeparture(departure, target, earliestJd, escapeDays, transfer)
 		: earliestJd;
 	if (departJd === null) return null;
 
