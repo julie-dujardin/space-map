@@ -128,6 +128,12 @@ export class Placer {
 		private readonly held: () => boolean = () => false
 	) {}
 
+	/** The date of the last pass, which the scene shows: the renderer opens
+	 *  each pass at the date it then holds as its own. NaN before the first. */
+	get jd(): number {
+		return this.passJd;
+	}
+
 	/** Open a frame pass at `jd`. `frame` absent: no body is skipped. */
 	begin(jd: number, focusedId: string | undefined, frame: number | undefined): void {
 		this.passJd = jd;

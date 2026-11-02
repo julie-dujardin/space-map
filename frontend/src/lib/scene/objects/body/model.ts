@@ -19,7 +19,7 @@ import { textureAllowed } from '$lib/host';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { ObjectType, effectiveRadiusKm, type PositionedBody } from '$lib/types/objects';
 import { kmToScene, sceneToKm } from '$lib/math/units';
-import { frameMapQuaternion, type LandedHeading } from '$lib/math/orientation';
+import { applyOrientation, frameMapQuaternion, type LandedHeading } from '$lib/math/orientation';
 import { sceneSettings } from '$lib/scene/settings.svelte';
 import { OrbitalSource } from '$lib/fetch/position/format';
 import type { BodyObjects } from '../../types';
@@ -210,11 +210,14 @@ export const attachedModelRoots = new Set<Object3D>();
  * per-frame position while all unit-scale conventions (occluder spheres,
  * recentring offsets, surface casts) stay valid inside it.
  */
-function mountModel(bo: BodyObjects, root: Object3D): void {
-	// Turned as the sphere it replaces, which the position pass turns with the
-	// same spin. The next pass can be a long way off: the clock may stand
-	// still, or the date be held, and the model would be drawn unturned.
+function mountModel(bo: BodyObjects, root: Object3D, jd: number): void {
+	// Turned as the last position pass turned the body: as the sphere it
+	// replaces, or by the body's spin at that pass's date where it has none
+	// (no measured size). The next pass can be a long way off: the clock may
+	// stand still, or the date be held, and the model would be drawn unturned.
 	if (bo.mesh) root.quaternion.copy(bo.mesh.quaternion);
+	else if (bo.body.orientation && Number.isFinite(jd))
+		applyOrientation(root, bo.body.orientation, jd, bo.body.nutPrec);
 	const wrapper = new Group();
 	wrapper.scale.setScalar(modelUnitScene(bo));
 	wrapper.userData.pickBody = bo.body;
@@ -445,7 +448,7 @@ async function loadNaturalBodyModel(bo: BodyObjects, ctx?: ContextManager): Prom
 				setLabelAnnotation(bo, 'missing', null);
 			}
 		}
-		mountModel(bo, root);
+		mountModel(bo, root, ctx?.placer?.jd ?? NaN);
 		bo.modelName = slug;
 		if (bo.mesh) bo.mesh.visible = false;
 		const credit = shapeModelCredit(meta);

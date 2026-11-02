@@ -40,22 +40,26 @@ const JD = 2461341.1458333335;
 
 const credit = { name: 'NASA', url: 'https://pds.nasa.gov' };
 
-function bodyObjects(id: string, objectType: ObjectType): BodyObjects {
+/** A body as the scene holds it. A natural body of no measured size has no
+ *  sphere. */
+function bodyObjects(id: string, objectType: ObjectType, sphere = true): BodyObjects {
 	const body = {
-		data: { id, name: id, objectType, radiusKm: 198.2 },
+		data: { id, name: id, objectType, radiusKm: sphere ? 198.2 : 0 },
 		position: [0, 0, 0],
 		orientation: objectType === ObjectType.MOON ? MIMAS_SPIN : undefined
 	} as unknown as PositionedBody;
-	const mesh = new Mesh(new SphereGeometry(1), new MeshStandardMaterial());
+	const mesh = sphere ? new Mesh(new SphereGeometry(1), new MeshStandardMaterial()) : null;
 	// As the last position pass left it.
-	if (body.orientation) mesh.quaternion.copy(bodyQuaternion(body.orientation, JD));
+	if (mesh && body.orientation) mesh.quaternion.copy(bodyQuaternion(body.orientation, JD));
 	return { body, group: new Group(), mesh, radiusScene: 1e-6 } as unknown as BodyObjects;
 }
 
 function context(): ContextManager {
 	return {
 		bodies: { dataVersion: 0 },
-		credits: { registerModel: () => {} }
+		credits: { registerModel: () => {} },
+		// The last position pass was at the tutorial's date.
+		placer: { jd: JD }
 	} as unknown as ContextManager;
 }
 
@@ -109,10 +113,23 @@ describe('loadBodyModel', () => {
 		sendMeta();
 		sendMesh();
 		const bo = (mounted = bodyObjects('naif-601', ObjectType.MOON));
-		await loadBodyModel(bo, new Scene(), context());
+		// No date to turn it by: the sphere alone says how.
+		await loadBodyModel(bo, new Scene(), { ...context(), placer: null } as ContextManager);
 		expect(bo.model).toBeTruthy();
 		expect(bo.mesh!.quaternion.equals(new Quaternion())).toBe(false);
 		expect(bo.model!.quaternion.angleTo(bo.mesh!.quaternion)).toBeLessThan(1e-9);
+	});
+
+	it('turns a shape model with no sphere by its spin at the date the scene shows', async () => {
+		detail.global = { id: 'naif-601', model_name: 'mimas-no-sphere', render_quality: 'high' };
+		const { sendMeta, sendMesh } = serve({ kind: 'shape_model', exports: { high: { credit } } });
+		sendMeta();
+		sendMesh();
+		const bo = (mounted = bodyObjects('naif-601', ObjectType.MOON, false));
+		await loadBodyModel(bo, new Scene(), context());
+		expect(bo.model).toBeTruthy();
+		const spin = bodyQuaternion(MIMAS_SPIN, JD);
+		expect(bo.model!.quaternion.angleTo(spin)).toBeLessThan(1e-9);
 	});
 
 	it('mounts nothing for a load given up while its mesh was on the way', async () => {
