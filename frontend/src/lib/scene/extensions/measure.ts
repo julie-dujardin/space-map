@@ -11,18 +11,31 @@ import type { LonLat } from '$lib/flatmap/geometry';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import type { Vec3 } from '$lib/scene/animation/math';
 import { sunInView } from '$lib/scene/objects/surface/eclipse-shadow';
-import { bodyCentre, resolveAnchor, type Anchor, type AnchorBody, type OffsetKm } from './anchor';
+import {
+	bodyCentre,
+	isSurface,
+	resolveAnchor,
+	type Anchor,
+	type AnchorBody,
+	type OffsetKm
+} from './anchor';
 import { sceneToEcliptic } from './camera';
 import { planeBasis } from './geometry';
 
+/** Whether `anchor` is a place on a body whose spin waits on its nutation
+ *  terms: the place turns with the body once they come. */
+const turnsYet = (anchor: Anchor, ctx: ContextManager) =>
+	isSurface(anchor) && ctx.bodies.nutationAwaited.has(anchor.body);
+
 /** From one anchor to another, in kilometres on ecliptic J2000 axes; null
- *  while either is nowhere. */
+ *  while either is nowhere, or is a place on a body that may yet turn. */
 export function anchorOffsetKm(
 	a: Anchor,
 	b: Anchor,
 	ctx: ContextManager,
 	jd: number
 ): OffsetKm | null {
+	if (turnsYet(a, ctx) || turnsYet(b, ctx)) return null;
 	const from = resolveAnchor(a, ctx, jd);
 	const to = resolveAnchor(b, ctx, jd);
 	if (!from || !to) return null;
@@ -62,14 +75,15 @@ export function subsolarAt(body: AnchorBody, centre: Vec3, sun: Vec3, jd: number
 
 /**
  * {@link subsolarAt} for a body of the scene. Null for a body that is not
- * loaded or is nowhere at this date, and until the map has read how it spins:
- * the answer would be in a frame that may yet turn.
+ * loaded or is nowhere at this date, and until the map has read how it spins,
+ * nutation terms included: the answer would be in a frame that may yet turn.
  */
 export function subsolarPoint(id: string, ctx: ContextManager, jd: number): LonLat | null {
 	const body = ctx.getBody(id);
 	const sun = ctx.getBody(SUN_ID);
 	if (!body || !sun || body === sun) return null;
 	if (!body.orientation && !ctx.bodies.orientationRead.has(id)) return null;
+	if (ctx.bodies.nutationAwaited.has(id)) return null;
 	const centre = bodyCentre(body, ctx, jd);
 	const sunCentre = bodyCentre(sun, ctx, jd);
 	return centre && sunCentre && subsolarAt(body, centre, sunCentre, jd);

@@ -514,7 +514,8 @@ export class SpaceMap {
 	/** Kilometres between two places, as the last frame drew them: a body's
 	 *  centre, a point on its surface, anything an anchor names. Null while
 	 *  either end is on a body this map has not loaded, or one that is nowhere
-	 *  at that date. */
+	 *  at that date, and while a point on a surface is on a body that may yet
+	 *  turn (see {@link getSubsolarPoint}). */
 	distanceKm(from: Anchor, to: Anchor): number | null {
 		return anchorDistanceKm(from, to, this.ctx, this.placedJd);
 	}
@@ -529,7 +530,10 @@ export class SpaceMap {
 	/** Where on `id` the Sun is overhead, as the last frame drew it: the middle
 	 *  of the lit half, in the frame a surface anchor is placed in. Null for a
 	 *  body not loaded, and until the map has read how it spins, which it does
-	 *  once the camera is on the body or its system. */
+	 *  once the camera is on the body or its system. On a bad line that can
+	 *  take longer: a moon's spin can come before the file of the terms that
+	 *  sway it, and the map asks for that file again until it has it, or the
+	 *  data host says it has none. */
 	getSubsolarPoint(id: string): LonLat | null {
 		return subsolarPoint(id, this.ctx, this.placedJd);
 	}

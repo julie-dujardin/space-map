@@ -1,5 +1,6 @@
 import { toast } from 'svelte-sonner';
 import * as m from '$lib/paraglide/messages.js';
+import { untilOnline } from '$lib/fetch/online';
 
 const RETRY_DELAY_MS = 1_000;
 const TOAST_ID = 'chunk-load-failed';
@@ -14,11 +15,7 @@ function isStylesheetFailure(e: unknown): boolean {
 }
 
 async function readyToRetry(): Promise<void> {
-	if (!navigator.onLine) {
-		await new Promise<void>((resolve) =>
-			window.addEventListener('online', () => resolve(), { once: true })
-		);
-	}
+	await untilOnline();
 	await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
 }
 

@@ -85,6 +85,8 @@ import {
 	recordAtmospherePerf
 } from './objects/surface/atmosphere-quality';
 import { loadBodyTexture, unloadBodyTexture } from './objects/body/textures';
+import { joinAwaitedNutation } from './objects/body/orientation-apply';
+import { onSystemsGlobalSettled } from '$lib/fetch/systems-global';
 import { BodyAppearances, type BodyAppearance } from './objects/body/appearance';
 import { applyOrientation, bodyQuaternion } from '$lib/math/orientation';
 import {
@@ -133,7 +135,7 @@ import { eclipticToScene } from '$lib/math/travel/state';
 import type { TrailBuffer } from '$lib/fetch/position/trail-buffer';
 import { labelScreenRect } from './label/culling';
 import { updatePositions, refreshDeferredTrails } from './position/update-positions';
-import { Placer } from './position/placer';
+import { Placer, turnBody } from './position/placer';
 import { SSB_POSITION } from './position/placement';
 import { PositionDiagnostics } from './position/diagnostics';
 import { updateRingShaders } from './shaders/ring-uniforms';
@@ -425,6 +427,8 @@ export class SceneRenderer {
 	/** Texture, model and label loads in flight for the focused object. */
 	private focusLoads = 0;
 	private unsubscribeBodiesAdded: (() => void) | null = null;
+	/** Stops the join of the nutation terms that wait on global.json. */
+	private unsubscribeNutation: (() => void) | null = null;
 	/** Per-frame camera state for the trail rewrite gate; mutated in place. */
 	private readonly _trailView: TrailView = { camX: 0, camY: 0, camZ: 0, tolAngle: 0 };
 	/** Canvas CSS height, cached so the per-frame maths never reads layout. */
@@ -633,6 +637,16 @@ export class SceneRenderer {
 		}
 		window.addEventListener('keydown', this.invalidate);
 		this.unsubscribeBodiesAdded = ctx.bodies.onBodiesAdded(this.invalidate);
+		// A spin that came while global.json had not loaded is without its
+		// nutation terms until it does. Turned at once, even while the date is
+		// held: the measures read the terms from now on.
+		this.unsubscribeNutation = onSystemsGlobalSettled(() => {
+			for (const body of joinAwaitedNutation(ctx)) {
+				const bo = this.bodyObjects.get(body.data.id);
+				if (bo) turnBody(body, bo, this.sceneJd);
+			}
+			this.invalidate();
+		});
 
 		this.cameraUp = new CameraUpController(this.camera, this.controls, ctx, (id) =>
 			this.isLanded(id)
@@ -3262,6 +3276,7 @@ export class SceneRenderer {
 			this.canvas.removeEventListener(type, this.invalidate);
 		window.removeEventListener('keydown', this.invalidate);
 		this.unsubscribeBodiesAdded?.();
+		this.unsubscribeNutation?.();
 		this.controls.dispose();
 		this.haloDebug.dispose();
 		this.travelPath.dispose();

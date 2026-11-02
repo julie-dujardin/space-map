@@ -205,6 +205,8 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 	performance.mark('sm-load-start');
 	loadProgress.reset();
 	// The major-body pass fits each orbit with the GM of its centre.
+	// Not waited for past this try: the renderer asks again while it shows,
+	// and joins the nutation terms of the spins that came without them.
 	const systemsGlobalPromise = loadSystemsGlobal().catch((e) =>
 		console.warn('scene-load: systems-global (GMs/nutation) failed to load:', e)
 	);
