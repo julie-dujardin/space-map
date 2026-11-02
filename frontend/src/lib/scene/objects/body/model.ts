@@ -211,6 +211,10 @@ export const attachedModelRoots = new Set<Object3D>();
  * recentring offsets, surface casts) stay valid inside it.
  */
 function mountModel(bo: BodyObjects, root: Object3D): void {
+	// Turned as the sphere it replaces, which the position pass turns with the
+	// same spin. The next pass can be a long way off: the clock may stand
+	// still, or the date be held, and the model would be drawn unturned.
+	if (bo.mesh) root.quaternion.copy(bo.mesh.quaternion);
 	const wrapper = new Group();
 	wrapper.scale.setScalar(modelUnitScene(bo));
 	wrapper.userData.pickBody = bo.body;
@@ -325,6 +329,10 @@ async function loadSpacecraftModel(
 		root.visible = !bo.isCrashed;
 		bo.model = root;
 		bo.modelName = slug;
+		// The position pass gives the craft its attitude, from the pointing and
+		// the attitude track this load just set. A clock that stands still runs
+		// none until told: the model would be drawn unturned.
+		if (ctx) ctx.bodies.dataVersion++;
 		setHaloLoading(bo, false);
 		// True-size from the model's longest dimension, so the overlay (sized
 		// off modelUnitScene) renders to scale against the solar system. The

@@ -95,8 +95,8 @@ export class BodyIndex {
 	 *  point-cloud full-zone repacks ({@link PointCloudSystem.rebuildMinor}). */
 	minorStreaming = false;
 
-	/** Bumped when a body arrives, or takes a new row or its spin: the position
-	 *  pass runs again, also while the clock stands still. */
+	/** Bumped when a body arrives, or takes a new row, its spin or a model: the
+	 *  position pass runs again, also while the clock stands still. */
 	dataVersion = 0;
 
 	/** Incremented on each minor-body data flush; read by Scene.svelte to trigger point cloud rebuilds. */
