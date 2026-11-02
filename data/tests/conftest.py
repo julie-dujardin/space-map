@@ -116,11 +116,14 @@ def _isolated_stamp_memo(tmp_path, monkeypatch):
 
 @pytest.fixture(autouse=True)
 def _isolated_panorama_digests(tmp_path, monkeypatch):
-    """Keep sphere digests of test files out of the real CACHE_DIR memo."""
+    """Keep what test files measure out of the real CACHE_DIR memos."""
     from space_map_data.export import panoramas
 
     monkeypatch.setattr(
         panoramas, "_DIGEST_CACHE_PATH", tmp_path / "panorama_digests.json"
+    )
+    monkeypatch.setattr(
+        panoramas, "_HORIZON_CACHE_PATH", tmp_path / "panorama_horizons.json"
     )
 
 

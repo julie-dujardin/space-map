@@ -1015,8 +1015,8 @@ export interface PanoramaEntry {
 	// (undocumented)
 	elevation_m?: number;
 	geometry?: 'estimated';
-	// (undocumented)
 	hfov_deg?: number;
+	horizon_deg?: number;
 	// (undocumented)
 	id: string;
 	// (undocumented)

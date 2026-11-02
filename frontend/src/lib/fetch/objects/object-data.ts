@@ -468,7 +468,14 @@ export interface PanoramaEntry {
 	/** Image azimuth where the observed span begins, with its width; absent
 	 *  when the archive label carried no coverage geometry. */
 	azimuth_start_deg?: number;
+	/** Width of the mosaic's frame, which can hold far less than it spans:
+	 *  read `horizon_deg` for what the sphere shows. */
 	hfov_deg?: number;
+	/** Degrees of azimuth where the sphere's pixels hold the horizon. Zero for
+	 *  a ring of ground. A mosaic with no real gap in its horizon reads 340 or
+	 *  more. Tilt is taken out on most of a turn only, so a tilted arc reads
+	 *  short. */
+	horizon_deg?: number;
 	/** Solid-angle share of the sphere the mosaic covers, percent. */
 	sphere_percent?: number;
 	color?: string;

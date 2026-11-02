@@ -1,10 +1,14 @@
 """Which cached panorama products reach the export, and in what shape."""
 
+import errno
 import gzip
+import hashlib
+import io
 import json
 import os
 from pathlib import Path
 
+import numpy as np
 import orjson
 import pytest
 from PIL import Image
@@ -47,7 +51,8 @@ def _write_cache(root: Path, collection: str, products: list[dict]) -> None:
         # A product may name the sphere it carries, so two of them can be given
         # the same bytes the way the archive delivers one mosaic twice.
         sphere = product.get("sphere", product["id"])
-        (folder / "panorama.webp").write_bytes(b"webp" + sphere.encode())
+        shade = tuple(hashlib.sha256(sphere.encode()).digest()[:3])
+        Image.new("RGB", (64, 32), shade).save(folder / "panorama.webp", lossless=True)
         Image.new("RGBA", (1536, 396)).save(folder / "preview.webp")
         items.append(
             {
@@ -79,6 +84,7 @@ class TestSelection:
             "azimuth_start_deg": 67.2,
             "hfov_deg": 352.9,
             "sphere_percent": 15.7,
+            "horizon_deg": 360.0,
             "color": "rgb",
             "credit": "Courtesy NASA/JPL-Caltech",
             "credit_url": "https://www.jpl.nasa.gov/jpl-image-use-policy/",
@@ -225,6 +231,172 @@ class TestSelection:
         assert panoramas.load_panoramas(tmp_path / "empty") == {}
 
 
+def _sphere(root: Path, collection: str) -> Path:
+    return root / collection / "perseverance-sol2" / "panorama.webp"
+
+
+def _half_turn() -> bytes:
+    """A whole-frame WebP that holds half a turn of opaque pixels."""
+    rgba = np.zeros((360, 720, 4), dtype=np.uint8)
+    rgba[60:250, :360] = 255
+    out = io.BytesIO()
+    Image.fromarray(rgba).save(out, "WEBP", lossless=True)
+    return out.getvalue()
+
+
+def _mask(top: float, bottom: float, turn: float = 1.0) -> np.ndarray:
+    """A sphere showing `top` to `bottom` degrees of elevation over `turn` of
+    the azimuths, at the texel size the export reads."""
+    shown = np.zeros((720, 1440), dtype=bool)
+    shown[int((90 - top) * 4) : int((90 - bottom) * 4), : int(1440 * turn)] = True
+    return shown
+
+
+class TestHorizon:
+    """How much of the horizon a sphere's pixels show, whatever its frame."""
+
+    def test_a_full_turn_reads_360(self):
+        assert panoramas.horizon_degrees(_mask(10, -40)) == 360
+
+    def test_a_partial_turn_reads_its_width(self):
+        assert panoramas.horizon_degrees(_mask(10, -40, 0.5)) == 180
+
+    @pytest.mark.parametrize(
+        ("top", "bottom"), [(20, -6), (8, -7), (1, -15)], ids=["high", "thin", "low"]
+    )
+    def test_a_strip_across_the_horizon_counts(self, top: float, bottom: float):
+        assert panoramas.horizon_degrees(_mask(top, bottom)) == 360
+
+    @pytest.mark.parametrize(
+        ("top", "bottom"), [(-25, -74), (-5, -40), (30, 10)], ids=["low", "near", "sky"]
+    )
+    def test_a_ring_off_the_horizon_reads_zero(self, top: float, bottom: float):
+        assert panoramas.horizon_degrees(_mask(top, bottom)) == 0
+
+    def test_a_view_stopping_at_its_horizon_counts(self):
+        """Many masks take the sky away, and leave the edge a hair under it."""
+        assert panoramas.horizon_degrees(_mask(-0.25, -40)) == 360
+
+    def test_a_small_step_is_not_a_tilt(self):
+        """A step fits a sine well in degrees, and poorly for its size."""
+        shown = _mask(10, -40, 0.5) | (_mask(-5, -40) & ~_mask(90, -90, 0.5))
+        assert panoramas.horizon_degrees(shown) == 180
+
+    def test_only_azimuths_that_reach_the_horizon_count(self):
+        """Half a view and half a ring of ground is half a horizon."""
+        shown = _mask(10, -40, 0.5) | (_mask(-25, -70) & ~_mask(90, -90, 0.5))
+        assert panoramas.horizon_degrees(shown) == 180
+
+    def test_a_little_view_over_a_ring_counts_for_what_it_shows(self):
+        shown = _mask(10, -40, 0.25) | (_mask(-25, -70) & ~_mask(90, -90, 0.25))
+        assert panoramas.horizon_degrees(shown) == 90
+
+    def test_a_gap_at_the_horizon_is_no_view_of_it(self):
+        assert panoramas.horizon_degrees(_mask(60, 40) | _mask(-40, -60)) == 0
+
+    def test_a_tilted_horizon_counts_all_the_way_round(self):
+        """A rover on a slope sees the level far outside the view at the
+        crests of its horizon's wave."""
+        shown = np.zeros((720, 1440), dtype=bool)
+        for x in range(1440):
+            top = 360 - 20 * 4 * np.sin((x + 0.5) / 1440 * 2 * np.pi)
+            shown[int(top) - 40 : int(top) + 200, x] = True
+        assert panoramas.horizon_degrees(shown) == 360
+
+    def test_stray_frames_are_not_a_view(self):
+        shown = _mask(10, -40, 0.5)
+        shown[360:368, 1000:1100] = True
+        assert panoramas.horizon_degrees(shown) == 180
+
+    def test_a_grid_line_is_not_a_view(self):
+        shown = _mask(10, -40, 0.5)
+        shown[360, :] = True
+        assert panoramas.horizon_degrees(shown) == 180
+
+    def test_a_hole_under_the_horizon_takes_nothing_from_it(self):
+        """A notch of the mosaic leaves the view above it a short run."""
+        shown = _mask(10, -60)
+        shown[400:420, 600:700] = False
+        assert panoramas.horizon_degrees(shown) == 360
+
+    def test_an_empty_mask_reads_zero(self):
+        assert panoramas.horizon_degrees(np.zeros((720, 1440), dtype=bool)) == 0
+
+    def test_transparent_pixels_of_a_texture_do_not_count(self, tmp_path: Path):
+        """The frame is whole, as InSight's is: only alpha tells."""
+        _write_cache(tmp_path, "insight", [_product()])
+        _sphere(tmp_path, "insight").write_bytes(_half_turn())
+        [product] = panoramas.load_panoramas(tmp_path)[MARS]
+        assert product.entry["horizon_deg"] == 180
+
+    @pytest.mark.parametrize("keep", [0, 0.01, 0.5], ids=["empty", "header", "cut"])
+    def test_a_sphere_with_no_image_is_not_exported(self, tmp_path: Path, keep: float):
+        _write_cache(
+            tmp_path, "perseverance", [_product(), _product(id="whole", sol=3)]
+        )
+        path = _sphere(tmp_path, "perseverance")
+        sphere = _half_turn()
+        path.write_bytes(sphere[: int(len(sphere) * keep)])
+        [product] = panoramas.load_panoramas(tmp_path)[MARS]
+        assert product.entry["id"] == "whole"
+
+    def test_a_body_left_with_no_image_is_left_out(self, tmp_path: Path):
+        _write_cache(tmp_path, "perseverance", [_product()])
+        _sphere(tmp_path, "perseverance").write_bytes(b"")
+        assert panoramas.load_panoramas(tmp_path) == {}
+
+    def test_a_measure_is_kept_for_the_same_sphere(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        _write_cache(tmp_path, "perseverance", [_product()])
+        panoramas.load_panoramas(tmp_path)
+
+        def fail(_: Path) -> float:
+            raise AssertionError("measured twice")
+
+        monkeypatch.setattr(panoramas, "_sphere_horizon", fail)
+        [product] = panoramas.load_panoramas(tmp_path)[MARS]
+        assert product.entry["horizon_deg"] == 360
+
+    def test_a_changed_sphere_is_measured_again(self, tmp_path: Path):
+        _write_cache(tmp_path, "perseverance", [_product()])
+        panoramas.load_panoramas(tmp_path)
+        _sphere(tmp_path, "perseverance").write_bytes(_half_turn())
+        [product] = panoramas.load_panoramas(tmp_path)[MARS]
+        assert product.entry["horizon_deg"] == 180
+
+    def test_a_failed_read_stops_the_run_and_is_not_kept(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        """A passing mount error must not mark a good sphere as no image."""
+        _write_cache(tmp_path, "perseverance", [_product()])
+
+        def fail(*_: object) -> None:
+            raise OSError(errno.EIO, "Input/output error")
+
+        with monkeypatch.context() as patch:
+            patch.setattr(panoramas.Image, "open", fail)
+            with pytest.raises(OSError, match="Input/output"):
+                panoramas.load_panoramas(tmp_path)
+        assert panoramas._load_horizons() == {}
+
+    def test_a_sphere_gone_from_disk_is_named(self, tmp_path: Path):
+        _write_cache(tmp_path, "perseverance", [_product()])
+        _sphere(tmp_path, "perseverance").unlink()
+        with pytest.raises(FileNotFoundError, match="panorama.webp"):
+            panoramas.load_panoramas(tmp_path)
+
+    @pytest.mark.parametrize("content", [b"[]", b"null", b"not json"])
+    def test_a_bad_memo_is_an_empty_one(self, content: bytes):
+        panoramas._HORIZON_CACHE_PATH.write_bytes(content)
+        assert panoramas._load_horizons() == {}
+
+    def test_a_write_keeps_what_another_checkout_measured(self):
+        panoramas._write_horizons({"theirs": 360.0})
+        panoramas._write_horizons({"ours": 0.0})
+        assert panoramas._load_horizons() == {"theirs": 360.0, "ours": 0.0}
+
+
 class TestDedupe:
     """One mosaic delivered under two product names ships once."""
 
@@ -300,9 +472,9 @@ class TestAdditiveRun:
 
         assert not (out_dir / "panoramas" / "gone.webp").exists()
 
-        assert (
-            out_dir / "panoramas" / "perseverance-sol2.webp"
-        ).read_bytes() == b"webpperseverance-sol2"
+        assert (out_dir / "panoramas" / "perseverance-sol2.webp").read_bytes() == (
+            _sphere(cache, "perseverance").read_bytes()
+        )
         with Image.open(out_dir / "panoramas" / "perseverance-sol2-preview.webp") as im:
             assert im.size == (512, 132)
         bundle = orjson.loads(gzip.decompress(bundle_path.read_bytes()))

@@ -282,7 +282,9 @@
 				$('next').disabled = !n?.next;
 				$('place').textContent =
 					`${entry.lat.toFixed(5)}°, ${entry.lon.toFixed(5)}°` +
-					(entry.hfov_deg ? ` · ${Math.round(entry.hfov_deg)}° of horizon` : '');
+					(entry.horizon_deg !== undefined
+						? ` · ${Math.round(entry.horizon_deg)}° of horizon`
+						: '');
 			};
 			showPlace(view.getCurrent());
 			view.on('load', showPlace);

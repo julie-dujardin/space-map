@@ -1005,7 +1005,8 @@ interface PanoramaEntry {
   title?: string;
   north_offset_deg: number;           // image azimuth of true north, degrees clockwise from the left edge
   azimuth_start_deg?: number;         // image azimuth where the observed span begins …
-  hfov_deg?: number;                  // … and its width; absent without archival coverage geometry
+  hfov_deg?: number;                  // … and the width of the mosaic's frame, which may hold far less; absent without archival coverage geometry
+  horizon_deg?: number;               // degrees of azimuth where the sphere's pixels hold the horizon; 340 or more has no real gap, 0 is a ring of ground; a tilted arc reads short
   sphere_percent?: number;            // share of the sphere the mosaic covers
   color?: string;                     // `rgb` | `grayscale`
   distribution?: "non-commercial";    // the sphere's terms stop short of commercial reuse; absent = any use

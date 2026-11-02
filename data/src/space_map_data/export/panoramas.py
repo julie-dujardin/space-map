@@ -10,6 +10,10 @@ Fields that say how well a sphere is known:
 - `orientation`: how north was established. When it is `unknown`, the entry
   has no north offset and the viewer draws no heading.
 - `altitude_m`: the camera was above the surface.
+- `hfov_deg`: the width of the mosaic's frame, which holds what the archive
+  planned and not what was shot.
+- `horizon_deg`: degrees of azimuth where the sphere's pixels hold the
+  horizon.
 - `distribution`: the terms of the sphere do not allow commercial reuse. The
   values are those of the textures.
 
@@ -22,10 +26,12 @@ import logging
 import re
 import shutil
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 from functools import cache
 from pathlib import Path
 from typing import NamedTuple
 
+import numpy as np
 import orjson
 from PIL import Image
 from tqdm import tqdm
@@ -33,6 +39,7 @@ from tqdm import tqdm
 from space_map_data.export.in_place import patch_global_bundles, refresh_versions
 from space_map_data.export.sidecar_io import write_atomic
 from space_map_data.panoramas.missions import probe_id
+from space_map_data.utils.content_stamp import content_stamps
 from space_map_data.utils.paths import CACHE_DIR, EXPORT_DIR, PANORAMA_DERIVED_DIR
 
 logger = logging.getLogger(__name__)
@@ -186,9 +193,14 @@ def load_panoramas(
                 )
     for body_id, entries in by_body.items():
         entries.sort(key=lambda p: (p.entry.get("mission", ""), p.entry["time"]))
-        by_body[body_id], repeats = _dedupe(entries)
+        unique, repeats = _dedupe(entries)
         if repeats:
             skipped["repeats a sphere already exported"] += repeats
+        kept = _measure_horizons(unique)
+        if len(kept) < len(unique):
+            skipped["no image in its sphere"] += len(unique) - len(kept)
+        by_body[body_id] = kept
+    by_body = {body_id: entries for body_id, entries in by_body.items() if entries}
     exported = sum(len(v) for v in by_body.values())
     logger.info(
         "Panoramas: %d of %d exported across %d bodies", exported, total, len(by_body)
@@ -264,6 +276,168 @@ def _dedupe(entries: list[Product]) -> tuple[list[Product], int]:
     _DIGEST_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
     write_atomic(_DIGEST_CACHE_PATH, orjson.dumps(digest_cache))
     return kept, len(entries) - len(kept)
+
+
+# Bump when a measure would change: a sphere's digest says nothing about that.
+_HORIZON_RECIPE = 2
+# Sphere content digest to horizon, which holds across checkouts and moves. One
+# file a recipe: checkouts on two recipes share the cache directory.
+_HORIZON_CACHE_PATH = CACHE_DIR / f"panorama_horizons_{_HORIZON_RECIPE}.json"
+# Kills skip `finally`, and a first run reads every sphere.
+_HORIZON_FLUSH_EVERY = 512
+_HORIZON_WORKERS = 8
+# Texels per degree the alpha is read at: enough to see a stray frame.
+_HORIZON_TEXELS = 4
+# Alpha at or under this is the encoder's edge, not data.
+_HORIZON_ALPHA = 8
+# A shorter run is a stray frame or a grid line, and its edge says no tilt.
+_HORIZON_MIN_SPAN_DEG = 5
+# The band around the level that must hold the view to count as the horizon.
+# A camera on a rise sees a true horizon a little under the level, and frames
+# are jagged. Over a third is enough: many mosaics stop at their horizon, and
+# a grid line fills less.
+_HORIZON_BAND_DEG = 3
+_HORIZON_BAND_SHARE = 1 / 3
+# A tilted mosaic's top edge is one sine wave around the turn. An arc fits any
+# wave, so it takes most of a turn. A step between two kinds of view leaves a
+# residual over a quarter of the wave's size, and no slope a rover stood on
+# passes the largest size.
+_TILT_MIN_TURN = 0.75
+_TILT_MAX_RESIDUAL_DEG = 5
+_TILT_MAX_RESIDUAL_SHARE = 0.25
+_TILT_MAX_DEG = 30
+
+
+def _longest_run_tops(shown: np.ndarray, min_rows: float) -> np.ndarray:
+    """First row of each column's longest run of at least `min_rows`, or -1."""
+    height, width = shown.shape
+    padded = np.zeros((height + 2, width), dtype=np.int8)
+    padded[1:-1] = shown
+    # Transposed, nonzero walks column by column, so rises pair with falls.
+    steps = np.diff(padded, axis=0).T
+    columns, starts = np.nonzero(steps == 1)
+    _, ends = np.nonzero(steps == -1)
+    long_enough = ends - starts >= min_rows
+    columns, starts, ends = (
+        columns[long_enough],
+        starts[long_enough],
+        ends[long_enough],
+    )
+    shortest_first = np.lexsort((ends - starts, columns))
+    tops = np.full(width, -1)
+    tops[columns[shortest_first]] = starts[shortest_first]
+    return tops
+
+
+def _tilt(shown: np.ndarray) -> np.ndarray:
+    """Per column, how far a tilted camera lifts the horizon, in degrees."""
+    height, width = shown.shape
+    per_degree = height / 180
+    tops = _longest_run_tops(shown, _HORIZON_MIN_SPAN_DEG * per_degree)
+    azimuth = (np.arange(width) + 0.5) * 2 * np.pi / width
+    wave = np.column_stack((np.cos(azimuth), np.sin(azimuth)))
+    viewed = tops >= 0
+    if viewed.mean() < _TILT_MIN_TURN:
+        return np.zeros(width)
+    top = 90 - tops[viewed] / per_degree
+    design = np.column_stack((np.ones_like(top), wave[viewed]))
+    fit = np.linalg.lstsq(design, top, rcond=None)[0]
+    residual = np.std(top - design @ fit)
+    size = np.hypot(*fit[1:])
+    if (
+        residual > _TILT_MAX_RESIDUAL_DEG
+        or residual > _TILT_MAX_RESIDUAL_SHARE * size
+        or size > _TILT_MAX_DEG
+    ):
+        return np.zeros(width)
+    return wave @ fit[1:]
+
+
+def _held(shown: np.ndarray, tilt: np.ndarray) -> float:
+    """The share of azimuths that hold the band, read along `tilt`."""
+    height, width = shown.shape
+    per_degree = height / 180
+    reach = int(_HORIZON_BAND_DEG * per_degree)
+    band = (np.arange(-reach, reach) + 0.5) / per_degree
+    rows = (90 - (tilt[:, None] + band)) * per_degree
+    held = shown[rows.astype(int).clip(0, height - 1), np.arange(width)[:, None]]
+    return float((held.mean(axis=1) > _HORIZON_BAND_SHARE).mean())
+
+
+def horizon_degrees(shown: np.ndarray) -> float:
+    """Degrees of azimuth where the view holds the horizon.
+
+    `shown` is the sphere's equirectangular mask, north pole on top. A tilted
+    rover's horizon is a wave, so the band is also read along that wave. A dip
+    in the view's edge can pass for one, so the better reading stands.
+    `hfov_deg` cannot say this: a ring of ground fills a 360° frame.
+    """
+    level = _held(shown, np.zeros(shown.shape[1]))
+    return round(360 * max(level, _held(shown, _tilt(shown))), 1)
+
+
+def _sphere_horizon(path: Path) -> float | None:
+    """None for a file that holds no image: it can show nothing. A failed read
+    says nothing about the file, and must not be cached as if it did."""
+    size = (360 * _HORIZON_TEXELS, 180 * _HORIZON_TEXELS)
+    try:
+        with Image.open(path) as im:
+            rgba = im if "A" in im.getbands() else im.convert("RGBA")
+            alpha = rgba.getchannel("A")
+    except OSError as error:
+        if error.errno is not None:
+            raise
+        return None
+    resized = alpha.resize(size, Image.Resampling.NEAREST)
+    return horizon_degrees(np.asarray(resized) > _HORIZON_ALPHA)
+
+
+def _load_horizons() -> dict[str, float | None]:
+    try:
+        stored = orjson.loads(_HORIZON_CACHE_PATH.read_bytes())
+    except OSError, orjson.JSONDecodeError:
+        return {}
+    return stored if isinstance(stored, dict) else {}
+
+
+def _write_horizons(measured: dict[str, float | None]) -> None:
+    # Checkouts share the file: what another one wrote since stays.
+    write_atomic(_HORIZON_CACHE_PATH, orjson.dumps(_load_horizons() | measured))
+
+
+def _measure_horizons(entries: list[Product]) -> list[Product]:
+    """Write each sphere's `horizon_deg`, leaving out spheres with no image.
+    The export measures, for every builder alike: no label can speak for the
+    pixels."""
+    stamps = content_stamps([product.image for product in entries])
+    digests = {}
+    for path, stamp in stamps.items():
+        if stamp is None:
+            raise FileNotFoundError(f"Panorama sphere {path} is missing")
+        digests[path] = stamp["digest"]
+    horizons = _load_horizons()
+    misses = {d: p for p, d in digests.items() if d not in horizons}
+    if misses:
+        try:
+            with ThreadPoolExecutor(_HORIZON_WORKERS) as pool:
+                results = zip(misses, pool.map(_sphere_horizon, misses.values()))
+                for done, (digest, horizon) in enumerate(
+                    tqdm(results, total=len(misses), desc="Horizons", unit="pano"), 1
+                ):
+                    horizons[digest] = horizon
+                    if done % _HORIZON_FLUSH_EVERY == 0:
+                        _write_horizons(horizons)
+        finally:
+            _write_horizons(horizons)
+    kept = []
+    for product in entries:
+        horizon = horizons[digests[product.image]]
+        if horizon is None:
+            logger.warning("Panorama %s has no image", product.entry["id"])
+            continue
+        product.entry["horizon_deg"] = horizon
+        kept.append(product)
+    return kept
 
 
 @cache
