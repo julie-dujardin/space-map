@@ -9,6 +9,7 @@ import {
 	planetHostName,
 	searchBodies,
 	searchEndpoints,
+	searchGroupMembers,
 	toHit,
 	type PlanetHit
 } from './client';
@@ -201,6 +202,42 @@ describe('endpoint search', () => {
 		search.mockResolvedValue({ hits: [] });
 
 		await searchBodies('Centauri', 'en', 5);
+
+		expect(search.mock.lastCall?.[1].filter).toContain('object.type NOT IN ["star"');
+	});
+
+	it.each(['cat-stars', 'cat-planets', 'cat-star-systems', 'star-red-dwarf', 'planet-hot-jupiter'])(
+		'lists the members of %s by their class, planets included',
+		async (slug) => {
+			configureHost({ extrasolarUrl: 'https://extrasolar.example' });
+			search.mockResolvedValue({ hits: [HOST, PLANET], estimatedTotalHits: 2 });
+
+			const page = await searchGroupMembers(slug, 30, 10, 'en');
+
+			expect(search.mock.lastCall?.[1]).toMatchObject({
+				filter: `classes = "${slug}"`,
+				offset: 30,
+				limit: 10
+			});
+			expect(page.hits.map((h) => h.kind)).toEqual(['object', 'planet']);
+		}
+	);
+
+	it('leaves a class page to its own list where the host serves no extrasolar export', async () => {
+		configureHost({ extrasolarUrl: '' });
+		search.mockClear();
+
+		const page = await searchGroupMembers('cat-stars', 0, 10, 'en');
+
+		expect(page).toEqual({ hits: [], estimatedTotalHits: 0 });
+		expect(search).not.toHaveBeenCalled();
+	});
+
+	it('keeps the stars of other systems off the Solar System page', async () => {
+		configureHost({ extrasolarUrl: 'https://extrasolar.example' });
+		search.mockResolvedValue({ hits: [], estimatedTotalHits: 0 });
+
+		await searchGroupMembers('cat-solar-system', 0, 10, 'en');
 
 		expect(search.mock.lastCall?.[1].filter).toContain('object.type NOT IN ["star"');
 	});

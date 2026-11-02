@@ -176,10 +176,10 @@ async function walk(locale: Locale, skipCategories: string[]): Promise<Draw | nu
 		const page = await randomCollection(locale);
 		return page && { target: page, category: META_COLLECTIONS };
 	}
-	// The search index lists no exoplanet under the Planets page, so the slot
-	// draws from the planet index. With no planets served it draws one of the
-	// Solar System's: the families below list only exoplanets, which the map
-	// places from that same index.
+	// Search would draw from its most notable planets, so the slot draws from the
+	// planet index. With no planets served it draws one of the Solar System's:
+	// the families below list only exoplanets, which the map places from that
+	// same index.
 	if (slot.slug === CAT_PLANETS) {
 		const planet = (await randomExoplanet()) ?? (await randomSolarPlanet(locale));
 		if (planet) return { target: planet, category: CAT_PLANETS };

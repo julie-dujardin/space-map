@@ -40,9 +40,6 @@ export interface CategoryConfig {
 	/** Spacecraft: the page samples Satellites, Space Debris and Probes, and
 	 *  draws every craft and rocket in one lineup. */
 	spacecraft: boolean;
-	/** Star Systems, Planetary Systems: the page lists a few of what it counts,
-	 *  and search has no list of them. */
-	systems: boolean;
 	moons: boolean;
 	dwarfPlanets: boolean;
 	solarSystem: boolean;
@@ -88,7 +85,6 @@ const NONE: CategoryConfig = {
 	stars: false,
 	planets: false,
 	spacecraft: false,
-	systems: false,
 	moons: false,
 	dwarfPlanets: false,
 	solarSystem: false,
@@ -115,8 +111,8 @@ const BY_SLUG: Record<string, Partial<CategoryConfig>> = {
 		crossRefs: true
 	},
 	[CAT_SOLAR_SYSTEM]: { solarSystem: true, crossRefs: true },
-	[CAT_STAR_SYSTEMS]: { systems: true, crossRefs: true },
-	[CAT_PLANETARY_SYSTEMS]: { systems: true, crossRefs: true },
+	[CAT_STAR_SYSTEMS]: { crossRefs: true },
+	[CAT_PLANETARY_SYSTEMS]: { crossRefs: true },
 	[CAT_SATELLITE_SYSTEMS]: { satelliteSystems: true, membersShownInFull: true, crossRefs: true },
 	[CAT_ASTEROIDS]: { smallBody: true, sphereLineup: true, crossRefs: true },
 	[CAT_COMETS]: { smallBody: true, sphereLineup: true, crossRefs: true },

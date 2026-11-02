@@ -18,6 +18,7 @@
 		type GroupMemberPage,
 		type MemberHit
 	} from '$lib/search/client';
+	import { inceptionYear } from '$lib/search/format';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import type { FocusFeature, FocusObject } from '$lib/state/focusable';
 
@@ -114,6 +115,15 @@
 		const name = localizedNames?.[key] ?? localizedName(hit, locale);
 		// A constellation member routes to its group page; an object focuses its mesh.
 		if (hit.kind === 'group') return { group: hit.slug, name, thumbnail: hit.thumbnail };
+		if (hit.kind === 'planet') {
+			return {
+				id: hit.id,
+				name,
+				thumbnail: hit.thumbnail,
+				diameter_km: hit.diameter_km,
+				year: hit.discovery_year?.toString()
+			};
+		}
 		// A feature member opens on its host body.
 		if (hit.kind === 'feature') {
 			return {
@@ -129,7 +139,7 @@
 			name,
 			thumbnail: hit.thumbnail,
 			diameter_km: hit.diameter_km,
-			year: hit.inception ? String(Math.trunc(hit.inception / 10000)) : undefined
+			year: hit.inception == null ? undefined : String(inceptionYear(hit.inception))
 		};
 	}
 
@@ -198,9 +208,9 @@
 			loading = false;
 			return;
 		}
-		// A newer source may have superseded this request; empty page → nothing in
-		// the index, so keep the baked fallback.
-		if (key === sourceKey && page.hits.length > 0) {
+		// A newer source may have superseded this request. Search holds only some
+		// of the stars, so a page can bake more of them than search has.
+		if (key === sourceKey && page.estimatedTotalHits > rows.length) {
 			rows = page.hits.map((h) => hitRow(h, locale));
 			total = page.estimatedTotalHits;
 			searchBacked = true;

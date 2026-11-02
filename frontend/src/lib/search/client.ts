@@ -10,9 +10,15 @@ import type { Locale } from '$lib/paraglide/runtime.js';
 import { startProof } from './proof.svelte';
 import { pickedThumbnailUrl, type PickedThumbnail } from '$lib/fetch/objects/images';
 import {
+	CAT_PLANETARY_SYSTEMS,
+	CAT_PLANETS,
+	CAT_SOLAR_SYSTEM,
+	CAT_STAR_SYSTEMS,
+	CAT_STARS,
 	CLASS_SLUG_PREFIX,
 	FEATURE_TYPE_SLUG_PREFIX,
-	featureTypeCode
+	featureTypeCode,
+	isFamilySlug
 } from '$lib/fetch/groups/registry';
 import { SUN_ID } from '$lib/constants';
 import { extrasolarBase } from '$lib/fetch/extrasolar/files';
@@ -442,10 +448,9 @@ export async function searchBodies(
 	return (res.hits ?? []).map((h) => toObjectHit(h as RawHit));
 }
 
-/** A group/moon member — usually an object, but an earth-sat zone also lists
- *  the constellations that call it home, and a feature-type page lists surface
- *  features, so a member can be any catalog kind. */
-export type MemberHit = ObjectHit | GroupHit | FeatureHit;
+/** A group/moon member. A member can be any catalog kind but a pad: an
+ *  earth-sat zone lists constellations, and a feature-type page features. */
+export type MemberHit = ObjectHit | GroupHit | FeatureHit | PlanetHit;
 
 /** One page of a group's members from the catalog index. */
 export interface GroupMemberPage {
@@ -479,12 +484,10 @@ async function searchMemberPage(
 		limit,
 		locales: [locale]
 	});
-	// A pad belongs to no group's member list — it is part of a site page rather
-	// than listed by one — so anything that comes back is a mis-tag, not a row.
-	// Nor does a planet of another system.
+	// A pad belongs to no group's member list, so one that comes back is a mis-tag.
 	const hits = (res.hits ?? [])
 		.map((h) => toHit(h as RawHit))
-		.filter((h): h is MemberHit => h.kind !== 'pad' && h.kind !== 'planet');
+		.filter((h): h is MemberHit => h.kind !== 'pad');
 	return { hits, estimatedTotalHits: res.estimatedTotalHits ?? hits.length };
 }
 
@@ -495,8 +498,16 @@ const CATEGORY_MEMBER_FILTER: Record<string, string> = {
 	'cat-asteroids': 'object.type = "asteroid"',
 	'cat-comets': 'object.type = "comet"',
 	'cat-spacecraft': 'object.groups IN ["cat-satellites", "cat-probes"]',
-	'cat-solar-system': 'kind = "object"'
+	[CAT_SOLAR_SYSTEM]: `kind = "object" AND ${NOT_EXTRASOLAR}`
 };
+
+/** The category pages that `classes` tags, as it does the family pages. */
+const CLASS_PAGES: ReadonlySet<string> = new Set([
+	CAT_STARS,
+	CAT_PLANETS,
+	CAT_STAR_SYSTEMS,
+	CAT_PLANETARY_SYSTEMS
+]);
 
 /** A paginated slice of a group's members (small-body class/flag, earth-sat
  *  collection, or a top-level category), ranked notable-first. Empty when search
@@ -508,6 +519,11 @@ export async function searchGroupMembers(
 	limit: number,
 	locale: string
 ): Promise<GroupMemberPage> {
+	if (isFamilySlug(slug) || CLASS_PAGES.has(slug)) {
+		// Their members open pages of the extrasolar export.
+		if (extrasolarBase() === '') return { hits: [], estimatedTotalHits: 0 };
+		return searchMemberPage(`classes = ${quote(slug)}`, offset, limit, locale);
+	}
 	// Feature types tag no object — their members are the features themselves,
 	// matched on the IAU code the group index carries for the slug.
 	if (slug.startsWith(FEATURE_TYPE_SLUG_PREFIX)) {

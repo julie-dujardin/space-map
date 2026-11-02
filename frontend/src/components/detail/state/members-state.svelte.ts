@@ -129,18 +129,13 @@ export class MembersState {
 		this.memberDescriptions = $derived(
 			d.isGroupMode() ? d.groupDetail()?.localized?.notable_member_descriptions : undefined
 		);
-		// Search has no family members, no figure stars and no exoplanets. These
-		// pages list the members they hold.
-		const bakedType = $derived.by(() => {
-			const type = d.groupDetail()?.global?.type;
-			return type === 'star_family' || type === 'planet_family' || type === 'sky_constellation';
-		});
-		const bakedOnly = $derived(bakedType || d.cat().planets || d.cat().stars || d.cat().systems);
+		const isFigure = $derived(d.groupDetail()?.global?.type === 'sky_constellation');
 		const childCount = (slug: string) =>
 			d.groupDetail()?.localized?.child_groups?.find((c) => c.primary_id === slug)?.n ?? 0;
 		this.memberTotal = $derived(
 			d.isGroupMode()
-				? bakedOnly
+				? // Search has no figure stars, so a figure lists the stars it holds.
+					isFigure
 					? (this.notableMembers?.length ?? 0)
 					: d.cat().spacecraft
 						? childCount(CAT_SATELLITES) + childCount(CAT_PROBES)
@@ -151,7 +146,6 @@ export class MembersState {
 		// A split-comet family group lists fragments; a mission group lists its craft.
 		const isSplitCometGroup = $derived(d.groupDetail()?.global?.type === 'split_comet');
 		const isMissionGroup = $derived(d.groupDetail()?.global?.type === 'mission');
-		const isFigure = $derived(d.groupDetail()?.global?.type === 'sky_constellation');
 		this.membersHeading = $derived(
 			d.isGroupMode()
 				? isSplitCometGroup
