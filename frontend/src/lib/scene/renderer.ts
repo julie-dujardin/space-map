@@ -3267,8 +3267,9 @@ export class SceneRenderer {
 		this.travelPath.dispose();
 		this.extensions.dispose();
 		// Unload resident models: the module-level mount registry must not carry
-		// disposed meshes into the next renderer lifetime.
-		for (const bo of this.bodyObjects.values()) if (bo.model) unloadBodyModel(bo);
+		// disposed meshes into the next renderer lifetime. A load still on the
+		// way is given up too, or it mounts once the renderer is gone.
+		for (const bo of this.bodyObjects.values()) unloadBodyModel(bo);
 		// A tile that arrives after this would be copied in by a renderer that
 		// is gone.
 		for (const bo of this.bodyObjects.values()) {

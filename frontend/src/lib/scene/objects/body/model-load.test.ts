@@ -129,6 +129,20 @@ describe('loadBodyModel', () => {
 		expect(bo.mesh!.visible).toBe(true);
 	});
 
+	it('mounts nothing for a load given up while its metadata was on the way', async () => {
+		detail.global = { id: 'naif-601', model_name: 'mimas-meta-late', render_quality: 'high' };
+		const { sendMeta, sendMesh } = serve({ kind: 'shape_model', exports: { high: { credit } } });
+		sendMesh();
+		const bo = (mounted = bodyObjects('naif-601', ObjectType.MOON));
+		const load = loadBodyModel(bo, new Scene(), context());
+		await flush();
+		unloadBodyModel(bo);
+		sendMeta();
+		await load;
+		expect(bo.model).toBeFalsy();
+		expect(bo.mesh!.visible).toBe(true);
+	});
+
 	it('runs the position pass again once a craft model mounts', async () => {
 		detail.global = { id: 'probe-88592384', model_name: 'cassini-pass' };
 		const { sendMeta, sendMesh } = serve({ exports: { high: { credit } } });
