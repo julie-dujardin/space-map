@@ -4,7 +4,7 @@
 
 import { EARTH_ID } from '$lib/constants';
 import { navHref } from '$lib/state/focus-link';
-import { extrasolarTravelBody, resolveExtrasolarEnd } from '$lib/travel/extrasolar-end';
+import { extrasolarEndAtRest, extrasolarTravelBody } from '$lib/travel/extrasolar-end';
 import { transferPlan } from '$lib/travel/travel-body';
 import type { AppState } from '$lib/state/app-state.svelte';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
@@ -47,6 +47,6 @@ export function travelEntry(
  *  the planner resolves it. A star system gives its primary star. Null when the
  *  planner cannot place the end, or cannot size a planet. */
 export async function extrasolarTripTarget(objectId: string): Promise<BodyData | null> {
-	const end = await resolveExtrasolarEnd(objectId);
+	const end = await extrasolarEndAtRest(objectId);
 	return end && extrasolarTravelBody(end) ? end.body : null;
 }

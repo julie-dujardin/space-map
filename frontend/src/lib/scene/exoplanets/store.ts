@@ -21,6 +21,7 @@ import {
 	type PlanetSystem
 } from '$lib/fetch/extrasolar/planets';
 import type { ExtrasolarLookupResult } from '$lib/fetch/extrasolar/lookup';
+import type { Vec3 } from '$lib/scene/animation/math';
 import { systemRoot } from '$lib/fetch/extrasolar/systems';
 import { ensureExtrasolarBody } from '$lib/scene/setup/extrasolar';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
@@ -159,6 +160,16 @@ export class ExoplanetStore {
 	 *  in. The plane is the planet's own, else the plane of the node's pair, else
 	 *  that of the star's outermost orbit. */
 	view(objectId: string): SystemView | null {
+		const frame = this.frameOf(objectId);
+		return frame && systemView(frame.at, frame.normal, frame.outer || NO_ORBIT_AU);
+	}
+
+	/** The unit normal of the plane that {@link view} looks at. Null when it has no view. */
+	planeNormal(objectId: string): Vec3 | null {
+		return this.frameOf(objectId)?.normal ?? null;
+	}
+
+	private frameOf(objectId: string): { at: Readonly<Vec3>; normal: Vec3; outer: number } | null {
 		const planet = planetOfObjectId(objectId);
 		const hostId = planet?.host ?? extrasolarIdOf(objectId);
 		if (hostId === null) return null;
@@ -170,9 +181,8 @@ export class ExoplanetStore {
 		const planets = held?.file.planets.filter((p) => p.host === hostId) ?? [];
 		const own = planets.find((p) => p.number === planet?.n)?.elements;
 		const plane = own ?? pair?.orbit ?? outermostElements(planets);
-		const normal = plane ? orbitNormal(plane.i, plane.om) : ([0, 1, 0] as const);
-		const outer = Math.max(pair?.orbit.a ?? 0, outerOrbitAU(planets) ?? 0);
-		return systemView(at, normal, outer || NO_ORBIT_AU);
+		const normal: Vec3 = plane ? orbitNormal(plane.i, plane.om) : [0, 1, 0];
+		return { at, normal, outer: Math.max(pair?.orbit.a ?? 0, outerOrbitAU(planets) ?? 0) };
 	}
 
 	/** The pair that a page of the node `star` frames. Null for a star. */

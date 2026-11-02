@@ -10,6 +10,8 @@ export function legLabel(kind: TimelineKind): string {
 			return m.travel_leg_start_orbit();
 		case 'final-orbit':
 			return m.travel_leg_final_orbit();
+		case 'arrival':
+			return m.travel_arrival_mode();
 		case 'ascent':
 			return m.travel_leg_ascent();
 		case 'injection':

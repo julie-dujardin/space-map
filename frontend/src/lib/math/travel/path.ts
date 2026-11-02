@@ -19,6 +19,7 @@ import {
 	crossingElapsed,
 	crossingStretches,
 	endOffsetKm,
+	starPlaceKm,
 	heldLine,
 	hyperbolaThrough,
 	orbitStateAt,
@@ -2996,7 +2997,8 @@ function crossingEnd(
 	standOffKm: Vec3
 ): CrossingEnd {
 	const { centerKm, sunOffsetKm } = options;
-	const placed = centerKm ? sub(system.starKm, centerKm) : system.starKm;
+	const star = starPlaceKm(system, jd);
+	const placed = centerKm ? sub(star, centerKm) : star;
 	// The kernel puts the star of a solar end, and no other, at the barycentre.
 	const sun = norm(system.starKm) === 0 ? sunOffsetKm?.(jd) : null;
 	return {

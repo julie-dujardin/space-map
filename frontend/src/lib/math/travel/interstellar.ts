@@ -2,7 +2,7 @@
  * Routes between two star systems. A trip runs between the real places of its two
  * ends on its two dates, and no line runs to the centre of a star.
  *
- * The stars do not move.
+ * A star moves only on the orbits the map draws for its system.
  *
  * The Sun is at the barycentre here. Its offset is about 0.01 au, which moves no
  * price and no date. Only the drawing adds it, because the line must touch the body
@@ -38,6 +38,7 @@
  */
 
 import { clockJd, elementsJd } from '$lib/math/orbit/position';
+import type { OrbitalElements } from '$lib/types/objects';
 import { AU_KM, SPEED_OF_LIGHT_KM_S } from '$lib/math/units';
 import type { TravelBody } from './body';
 import { COAST_SPAN } from './brachistochrone';
@@ -117,8 +118,10 @@ export interface SystemEnd {
 	 *  when it has none. */
 	body: TravelBody;
 	/** Position of its star, km, ecliptic J2000 from the solar-system barycentre.
-	 *  The Sun is at the barycentre. */
+	 *  The Sun is at the barycentre. A star with `starOrbits` turns about this place. */
 	starKm: Vec3;
+	/** The orbits that carry its star, innermost first, as the map draws them. */
+	starOrbits?: readonly OrbitalElements[];
 	/** μ of its star, km³/s². Absent when unknown. The period of the orbit then gives it. */
 	starMu?: number;
 	/** True when the end is the star. It has no orbit about a star then. */
@@ -262,10 +265,23 @@ export function endOffsetKm(end: SystemEnd, jd: number): Vec3 {
 	return state?.r ?? [0, 0, 0];
 }
 
+/** Where the star of an end is at `jd`, km, ecliptic J2000 from the solar-system
+ *  barycentre. The orbit of a star in a pair moves its place by tens of au, and
+ *  its speed there is left out, as a body's is on a held drive. */
+export function starPlaceKm(end: SystemEnd, jd: number): Vec3 {
+	let place = end.starKm;
+	for (const orbit of end.starOrbits ?? []) {
+		const state = elementsToState(orbit, jd);
+		if (state) place = add(place, state.r);
+	}
+	return place;
+}
+
 /** Where an end is at `jd`, km, ecliptic J2000 from the solar-system barycentre.
  *  This is the place the map gives it. A solar end is about the Sun. */
 export function endPlaceKm(end: SystemEnd, jd: number): Vec3 {
-	return end.atStar ? end.starKm : add(end.starKm, endOffsetKm(end, jd));
+	const star = starPlaceKm(end, jd);
+	return end.atStar ? star : add(star, endOffsetKm(end, jd));
 }
 
 /** `orbit` if the end can hold it. An orbit about a star of unknown μ has no price. */
@@ -1051,6 +1067,7 @@ function starPassState(mu: number, out: Vec3, speedKms: number, passKm: number):
 /** The hyperbola between an end and the join. `state` is the end's body, or null. */
 function wellConic(
 	end: SystemEnd,
+	jd: number,
 	state: StateVector | null,
 	out: Vec3,
 	speedKms: number,
@@ -1065,8 +1082,9 @@ function wellConic(
 	if (!leaving) return null;
 	const { r, v, mu } = leaving;
 	const seconds = secondsOut(leaving, speedKms, joinRadiusKm(norm(r), gapKm));
-	const joinKm = add(end.starKm, propagateState(r, v, seconds, mu) ?? r);
-	return { starKm: end.starKm, mu, r, v, speedKms, seconds, joinKm };
+	const starKm = starPlaceKm(end, jd);
+	const joinKm = add(starKm, propagateState(r, v, seconds, mu) ?? r);
+	return { starKm, mu, r, v, speedKms, seconds, joinKm };
 }
 
 /** The shape of a coast at the real speed `speedKms`. */
@@ -1080,12 +1098,18 @@ function flightShape(
 	const originKm = endPlaceKm(origin, departJd);
 	const targetKm = endPlaceKm(target, arriveJd);
 	const along = normalize(sub(targetKm, originKm));
-	const gapKm = norm(sub(target.starKm, origin.starKm));
-	const conic = (end: SystemEnd, state: StateVector | null, out: Vec3, passKm: number) =>
-		wellConic(end, state, out, speedKms, passKm, gapKm);
+	const gapKm = norm(sub(starPlaceKm(target, arriveJd), starPlaceKm(origin, departJd)));
+	const conic = (
+		end: SystemEnd,
+		jd: number,
+		state: StateVector | null,
+		out: Vec3,
+		passKm: number
+	) => wellConic(end, jd, state, out, speedKms, passKm, gapKm);
 
 	const departure = conic(
 		origin,
+		departJd,
 		orbitStateAt(origin, departJd),
 		along,
 		starPassRadiusKm(origin, flight.departureMode, flight.departureOrbit)
@@ -1093,6 +1117,7 @@ function flightShape(
 	const met = orbitStateAt(target, arriveJd);
 	const arrival = conic(
 		target,
+		arriveJd,
 		met && walkedBack(met),
 		scale(along, -1),
 		starPassRadiusKm(target, flight.arrivalMode, flight.targetOrbit)
@@ -1236,7 +1261,7 @@ export function buildInterstellarCruiseRoute(
 	 */
 	const settled = (jd: number, fromKms: number): MeetingPlan => {
 		const fromKm = endPlaceKm(origin, jd);
-		const gapKm = norm(sub(target.starKm, fromKm));
+		const gapKm = norm(sub(starPlaceKm(target, jd), fromKm));
 		let kms = fromKms;
 		let best: MeetingPlan | null = null;
 		for (let round = 0; round < MEETING_ROUNDS; round++) {

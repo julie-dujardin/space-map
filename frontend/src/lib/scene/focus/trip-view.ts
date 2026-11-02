@@ -1,10 +1,12 @@
 /**
- * Where the camera goes to show a trip between two star systems whole.
+ * Where the camera goes to show a trip whole.
  *
  * The camera orbits the target of the trip, so the target is at the centre of
- * the view. The vantage puts the origin in the part of the screen that the
- * page leaves open, and sees the line between the two from the side. When the
- * camera already shows the trip, it stays where it is.
+ * the view. Between two star systems, the vantage puts the origin in the part of
+ * the screen that the page leaves open, and sees the line between the two from
+ * the side. A trip that stays inside one system is a ball, which the vantage
+ * puts in that part of the screen. When the camera already shows the trip, it
+ * stays where it is.
  *
  * Positions are in scene units on the scene's axes.
  */
@@ -40,6 +42,15 @@ const LABEL_ROOM_PX = 40;
 const LABEL_WIDTH_PX = 128;
 /** A side direction shorter than this share of its vector is no direction. */
 const SIDE_MIN = 1e-3;
+/** Height of a vantage on a ball above the plane it looks at. */
+const BALL_ELEVATION_RAD = (45 * Math.PI) / 180;
+/** The camera still shows a ball from this many times its least distance. */
+const BALL_SLACK = 3;
+/** The least room a ball takes on each side of the centre, in normalised device
+ *  units. A sheet that covers half of a phone leaves none below the centre. */
+const BALL_ROOM_MIN = 0.25;
+/** A ring of this share of the line, or wider, sets the scale of the view. */
+const RING_SHARE = 1 / 4;
 /** Scene +Y: ecliptic north. */
 const NORTH: TravelVec3 = [0, 1, 0];
 const EAST: TravelVec3 = [1, 0, 0];
@@ -101,18 +112,24 @@ export function openArea(insets: ScreenInsets, width: number, height: number): O
  * The vantage that shows the trip from `origin` to `target` with the camera at
  * `camera`. Of the vantages that put the origin in the open area as far out
  * as the field allows, it takes the one nearest to the camera, so that the
- * move is short. Null when the two ends are in one place.
+ * move is short. `ring` is the widest ring at either end. A ring that is wide
+ * against the line goes in the view with it. Null when the two ends are in one
+ * place.
  */
 export function tripVantage(
 	target: Vec3,
 	origin: Vec3,
 	camera: Vec3,
-	view: TripCamera
+	view: TripCamera,
+	ring = 0
 ): TripVantage | null {
 	const line = sub(origin, target);
 	const length = norm(line);
 	const narrow = narrowHalfFov(view.fovDeg, view.aspect);
 	if (!(length > 0) || !(narrow > 0)) return null;
+	if (ring >= RING_SHARE * length) {
+		return ballVantage(target, target, length + ring, null, camera, view);
+	}
 	const offset = sub(camera, target);
 	if (shows(offset, line, length, view, narrow)) {
 		return { offset: [offset[0], offset[1], offset[2]], kept: true };
@@ -142,6 +159,80 @@ export function tripVantage(
 	const reach = Math.max(best.reach, Math.tan(FILL_MIN * narrow));
 	const [x, y, z] = scale(best.direction, distanceAt(length, reach));
 	return { offset: [x, y, z], kept: false };
+}
+
+/**
+ * The vantage that shows a ball of `radius` about `center` from `target`, which
+ * can be anywhere in it. It looks down on the plane of the unit vector `normal`,
+ * north if null, and takes the side of that plane where the ball is largest in the
+ * open area. Null when the ball has no size or no side fits it.
+ */
+export function ballVantage(
+	target: Vec3,
+	center: Vec3,
+	radius: number,
+	normal: Vec3 | null,
+	camera: Vec3,
+	view: TripCamera
+): TripVantage | null {
+	if (!(radius > 0)) return null;
+	const pole = normal ?? NORTH;
+	const ball = sub(center, target);
+	const offset = sub(camera, target);
+	const distance = norm(offset);
+	if (distance > 0) {
+		const least = ballDistance(ball, radius, scale(offset, 1 / distance), view);
+		if (least !== null && distance >= least && distance <= BALL_SLACK * least) {
+			return { offset: [offset[0], offset[1], offset[2]], kept: true };
+		}
+	}
+
+	const first = sideOf(offset, pole) ?? sideOf(EAST, pole) ?? sideOf(NORTH, pole);
+	if (!first) return null;
+	const second = cross(pole, first);
+	let best: { direction: TravelVec3; distance: number } | null = null;
+	for (let i = 0; i < SIDES; i++) {
+		const turn = (2 * Math.PI * i) / SIDES;
+		const side = add(scale(first, Math.cos(turn)), scale(second, Math.sin(turn)));
+		const direction = add(
+			scale(side, Math.cos(BALL_ELEVATION_RAD)),
+			scale(pole, Math.sin(BALL_ELEVATION_RAD))
+		);
+		const away = ballDistance(ball, radius, direction, view);
+		if (away !== null && (!best || away < best.distance)) best = { direction, distance: away };
+	}
+	if (!best) return null;
+	const [x, y, z] = scale(best.direction, best.distance);
+	return { offset: [x, y, z], kept: false };
+}
+
+/** Least distance from the target along the unit vector `back` at which a ball at
+ *  `center` from the target is in the open area. Null when the camera looks along
+ *  its up. */
+function ballDistance(
+	center: TravelVec3,
+	radius: number,
+	back: TravelVec3,
+	view: TripCamera
+): number | null {
+	const right = cross(view.up, back);
+	const width = norm(right);
+	if (!(width > SIDE_MIN)) return null;
+	const across = scale(right, 1 / width);
+	const up = cross(back, across);
+	const tanY = Math.tan((view.fovDeg * Math.PI) / 360);
+	const tanX = tanY * view.aspect;
+	const room = (share: number, tan: number) => Math.max(share, BALL_ROOM_MIN) * tan;
+	const x = dot(center, across);
+	const y = dot(center, up);
+	const depth = Math.max(
+		(x + radius) / room(view.open.right, tanX),
+		(radius - x) / room(view.open.left, tanX),
+		(y + radius) / room(view.open.top, tanY),
+		(radius - y) / room(view.open.bottom, tanY)
+	);
+	// Measured from the near side of the ball, which looks the largest.
+	return depth + dot(center, back) + radius;
 }
 
 /** Distance from the target at which the origin, `length` off at the vantage

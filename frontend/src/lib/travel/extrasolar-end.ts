@@ -6,13 +6,14 @@
  * the map draws it.
  *
  * Positions are in km on the ecliptic and equinox of J2000, with the origin at
- * the solar-system barycentre. This is the frame of `eclipticToScene`. Stars
- * do not move.
+ * the solar-system barycentre. This is the frame of `eclipticToScene`. A star
+ * moves only on the orbits the map draws for its system.
  *
  * A planet has the mass and the radius of its catalogue. When the catalogue
  * gives one of the two, the other comes from the mass–radius relation of Chen
  * & Kipping (2017, ApJ 834, 17). A planet with neither has no size. A star with
- * a μ and no radius takes the radius of the same relation.
+ * a μ and no radius takes the radius of the same relation. A star with no mass
+ * takes a μ from the orbit of its pair.
  */
 
 import {
@@ -28,6 +29,7 @@ import {
 	type ExtrasolarRecord
 } from '$lib/fetch/extrasolar/lookup';
 import { planetCatalogue, type Planet } from '$lib/fetch/extrasolar/planets';
+import { loadSystemNodes, systemRoot } from '$lib/fetch/extrasolar/systems';
 import {
 	GM_SUN_KM3_S2,
 	type SystemEnd,
@@ -38,6 +40,14 @@ import {
 import { JUPITER_RADIUS_KM, SOLAR_RADIUS_KM } from '$lib/math/units';
 import { sceneToEcliptic } from '$lib/scene/extensions/camera';
 import { hostScene, makePlanetBodies } from '$lib/scene/exoplanets/bodies';
+import {
+	carryingOrbits,
+	drawnPairs,
+	listedMass,
+	memberMu,
+	nodePlace,
+	placeNodes
+} from '$lib/scene/exoplanets/pair-orbits';
 import { makeStarBody } from '$lib/scene/focus/star-focus';
 import { measuredRadiusSolar, starMass, type StarMass } from '$lib/scene/starfield/record';
 import type {
@@ -59,9 +69,13 @@ export type ValueBasis = 'measured' | 'minimum' | 'estimated' | 'forecast';
 export interface ExtrasolarStar {
 	/** Scene id. */
 	id: string;
-	/** Where the map draws it, km. */
+	/** Where the map draws it, km. A star on an orbit turns about this place. */
 	positionKm: Vec3;
-	/** km³/s², from the mass; null when the mass is unknown. */
+	/** The orbits that carry it, innermost first. Empty for a star at `positionKm`. */
+	orbits: readonly OrbitalElements[];
+	/** The object at `positionKm`: the star, or the barycentre it turns about. */
+	fixedId: string;
+	/** km³/s², from the mass, else from the orbit of its pair. Null with neither. */
 	muKm3S2: number | null;
 	/** Null when unknown. */
 	radiusKm: number | null;
@@ -208,6 +222,8 @@ function starEnd(body: PositionedBody, star: StarAnchor): ExtrasolarEnd | null {
 		star: {
 			id: body.data.id,
 			positionKm: sceneToEcliptic(star.scene),
+			orbits: [],
+			fixedId: body.data.id,
 			muKm3S2: muOf(starMass(homeRow(star.record))),
 			radiusKm: star.radiusKm ?? pointRadiusKm(star.record),
 			class: star.record.metadata.class
@@ -235,6 +251,8 @@ function planetEnd(
 		star: {
 			id: extrasolarObjectId(anchor.host),
 			positionKm: sceneToEcliptic(at),
+			orbits: [],
+			fixedId: extrasolarObjectId(anchor.host),
 			muKm3S2: muOf(starMass(host && homeRow(host.record), planet)),
 			radiusKm:
 				host?.radiusKm ??
@@ -268,14 +286,19 @@ export function extrasolarEndOf(
 	return null;
 }
 
+/** A star or a star system, placed by its own record as `ensureExtrasolarBody`
+ *  places it. */
+async function recordBody(objectId: string): Promise<PositionedBody | null> {
+	const found = await extrasolarLookup.live(objectId.slice(EXTRASOLAR_PREFIX.length));
+	return found.kind === 'live' ? makeStarBody(found.record) : null;
+}
+
 /** A star or a star system, placed as the scene places it. A host with no
  *  distance of its own takes the place that the planet index gives it. */
 async function starBody(objectId: string): Promise<PositionedBody | null> {
-	const found = await extrasolarLookup.live(objectId.slice(EXTRASOLAR_PREFIX.length));
-	if (found.kind !== 'live') return null;
-	const body = makeStarBody(found.record);
-	const star = body.extrasolar!;
-	star.scene ??= hostScene((await planetCatalogue.index())?.host(found.record.id));
+	const body = await recordBody(objectId);
+	const star = body?.extrasolar;
+	if (star) star.scene ??= hostScene((await planetCatalogue.index())?.host(star.record.id));
 	return body;
 }
 
@@ -305,11 +328,46 @@ function hostBody(planet: PositionedBody): Promise<PositionedBody | null> {
 	});
 }
 
-/** The end that a scene id names, read from the extrasolar export. The end of
- *  an alias is its live object, and the end of a star system is its primary
- *  star. Null when the export has no such object, when the map does not place
- *  it, or when a file does not load. */
-export async function resolveExtrasolarEnd(objectId: string): Promise<ExtrasolarEnd | null> {
+/** The orbits `star` is drawn on in its system, the place they turn about, and the
+ *  μ of a star of unknown mass. The system's tables come before the pair's orbit:
+ *  Kepler's sum goes as a³, so a poor orbit gives a mass far off. A system that does
+ *  not load leaves the star at its catalogue place, and so does a barycentre with no
+ *  place of its own. The planner draws a crossing about that object, so the map must
+ *  be able to place it. */
+async function onItsOrbits(
+	star: ExtrasolarStar,
+	record: ExtrasolarRecord
+): Promise<ExtrasolarStar> {
+	const root = systemRoot(record);
+	if (root === null) return star;
+	try {
+		const nodes = new Map((await loadSystemNodes(root)).map((row) => [row.id, row]));
+		const pairs = drawnPairs(nodes);
+		const listed = listedMass(record.id, nodes);
+		const mu = listed === null ? memberMu(record.id, pairs) : listed * GM_SUN_KM3_S2;
+		const weighed = { ...star, muKm3S2: star.muKm3S2 ?? mu };
+		const { orbits, top } = carryingOrbits(record.id, pairs);
+		if (!top) return weighed;
+		const ids = placeNodes(top.node.id, pairs);
+		const bodies = await Promise.all(ids.map((id) => recordBody(extrasolarObjectId(id))));
+		const scenes = new Map(ids.map((id, i) => [id, bodies[i]?.extrasolar?.scene ?? null]));
+		const fixed = nodePlace(top.node.id, pairs, (id) => scenes.get(id) ?? null);
+		if (!fixed || !scenes.get(top.node.id)) return weighed;
+		const fixedId = extrasolarObjectId(top.node.id);
+		return { ...weighed, positionKm: sceneToEcliptic(fixed), orbits, fixedId };
+	} catch (e) {
+		console.warn(`[travel] no system of ${star.id}:`, e);
+		return star;
+	}
+}
+
+/** The end that a scene id names, read from the extrasolar export, and the record
+ *  of its star. The end of an alias is its live object, and the end of a star
+ *  system is its primary star. Null when the export has no such object, when the
+ *  map does not place it, or when a file does not load. */
+async function readEnd(
+	objectId: string
+): Promise<{ end: ExtrasolarEnd; record?: ExtrasolarRecord } | null> {
 	try {
 		const planet = planetOfObjectId(objectId);
 		const body = planet ? await planetBody(planet.host, planet.n) : await tripStarBody(objectId);
@@ -319,11 +377,24 @@ export async function resolveExtrasolarEnd(objectId: string): Promise<Extrasolar
 			console.debug(`[travel] ${objectId} has no place in the extrasolar export.`);
 			return null;
 		}
-		return end;
+		return { end, record: (host ?? body)?.extrasolar?.record };
 	} catch (e) {
 		console.warn(`[travel] could not read ${objectId} from the extrasolar export:`, e);
 		return null;
 	}
+}
+
+/** The end that a scene id names, with its star on the orbits the map draws. */
+export async function resolveExtrasolarEnd(objectId: string): Promise<ExtrasolarEnd | null> {
+	const found = await readEnd(objectId);
+	if (!found?.record) return found?.end ?? null;
+	return { ...found.end, star: await onItsOrbits(found.end.star, found.record) };
+}
+
+/** The end that a scene id names, with its star at its catalogue place. The orbits
+ *  cost a read of the whole system, and a caller that wants the body needs none. */
+export async function extrasolarEndAtRest(objectId: string): Promise<ExtrasolarEnd | null> {
+	return (await readEnd(objectId))?.end ?? null;
 }
 
 /** The kernel's view of an end; null for a planet with no size. `starMu` is μ of
@@ -374,6 +445,7 @@ export function systemEndOf(
 	return {
 		body,
 		starKm: extrasolar ? extrasolar.star.positionKm : [0, 0, 0],
+		starOrbits: extrasolar?.star.orbits,
 		starMu: extrasolar ? (extrasolar.star.muKm3S2 ?? undefined) : GM_SUN_KM3_S2,
 		atStar: systemOf(body.id) === body.id,
 		wells: extrasolar ? [] : wells

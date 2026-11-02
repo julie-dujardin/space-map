@@ -6,6 +6,7 @@
  */
 
 import type { PairOrbit, SystemNode } from '$lib/fetch/extrasolar/systems';
+import { muFromElements } from '$lib/math/travel/body';
 import type { Vec3 } from '$lib/scene/animation/math';
 import type { OrbitalElements } from '$lib/types/objects';
 
@@ -48,6 +49,64 @@ export function barycentreOf(first: Readonly<Vec3>, second: Readonly<Vec3>, shar
 		first[1] + share * (second[1] * depth - first[1]),
 		first[2] + share * (second[2] * depth - first[2])
 	];
+}
+
+/** The fixed place of `id`: the catalogue's, or for a resolved pair the barycentre
+ *  of its members. The catalogue keeps a resolved pair's barycentre where its
+ *  stars are. */
+export function nodePlace(
+	id: number,
+	pairs: readonly DrawnPair[],
+	sceneOf: (id: number) => Readonly<Vec3> | null
+): Vec3 | null {
+	const pair = pairs.find((p) => p.node.id === id);
+	if (!pair || pair.node.point) {
+		const at = sceneOf(id);
+		return at && [at[0], at[1], at[2]];
+	}
+	const first = nodePlace(pair.first, pairs, sceneOf);
+	const second = nodePlace(pair.second, pairs, sceneOf);
+	return first && second && barycentreOf(first, second, pair.orbit.barycentre);
+}
+
+/** `id` and the nodes that {@link nodePlace} reads below it. */
+export function placeNodes(id: number, pairs: readonly DrawnPair[]): number[] {
+	const pair = pairs.find((p) => p.node.id === id);
+	if (!pair || pair.node.point) return [id];
+	return [id, ...placeNodes(pair.first, pairs), ...placeNodes(pair.second, pairs)];
+}
+
+/** The orbits that carry `id`, innermost first, and the outermost pair of them. */
+export function carryingOrbits(
+	id: number,
+	pairs: readonly DrawnPair[]
+): { orbits: OrbitalElements[]; top: DrawnPair | null } {
+	const orbits: OrbitalElements[] = [];
+	let top: DrawnPair | null = null;
+	let at = id;
+	for (;;) {
+		const pair = pairs.find(({ first, second }) => first === at || second === at);
+		if (!pair) return { orbits, top };
+		orbits.push(pairElements(pair.orbit)[pair.first === at ? 0 : 1]);
+		top = pair;
+		at = pair.node.id;
+	}
+}
+
+/** The mass of the star `id` in the system's tables, solar masses. */
+export function listedMass(id: number, nodes: ReadonlyMap<number, SystemNode>): number | null {
+	const member = [...nodes.values()].flatMap((n) => n.members).find((m) => m.id === id);
+	return nodes.get(id)?.star?.mass ?? member?.mass ?? null;
+}
+
+/** μ of the member `id` of a pair, km³/s². Kepler's third law gives the sum of the
+ *  pair, and the barycentre gives the share of each member. Null for an ID in no
+ *  pair, and for a pair with no mass ratio. */
+export function memberMu(id: number, pairs: readonly DrawnPair[]): number | null {
+	const pair = pairs.find(({ first, second }) => first === id || second === id);
+	if (!pair || pair.orbit.barycentre === 0) return null;
+	const { orbit, first } = pair;
+	return muFromElements(orbit) * (first === id ? 1 - orbit.barycentre : orbit.barycentre);
 }
 
 /**

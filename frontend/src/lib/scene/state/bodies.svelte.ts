@@ -77,6 +77,8 @@ export class BodyIndex {
 	private readonly extrasolar = new Map<string, PositionedBody>();
 	/** Extrasolar objects that planets orbit now: they stay past the LRU. */
 	private pinnedExtrasolar: ReadonlySet<string> = new Set();
+	/** The object a trip is drawn about. It stays past the LRU too. */
+	private tripCentreId: string | null = null;
 
 	/** Planets of the loaded planetary systems, by id. Off `bodiesById` too:
 	 *  the renderer draws the ones of the focused system. */
@@ -176,10 +178,16 @@ export class BodyIndex {
 		this.trimExtrasolar();
 	}
 
+	/** Keep the object a trip is drawn about past the LRU. The frame loop only reads
+	 *  it, so an evicted centre would hide the line until the next plan. */
+	pinTripCentre(id: string | null): void {
+		this.tripCentreId = id;
+	}
+
 	private trimExtrasolar(): void {
 		for (const id of this.extrasolar.keys()) {
 			if (this.extrasolar.size - this.pinnedExtrasolar.size <= EXTRASOLAR_KEPT) break;
-			if (!this.pinnedExtrasolar.has(id)) this.extrasolar.delete(id);
+			if (id !== this.tripCentreId && !this.pinnedExtrasolar.has(id)) this.extrasolar.delete(id);
 		}
 	}
 

@@ -117,6 +117,7 @@
 	const ICONS: Record<TimelineKind, typeof RocketIcon> = {
 		'start-orbit': CircleDashedIcon,
 		'final-orbit': CircleDashedIcon,
+		arrival: CircleDashedIcon,
 		ascent: ArrowUpIcon,
 		injection: RocketIcon,
 		cruise: MoveRightIcon,

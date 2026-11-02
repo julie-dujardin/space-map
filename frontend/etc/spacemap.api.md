@@ -1484,7 +1484,14 @@ export class SpaceMap {
 	// @internal
 	trackPathPoint(centerId: string, rKm: readonly [number, number, number]): void;
 	// @internal
-	tripView(originId: string, targetId: string, insets: ScreenInsets): GoToOptions['view'] | null;
+	tripBallView(targetId: string, ball: TripBall, insets: ScreenInsets): GoToOptions['view'] | null;
+	// @internal
+	tripView(
+		originId: string,
+		targetId: string,
+		insets: ScreenInsets,
+		ringKm?: number
+	): GoToOptions['view'] | null;
 	// @internal
 	unmount(): void;
 	// @internal

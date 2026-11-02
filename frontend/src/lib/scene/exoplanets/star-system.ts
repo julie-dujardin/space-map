@@ -37,10 +37,10 @@ import { SwitchFade } from '$lib/scene/visibility/switch-fade';
 import { pxPerRad, systemShown } from '$lib/scene/visibility/system-fade';
 import type { PositionedBody, StarAnchor } from '$lib/types/objects';
 import {
-	barycentreOf,
 	drawnPairs,
 	framedPair,
 	haloCarrier,
+	nodePlace,
 	pairElements,
 	pairLight,
 	splitLight,
@@ -123,14 +123,8 @@ export async function holdStarSystem(
 ): Promise<StarSystemPlan> {
 	await Promise.all(plan.ids.map((id) => ensureExtrasolarBody(ctx, extrasolarObjectId(id))));
 	const anchor = (id: number) => ctx.getBody(extrasolarObjectId(id))?.extrasolar;
-	/** The catalogue keeps a resolved pair's barycentre where its stars are. */
-	const placeOf = (id: number): Vec3 | null => {
-		const pair = plan.pairs.find((p) => p.node.id === id);
-		if (!pair || pair.node.point) return anchor(id)?.scene ?? null;
-		const first = placeOf(pair.first);
-		const second = placeOf(pair.second);
-		return first && second && barycentreOf(first, second, pair.orbit.barycentre);
-	};
+	const placeOf = (id: number): Vec3 | null =>
+		nodePlace(id, plan.pairs, (at) => anchor(at)?.scene ?? null);
 	const pairs = plan.pairs.filter(
 		({ node, first, second }) =>
 			placeOf(node.id) !== null && anchor(first) !== undefined && anchor(second) !== undefined

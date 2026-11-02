@@ -46,7 +46,7 @@ import { smallCircle, type LonLat } from '$lib/flatmap/geometry';
 import { loadProgress } from './state/load-progress.svelte';
 import type { Vec3 } from './animation/math';
 import type { OrbitPreview } from './objects/travel/orbit-preview';
-import type { ScreenInsets } from './focus/trip-view';
+import type { ScreenInsets, TripVantage } from './focus/trip-view';
 import {
 	effectiveRadiusKm,
 	isSurfaceFeature,
@@ -54,6 +54,7 @@ import {
 	type PositionedBody
 } from '$lib/types/objects';
 import { kmToScene, sceneToKm } from '$lib/math/units';
+import type { TripBall } from '$lib/travel/trip-ball';
 import { minCameraDistance, type CameraBand } from './visibility/camera-limits';
 import { GestureHandler, gestureStart } from '$lib/interaction/gesture';
 import { CooperativeGestures } from '$lib/interaction/cooperative';
@@ -1326,13 +1327,34 @@ export class SpaceMap {
 	/**
 	 * @internal Where a move to the target of a trip between two systems takes
 	 * the camera, as the `view` of {@link goTo}. The camera goes out until both
-	 * ends are on screen, clear of `insets`, which the page covers. Null when
-	 * the camera can stay where it is, because it already shows the trip or
-	 * because an end has no place.
+	 * ends are on screen, clear of `insets`, which the page covers. `ringKm` is the
+	 * widest ring at a star of the trip. Null when the camera can stay where it
+	 * is, because it already shows the trip or because an end has no place.
 	 */
-	tripView(originId: string, targetId: string, insets: ScreenInsets): GoToOptions['view'] | null {
+	tripView(
+		originId: string,
+		targetId: string,
+		insets: ScreenInsets,
+		ringKm = 0
+	): GoToOptions['view'] | null {
+		return this.vantageView(this.renderer?.tripVantage(originId, targetId, insets, ringKm));
+	}
+
+	/**
+	 * @internal As {@link tripView}, for a trip that stays inside one system. The
+	 * camera goes where `ball` is on screen, seen from above the plane that a link
+	 * to the target is framed by.
+	 */
+	tripBallView(targetId: string, ball: TripBall, insets: ScreenInsets): GoToOptions['view'] | null {
+		const normal = this.ctx.exoplanets.planeNormal(targetId);
+		const { centerId, radiusKm } = ball;
+		return this.vantageView(
+			this.renderer?.ballVantage(targetId, centerId, radiusKm, normal, insets)
+		);
+	}
+
+	private vantageView(vantage: TripVantage | null | undefined): GoToOptions['view'] | null {
 		const renderer = this.renderer;
-		const vantage = renderer?.tripVantage(originId, targetId, insets);
 		if (!renderer || !vantage || vantage.kept) return null;
 		return (body) => renderer.viewFrom(body.data.id, vantage.offset) ?? {};
 	}

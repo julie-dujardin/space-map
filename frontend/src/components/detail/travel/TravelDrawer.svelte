@@ -35,6 +35,7 @@
 	import { isExtrasolarObjectId } from '$lib/fetch/extrasolar/ids';
 	import { ASSIST_BODY_IDS } from '$lib/travel/assist-bodies';
 	import { fetchBodyNomenclature } from '$lib/fetch/nomenclature/fetch';
+	import { LAST_DATE_JD } from '$lib/time/jd';
 	import type { EndSite, TravelEndpointPick } from '$lib/travel/endpoint';
 	import { fetchLaunchPads, padAt, type LaunchPad } from '$lib/travel/launch-pad';
 	import type { NavPlace } from '$lib/state/view';
@@ -129,7 +130,11 @@
 	$effect(() => {
 		void endsKey;
 		void clockSettledJd;
-		untrack(() => (nowJd = clockJd));
+		// The clock rests on its last date when a trip runs on past it, and no trip
+		// leaves then: taking that date would solve the trip again from it.
+		untrack(() => {
+			if (clockJd < LAST_DATE_JD) nowJd = clockJd;
+		});
 	});
 
 	const ctx = getContext<ContextManager | undefined>('ctx');

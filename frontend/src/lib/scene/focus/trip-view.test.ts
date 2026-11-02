@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { PerspectiveCamera, Vector3 } from 'three';
 import type { Vec3 } from '$lib/scene/animation/math';
 import {
+	ballVantage,
 	narrowHalfFov,
 	openArea,
 	tripVantage,
@@ -168,5 +169,105 @@ describe('openArea', () => {
 
 	it('is never less than nothing', () => {
 		expect(openArea({ top: 0, right: 0, bottom: 900, left: 0 }, 1000, 1000).bottom).toBe(0);
+	});
+});
+
+describe('ballVantage', () => {
+	const STAR: Vec3 = [24_920_682, 282_618, 6_335_094];
+	const open = openArea(DESKTOP, 1600, 900);
+	const view = camera(WIDE, open);
+	const SEEN = { top: open.top, right: open.right, bottom: open.bottom, left: open.left };
+
+	/** Points of the sphere about `center`, on three great circles. */
+	function sphere(center: Vec3, radius: number): Vec3[] {
+		const points: Vec3[] = [];
+		for (let i = 0; i < 64; i++) {
+			const t = (2 * Math.PI * i) / 64;
+			const [c, s] = [radius * Math.cos(t), radius * Math.sin(t)];
+			points.push(plus(center, [c, s, 0]), plus(center, [c, 0, s]), plus(center, [0, c, s]));
+		}
+		return points;
+	}
+
+	function expectInOpenArea(target: Vec3, center: Vec3, radius: number, offset: Vec3) {
+		for (const point of sphere(center, radius)) {
+			const at = drawn(point, target, offset);
+			expect(at.x).toBeLessThanOrEqual(SEEN.right);
+			expect(at.x).toBeGreaterThanOrEqual(-SEEN.left);
+			expect(at.y).toBeLessThanOrEqual(SEEN.top);
+			expect(at.y).toBeGreaterThanOrEqual(-SEEN.bottom);
+		}
+	}
+
+	it('shows a system from a planet on its rim, clear of the page', () => {
+		const target = plus(STAR, [0.3, 0, 0]);
+		const vantage = ballVantage(target, STAR, 0.33, null, STAR, view)!;
+		expect(vantage.kept).toBe(false);
+		expectInOpenArea(target, STAR, 0.33, vantage.offset);
+	});
+
+	it('shows a ring round the target, with the target at the centre', () => {
+		const vantage = ballVantage(STAR, STAR, 1000, null, plus(STAR, [15, 0, 0]), view)!;
+		expectInOpenArea(STAR, STAR, 1000, vantage.offset);
+		expect(Math.hypot(...vantage.offset)).toBeGreaterThan(1000);
+	});
+
+	it('fills the open area, not a part of it', () => {
+		const target = plus(STAR, [0.3, 0, 0]);
+		const { offset } = ballVantage(target, STAR, 0.33, null, STAR, view)!;
+		const tall = sphere(STAR, 0.33).map((point) => drawn(point, target, offset).y);
+		expect(Math.max(...tall) - Math.min(...tall)).toBeGreaterThan(0.6 * (SEEN.top + SEEN.bottom));
+	});
+
+	it('looks down on the plane it is given', () => {
+		const tilted: Vec3 = [0, Math.SQRT1_2, Math.SQRT1_2];
+		const { offset } = ballVantage(STAR, STAR, 1, tilted, plus(STAR, [150, 0, 0]), view)!;
+		const height = offset[1] * tilted[1] + offset[2] * tilted[2];
+		expect(height / Math.hypot(...offset)).toBeCloseTo(Math.SQRT1_2, 6);
+	});
+
+	it('stays where it already shows the ball', () => {
+		const first = ballVantage(STAR, STAR, 1, null, plus(STAR, [15, 0, 0]), view)!;
+		const again = ballVantage(STAR, STAR, 1, null, plus(STAR, first.offset), view)!;
+		expect(again.kept).toBe(true);
+		expect(again.offset[0]).toBeCloseTo(first.offset[0], 6);
+	});
+
+	it('moves when the ball is a speck, or the camera is inside it', () => {
+		expect(ballVantage(STAR, STAR, 0.03, null, plus(STAR, [15, 0, 0]), view)!.kept).toBe(false);
+		expect(ballVantage(STAR, STAR, 1000, null, plus(STAR, [15, 0, 0]), view)!.kept).toBe(false);
+	});
+
+	it('still fits on a phone, whose sheet covers the lower half', () => {
+		const phone = camera(390 / 844, { top: 0.75, right: 0.26, bottom: 0, left: 0.71 });
+		const vantage = ballVantage(STAR, STAR, 1, null, plus(STAR, [15, 0, 0]), phone)!;
+		expect(Number.isFinite(Math.hypot(...vantage.offset))).toBe(true);
+	});
+
+	it('has no vantage on a ball with no size', () => {
+		expect(ballVantage(STAR, STAR, 0, null, plus(STAR, [15, 0, 0]), view)).toBeNull();
+	});
+});
+
+describe('tripVantage with a ring', () => {
+	const open = openArea(DESKTOP, 1600, 900);
+	const view = camera(WIDE, open);
+	const STAR: Vec3 = [1000, 0, 0];
+	const NEAR: Vec3 = [1230, 0, 0];
+
+	it('leaves the line of a far trip as it is for a small ring', () => {
+		const camera0: Vec3 = [10, 0, 0];
+		const far: Vec3 = [4 * LY, 0, 0];
+		expect(tripVantage(far, STAR, camera0, view, 1000)).toEqual(
+			tripVantage(far, STAR, camera0, view)
+		);
+	});
+
+	it('goes out past a ring that is wide against the line', () => {
+		const offset = tripVantage(NEAR, STAR, [1300, 900, 0], view, 1000)!.offset;
+		expect(Math.hypot(...offset)).toBeGreaterThan(1000);
+		const edge = drawn(plus(NEAR, [0, 0, 1000]), NEAR, offset);
+		expect(Math.abs(edge.x)).toBeLessThanOrEqual(1);
+		expect(Math.abs(edge.y)).toBeLessThanOrEqual(1);
 	});
 });

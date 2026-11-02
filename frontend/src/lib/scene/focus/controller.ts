@@ -23,7 +23,7 @@ import {
 	nomenclatureBodyId
 } from '$lib/scene/objects/surface/nomenclature';
 import { buildTrails } from '$lib/scene/objects/body/bulk';
-import { minCameraDistance } from '$lib/scene/visibility/camera-limits';
+import { POINT_MIN_DISTANCE, minCameraDistance } from '$lib/scene/visibility/camera-limits';
 import {
 	FOCUS_DURATION_MS,
 	prepareAim,
@@ -234,7 +234,7 @@ export class FocusController {
 	 *  Clears the focused body — otherwise `updatePositions` re-pins the origin
 	 *  to it every frame; a moving point needs the caller to re-drive it. */
 	focusOnPoint(position: Vec3, distance?: number): void {
-		const { focus, camera, callbacks } = this.deps;
+		const { focus, camera, controls, callbacks } = this.deps;
 		const camWorld = this.cameraTruePos();
 		let camPos: Vec3 | undefined;
 		if (distance !== undefined) {
@@ -250,6 +250,7 @@ export class FocusController {
 			];
 		}
 		this.focusedBody = undefined;
+		controls.minDistance = POINT_MIN_DISTANCE;
 		this.promotion.emitUserPromotedCount();
 		prepareFocusTarget(
 			focus,

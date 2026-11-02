@@ -142,6 +142,18 @@ describe('BodyIndex, the stars and planets of other systems', () => {
 		expect(bodies.getBody(star(0).data.id)).toBeUndefined();
 	});
 
+	it('keeps the centre of a trip past the LRU until the trip goes', () => {
+		const bodies = new BodyIndex();
+		bodies.addExtrasolar(star(0));
+		bodies.pinTripCentre(star(0).data.id);
+		bodies.pinExtrasolar(new Set([star(1).data.id]));
+		for (let n = 1; n <= 100; n++) bodies.addExtrasolar(star(n));
+		expect(bodies.getBody(star(0).data.id)).toBeDefined();
+		bodies.pinTripCentre(null);
+		bodies.addExtrasolar(star(101));
+		expect(bodies.getBody(star(0).data.id)).toBeUndefined();
+	});
+
 	it('announces the stars and the planets it adds, so that a pin can build them', () => {
 		const bodies = new BodyIndex();
 		let added = 0;

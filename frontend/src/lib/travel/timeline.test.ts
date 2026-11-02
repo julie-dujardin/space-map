@@ -240,6 +240,19 @@ describe('buildTimeline', () => {
 			expect(final.shape.rApoKm).toBeGreaterThan(final.shape.rPeriKm * 10);
 		});
 
+		it('keeps an orbit of centuries from crushing the trip on the axis', () => {
+			const auKm = 149_597_870.7;
+			const route = buildRoute(EARTH, MARS, MARS_WINDOW, MARS_TOF, {
+				departureMode: 'orbit',
+				arrivalMode: 'low-orbit',
+				targetOrbit: { rPeriKm: 100 * auKm, rApoKm: 100 * auKm }
+			})!;
+			const entries = buildTimeline(route, idAsName, ENDS);
+			const final = entries[entries.length - 1];
+			expect(final.kind).toBe('final-orbit');
+			expect(final.startJd).toBeCloseTo(2 * route.arriveJd - route.departJd, 6);
+		});
+
 		it('has no ends to draw before the bodies are known', () => {
 			const route = buildRoute(EARTH, MARS, MARS_WINDOW, MARS_TOF, {
 				departureMode: 'orbit',
@@ -292,6 +305,19 @@ describe('the timeline of a trip between stars', () => {
 		expect(entries[entries.length - 1].endJd).toBeCloseTo(route.arriveJd, 6);
 	});
 
+	it('keeps the priced date of a coast that follows a boost', () => {
+		const route = buildInterstellarTorchRoute(FROM_EARTH, PROXIMA, J2000, G0_M_S2, {
+			departureMode: 'orbit',
+			arrivalMode: 'rendezvous',
+			coastFraction: 0.25
+		})!;
+		// The climb out of the well ends hours into a boost of months.
+		const entries = buildTimeline(route, idAsName, null, { cruiseJd: route.departJd + 0.1 });
+		const at = (kind: string) => entries.find((e) => e.kind === kind)!;
+		expect(at('cruise').startJd).toBeCloseTo(at('boost').endJd, 9);
+		expect(at('cruise').startJd).toBeGreaterThan(route.departJd + 100);
+	});
+
 	it('only coasts on a Δv budget', () => {
 		const route = buildInterstellarCruiseRoute(
 			FROM_EARTH,
@@ -300,7 +326,64 @@ describe('the timeline of a trip between stars', () => {
 			{ kind: 'budget', dvKms: 40 },
 			{ departureMode: 'orbit', arrivalMode: 'flyby' }
 		) as Route;
-		expect(buildTimeline(route, idAsName).map((e) => e.kind)).toEqual(['injection', 'cruise']);
+		expect(buildTimeline(route, idAsName).map((e) => e.kind)).toEqual([
+			'injection',
+			'cruise',
+			'arrival'
+		]);
+	});
+
+	describe('the arrival card', () => {
+		const held = (arrivalMode: 'rendezvous' | 'flyby') =>
+			buildInterstellarTorchRoute(FROM_EARTH, PROXIMA, J2000, G0_M_S2, {
+				departureMode: 'orbit',
+				arrivalMode
+			})!;
+		const coast = (arrivalMode: 'rendezvous' | 'flyby') =>
+			buildInterstellarCruiseRoute(
+				FROM_EARTH,
+				PROXIMA,
+				J2000,
+				{ kind: 'budget', dvKms: 60 },
+				{ departureMode: 'orbit', arrivalMode }
+			) as Route;
+
+		it.each([
+			['a held rendezvous at a star', held('rendezvous')],
+			['a held flyby', held('flyby')],
+			['a coast past a star', coast('flyby')]
+		])('ends %s, at the target, with no price', (_, route) => {
+			const last = buildTimeline(route, idAsName).at(-1)!;
+			expect(last).toMatchObject({
+				kind: 'arrival',
+				isPhase: false,
+				bodyId: PROXIMA.body.id,
+				bodyName: PROXIMA.body.id,
+				days: 0,
+				dvKms: 0
+			});
+			expect(last.startJd).toBeCloseTo(route.arriveJd, 6);
+			expect(last.endJd).toBe(last.startJd);
+		});
+
+		it('ends a flyby inside the solar system', () => {
+			const route = buildRoute(EARTH, MARS, MARS_WINDOW, MARS_TOF, { arrivalMode: 'flyby' })!;
+			expect(buildTimeline(route, idAsName).at(-1)!.kind).toBe('arrival');
+		});
+
+		it('leaves a burn at the target to end the trip itself', () => {
+			expect(buildTimeline(coast('rendezvous'), idAsName).at(-1)!.kind).toBe('rendezvous');
+		});
+
+		it('leaves an orbit and a landing to end the trip themselves', () => {
+			const kindsOf = (arrivalMode: 'low-orbit' | 'landing') => {
+				const route = buildRoute(EARTH, MARS, MARS_WINDOW, MARS_TOF, { arrivalMode })!;
+				const bodies = { departure: EARTH, target: MARS };
+				return buildTimeline(route, idAsName, bodies).map((e) => e.kind);
+			};
+			expect(kindsOf('low-orbit')).not.toContain('arrival');
+			expect(kindsOf('landing')).not.toContain('arrival');
+		});
 	});
 });
 

@@ -939,11 +939,13 @@
 
 	// The frame every drawn arc is measured from — which is not the body the
 	// pricing calls the centre, but the one the elements are referenced to.
-	let centerId = $derived(
-		plan && ends.origin.body && ends.target.body
-			? transferCenterId(plan, ends.origin.body, ends.target.body, lookup)
-			: null
-	);
+	let centerId = $derived.by(() => {
+		if (!plan || !ends.origin.body || !ends.target.body) return null;
+		const center = transferCenterId(plan, ends.origin.body, ends.target.body, lookup);
+		// A star on an orbit would carry a crossing with it.
+		const leaving = ends.origin.extrasolar?.star;
+		return interstellar && leaving?.id === center ? leaving.fixedId : center;
+	});
 
 	/** A route as the map takes it: geometry, plus what to write at each end.
 	 *  `onSelect` is what makes it an offer rather than the plan. */
@@ -1004,7 +1006,7 @@
 		return buildTrajectoryPath(pathOrigin, pathTarget, route, {
 			centerId: center,
 			// A trip between two other stars is drawn about the star it leaves.
-			centerKm: leaving?.id === center ? leaving.positionKm : undefined,
+			centerKm: leaving?.fixedId === center ? leaving.positionKm : undefined,
 			systems: interstellar
 				? {
 						origin: systemEndFor('origin', pathOrigin),

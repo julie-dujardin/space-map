@@ -171,6 +171,8 @@ describe('a trip inside the system of another star', () => {
 	const STAR = (muKm3S2: number | null): ExtrasolarEnd['star'] => ({
 		id: STAR_ID,
 		positionKm: [3.6e14, -8.6e13, -3.3e13],
+		orbits: [],
+		fixedId: STAR_ID,
 		muKm3S2,
 		radiusKm: STAR_RADIUS_KM,
 		class: 'star'

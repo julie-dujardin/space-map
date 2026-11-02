@@ -4,15 +4,21 @@ import { ExtrasolarLookup } from '$lib/fetch/extrasolar/lookup';
 import { HAS_EXPORT, diskSource } from '$lib/fetch/extrasolar/__fixtures__/export';
 import { loadSystemNodes } from '$lib/fetch/extrasolar/systems';
 import { orbitalElementsToPositionJD } from '$lib/math/orbit/position';
+import { GM_SUN_KM3_S2 } from '$lib/math/travel/constants';
 import type { Vec3 } from '$lib/scene/animation/math';
 import type { OrbitalElements } from '$lib/types/objects';
 import {
 	barycentreOf,
+	carryingOrbits,
 	drawnPairs,
 	framedPair,
 	haloCarrier,
+	listedMass,
+	memberMu,
+	nodePlace,
 	pairElements,
 	pairLight,
+	placeNodes,
 	splitLight,
 	starsShare
 } from './pair-orbits';
@@ -97,6 +103,99 @@ describe('barycentreOf', () => {
 
 	it('takes the distance of the first, whatever the parallax of the second', () => {
 		expect(barycentreOf([10, 0, 0], [0, 200, 0], 0.5)).toEqual([5, 5, 0]);
+	});
+});
+
+describe('the orbits that carry a star', () => {
+	const pair = (id: number, first: number, second: number, point = false) => ({
+		node: { id, point } as SystemNode,
+		orbit: orbit({ barycentre: 0.25 }),
+		first,
+		second
+	});
+	// A hierarchical triple: 3 and 4 turn about 2, and 2 and 5 about the root.
+	const PAIRS = [pair(1, 2, 5), pair(2, 3, 4)];
+
+	it('runs from the star out to the root, innermost first', () => {
+		const { orbits, top } = carryingOrbits(4, PAIRS);
+		const [outer] = pairElements(PAIRS[0].orbit);
+		expect(orbits).toEqual([pairElements(PAIRS[1].orbit)[1], outer]);
+		expect(top).toBe(PAIRS[0]);
+	});
+
+	it('is empty for a star on no drawn orbit', () => {
+		expect(carryingOrbits(9, PAIRS)).toEqual({ orbits: [], top: null });
+	});
+
+	it('places a resolved pair at the barycentre of its members', () => {
+		const scene = new Map<number, Vec3>([
+			[3, [10, 0, 0]],
+			[4, [10, 0, 4]],
+			[5, [10, 8, 0]]
+		]);
+		const place = nodePlace(1, PAIRS, (id) => scene.get(id) ?? null)!;
+		const inner = barycentreOf([10, 0, 0], [10, 0, 4], 0.25);
+		expect(place).toEqual(barycentreOf(inner, [10, 8, 0], 0.25));
+	});
+
+	it('takes the place of a node with its own point', () => {
+		const at: Vec3 = [1, 2, 3];
+		expect(nodePlace(1, [pair(1, 2, 5, true)], () => at)).toEqual(at);
+	});
+
+	it('reads only the nodes under a pair for its place', () => {
+		expect(placeNodes(1, [...PAIRS, pair(6, 7, 8)])).toEqual([1, 2, 3, 4, 5]);
+		expect(placeNodes(5, PAIRS)).toEqual([5]);
+	});
+
+	it('stops at a node with its own point', () => {
+		expect(placeNodes(1, [pair(1, 2, 5), pair(2, 3, 4, true)])).toEqual([1, 2, 5]);
+	});
+});
+
+describe('listedMass', () => {
+	const star = (mass: number | null) => ({ star: { mass } }) as Partial<SystemNode>;
+	const listed = { ...member(2), mass: 1.5 };
+
+	it('reads the values of a held star first, as a pair weighs its light', () => {
+		const nodes = byId(node(1, { members: [listed] }), node(2, star(1.7)));
+		expect(listedMass(2, nodes)).toBe(1.7);
+	});
+
+	it('reads the row of the member when the held star lists no mass', () => {
+		expect(listedMass(2, byId(node(1, { members: [listed] }), node(2, star(null))))).toBe(1.5);
+	});
+
+	it('gives nothing for a star the tables do not weigh', () => {
+		expect(listedMass(2, byId(node(1, { members: [member(2)] })))).toBeNull();
+		expect(listedMass(9, byId(node(1, { members: [listed] })))).toBeNull();
+	});
+});
+
+describe('memberMu', () => {
+	const PAIR = (barycentre: number) => ({
+		node: { id: 1 } as SystemNode,
+		orbit: orbit({ a: 20, n: 360 / (50 * YEAR), barycentre }),
+		first: 2,
+		second: 3
+	});
+	// 20 au in 50 years: 3.2 solar masses by Kepler's third law.
+	const SUM = 20 ** 3 / 50 ** 2;
+	const solar = (id: number, barycentre: number) =>
+		memberMu(id, [PAIR(barycentre)])! / GM_SUN_KM3_S2;
+
+	it('splits the sum of Kepler by the barycentre', () => {
+		expect(solar(2, 0.25) / (0.75 * SUM)).toBeCloseTo(1, 3);
+		expect(solar(3, 0.25) / (0.25 * SUM)).toBeCloseTo(1, 3);
+	});
+
+	it('gives nothing for a pair with no mass ratio', () => {
+		expect(memberMu(2, [PAIR(0)])).toBeNull();
+		expect(memberMu(3, [PAIR(0)])).toBeNull();
+	});
+
+	it('gives nothing for an ID in no pair', () => {
+		expect(memberMu(9, [PAIR(0.25)])).toBeNull();
 	});
 });
 
@@ -385,6 +484,19 @@ describe.skipIf(!HAS_EXPORT)('real pairs', () => {
 		const pairs = drawnPairs(nodes);
 		expect(pairs.map((p) => p.node.id)).toEqual([61023167]);
 		expect(framedPair(597894079, nodes, pairs)?.node.id).toBe(61023167);
+	});
+
+	it('weighs Rigil Kentaurus and Sirius A from their orbits', async () => {
+		const solar = async (root: number, id: number) =>
+			memberMu(id, drawnPairs(await nodesOf(root)))! / GM_SUN_KM3_S2;
+		// Pourbaix & Boffin 2016, A&A 586, A90: 1.133 ± 0.005. The ratio is the MSC's.
+		expect(await solar(597894079, 27468735)).toBeCloseTo(1.139, 3);
+		// Bond et al. 2017, ApJ 840, 70: 2.063 ± 0.023.
+		expect(await solar(55692301, 22137869)).toBeCloseTo(2.058, 3);
+	});
+
+	it('lists the mass of Sirius A in its tables', async () => {
+		expect(listedMass(22137869, await nodesOf(55692301))).toBeCloseTo(2.063, 5);
 	});
 
 	it('nests the three pairs of Castor under its root', async () => {

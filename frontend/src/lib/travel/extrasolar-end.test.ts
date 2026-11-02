@@ -5,6 +5,7 @@ import {
 	extrasolarLookup,
 	type ExtrasolarRecord
 } from '$lib/fetch/extrasolar/lookup';
+import { loadSystemNodes, type SystemNode } from '$lib/fetch/extrasolar/systems';
 import { PlanetIndex, planetCatalogue, type PlanetSystem } from '$lib/fetch/extrasolar/planets';
 import {
 	pointSourceRecord,
@@ -13,6 +14,7 @@ import {
 } from '$lib/fetch/extrasolar/__fixtures__/record';
 import type { ColumnSpec } from '$lib/fetch/extrasolar/__fixtures__/writer';
 import { elementsOffset } from '$lib/math/orbit/offset';
+import { orbitalElementsToPositionJD } from '$lib/math/orbit/position';
 import {
 	GM_SUN_KM3_S2,
 	buildInterstellarCruiseRoute,
@@ -25,7 +27,7 @@ import {
 	type Vec3
 } from '$lib/math/travel';
 import { heldLine } from '$lib/math/travel/interstellar';
-import { AU_KM, SOLAR_RADIUS_KM } from '$lib/math/units';
+import { AU_KM, AU_SCALE, SOLAR_RADIUS_KM } from '$lib/math/units';
 import { hostScene, makePlanetBodies } from '$lib/scene/exoplanets/bodies';
 import {
 	ALPHA_CEN,
@@ -39,6 +41,7 @@ import { makeStarBody } from '$lib/scene/focus/star-focus';
 import { PC_AU } from '$lib/scene/starfield/tree';
 import type { PositionedBody } from '$lib/types/objects';
 import {
+	extrasolarEndAtRest,
 	extrasolarEndOf,
 	extrasolarTravelBody,
 	massFromRadiusEarth,
@@ -47,6 +50,11 @@ import {
 	systemEndOf
 } from './extrasolar-end';
 import { orbitChoices, orbitFacts, hasGround } from './orbits';
+
+vi.mock('$lib/fetch/extrasolar/systems', async (importOriginal) => {
+	const real = await importOriginal<typeof import('$lib/fetch/extrasolar/systems')>();
+	return { ...real, loadSystemNodes: vi.fn(real.loadSystemNodes) };
+});
 
 const PC_KM = PC_AU * AU_KM;
 const TAU_CETI = 21238067;
@@ -317,6 +325,22 @@ describe('the place of an end on the map', () => {
 	const expectSamePlace = (at: Vec3, scene: Vec3) =>
 		expect(norm(sub(eclipticToScene(at), scene))).toBeLessThan(SAME_PLACE);
 
+	it('is where the map draws a star on its orbit in a pair', () => {
+		const orbit = elements(10.9, { e: 0.52, i: 40, om: 70, w: 110 });
+		const { end } = kernelEnd(file(null));
+		const star = {
+			...end,
+			body: { ...end.body, id: 'x-1' },
+			starOrbits: [orbit],
+			atStar: true
+		};
+		for (const jd of [2451545, 2461346, 2470000]) {
+			const scene = orbitalElementsToPositionJD(orbit, jd) as Vec3;
+			const place = sub(endPlaceKm(star, jd), end.starKm);
+			expect(norm(sub(eclipticToScene(place), scene)) / AU_SCALE).toBeLessThan(1e-9);
+		}
+	});
+
 	it('is where the scene draws a planet with an orbit', () => {
 		const { body, end } = kernelEnd(file(elements(0.0485, { e: 0.3, i: 70, om: 200, w: 120 })));
 		for (const jd of [2400000, 2451545, 2460000, 2500000, 3e7]) {
@@ -444,6 +468,165 @@ describe('resolving an end from the export', () => {
 		vi.spyOn(extrasolarLookup, 'live').mockResolvedValue({ kind: 'live', record: point });
 		vi.spyOn(planetCatalogue, 'index').mockResolvedValue(null);
 		expect((await resolveExtrasolarEnd('x-5'))?.body.id).toBe('x-5');
+	});
+
+	describe('with a star on a drawn orbit', () => {
+		const ROOT = 20;
+		const STAR = 11;
+		const OTHER_PAIR = [31, 32];
+		const ORBIT = {
+			a: 2,
+			e: 0.3,
+			i: 40,
+			om: 70,
+			w: 110,
+			ma: 25,
+			n: 8,
+			epoch: 2455000,
+			period: 45,
+			barycentre: 0.25,
+			centre: 'barycentre'
+		};
+		const pairNode = (id: number, first: number, second: number) =>
+			({
+				id,
+				point: false,
+				depth: id === ROOT ? 0 : 1,
+				orbit: ORBIT,
+				members: [
+					{ id: first, kind: 'star' },
+					{ id: second, kind: 'star' }
+				]
+			}) as unknown as SystemNode;
+		const member = (id: number): ExtrasolarRecord => {
+			const record = starRecord();
+			return { ...record, id, metadata: { ...record.metadata, id, system: ROOT } };
+		};
+
+		/** A system with the pair of the star and a second pair, and these records. */
+		function system(records: ExtrasolarRecord[]) {
+			const byId = new Map(records.map((record) => [record.id, record]));
+			const live = vi.spyOn(extrasolarLookup, 'live').mockImplementation(async (id) => {
+				const record = byId.get(Number(id));
+				return record ? { kind: 'live', record } : { kind: 'missing', reason: 'no-row' };
+			});
+			vi.spyOn(planetCatalogue, 'index').mockResolvedValue(null);
+			vi.mocked(loadSystemNodes).mockResolvedValue([
+				pairNode(ROOT, STAR, 12),
+				pairNode(30, OTHER_PAIR[0], OTHER_PAIR[1])
+			]);
+			return live;
+		}
+
+		const members = [member(STAR), member(12), member(OTHER_PAIR[0]), member(OTHER_PAIR[1])];
+
+		afterEach(() => vi.mocked(loadSystemNodes).mockReset());
+
+		it('turns about a barycentre the map can place', async () => {
+			system([...members, member(ROOT)]);
+			const { star } = (await resolveExtrasolarEnd(`x-${STAR}`))!;
+			expect(star.fixedId).toBe(`x-${ROOT}`);
+			expect(star.orbits).toHaveLength(1);
+		});
+
+		it('stays a star at its own place when the barycentre has no body', async () => {
+			system(members);
+			const { star } = (await resolveExtrasolarEnd(`x-${STAR}`))!;
+			expect(star.fixedId).toBe(`x-${STAR}`);
+			expect(star.orbits).toEqual([]);
+			expect(star.positionKm).toEqual(
+				sceneToEcliptic(makeStarBody(member(STAR)).extrasolar!.scene!)
+			);
+		});
+
+		it('stays a star at its own place when the barycentre has no place', async () => {
+			const root = member(ROOT);
+			system([...members, { ...root, rows: new Map() }]);
+			const { star } = (await resolveExtrasolarEnd(`x-${STAR}`))!;
+			expect(star.fixedId).toBe(`x-${STAR}`);
+			expect(star.orbits).toEqual([]);
+		});
+
+		it('stays a star at its own place when only the planet index places the barycentre', async () => {
+			const root = member(ROOT);
+			system([...members, { ...root, rows: new Map() }]);
+			vi.spyOn(planetCatalogue, 'index').mockResolvedValue({
+				host: (id: number) => (id === ROOT ? { position: [1, 2, 3] } : undefined)
+			} as unknown as PlanetIndex);
+			const { star } = (await resolveExtrasolarEnd(`x-${STAR}`))!;
+			expect(star.fixedId).toBe(`x-${STAR}`);
+			expect(star.orbits).toEqual([]);
+		});
+
+		describe('with no mass of its own', () => {
+			/** A star with no FLAME mass and no host mass. */
+			const unweighed = (id: number): ExtrasolarRecord => {
+				const star = pointSourceRecord([
+					{ name: 'ra', type: 'float64', values: [26] },
+					{ name: 'dec', type: 'float64', values: [-16] },
+					{ name: 'parallax', type: 'float32', values: [100] },
+					{ name: 'parallax_error', type: 'float32', values: [0.1] }
+				]);
+				return { ...member(id), rows: star.rows };
+			};
+			// The pair's a of 2 au and n of 8°/day.
+			const SUM_KM3_S2 = ((8 * Math.PI) / 180 / 86400) ** 2 * (2 * AU_KM) ** 3;
+
+			it('takes its share of the pair from the orbit', async () => {
+				system([...members.filter((r) => r.id !== STAR), unweighed(STAR), member(ROOT)]);
+				const { star } = (await resolveExtrasolarEnd(`x-${STAR}`))!;
+				expect(star.muKm3S2! / SUM_KM3_S2).toBeCloseTo(0.75, 9);
+			});
+
+			it('takes the mass the tables list before the orbit', async () => {
+				system([...members.filter((r) => r.id !== STAR), unweighed(STAR), member(ROOT)]);
+				const [pair, other] = await loadSystemNodes(ROOT);
+				const weighed = pair.members.map((m) => (m.id === STAR ? { ...m, mass: 1.5 } : m));
+				vi.mocked(loadSystemNodes).mockResolvedValue([{ ...pair, members: weighed }, other]);
+				const { star } = (await resolveExtrasolarEnd(`x-${STAR}`))!;
+				expect(star.muKm3S2! / GM_SUN_KM3_S2).toBeCloseTo(1.5, 9);
+			});
+
+			it('keeps it when the barycentre has no place', async () => {
+				system([...members.filter((r) => r.id !== STAR), unweighed(STAR)]);
+				const { star } = (await resolveExtrasolarEnd(`x-${STAR}`))!;
+				expect(star.orbits).toEqual([]);
+				expect(star.muKm3S2! / SUM_KM3_S2).toBeCloseTo(0.75, 9);
+			});
+
+			it('stays without a μ when the pair has no mass ratio', async () => {
+				system([...members.filter((r) => r.id !== STAR), unweighed(STAR), member(ROOT)]);
+				const [pair, other] = await loadSystemNodes(ROOT);
+				vi.mocked(loadSystemNodes).mockResolvedValue([
+					{ ...pair, orbit: { ...pair.orbit!, barycentre: 0 } },
+					other
+				]);
+				const { star } = (await resolveExtrasolarEnd(`x-${STAR}`))!;
+				expect(star.muKm3S2).toBeNull();
+			});
+		});
+
+		it('keeps the catalogue mass of a star on an orbit', async () => {
+			system([...members, member(ROOT)]);
+			const { star } = (await resolveExtrasolarEnd(`x-${STAR}`))!;
+			expect(star.muKm3S2! / GM_SUN_KM3_S2).toBeCloseTo(0.8, 5);
+		});
+
+		it('reads no star outside the pair that carries the end', async () => {
+			const live = system([...members, member(ROOT)]);
+			await resolveExtrasolarEnd(`x-${STAR}`);
+			const read = live.mock.calls.map(([id]) => Number(id));
+			expect(read).toContain(12);
+			expect(read).not.toContain(OTHER_PAIR[0]);
+			expect(read).not.toContain(OTHER_PAIR[1]);
+		});
+
+		it('reads no system for a caller that wants only the body', async () => {
+			system([...members, member(ROOT)]);
+			const end = await extrasolarEndAtRest(`x-${STAR}`);
+			expect(end?.body.id).toBe(`x-${STAR}`);
+			expect(loadSystemNodes).not.toHaveBeenCalled();
+		});
 	});
 
 	it('has no end for an object the export does not have', async () => {

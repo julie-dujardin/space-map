@@ -22,11 +22,11 @@ import { endArrivalOrbit, endDepartureOrbit, type EndOrbit } from '$lib/math/tra
 import { LEG_END } from '$lib/math/travel/route';
 import type { TripRole } from './trip';
 
-/** What a step of the trip is: the legs of the route, plus the two ends that
- *  aren't legs at all — the orbit flown out of, and the one left in. Nothing
- *  is spent and no time passes at either; they're where the trip starts and
- *  stops, which the legs alone never say. */
-export type TimelineKind = LegKind | 'start-orbit' | 'final-orbit';
+/** What a step of the trip is: a leg of the route, or an end of the trip that is
+ *  no leg. The ends are the orbit flown out of, the orbit left in, and `arrival`,
+ *  for a trip that stops in no orbit and with no burn. Nothing is spent and no
+ *  time passes at an end. */
+export type TimelineKind = LegKind | 'start-orbit' | 'final-orbit' | 'arrival';
 
 export interface TimelineEntry {
 	/** Stable for a given trip, so the list can key on it. */
@@ -93,10 +93,14 @@ export interface DrawnDates {
 }
 
 /** Half a revolution of `orbit`, days — how far outside the trip its two
- *  bracketing orbit cards sit, so they date apart from the burns at them. */
-function halfOrbitDays(orbit: EndOrbit, mu: number): number {
+ *  bracketing orbit cards sit, so they date apart from the burns at them. Never
+ *  more than the trip is long: an orbit of centuries would crush the trip on the
+ *  axis to a sliver. */
+function halfOrbitDays(orbit: EndOrbit, mu: number, tripDays: number): number {
 	if (!(mu > 0)) return 0;
-	return (Math.PI * Math.sqrt(((orbit.rPeriKm + orbit.rApoKm) / 2) ** 3 / mu)) / SECONDS_PER_DAY;
+	const days =
+		(Math.PI * Math.sqrt(((orbit.rPeriKm + orbit.rApoKm) / 2) ** 3 / mu)) / SECONDS_PER_DAY;
+	return Math.min(days, tripDays);
 }
 
 export function buildTimeline(
@@ -108,6 +112,7 @@ export function buildTimeline(
 	const entries: TimelineEntry[] = [];
 	const flybys = [...(route.flybys ?? [])];
 	let jd = route.departJd;
+	const tripDays = route.arriveJd - route.departJd;
 	// A campaign's turn is made before it, at the loose apoapsis it is charged
 	// at, so only a turn after the last of them is the node the drawing coasts
 	// to. Every other turn is drawn where the burn it rides is.
@@ -149,11 +154,11 @@ export function buildTimeline(
 				route.departureId,
 				start,
 				bodies.departure,
-				jd - halfOrbitDays(start, bodies.departure.mu)
+				jd - halfOrbitDays(start, bodies.departure.mu, tripDays)
 			)
 		);
 	}
-	let cruiseTaken = false;
+	let underWay = false;
 
 	for (const [index, leg] of route.legs.entries()) {
 		// The body a leg happens at is the end of the trip it is spent at. A leg at
@@ -168,10 +173,11 @@ export function buildTimeline(
 					: (flyby?.bodyId ?? null);
 
 		// The drawn dates replace the priced ones on the cards they know better;
-		// the accumulator stays priced, so nothing else moves. Only the first
-		// cruise leaves the departure body — a swing-by's later ones don't.
-		const firstCruise = leg.kind === 'cruise' && !cruiseTaken;
-		if (leg.kind === 'cruise') cruiseTaken = true;
+		// the accumulator stays priced, so nothing else moves. Only a first cruise
+		// leaves the departure body: a swing-by's later ones do not, and a coast
+		// after a boost starts long after the boost has left it.
+		const firstCruise = leg.kind === 'cruise' && !underWay;
+		if (leg.kind === 'cruise' || leg.kind === 'boost') underWay = true;
 		const at =
 			leg.kind === 'ascent' && drawn?.liftoffJd !== undefined
 				? drawn.liftoffJd
@@ -222,9 +228,23 @@ export function buildTimeline(
 				route.targetId,
 				final,
 				bodies.target,
-				Math.max(entered, jd) + halfOrbitDays(final, bodies.target.mu)
+				Math.max(entered, jd) + halfOrbitDays(final, bodies.target.mu, tripDays)
 			)
 		);
+	} else if (!route.legs.some((leg) => LEG_END[leg.kind] === 'arrival')) {
+		// A flyby and a held stop at a star have no step at the target, so only this
+		// card reaches the end.
+		entries.push({
+			id: 'arrival',
+			kind: 'arrival',
+			startJd: jd,
+			endJd: jd,
+			days: 0,
+			isPhase: false,
+			bodyId: route.targetId,
+			bodyName: nameFor(route.targetId),
+			dvKms: 0
+		});
 	}
 
 	return entries;

@@ -39,6 +39,7 @@
 	import { prefetchGroupDetail } from '$lib/fetch/groups/details';
 	import { extrasolarAlias, fetchPageName, type PageSubject } from '$lib/state/page-name';
 	import { systemOf } from '$lib/state/nav-end';
+	import { starRingKm, tripBall } from '$lib/travel/trip-ball';
 	import type { ScreenInsets } from '$lib/scene/focus/trip-view';
 	// Not lazy: the placeholder's whole job is to be on screen before the drawer
 	// chunk is.
@@ -585,8 +586,8 @@
 	}
 
 	/** The trip's instant steps, as the map draws them: dots on the arc that
-	 *  press their own timeline card. The end orbits stay off it — they are
-	 *  places the trip is bracketed by, not things that happen on it.
+	 *  press their own timeline card. The ends of the trip stay off it. They are
+	 *  places, not things that happen on it.
 	 *
 	 *  Steps at one instant and one body are one burn the engine made as one —
 	 *  a plane change and the insertion or raise it rides — so they share a dot
@@ -596,7 +597,8 @@
 		const steps: PathStep[] = [];
 		const entries = timeline?.entries ?? [];
 		for (const entry of entries) {
-			if (entry.isPhase || entry.kind === 'start-orbit' || entry.kind === 'final-orbit') continue;
+			const place = ['start-orbit', 'final-orbit', 'arrival'].includes(entry.kind);
+			if (entry.isPhase || place) continue;
 			const together = steps[steps.length - 1];
 			if (together && together.jd === entry.startJd && together.bodyId === entry.bodyId) {
 				together.name += m.travel_list_separator() + legLabel(entry.kind);
@@ -660,9 +662,23 @@
 			.then((arrival) => reportFailed(arrival, id));
 	}
 
-	/** The origin of a trip between two systems; null for a trip inside one. */
-	function interstellarOrigin(from: string | null, to: string | null): string | null {
-		return from !== null && to !== null && systemOf(from) !== systemOf(to) ? from : null;
+	/** True when a trip opens with the whole of it on screen. Inside the solar
+	 *  system the vantage stays the reader's. */
+	function framedWhole(from: string | null, to: string | null): boolean {
+		if (from === null || to === null) return false;
+		return systemOf(from) !== SUN_ID || systemOf(to) !== SUN_ID;
+	}
+
+	/** Where a trip takes the camera to show it whole, as the `view` of `goTo`.
+	 *  Null when the camera can stay where it is. */
+	function tripViewOf(from: string | null, to: string | null) {
+		const start = from === null ? null : ctx.getBody(from)?.data;
+		const end = to === null ? null : ctx.getBody(to)?.data;
+		if (!start || !end || !framedWhole(start.id, end.id)) return null;
+		const { trip } = appState.view;
+		const ball = tripBall(start, end, trip);
+		if (ball) return map.tripBallView(end.id, ball, tripInsets());
+		return map.tripView(start.id, end.id, tripInsets(), starRingKm(start, end, trip));
 	}
 
 	/** The trip timeline's band at the foot of a desktop map, rem: its lift off
@@ -690,8 +706,8 @@
 		};
 	}
 
-	// The opening view frames a trip between two systems on the ends it reads
-	// once the renderer is up. The trip effect frames the ends after those.
+	// The opening view frames a whole trip on the ends it reads once the renderer
+	// is up. The trip effect frames the ends after those.
 	let viewOpened = false;
 	/** The stream of the latest ends of the trip. */
 	let tripEnds: Promise<unknown> = Promise.resolve();
@@ -718,16 +734,15 @@
 		const ends = [navFrom, to].filter((id) => id !== null);
 		// Neither end chosen: nothing to stream, nothing to re-frame.
 		if (ends.length === 0) return;
-		// A trip between two systems frames both of its ends.
-		const origin = interstellarOrigin(navFrom, to);
+		// A vantage on a whole trip needs both of its ends.
+		const whole = framedWhole(navFrom, to);
 		const opening = !viewOpened;
 		// With nowhere to go yet, the departure is the subject.
 		const framed = to ?? ends[0];
 		const streamed = Promise.all(
 			ends.map((id) => {
-				// `goTo` streams in the end it goes to. A vantage on two systems needs
-				// both ends before that.
-				const leftToGoTo = id === framed && origin === null;
+				// `goTo` streams in the end it goes to. A vantage needs both ends before that.
+				const leftToGoTo = id === framed && !whole;
 				return leftToGoTo || ctx.getBody(id)
 					? Promise.resolve()
 					: ctx
@@ -739,11 +754,10 @@
 		let cancelled = false;
 		void (async () => {
 			await streamed;
-			// The opening view frames a trip between two systems.
-			const leftToOpening = origin !== null && opening;
-			if (cancelled || leftToOpening) return;
-			// The camera leaves the solar system only as far as a trip between two systems needs.
-			const view = origin === null ? null : map.tripView(origin, framed, tripInsets());
+			// The opening view frames a whole trip.
+			if (cancelled || (whole && opening)) return;
+			// The camera goes only as far as the trip needs.
+			const view = tripViewOf(navFrom, to);
 			if (!view && untrack(() => cameraFocus?.data.id) === framed) return;
 			// Else the camera pans and keeps the vantage of the reader. The trip owns the date.
 			const camera = view ? { camera: 'fly' as const, view } : { camera: 'pan' as const };
@@ -967,18 +981,14 @@
 			const trip = isNav && !appState.view.framed;
 			// The vantage needs the place of both ends, and the planner can move an
 			// end while the page opens.
-			if (trip && interstellarOrigin(navFrom, navTo) !== null) await latestTripEnds();
-			const origin = trip ? interstellarOrigin(navFrom, navTo) : null;
+			if (trip && framedWhole(navFrom, navTo)) await latestTripEnds();
 			const target = navTo ?? initialId;
 			// The trip effect frames the ends that move after this read.
 			viewOpened = true;
-			const tripView = origin === null ? null : map.tripView(origin, target, tripInsets());
-			if (tripView) {
-				// A trip between two systems opens with both of its ends on screen.
-				reportFailed(
-					await map.goTo(target, { clock: 'keep', camera: 'fly', view: tripView }),
-					target
-				);
+			const view = trip ? tripViewOf(navFrom, navTo) : null;
+			if (view) {
+				// A trip opens with the whole of it on screen.
+				reportFailed(await map.goTo(target, { clock: 'keep', camera: 'fly', view }), target);
 			} else if (initialId === EARTH_ID && !appState.view.framed) {
 				// Home view (`/` redirects here): Earth looking sunward, tilted above the ecliptic.
 				map.snapToBodyFacing(initialId, SUN_ID, DEFAULT_VIEW_ELEVATION_DEG, DEFAULT_VIEW.zoom);

@@ -162,7 +162,14 @@ import {
 	stepFocusAnimation
 } from './animation/focus';
 import { FocusController } from './focus/controller';
-import { openArea, tripVantage, type ScreenInsets, type TripVantage } from './focus/trip-view';
+import {
+	ballVantage,
+	openArea,
+	tripVantage,
+	type ScreenInsets,
+	type TripCamera,
+	type TripVantage
+} from './focus/trip-view';
 import { ProbeCoverageWatch } from './probe-coverage-watch';
 import { OutOfRangeNotifier } from './out-of-range-notice';
 import { ExtensionRegistry } from './extensions/registry';
@@ -170,6 +177,7 @@ import { resolvePose, type CameraPose } from './extensions/camera';
 import { passengerFor } from '$lib/fetch/position/probes/passenger';
 import { RetryBackoff } from '$lib/fetch/retry-backoff';
 import {
+	POINT_MIN_DISTANCE,
 	minCameraDistance,
 	clampCameraOutsideBody,
 	clampCameraToLimits,
@@ -611,7 +619,7 @@ export class SceneRenderer {
 		this.controls = new OrbitControlsClass(this.camera, canvas);
 		this.controls.enableDamping = true;
 		this.orbitDampingFactor = orbitDamping(sceneSettings().resolvedReducedMotion);
-		this.controls.minDistance = focusBody ? minCameraDistance(focusBody) : kmToScene(0.01);
+		this.controls.minDistance = focusBody ? minCameraDistance(focusBody) : POINT_MIN_DISTANCE;
 		// Read at each clamp, so the cap holds the camera where a placement put it.
 		Object.defineProperty(this.controls, 'maxDistance', { get: () => this.maxCameraDistance() });
 		this.controls.target.set(0, 0, 0);
@@ -791,6 +799,15 @@ export class SceneRenderer {
 		steps: readonly PathStep[] = []
 	): void {
 		this.travelPath.set(plan, options, hazards, steps);
+		// The barycentre a crossing is drawn about is neither end of the trip.
+		const centerId = this.travelPath.centerId;
+		this.ctx.bodies.pinTripCentre(centerId);
+		if (centerId !== null && !this.ctx.getBody(centerId)) {
+			const at = jdToDate(this.sceneJd);
+			void this.ctx
+				.ensureBody(centerId, at)
+				.catch((e) => console.warn(`[map] no centre ${centerId} for the trip:`, e));
+		}
 		this.refreshTravelPath();
 	}
 
@@ -862,7 +879,12 @@ export class SceneRenderer {
 		this.travelPath.setVisible(true);
 		this.travelPath.setClock(this.craftJd);
 		// Planet-frame ends hang off the live body, which may not be streamed in.
-		this.travelPath.reposition(center, this.focus.focusTruePos, (id) => this.where(id));
+		this.travelPath.reposition(
+			center,
+			this.focus.focusTruePos,
+			(id) => this.where(id),
+			this.camera
+		);
 		this.travelPath.updateCameraOffset(this.camera.position);
 		this.reserveTravelLabelSpace();
 	}
@@ -1092,21 +1114,50 @@ export class SceneRenderer {
 		return this.focus.focusDurationMs;
 	}
 
-	/** Where the camera goes to show a trip between two systems whole, as an
-	 *  offset from the target. `insets` is what the page covers of the map.
-	 *  Null when an end has no place. */
-	tripVantage(originId: string, targetId: string, insets: ScreenInsets): TripVantage | null {
-		const origin = this.where(originId);
-		const target = this.where(targetId);
-		if (!origin || !target) return null;
+	/** The camera as a vantage sees it. `insets` is what the page covers of the map. */
+	private tripCamera(insets: ScreenInsets): TripCamera {
 		const { clientWidth, clientHeight } = this.renderer.domElement;
 		const { up } = this.camera;
-		return tripVantage(target, origin, this.focusController.cameraTruePos(), {
+		return {
 			fovDeg: this.camera.fov,
 			aspect: this.camera.aspect,
 			up: [up.x, up.y, up.z],
 			open: openArea(insets, clientWidth || 1, clientHeight || 1)
-		});
+		};
+	}
+
+	/** Where the camera goes to show a trip between two systems whole, as an
+	 *  offset from the target. `ringKm` is the widest ring at a star of the trip.
+	 *  Null when an end has no place. */
+	tripVantage(
+		originId: string,
+		targetId: string,
+		insets: ScreenInsets,
+		ringKm = 0
+	): TripVantage | null {
+		const origin = this.where(originId);
+		const target = this.where(targetId);
+		if (!origin || !target) return null;
+		const camera = this.focusController.cameraTruePos();
+		return tripVantage(target, origin, camera, this.tripCamera(insets), kmToScene(ringKm));
+	}
+
+	/** Where the camera goes to show the ball of `radiusKm` about the body
+	 *  `centerId` from the target, as an offset from the target. `normal` is the
+	 *  plane it looks down on, north if null. Null when either body has no place. */
+	ballVantage(
+		targetId: string,
+		centerId: string,
+		radiusKm: number,
+		normal: Vec3 | null,
+		insets: ScreenInsets
+	): TripVantage | null {
+		const target = this.where(targetId);
+		const center = this.where(centerId);
+		if (!target || !center) return null;
+		const camera = this.focusController.cameraTruePos();
+		const radius = kmToScene(radiusKm);
+		return ballVantage(target, center, radius, normal, camera, this.tripCamera(insets));
 	}
 
 	/** The camera at `offset` from the body `id`, in the degrees that a move to
@@ -1583,8 +1634,28 @@ export class SceneRenderer {
 			fovDeg: this.camera.fov,
 			dtMs,
 			outside: 1 - this.starfield.skyboxShare(),
-			focused: this.focusController.current
+			focused: this.focusController.current ?? this.tripEndInView()
 		});
+	}
+
+	/** The end of the drawn trip nearest a point the camera follows on it. Its system
+	 *  stays drawn, or a star of a pair leaves the orbit the trip meets it on. */
+	private tripEndInView(): PositionedBody | undefined {
+		if (!this.travelFocus) return undefined;
+		const at = this.focus.focusTruePos;
+		let nearest: PositionedBody | undefined;
+		let nearestDistance = Infinity;
+		for (const id of this.travelPath.endIds) {
+			const body = this.ctx.getBody(id);
+			const place = body && this.whereBody(body);
+			if (!place) continue;
+			const distance = f64dist(at, place);
+			if (distance < nearestDistance) {
+				nearest = body;
+				nearestDistance = distance;
+			}
+		}
+		return nearest;
 	}
 
 	/** The solar system's share of the view. Its zones refresh when the fade

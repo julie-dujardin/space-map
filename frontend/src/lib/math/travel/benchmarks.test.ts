@@ -16,8 +16,11 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import type { PairOrbit } from '$lib/fetch/extrasolar/systems';
 import { AU_KM, LIGHT_YEAR_KM, SPEED_OF_LIGHT_KM_S } from '$lib/math/units';
+import { pairElements } from '$lib/scene/exoplanets/pair-orbits';
 import { radiusFromMassEarth } from '$lib/travel/extrasolar-end';
+import type { OrbitalElements } from '$lib/types/objects';
 import { findAssistRoute } from './assist';
 import { escapeSpeed, muFromElements, sphereOfInfluenceKm, type TravelBody } from './body';
 import { GM_SUN_KM3_S2, SEC_PER_DAY } from './constants';
@@ -25,6 +28,7 @@ import { solveFlyby, turnAngleRad } from './flyby';
 import {
 	buildInterstellarCruiseRoute,
 	buildInterstellarTorchRoute,
+	starPlaceKm,
 	type InterstellarCruiseOptions,
 	type SystemEnd
 } from './interstellar';
@@ -252,6 +256,20 @@ function trappistTransferDv(): number {
 	});
 	return route?.totalDvKms ?? NaN;
 }
+
+/** The orbit of Pourbaix & Boffin 2016, in ecliptic J2000, as the catalogue gives it. */
+const ALPHA_CEN_ORBIT = {
+	a: 23.76850662,
+	e: 0.524,
+	i: 82.61422041,
+	om: 231.71807353,
+	w: 100.22413977,
+	ma: 0,
+	n: 0.01233420452,
+	epoch: 2435349.815,
+	barycentre: 0.458250497
+} as PairOrbit;
+const JD_2035_5 = 2464509.5;
 
 const EARTH_ORBIT_KM = EARTH.elements.a * AU_KM;
 const MARS_ORBIT_KM = MARS.elements.a * AU_KM;
@@ -745,6 +763,19 @@ const BENCHMARKS: Benchmark[] = [
 		unit: 'Earth radii',
 		tolerance: 1e-3,
 		compute: () => radiusFromMassEarth(131.6)
+	},
+	{
+		quantity: 'separation of Alpha Centauri A and B in 2035.5',
+		source: 'Pourbaix & Boffin 2016, 10.1051/0004-6361/201527859, its orbit by hand',
+		expected: 11.31,
+		unit: 'au',
+		tolerance: 1e-3,
+		compute: () => {
+			const [a, b] = pairElements(ALPHA_CEN_ORBIT);
+			const placeOn = (orbit: OrbitalElements) =>
+				starPlaceKm({ ...starAt(0), starOrbits: [orbit] }, JD_2035_5);
+			return norm(sub(placeOn(a), placeOn(b))) / AU_KM;
+		}
 	}
 ];
 

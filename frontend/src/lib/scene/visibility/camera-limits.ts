@@ -59,6 +59,10 @@ function surfaceClearanceKm(body: PositionedBody): number {
 	return SURFACE_CLEARANCE_KM[body.data.objectType] ?? effectiveRadiusKm(body.data) * 0.25;
 }
 
+/** Closest the orbit controls may bring the camera to a focus with no body: it
+ *  has no surface to keep off. */
+export const POINT_MIN_DISTANCE = kmToScene(0.01);
+
 /** Closest the orbit controls may bring the camera to `body`'s centre.
  *  `minRadiusKm` (a shape model's inscribed radius) replaces the quoted radius:
  *  the fence is a sphere, so an elongated model would otherwise wall the camera
