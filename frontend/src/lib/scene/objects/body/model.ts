@@ -401,6 +401,10 @@ async function loadNaturalBodyModel(bo: BodyObjects, ctx?: ContextManager): Prom
 			console.warn(`Failed to load shape-model metadata for ${slug}:`, e);
 			return;
 		}
+		if ((bo.modelLoadEpoch ?? 0) !== epoch) {
+			disposeGltf(gltf.scene);
+			return;
+		}
 		// A non-shape-model bundle isn't a natural body; skip.
 		if (meta.kind !== 'shape_model') {
 			disposeGltf(gltf.scene);
