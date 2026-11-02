@@ -9,6 +9,7 @@ import {
 import { OrbitalSource } from '$lib/fetch/position/format';
 import { MinorBucket } from '$lib/fetch/position/minor-columns';
 import type { LabelMap } from '$lib/fetch/position/labels';
+import type { NutPrecSums } from '$lib/math/orientation';
 import { EARTH_ID, SSB_ID, SUN_ID, dominantPlanetId } from '$lib/constants';
 
 /** True if parentId is a top-level parent (SSB or Sun), not a planetary system. */
@@ -107,6 +108,10 @@ export class BodyIndex {
 	/** Bodies whose record has been read for a spin: one of these with no
 	 *  `orientation` has none to be given. */
 	readonly orientationRead = new Set<string>();
+
+	/** The bodies whose spin waits on the nutation angles of a global.json
+	 *  that has not loaded, with their sums: their frame turns once it does. */
+	readonly nutationAwaited = new Map<string, { body: PositionedBody; sums: NutPrecSums }>();
 
 	/** Parent → children index (object ids only), for O(1) system-membership checks. */
 	private readonly childrenByParent = new Map<string, Set<string>>();

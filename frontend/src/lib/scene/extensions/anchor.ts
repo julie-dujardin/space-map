@@ -43,7 +43,7 @@ export type Anchor = InertialAnchor | SurfaceAnchor;
 
 const RAD = Math.PI / 180;
 
-function isSurface(anchor: Anchor): anchor is SurfaceAnchor {
+export function isSurface(anchor: Anchor): anchor is SurfaceAnchor {
 	return 'latitude' in anchor;
 }
 

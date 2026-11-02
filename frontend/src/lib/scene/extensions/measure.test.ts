@@ -32,11 +32,30 @@ function fakeCtx(
 	return {
 		getBody: (id: string) => all.get(id),
 		place,
-		bodies: { orientationRead: new Set(all.keys()) }
+		bodies: { orientationRead: new Set(all.keys()), nutationAwaited: new Map() }
 	} as unknown as ContextManager;
 }
 
+const SUMS = { ra: [1], dec: [2], pm: [3] };
+
 describe('anchorDistanceKm', () => {
+	it('is null from a place on a body whose nutation terms have not loaded', () => {
+		const ctx = fakeCtx({ a: { position: [0, 0, 0] }, b: { position: [AU_SCALE, 0, 0] } });
+		ctx.bodies.nutationAwaited.set('a', { body: ctx.getBody('a')!, sums: SUMS });
+		expect(
+			anchorDistanceKm({ body: 'a', latitude: 0, longitude: 0 }, { body: 'b' }, ctx, 0)
+		).toBeNull();
+		expect(
+			anchorOffsetKm({ body: 'b' }, { body: 'a', latitude: 0, longitude: 0 }, ctx, 0)
+		).toBeNull();
+		// Its centre does not turn.
+		expect(anchorDistanceKm({ body: 'a' }, { body: 'b' }, ctx, 0)).not.toBeNull();
+		ctx.bodies.nutationAwaited.delete('a');
+		expect(
+			anchorDistanceKm({ body: 'a', latitude: 0, longitude: 0 }, { body: 'b' }, ctx, 0)
+		).not.toBeNull();
+	});
+
 	it('measures between two bodies in kilometres', () => {
 		const ctx = fakeCtx({ a: { position: [0, 0, 0] }, b: { position: [AU_SCALE, 0, 0] } });
 		expect(anchorDistanceKm({ body: 'a' }, { body: 'b' }, ctx, JD)).toBeCloseTo(AU_KM, 3);
@@ -133,6 +152,14 @@ describe('subsolarPoint', () => {
 		ctx.bodies.orientationRead.delete('rock');
 		expect(subsolarPoint('rock', ctx, JD)).toBeNull();
 		ctx.bodies.orientationRead.add('rock');
+		expect(subsolarPoint('rock', ctx, JD)).not.toBeNull();
+	});
+
+	it('is null while the nutation terms of the spin have not loaded', () => {
+		const ctx = fakeCtx({ 'naif-10': { position: [0, 0, 0] }, rock: { position: [1, 0, 0] } });
+		ctx.bodies.nutationAwaited.set('rock', { body: ctx.getBody('rock')!, sums: SUMS });
+		expect(subsolarPoint('rock', ctx, JD)).toBeNull();
+		ctx.bodies.nutationAwaited.delete('rock');
 		expect(subsolarPoint('rock', ctx, JD)).not.toBeNull();
 	});
 

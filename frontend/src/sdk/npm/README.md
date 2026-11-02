@@ -167,7 +167,10 @@ map's date: a moon before its discovery, a craft outside its mission. The
 sub-solar point is given in the frame a surface anchor is placed in, so an
 anchor there is on the lit side even on a body whose spin is not measured. It
 is null as well until the map has read how the body spins, which it does once
-the camera is on the body or its system.
+the camera is on the body or its system. On a bad line that can take longer: a
+moon's spin can come before the file of the terms that sway it, and the map
+asks for that file again until it has it, or the data host says it has none. A
+distance or an offset from a point on that body's surface is null for as long.
 
 The same three measures are functions that need no map, for a page that has
 none or that cannot wait for one to reach a date. They take the date and

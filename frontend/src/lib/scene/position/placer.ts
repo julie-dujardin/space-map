@@ -105,6 +105,27 @@ function estimateVelocity(
  * last pass, a reader gets the place for that date: one for the date it asks
  * for would move the body in a scene that shows another date.
  */
+/**
+ * Turn what the scene draws of a body with a measured spin to its spin at
+ * `jd`: its sphere, its shape model, the anchor of its surface names, and its
+ * rings. Each pass does it for every body placed.
+ */
+export function turnBody(body: PositionedBody, bo: BodyObjects, jd: number): void {
+	const orientation = body.orientation;
+	if (!orientation) return;
+	if (bo.mesh) applyOrientation(bo.mesh, orientation, jd, body.nutPrec);
+	// Natural-body shape model shares the sphere's IAU spin. Neither its
+	// mount nor the overlay carries rotation, so writing the local
+	// quaternion is enough. The label anchor co-rotates so surface
+	// features stay pinned to the model.
+	if (bo.model) applyOrientation(bo.model, orientation, jd, body.nutPrec);
+	if (bo.nomenclatureAnchor) applyOrientation(bo.nomenclatureAnchor, orientation, jd, body.nutPrec);
+	// Rings inherit the planet's pole orientation (geometry pre-rotated so
+	// local +Y is the pole). Re-applied each pass so nutation/precession/spin
+	// stay in sync with the planet.
+	for (const ring of bo.rings) applyOrientation(ring.mesh, orientation, jd, body.nutPrec);
+}
+
 export class Placer {
 	/** Placed on every frame, hidden or not. */
 	focusedId: string | undefined;
@@ -335,16 +356,8 @@ export class Placer {
 			const oc = bo.trail.userData.orbitCenter as Vector3 | undefined;
 			if (oc) oc.set(body.orbitCenter[0], body.orbitCenter[1], body.orbitCenter[2]);
 		}
-		if (body.orientation && (bo.mesh || bo.model)) {
-			if (bo.mesh) applyOrientation(bo.mesh, body.orientation, jd, body.nutPrec);
-			// Natural-body shape model shares the sphere's IAU spin. Neither its
-			// mount nor the overlay carries rotation, so writing the local
-			// quaternion is enough. The label anchor co-rotates so surface
-			// features stay pinned to the model.
-			if (bo.model) applyOrientation(bo.model, body.orientation, jd, body.nutPrec);
-			if (bo.nomenclatureAnchor)
-				applyOrientation(bo.nomenclatureAnchor, body.orientation, jd, body.nutPrec);
-		} else if (isModelBearing(body)) {
+		if (body.orientation) turnBody(body, bo, jd);
+		else if (isModelBearing(body)) {
 			// Sats/probes have no IAU data. Priority: debug override > CK attitude
 			// track (within coverage) > pointing spec > nadir at the parent. Sphere
 			// and overlay model share the attitude.
@@ -368,14 +381,6 @@ export class Placer {
 					if (bo.mesh) applySouthTowardParent(bo.mesh, pos, parentPos);
 					if (bo.model) applySouthTowardParent(bo.model, pos, parentPos);
 				}
-			}
-		}
-		// Rings inherit the planet's pole orientation (geometry pre-rotated so
-		// local +Y is the pole). Re-apply each frame so nutation/precession/spin
-		// stay in sync with the planet.
-		if (body.orientation) {
-			for (const ring of bo.rings) {
-				applyOrientation(ring.mesh, body.orientation, jd, body.nutPrec);
 			}
 		}
 		return pos;
