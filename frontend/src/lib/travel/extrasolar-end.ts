@@ -11,7 +11,8 @@
  *
  * A planet has the mass and the radius of its catalogue. When the catalogue
  * gives one of the two, the other comes from the mass–radius relation of Chen
- * & Kipping (2017, ApJ 834, 17). A planet with neither has no size.
+ * & Kipping (2017, ApJ 834, 17). A planet with neither has no size. A star with
+ * a μ and no radius takes the radius of the same relation.
  */
 
 import {
@@ -114,18 +115,26 @@ const ROCKY_RADIUS_EARTH = 1.6;
 
 /** The mass–radius relation of Chen & Kipping (2017), Table 1: R = scale · M^slope
  *  in Earth radii and Earth masses on the Terran branch, then continuous across
- *  the Neptunian branch from 2.04 Earth masses and the Jovian branch from 0.414
- *  Jupiter masses. */
+ *  the Neptunian branch from 2.04 Earth masses, the Jovian branch from 0.414
+ *  Jupiter masses and the Stellar branch from 0.0800 solar masses. */
 const TERRAN = { scale: 10 ** 0.00346, slope: 0.279 };
 const NEPTUNIAN = { from: 2.04, slope: 0.589 };
 const JOVIAN = { from: 131.6, slope: -0.044 };
+const STELLAR = { from: (0.08 * GM_SUN_KM3_S2) / GM_EARTH_KM3_S2, slope: 0.881 };
 
 export function radiusFromMassEarth(massEarth: number): number {
 	const terran = (m: number) => TERRAN.scale * m ** TERRAN.slope;
 	if (massEarth < NEPTUNIAN.from) return terran(massEarth);
 	const neptunian = (m: number) => terran(NEPTUNIAN.from) * (m / NEPTUNIAN.from) ** NEPTUNIAN.slope;
 	if (massEarth < JOVIAN.from) return neptunian(massEarth);
-	return neptunian(JOVIAN.from) * (massEarth / JOVIAN.from) ** JOVIAN.slope;
+	const jovian = (m: number) => neptunian(JOVIAN.from) * (m / JOVIAN.from) ** JOVIAN.slope;
+	if (massEarth < STELLAR.from) return jovian(massEarth);
+	return jovian(STELLAR.from) * (massEarth / STELLAR.from) ** STELLAR.slope;
+}
+
+/** Radius of a body of `mu` by the mass–radius relation, km. */
+function forecastRadiusKm(mu: number): number {
+	return radiusFromMassEarth(mu / GM_EARTH_KM3_S2) * EARTH_RADIUS_KM;
 }
 
 /** The inverse of {@link radiusFromMassEarth}. A radius above the Neptunian
@@ -317,16 +326,21 @@ export async function resolveExtrasolarEnd(objectId: string): Promise<Extrasolar
 	}
 }
 
-/** The kernel's view of an end; null for a planet with no size. A star of
- *  unknown mass has a μ of 0, and the kernel prices no orbit about it. */
-export function extrasolarTravelBody(end: ExtrasolarEnd): TravelBody | null {
+/** The kernel's view of an end; null for a planet with no size. `starMu` is μ of
+ *  its star, which a trip inside the system can know from a planet's period when
+ *  the mass is unknown. A star with no μ has a μ of 0, and the kernel prices no
+ *  orbit about it, so its radius moves no price. */
+export function extrasolarTravelBody(
+	end: ExtrasolarEnd,
+	starMu = end.star.muKm3S2
+): TravelBody | null {
 	const { body, star, planet } = end;
 	if (!planet) {
 		return {
 			id: body.id,
-			mu: star.muKm3S2 ?? 0,
+			mu: starMu ?? 0,
 			muEstimated: true,
-			radiusKm: star.radiusKm ?? 1,
+			radiusKm: star.radiusKm ?? (starMu ? forecastRadiusKm(starMu) : 1),
 			elements: elementsOf(body)
 		};
 	}
@@ -341,7 +355,7 @@ export function extrasolarTravelBody(end: ExtrasolarEnd): TravelBody | null {
 		// A planet that is not rock has an envelope and no ground under it.
 		hasAtmosphere: planet.rocky ? undefined : true,
 		hillKm: planet.orbitKnown
-			? hillRadiusAboutKm(planet.elements, size.muKm3S2, star.muKm3S2 ?? undefined)
+			? hillRadiusAboutKm(planet.elements, size.muKm3S2, starMu ?? undefined)
 			: undefined,
 		parentId: star.id
 	};

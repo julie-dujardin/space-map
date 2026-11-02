@@ -12,13 +12,14 @@ import type { TrajectoryFrame } from '$lib/math/travel';
 import type { PillOption } from '../map-pill/pill-option';
 
 /** Interplanetary first: it is the frame the crossing itself is in, and the one
- *  the map is in everywhere outside a sphere of influence. */
-export function frameOptions(): PillOption<TrajectoryFrame>[] {
+ *  the map is in everywhere outside a sphere of influence. `aboutStar` says that a
+ *  star other than the Sun is the centre of that frame. */
+export function frameOptions(aboutStar = false): PillOption<TrajectoryFrame>[] {
 	return [
 		{
 			value: 'interplanetary',
 			label: m.travel_frame_interplanetary(),
-			description: m.travel_frame_interplanetary_desc(),
+			description: aboutStar ? m.travel_frame_star_desc() : m.travel_frame_interplanetary_desc(),
 			Icon: SunIcon
 		},
 		{

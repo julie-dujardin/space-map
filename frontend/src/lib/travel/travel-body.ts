@@ -167,10 +167,13 @@ export function hillPrimaryOf(body: BodyData): 'sun' | number | null {
 	return bodyNaif === parentNaif * 100 + 99 ? 'sun' : parentNaif * 100 + 99;
 }
 
-/** Hill radius from the orbit the body is actually on — its own about its
- *  planet for a moon, its heliocentric one for a planet, since a planet's
- *  orbit about its barycentre says nothing about what it holds. */
+/** Hill radius from the orbit the body is on: its own about its planet for a
+ *  moon, its heliocentric one for a planet, because a planet's orbit about its
+ *  barycentre does not limit what it holds. The Sun goes round nothing, so it has
+ *  none. Its row is a fit about the barycentre, and that gives a radius under its
+ *  surface. */
 function hillRadiusKm(body: BodyData, mu: number, lookup: BodyLookup): number | undefined {
+	if (isHeliocentricRoot(body.id)) return undefined;
 	const primary = hillPrimaryOf(body);
 	if (primary === null) return undefined;
 	const primaryMu = primary === 'sun' ? GM_SUN_KM3_S2 : getGmKm3s2(primary);
@@ -282,19 +285,21 @@ function straysFromElements(chain: readonly BodyData[], travel: TravelBody): boo
  * - `heliocentric`: the ends go round the Sun in two different orbits. The arc
  *   goes round the Sun.
  * - `system`: one end is the body that the other end goes round. The arc is an
- *   ellipse from the parking orbit of that body.
- * - `sibling`: both ends go round a third body, such as Io and Europa. The arc
- *   goes round that body.
+ *   ellipse from the orbit the trip names at that body, or else its parking orbit.
+ *   `centralMu` is set at another star, whose body has no μ of its own until it
+ *   is known here.
+ * - `sibling`: both ends go round a third body, such as Io and Europa, or two
+ *   planets of another star. The arc goes round that body.
  * - `orbit-change`: both ends are at one body. The arc joins two of its orbits
  *   and has no window.
  */
 export type TransferPlan =
 	| { kind: 'interstellar'; originSystem: string; targetSystem: string }
 	| { kind: 'heliocentric' }
-	| { kind: 'system'; primary: 'origin' | 'target' }
+	| { kind: 'system'; primary: 'origin' | 'target'; centralMu?: number }
 	| { kind: 'sibling'; centreId: string; centralMu: number }
 	| { kind: 'orbit-change' }
-	| { kind: 'blocked'; reason: 'unknown-orbit' | 'unknown-primary' | 'same-system' };
+	| { kind: 'blocked'; reason: 'unknown-orbit' | 'unknown-primary' };
 
 /** How the kernel is pointed at a pair: which orbit describes each end, which
  *  end the arc goes round when one of them does, and μ of whatever it goes
@@ -314,7 +319,8 @@ const HELIOCENTRIC_FRAME: TransferFrame = { orbit: 'heliocentric' };
  *  solve, so it takes the heliocentric frame. */
 export function transferFrame(plan: TransferPlan | null): TransferFrame {
 	if (plan?.kind === 'system') {
-		return { orbit: 'own', systemPrimary: plan.primary === 'origin' ? 'departure' : 'target' };
+		const systemPrimary = plan.primary === 'origin' ? 'departure' : 'target';
+		return { orbit: 'own', systemPrimary, centralMu: plan.centralMu };
 	}
 	if (plan?.kind === 'sibling') return { orbit: 'own', centralMu: plan.centralMu };
 	if (plan?.kind === 'orbit-change') return { orbit: 'own', orbitChange: true };
@@ -353,7 +359,8 @@ export function transferCenterId(
 	if (plan.kind === 'system') return plan.primary === 'origin' ? origin.id : target.id;
 	// Both ends are that centre.
 	if (plan.kind === 'orbit-change') return origin.id;
-	// Siblings keep their own elements, which are about the parent they share.
+	// Siblings keep their own elements, which are about the parent they share. A
+	// planet of another star has that star as its parent.
 	if (plan.kind === 'sibling') return origin.parentId;
 	const from = heliocentricAncestor(origin, lookup);
 	const to = heliocentricAncestor(target, lookup);
@@ -455,13 +462,42 @@ function reportUnwalkableChain(id: string): void {
 	console.debug(`[travel] no heliocentric ancestor for ${id}`);
 }
 
-export function transferPlan(origin: BodyData, target: BodyData, lookup: BodyLookup): TransferPlan {
+/**
+ * The plan of a trip inside the system of another star. The catalogue has no moons
+ * of other stars, so each end is the star or goes round it. μ is `starMu`, or else
+ * Kepler's third law on a planet's own orbit. A planet with no period has no state
+ * to fly to, however its place is known.
+ */
+function planAtStar(
+	origin: BodyData,
+	target: BodyData,
+	star: string,
+	starMu: number | null | undefined
+): TransferPlan {
+	const planets = [origin, target].filter((body) => body.id !== star);
+	if (planets.some((planet) => !(planet.n > 0)))
+		return { kind: 'blocked', reason: 'unknown-orbit' };
+	const centralMu = starMu && starMu > 0 ? starMu : muFromElements(planets[0]);
+	if (origin.id === star) return { kind: 'system', primary: 'origin', centralMu };
+	if (target.id === star) return { kind: 'system', primary: 'target', centralMu };
+	return { kind: 'sibling', centreId: star, centralMu };
+}
+
+/** `starMu` is μ of the star of a trip inside the system of another star, where
+ *  the mass is known. The bodies in `lookup` stop at the Sun, and such a star has
+ *  no row there. */
+export function transferPlan(
+	origin: BodyData,
+	target: BodyData,
+	lookup: BodyLookup,
+	starMu?: number | null
+): TransferPlan {
 	const originSystem = systemOf(origin.id);
 	const targetSystem = systemOf(target.id);
 	if (originSystem !== targetSystem) return { kind: 'interstellar', originSystem, targetSystem };
-	if (originSystem !== SUN_OBJECT_ID) return { kind: 'blocked', reason: 'same-system' };
 	// One body, both ends: nothing to cross, so the ends themselves are the trip.
 	if (origin.id === target.id) return { kind: 'orbit-change' };
+	if (originSystem !== SUN_OBJECT_ID) return planAtStar(origin, target, originSystem, starMu);
 	const from = ancestry(origin, lookup);
 	const to = ancestry(target, lookup);
 	if (!from || !to) {
@@ -490,6 +526,25 @@ export function transferPlan(origin: BodyData, target: BodyData, lookup: BodyLoo
 		return { kind: 'blocked', reason: 'unknown-primary' };
 	}
 	return { kind: 'sibling', centreId: centre, centralMu };
+}
+
+/**
+ * The bodies of `bodies` that the search must not offer as the other end of a trip
+ * from `against`: those with no plan. Only loaded bodies can be tested up front, and
+ * the panel says why once any other pick resolves. The other end's own body stays,
+ * because a trip from one of its orbits to another is a trip.
+ */
+export function unplannedEnds(
+	against: BodyData | null,
+	bodies: ReadonlyMap<string, BodyData>
+): ReadonlySet<string> {
+	const out = new Set<string>();
+	if (!against) return out;
+	const lookup = lookupIn(bodies);
+	for (const body of bodies.values()) {
+		if (transferPlan(body, against, lookup).kind === 'blocked') out.add(body.id);
+	}
+	return out;
 }
 
 /** μ of the body that `satellite` goes round, km³/s². The measured GM when the

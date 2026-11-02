@@ -22,6 +22,7 @@ import {
 	heldLine,
 	hyperbolaThrough,
 	orbitStateAt,
+	type CrossingStretch,
 	type SystemEnd,
 	type WellConic
 } from './interstellar';
@@ -41,7 +42,7 @@ import { namesArgPeri, passageNode, planeAboutNode } from './passage-node';
 import { propagateState } from './propagate';
 import { LEG_END, routeDurationDays, type Route, type RouteLeg, type RouteOptions } from './route';
 import { elementsToState } from './state';
-import { relativeState, solveRadialArc, type RadialArc } from './system-transfer';
+import { primaryEndOrbit, relativeState, solveRadialArc, type RadialArc } from './system-transfer';
 import {
 	add,
 	angleAbout,
@@ -652,7 +653,7 @@ function endOrbitPaths(
 				from: (change.climb ? 'periapsis' : 'apoapsis') as JoinPoint,
 				to: (change.turnDeg > 0 ? 'node' : change.climb ? 'apoapsis' : 'periapsis') as JoinPoint
 			}
-		: undefined;
+		: systemJoin(departure, target, route, systemPrimary);
 	return orbitsAtEnds(departure, target, route, options, path.centerId, {
 		from: {
 			center: centers.from,
@@ -663,6 +664,21 @@ function endOrbitPaths(
 		},
 		to: { center: centers.to, arc: last, approach: approaches.to, primaryMu, join: joins?.to }
 	});
+}
+
+/** Where a same-system arc joins an ellipse at the primary: its low point, which
+ *  the arc starts from. Any point of a circle does. */
+function systemJoin(
+	departure: TravelBody,
+	target: TravelBody,
+	route: Route,
+	systemPrimary: 'departure' | 'target' | undefined
+): { from?: JoinPoint; to?: JoinPoint } | undefined {
+	if (!systemPrimary) return undefined;
+	const outbound = systemPrimary === 'departure';
+	const orbit = primaryEndOrbit(outbound ? departure : target, outbound, route);
+	if (!(orbit.rApoKm > orbit.rPeriKm)) return undefined;
+	return outbound ? { from: 'periapsis' } : { to: 'periapsis' };
 }
 
 /** What an end is measured against, on top of what the route says of it. */
@@ -776,7 +792,7 @@ function orbitReached(
  *
  * Absent wherever there's no passage to draw: a spiral crosses under thrust
  * the whole way, and inside one system the transfer ellipse already leaves its
- * parking orbit at periapsis, tangent to the arc with nothing in between.
+ * end orbit at periapsis, tangent to the arc with nothing in between.
  */
 interface EndApproach {
 	/** Excess velocity, km/s: the craft's own less the body's. Zero at an end
@@ -829,7 +845,7 @@ function endApproaches(
 		if (!state) return {};
 		const arc = solveRadialArc(
 			departure.mu,
-			parkingRadiusKm(departure),
+			primaryEndOrbit(departure, true, route).rPeriKm,
 			norm(state.r),
 			route.tofDays
 		);
@@ -2977,7 +2993,7 @@ function crossingEnd(
 	jd: number,
 	conic: WellConic | null,
 	options: PathOptions,
-	standOffKm: Vec3 = [0, 0, 0]
+	standOffKm: Vec3
 ): CrossingEnd {
 	const { centerKm, sunOffsetKm } = options;
 	const placed = centerKm ? sub(system.starKm, centerKm) : system.starKm;
@@ -3007,14 +3023,14 @@ function crossingBetweenSystems(
 	const { systems, samples = DEFAULT_SAMPLES, centerId } = options;
 	if (!systems) return null;
 	const shape = coastShape(route, systems.origin, systems.target);
-	const line = shape ? null : heldLine(systems.origin, systems.target, route);
+	const line = shape ?? heldLine(systems.origin, systems.target, route);
 	const from = crossingEnd(
 		'departure',
 		systems.origin,
 		route.departJd,
 		shape?.departure ?? null,
 		options,
-		line?.originStandOffKm
+		line.originStandOffKm
 	);
 	const to = crossingEnd(
 		'arrival',
@@ -3022,7 +3038,7 @@ function crossingBetweenSystems(
 		route.arriveJd,
 		shape?.arrival ?? null,
 		options,
-		line?.targetStandOffKm
+		line.targetStandOffKm
 	);
 	const count = Math.max(2, Math.round(samples / 2));
 	const arcs = shape ? coastArcs(route, from, to, count) : heldArcs(route, from, to, count);
@@ -3174,18 +3190,50 @@ function lineKms(
 	return kms.filter((km, i) => i === 0 || i === kms.length - 1 || km > kms[i - 1]);
 }
 
-/** Where a line that stops at an end's orbit has to keep a sample, km from the
- *  body, or else it would end a step short of the ring. */
-function ringKms({ at, system }: CrossingEnd, route: Route): number[] {
+/** How far from the body a line that stops at an end's orbit stops, km. The line
+ *  needs a sample there, or it ends a step short of the ring. Zero with no orbit. */
+function ringKm({ at, system }: CrossingEnd, route: Route): number {
 	const outward = at === 'departure';
 	const held = (outward ? orbitLeft : orbitReached)(system.body, route, system.atStar);
-	return held ? [held.orbit.rPeriKm * (1 + RING_CLEARANCE)] : [];
+	return held ? held.orbit.rPeriKm * (1 + RING_CLEARANCE) : 0;
+}
+
+/**
+ * The part of a held line outside the rings at its ends, km along it. The line stops
+ * at a ring at a star, because an offer draws its whole arc and no line reaches the
+ * centre of a star. At a planet a passage takes over, so the line goes on and the
+ * trim of the end stops it, unless the ring is wider than the stretch next to it.
+ * Rings that leave no line each give up the same share.
+ */
+function clearOfRings(
+	stretches: readonly CrossingStretch[],
+	from: CrossingEnd,
+	to: CrossingEnd,
+	route: Route
+): { startKm: number; stopKm: number } {
+	const first = stretches[0];
+	const last = stretches[stretches.length - 1];
+	const totalKm = last.toKm;
+	const fromRingKm = ringKm(from, route);
+	const toRingKm = ringKm(to, route);
+	const ringsKm = fromRingKm + toRingKm;
+	if (ringsKm >= totalKm) {
+		const share = totalKm / 2 / ringsKm;
+		return { startKm: fromRingKm * share, stopKm: totalKm - toRingKm * share };
+	}
+	const cutsStart = from.system.atStar || fromRingKm >= first.toKm;
+	const cutsStop = to.system.atStar || toRingKm >= totalKm - last.fromKm;
+	return {
+		startKm: cutsStart ? fromRingKm : 0,
+		stopKm: cutsStop ? totalKm - toRingKm : totalKm
+	};
 }
 
 /**
  * The stretches of a held drive, on the straight line between the two ends. Each
  * takes its dates from the motion of the kernel along it, which is relativistic.
- * The arcs end on the dates of their legs, so that they agree with the timeline.
+ * The arcs end on the dates of their legs, so that they agree with the timeline. A
+ * line cut short by a ring keeps the date of its end, so the arcs span the trip.
  */
 function heldArcs(
 	route: Route,
@@ -3212,32 +3260,44 @@ function heldArcs(
 		jd += leg.days;
 	}
 	if (spans.length !== stretches.length) return null;
-	spans[spans.length - 1].endJd = route.arriveJd;
+
+	const fromRingKm = ringKm(from, route);
+	const toRingKm = ringKm(to, route);
+	const { startKm, stopKm } = clearOfRings(stretches, from, to, route);
+	const kept = stretches
+		.map((stretch, index) => ({
+			...stretch,
+			...spans[index],
+			fromKm: Math.max(stretch.fromKm, startKm),
+			toKm: Math.min(stretch.toKm, stopKm)
+		}))
+		.filter((stretch) => stretch.toKm > stretch.fromKm);
+	kept[0].startJd = route.departJd;
+	kept[kept.length - 1].endJd = route.arriveJd;
 
 	const elapsedDays = (km: number): number => crossingElapsed(route, km)?.days ?? 0;
 	// A flyby has no end orbit, so nothing takes over from the last stretch.
 	const stops = route.arrivalMode !== 'flyby';
-	return stretches.map((stretch, index) => {
-		const { startJd, endJd } = spans[index];
-		const lengthKm = stretch.toKm - stretch.fromKm;
+	return kept.map(({ kind, fromKm, toKm, startJd, endJd }, index) => {
+		const lengthKm = toKm - fromKm;
 		const crowd = crowdedKms(lengthKm / (count - 1));
 		const kms = lineKms(
 			lengthKm,
 			count,
-			index === 0 ? [...crowd, ...ringKms(from, route)] : [],
-			index === stretches.length - 1 && stops ? [...crowd, ...ringKms(to, route)] : []
-		).map((km) => stretch.fromKm + km);
+			index === 0 ? [...crowd, fromRingKm - fromKm] : [],
+			index === kept.length - 1 && stops ? [...crowd, toRingKm - (totalKm - toKm)] : []
+		).map((km) => fromKm + km);
 		const lastIndex = kms.length - 1;
-		kms[lastIndex] = stretch.toKm;
+		kms[lastIndex] = toKm;
 		return {
-			kind: stretch.kind,
+			kind,
 			points: kms.map(at),
 			jds: kms.map((km, i) =>
 				i === 0 ? startJd : i === lastIndex ? endJd : route.departJd + elapsedDays(km)
 			),
 			startJd,
 			endJd,
-			middle: at((stretch.fromKm + stretch.toKm) / 2)
+			middle: at((fromKm + toKm) / 2)
 		};
 	});
 }
@@ -3340,10 +3400,10 @@ function coastArcs(
 }
 
 /**
- * A trip between a body and one of its own satellites. Pricing fixes the
- * arc's energy and two radii but not its plane — it never needed one. Drawing
- * does: the satellite's own plane is the one a real mission flies, leaving the
- * parking orbit at periapsis and climbing to meet the satellite where it is.
+ * A trip between a body and one of its own satellites. Pricing fixes the arc's
+ * energy and two radii but not its plane. The drawing needs one, so it takes the
+ * satellite's own plane. The arc leaves the priced orbit at its low point and
+ * climbs to the satellite where it is.
  */
 function systemPath(
 	departure: TravelBody,
@@ -3363,7 +3423,7 @@ function systemPath(
 	if (!state) return null;
 
 	const rFar = norm(state.r);
-	const rNear = parkingRadiusKm(primary);
+	const rNear = primaryEndOrbit(primary, outbound, route).rPeriKm;
 	if (!(rFar > 0) || !(rNear > 0)) return null;
 
 	const meeting = {
@@ -3387,12 +3447,12 @@ function systemPath(
 	};
 
 	if (route.constantThrust != null) {
-		// A held drive ignores the transfer ellipse: it crosses straight between
-		// the primary's parking orbit and the satellite.
-		const parking = scale(normalize(state.r), rNear);
+		// A held drive has no transfer ellipse. It crosses straight between the
+		// priced orbit and the satellite.
+		const near = scale(normalize(state.r), rNear);
 		return straightCrossing(
-			outbound ? parking : state.r,
-			outbound ? state.r : parking,
+			outbound ? near : state.r,
+			outbound ? state.r : near,
 			route,
 			centerId,
 			departure.id,
@@ -3418,6 +3478,13 @@ function systemPath(
 		samples
 	);
 	if (!sampled) return null;
+
+	// A stop is an arc end. A parking orbit keeps its stop on the satellite's
+	// bearing, because a gap of two parking radii at most does not show on the arc.
+	const nearStop = outbound ? departureStop : arrivalStop;
+	if (rNear !== parkingRadiusKm(primary)) {
+		nearStop.r = sampled.points[outbound ? 0 : sampled.points.length - 1];
+	}
 
 	return {
 		centerId,

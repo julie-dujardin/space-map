@@ -1,7 +1,7 @@
 /** The mode names. The picker and the trajectory use this file. */
 
 import * as m from '$lib/paraglide/messages.js';
-import { formatKm } from '$lib/format/distance';
+import { formatHeight } from '$lib/format/distance';
 import { angleParts, fixed, formatDegrees, joinParts } from '$lib/format/quantities';
 import type { LaunchPad } from '$lib/travel/launch-pad';
 import type { EndpointMode } from '$lib/travel/trip';
@@ -31,8 +31,11 @@ export function endpointModeLabel(
 		return role === 'origin' ? m.travel_mode_surface() : m.travel_mode_landing();
 	if (mode !== 'custom' || altKm === null) return LABELS[mode]();
 	if (apoAltKm === null || apoAltKm === altKm)
-		return m.travel_orbit_at({ altitude: formatKm(altKm) });
-	return m.travel_orbit_ellipse({ periapsis: formatKm(altKm), apoapsis: formatKm(apoAltKm) });
+		return m.travel_orbit_at({ altitude: formatHeight(altKm) });
+	return m.travel_orbit_ellipse({
+		periapsis: formatHeight(altKm),
+		apoapsis: formatHeight(apoAltKm)
+	});
 }
 
 /** The plane beside its slider: the angle alone, since the words next to it

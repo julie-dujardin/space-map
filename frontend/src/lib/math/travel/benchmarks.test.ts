@@ -36,6 +36,7 @@ import {
 	injectionDv,
 	orbitPeriodHours,
 	orbitSpeedAtRadius,
+	parkingOrbit,
 	parkingRadiusKm,
 	periapsisRaiseDv
 } from './maneuvers';
@@ -124,7 +125,12 @@ function lambertHohmannDepartureDv(r1: number, r2: number, sweepDeg = 179.5): nu
  * Moon. Every Apollo figure below is quoted against a transfer close to it.
  */
 function lunarRoute(arrivalMode: ArrivalMode) {
-	const bounds = systemArcBounds(EARTH_BARYCENTRIC, MOON_BARYCENTRIC, J2000);
+	const bounds = systemArcBounds(
+		EARTH_BARYCENTRIC,
+		MOON_BARYCENTRIC,
+		parkingOrbit(EARTH_BARYCENTRIC),
+		J2000
+	);
 	if (!bounds) throw new Error('no lunar arc bounds');
 	const route = buildRoute(EARTH_BARYCENTRIC, MOON_BARYCENTRIC, J2000, bounds.slowestDays, {
 		departureMode: 'surface',

@@ -82,12 +82,22 @@ function starRecord(extra: ColumnSpec[] = []) {
 
 afterEach(() => vi.restoreAllMocks());
 
+const SOLAR_MASS_EARTH = GM_SUN_KM3_S2 / GM_EARTH;
+
 describe('the mass–radius relation', () => {
 	it('gives the Earth about its own radius, and runs on across each branch', () => {
 		expect(radiusFromMassEarth(1)).toBeCloseTo(1.008, 3);
-		for (const m of [2.04, 131.6]) {
+		for (const m of [2.04, 131.6, 0.08 * SOLAR_MASS_EARTH]) {
 			expect(radiusFromMassEarth(m * 0.9999) / radiusFromMassEarth(m * 1.0001)).toBeCloseTo(1, 3);
 		}
+	});
+
+	it('climbs at 0.881 on the Stellar branch, and gives the Sun about its own radius', () => {
+		const m = SOLAR_MASS_EARTH;
+		expect(radiusFromMassEarth(m) / radiusFromMassEarth(m / 2)).toBeCloseTo(2 ** 0.881, 9);
+		const sun = (radiusFromMassEarth(m) * 6378.1) / 695_700;
+		expect(sun).toBeGreaterThan(0.9);
+		expect(sun).toBeLessThan(1.1);
 	});
 
 	it('inverts on the Terran and Neptunian branches', () => {
@@ -162,6 +172,10 @@ describe('a planet end', () => {
 		expect(rock.parentId).toBe('x-21238067');
 		expect(rock.hillKm).toBeGreaterThan(0);
 		expect(hasGround(rock)).toBe(true);
+		const end = extrasolarEndOf(planetBody(file, 'x-21238067-b-3'))!;
+		const unknown = { ...end, star: { ...end.star, muKm3S2: null } };
+		expect(extrasolarTravelBody(unknown)!.hillKm).toBeUndefined();
+		expect(extrasolarTravelBody(unknown, GM_SUN_KM3_S2)!.hillKm).toBeCloseTo(rock.hillKm!, 0);
 
 		const giant = extrasolarTravelBody(extrasolarEndOf(planetBody(file, 'x-21238067-b-2'))!)!;
 		expect(giant.muEstimated).toBe(true);
@@ -194,14 +208,56 @@ describe('a star end', () => {
 		expect(extrasolarEndOf(makeStarBody(far))).toBeNull();
 	});
 
-	it('is met or passed, never orbited', () => {
+	it('is met, passed or orbited at will between two systems', () => {
 		const body = makeStarBody(starRecord());
 		const travel = extrasolarTravelBody(extrasolarEndOf(body)!)!;
-		const facts = orbitFacts(body.data, travel, null);
+		const facts = { ...orbitFacts(body.data, travel, null), crossing: true };
 		const kinds = (role: 'origin' | 'target') =>
 			orbitChoices(travel, facts, role, { hasSurface: false, customAltKm: 500 }).map((c) => c.kind);
-		expect(kinds('target')).toEqual(['rendezvous', 'flyby']);
-		expect(kinds('origin')).toEqual(['rendezvous']);
+		expect(kinds('target')).toEqual(['rendezvous', 'custom', 'flyby']);
+		expect(kinds('origin')).toEqual(['rendezvous', 'custom']);
+	});
+
+	it('takes μ from the trip when its mass is unknown', () => {
+		const end = extrasolarEndOf(makeStarBody(starRecord()))!;
+		const unknown = { ...end, star: { ...end.star, muKm3S2: null } };
+		expect(extrasolarTravelBody(unknown)!.mu).toBe(0);
+		expect(extrasolarTravelBody(unknown, 3e10)!.mu).toBe(3e10);
+	});
+
+	describe('with no radius', () => {
+		const end = extrasolarEndOf(makeStarBody(starRecord()))!;
+		const noRadius = { ...end, star: { ...end.star, radiusKm: null } };
+
+		it('takes the radius of its own μ from the relation', () => {
+			const expected = radiusFromMassEarth(end.star.muKm3S2! / GM_EARTH) * 6378.1;
+			expect(extrasolarTravelBody(noRadius)!.radiusKm).toBeCloseTo(expected, 6);
+		});
+
+		it('takes it from the μ of the trip when its mass is unknown', () => {
+			const unknown = { ...noRadius, star: { ...noRadius.star, muKm3S2: null } };
+			// AD Leo: 0.42 solar masses from its planet's period, 0.39 solar radii measured.
+			const mu = 0.42 * GM_SUN_KM3_S2;
+			const radius = extrasolarTravelBody(unknown, mu)!.radiusKm / 695_700;
+			expect(radius).toBeGreaterThan(0.4);
+			expect(radius).toBeLessThan(0.5);
+		});
+
+		it('keeps a catalogued radius over the forecast', () => {
+			expect(extrasolarTravelBody(end, 0.1 * GM_SUN_KM3_S2)!.radiusKm).toBe(end.star.radiusKm);
+		});
+
+		it('stays a point with no μ, since no orbit is priced against it', () => {
+			const unknown = { ...noRadius, star: { ...noRadius.star, muKm3S2: null } };
+			const travel = extrasolarTravelBody(unknown)!;
+			expect(travel).toMatchObject({ mu: 0, radiusKm: 1 });
+			const facts = orbitFacts(end.body, travel, null);
+			const kinds = orbitChoices(travel, facts, 'target', {
+				hasSurface: false,
+				customAltKm: 1000
+			}).map((c) => c.kind);
+			expect(kinds).toEqual(['rendezvous', 'flyby']);
+		});
 	});
 });
 

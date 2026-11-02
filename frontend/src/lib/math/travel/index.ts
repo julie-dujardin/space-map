@@ -23,7 +23,12 @@
  * module names each approximation.
  */
 
-export { GM_SUN_KM3_S2, HILL_STABLE_FRACTION, PARKING_ALTITUDE_KM } from './constants';
+export {
+	GM_SUN_KM3_S2,
+	HILL_STABLE_FRACTION,
+	PARKING_ALTITUDE_KM,
+	STAR_REACH_KM
+} from './constants';
 
 export type { Vec3 } from './vec3';
 export { add, cross, dot, norm, normalize, scale, sub } from './vec3';
@@ -119,6 +124,7 @@ export {
 	coastShape,
 	conicPlaceKm,
 	crossingElapsed,
+	crossingAero,
 	crossingIntegral,
 	crossingFlownKm,
 	crossingSweep,
@@ -126,7 +132,8 @@ export {
 	fastestCrossingEndJd,
 	interstellarDrive,
 	rapidityOfSpeed,
-	speedOfRapidity
+	speedOfRapidity,
+	starPassKms
 } from './interstellar';
 
 export {
@@ -200,6 +207,7 @@ export type { RadialArc, SystemArcBounds } from './system-transfer';
 export {
 	fastestArcDays,
 	hohmannArcDays,
+	primaryEndOrbit,
 	relativeState,
 	separationKm,
 	solveRadialArc,

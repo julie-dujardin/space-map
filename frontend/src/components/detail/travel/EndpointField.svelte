@@ -16,11 +16,11 @@
 	import MapPinIcon from '@lucide/svelte/icons/map-pin';
 	import * as Popover from '$lib/components/ui/popover/index.js';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
-	import { formatKm } from '$lib/format/distance';
+	import { formatHeight } from '$lib/format/distance';
 	import { formatDuration } from '$lib/format/duration';
 	import { formatDvBrief } from '$lib/travel/format';
 	import type { EndpointMode } from '$lib/travel/trip';
-	import type { OrbitChoice, OrbitGroup } from '$lib/travel/orbits';
+	import { altitudeScale, type OrbitChoice, type OrbitGroup } from '$lib/travel/orbits';
 	import type { TravelEndpointPick } from '$lib/travel/endpoint';
 	import type { LaunchPad } from '$lib/travel/launch-pad';
 	import EndpointSearch from './EndpointSearch.svelte';
@@ -40,16 +40,20 @@
 		onModeChange: (mode: EndpointMode) => void;
 		/** Every way this end can be met. Empty until the body is measured. */
 		choices: OrbitChoice[];
-		/** The two ends of the custom orbit, km, and how high either may go. Equal
-		 *  altitudes are the circular orbit the control opens on. */
+		/** The two ends of the custom orbit, km, and how low and how high either
+		 *  may go. Equal altitudes are the circular orbit the control opens on. */
 		customAltKm: number;
 		customApoAltKm: number;
+		minAltKm?: number;
 		maxAltKm: number;
 		onCustomAlt: (km: number) => void;
 		onCustomApoAlt: (km: number) => void;
 		/** Plane this end is met in, degrees to its equator; null leaves it free. */
 		incDeg: number | null;
 		onIncChange: (deg: number | null) => void;
+		/** False at a body with no known pole, which has no equator to name a plane
+		 *  against. The orbit is free there, and neither angle is asked for. */
+		hasPlane?: boolean;
 		/** The orbit the reader is looking at while the list is up — the row under
 		 *  the pointer, else the one picked. Null when the list closes; an open
 		 *  list on a row naming no orbit (a landing, a flyby) reports the wrapper
@@ -86,11 +90,13 @@
 		choices,
 		customAltKm,
 		customApoAltKm,
+		minAltKm = 1,
 		maxAltKm,
 		onCustomAlt,
 		onCustomApoAlt,
 		incDeg,
 		onIncChange,
+		hasPlane = true,
 		onPreview,
 		argPeriDeg,
 		onArgPeriChange,
@@ -163,17 +169,19 @@
 		chosen?.kind === 'custom' ? (chosen.apoAltKm ?? customApoAltKm) : customApoAltKm
 	);
 	let circular = $derived(customApoShown === customAltShown);
+	/** The plane the priced orbit is flown in. */
+	let planeShown = $derived(hasPlane ? incDeg : null);
 	// An angle round from the equator crossing needs a plane to be measured from
 	// and two ends set apart to be an angle on: a circle has no low point to
 	// place, and a free plane has no crossing to place it against.
-	let hasArgPeri = $derived(!circular && incDeg !== null);
+	let hasArgPeri = $derived(!circular && planeShown !== null);
 	// The closed box shows the orbit itself rather than the words naming it, which
 	// carry no data: its height, and its plane where one is named — two ends
 	// differing only in plane are different trips.
 	let modeLabel = $derived.by(() => {
 		const shape = endpointModeLabel(mode, role, customAltShown, customApoShown);
-		if (incDeg === null || mode !== 'custom') return shape;
-		return `${shape} · ${planeLabel(incDeg)}`;
+		if (planeShown === null || mode !== 'custom') return shape;
+		return `${shape} · ${planeLabel(planeShown)}`;
 	});
 	// Pad site is what distinguishes a range; a single-place range says it once, up top.
 	let padPlaces = $derived(new Set(pads.map((p) => p.siteName)).size);
@@ -194,10 +202,10 @@
 	function detailOf(choice: OrbitChoice): string {
 		if (choice.periAltKm === undefined || choice.apoAltKm === undefined) return '';
 		return choice.periAltKm === choice.apoAltKm
-			? m.travel_orbit_circular({ altitude: formatKm(choice.periAltKm) })
+			? m.travel_orbit_circular({ altitude: formatHeight(choice.periAltKm) })
 			: m.travel_orbit_ellipse({
-					periapsis: formatKm(choice.periAltKm),
-					apoapsis: formatKm(choice.apoAltKm)
+					periapsis: formatHeight(choice.periAltKm),
+					apoapsis: formatHeight(choice.apoAltKm)
 				});
 	}
 
@@ -215,22 +223,7 @@
 		if (pick.featureId === null) step = 'how';
 	}
 
-	/**
-	 * Where an altitude sits on its slider, and back again.
-	 *
-	 * Geometric rather than linear: what a body holds spans five orders of
-	 * magnitude — Earth holds an orbit out to half a million kilometres — so a
-	 * step is a fixed share of the height instead of a fixed number of
-	 * kilometres. It is the only way a 600 km perigee and a 39750 km apogee are
-	 * both reachable by hand on the same control.
-	 */
-	const SLIDER_STEPS = 1000;
-	function sliderPosition(km: number): number {
-		return Math.round((SLIDER_STEPS * Math.log(Math.max(km, 1))) / Math.log(maxAltKm));
-	}
-	function sliderAltitude(position: number): number {
-		return Math.round(Math.exp((position * Math.log(maxAltKm)) / SLIDER_STEPS));
-	}
+	let scale = $derived(altitudeScale(minAltKm, maxAltKm));
 
 	/**
 	 * The near end carries the far one up with it: an apoapsis under the periapsis
@@ -451,21 +444,21 @@
 									     end is only named as one once the far end has left it. -->
 									{@render slider(
 										circular ? m.travel_orbit_altitude() : m.travel_orbit_periapsis(),
-										sliderPosition(1),
-										SLIDER_STEPS,
-										sliderPosition(customAltShown),
-										(raw) => setPeriapsis(sliderAltitude(raw)),
-										formatKm(customAltShown),
-										formatKm(customAltShown)
+										0,
+										scale.steps,
+										scale.position(customAltShown),
+										(raw) => setPeriapsis(scale.altitude(raw)),
+										formatHeight(customAltShown),
+										formatHeight(customAltShown)
 									)}
 									{@render slider(
 										m.travel_orbit_apoapsis(),
-										sliderPosition(customAltShown),
-										SLIDER_STEPS,
-										sliderPosition(customApoShown),
-										(raw) => onCustomApoAlt(sliderAltitude(raw)),
-										formatKm(customApoShown),
-										formatKm(customApoShown)
+										scale.position(customAltShown),
+										scale.steps,
+										scale.position(customApoShown),
+										(raw) => onCustomApoAlt(scale.altitude(raw)),
+										formatHeight(customApoShown),
+										formatHeight(customApoShown)
 									)}
 									{#if hasArgPeri}
 										<!-- Reads as a compass round the orbit rather than a lean: a quarter
@@ -484,15 +477,17 @@
 									     its own: it is the least a trip can ask of its plane, not a different
 									     kind of answer. The phrase is for the screen reader, which has no
 									     control to look at; the column beside it has room for the angle only. -->
-									{@render slider(
-										m.travel_orbit_plane(),
-										-1,
-										180,
-										incDeg ?? -1,
-										nullableDeg(onIncChange),
-										planeReadout(incDeg),
-										planeLabel(incDeg)
-									)}
+									{#if hasPlane}
+										{@render slider(
+											m.travel_orbit_plane(),
+											-1,
+											180,
+											incDeg ?? -1,
+											nullableDeg(onIncChange),
+											planeReadout(incDeg),
+											planeLabel(incDeg)
+										)}
+									{/if}
 								</div>
 							{/if}
 						{/each}

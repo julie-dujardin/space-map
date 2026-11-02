@@ -41,7 +41,7 @@ import { clockJd, elementsJd } from '$lib/math/orbit/position';
 import { AU_KM, SPEED_OF_LIGHT_KM_S } from '$lib/math/units';
 import type { TravelBody } from './body';
 import { COAST_SPAN } from './brachistochrone';
-import { SEC_PER_DAY } from './constants';
+import { SEC_PER_DAY, STAR_REACH_KM } from './constants';
 import {
 	arrivalCost,
 	captureDv,
@@ -566,10 +566,6 @@ export function buildInterstellarTorchRoute(
 
 // --- the coast -----------------------------------------------------------------
 
-/** Radius where a hyperbola joins the line, km, with room for it. The speed of
- *  escape from a solar mass is 1.3 km/s here, and a custom orbit stops here. */
-const JOIN_KM = 1000 * AU_KM;
-
 /** Cruise speeds on the grid that brackets the fastest coast at one date. */
 const CRUISE_GRID = 64;
 
@@ -673,7 +669,7 @@ function walkedBack(state: StateVector): StateVector {
 /** Δv at the periastron between a hyperbola of excess `excessKms` and the orbit
  *  that holds station at `star`, of `mu`. That orbit has the speed of escape
  *  there. It is the limit of the bound orbits, so its burn is the least. */
-function starPassKms(star: TravelBody, mu: number, excessKms: number): number {
+export function starPassKms(star: TravelBody, mu: number, excessKms: number): number {
 	return captureDv(mu, starHoldKm(star), Infinity, excessKms);
 }
 
@@ -974,7 +970,8 @@ export interface WellConic {
 }
 
 /** The three stretches of a coast. A hyperbola is null when the end has no
- *  star of known μ, and the line then runs to the place of the end. */
+ *  star of known μ. The line then runs to the place of the end, or to a stand-off
+ *  from a star, as on a held arc. */
 export interface CoastShape {
 	/** Place of the origin end at departure, km. */
 	originKm: Vec3;
@@ -986,6 +983,12 @@ export interface CoastShape {
 	lineFromKm: Vec3;
 	/** End of the line, km. */
 	lineToKm: Vec3;
+	/** From the place of the origin end to the start of the line where no hyperbola
+	 *  reaches it. See {@link HeldLine}. */
+	originStandOffKm: Vec3;
+	/** From the place of the target end to the end of the line where no hyperbola
+	 *  reaches it. */
+	targetStandOffKm: Vec3;
 	/** Time on all three stretches, s. */
 	seconds: number;
 }
@@ -993,7 +996,7 @@ export interface CoastShape {
 /** Radius where a hyperbola from `innerKm` joins the line, km. It stops at
  *  `innerKm` when the gap between the two stars leaves it no room. */
 function joinRadiusKm(innerKm: number, gapKm: number): number {
-	return Math.max(innerKm, Math.min(Math.max(JOIN_KM, 2 * innerKm), gapKm * JOIN_SHARE));
+	return Math.max(innerKm, Math.min(Math.max(STAR_REACH_KM, 2 * innerKm), gapKm * JOIN_SHARE));
 }
 
 /** A hyperbola, with its time as Kepler's equation gives it. */
@@ -1095,13 +1098,27 @@ function flightShape(
 		starPassRadiusKm(target, flight.arrivalMode, flight.targetOrbit)
 	);
 
-	const lineFromKm = departure?.joinKm ?? originKm;
-	const lineToKm = arrival?.joinKm ?? targetKm;
+	const originStandOffKm: Vec3 =
+		origin.atStar && !departure ? standOffKm(origin, originKm, targetKm) : [0, 0, 0];
+	const targetStandOffKm: Vec3 =
+		target.atStar && !arrival ? standOffKm(target, targetKm, originKm) : [0, 0, 0];
+	const lineFromKm = departure?.joinKm ?? add(originKm, originStandOffKm);
+	const lineToKm = arrival?.joinKm ?? add(targetKm, targetStandOffKm);
 	const seconds =
 		(departure?.seconds ?? 0) +
 		norm(sub(lineToKm, lineFromKm)) / speedKms +
 		(arrival?.seconds ?? 0);
-	return { originKm, targetKm, departure, arrival, lineFromKm, lineToKm, seconds };
+	return {
+		originKm,
+		targetKm,
+		departure,
+		arrival,
+		lineFromKm,
+		lineToKm,
+		originStandOffKm,
+		targetStandOffKm,
+		seconds
+	};
 }
 
 /** The rapidity figure below `topKms` that flies in `days`. */
@@ -1118,11 +1135,11 @@ function flownKmOf({ departure, arrival, lineFromKm, lineToKm }: CoastShape): nu
 	return chordKm(departure) + norm(sub(lineToKm, lineFromKm)) + chordKm(arrival);
 }
 
-/** A hyperbola as a route keeps it. */
-function conicSpan(conic: WellConic | null, placeKm: Vec3): ConicSpan {
+/** A hyperbola as a route keeps it. A stand-off is a span with no time on it. */
+function conicSpan(conic: WellConic | null, placeKm: Vec3, standOff: Vec3): ConicSpan {
 	return conic
 		? { days: conic.seconds / SEC_PER_DAY, km: norm(sub(conic.joinKm, placeKm)) }
-		: { days: 0, km: 0 };
+		: { days: 0, km: norm(standOff) };
 }
 
 /**
@@ -1362,8 +1379,8 @@ export function buildInterstellarCruiseRoute(
 				gamma,
 				rapidityKms,
 				conics: {
-					departure: conicSpan(shape.departure, originKm),
-					arrival: conicSpan(shape.arrival, targetKm),
+					departure: conicSpan(shape.departure, originKm, shape.originStandOffKm),
+					arrival: conicSpan(shape.arrival, targetKm, shape.targetStandOffKm),
 					flownKm: flownKmOf(shape)
 				}
 			}

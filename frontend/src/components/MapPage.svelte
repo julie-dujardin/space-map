@@ -1422,7 +1422,7 @@
 					{#if framesDiffer}
 						<SegmentedPill
 							label={m.travel_frame()}
-							options={frameOptions()}
+							options={frameOptions(isExtrasolarObjectId(travelPlan?.path.centerId ?? ''))}
 							value={viewFrame}
 							onSelect={(next) => (viewFrame = next)}
 						/>

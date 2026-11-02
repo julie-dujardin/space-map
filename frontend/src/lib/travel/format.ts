@@ -7,7 +7,7 @@
 
 import { ltrIsolate } from '$lib/format/bidi';
 import { formatJulianDate } from '$lib/format/date';
-import { formatKm, formatKmRange } from '$lib/format/distance';
+import { formatHeight, formatHeightRange } from '$lib/format/distance';
 import { formatDurationNarrow, formatSignedDuration } from '$lib/format/duration';
 import {
 	digitsUnderHundred,
@@ -115,7 +115,7 @@ export function formatGray(gy: number): string {
 export function formatEndOrbit(orbit: EndOrbit, bodyRadiusKm: number): string {
 	const peri = Math.max(0, orbit.rPeriKm - bodyRadiusKm);
 	const apo = Math.max(0, orbit.rApoKm - bodyRadiusKm);
-	return apo > peri ? formatKmRange(peri, apo) : formatKm(peri);
+	return apo > peri ? formatHeightRange(peri, apo) : formatHeight(peri);
 }
 
 /** Below this a multiple of a gravity is four leading zeros and no meaning. An

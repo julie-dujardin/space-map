@@ -443,12 +443,9 @@ export interface HazardContext {
  * barycentre is included since it stands in for the Sun to within 0.0055 AU,
  * nothing against any threshold here.
  *
- * A question about the *centre*, not about the kind of transfer: `Earth → Sun`
- * is a **system** transfer whose primary is the Sun, and two comets is a
- * **sibling** transfer about it — both measure from the Sun, neither is what
- * the kernel calls heliocentric. Only a trip inside a planet's own system
- * measures from something else, and there the scan says nothing rather than
- * something false.
+ * A question about the *centre*, not about the kind of transfer. A trip inside a
+ * planet's own system or the system of another star measures from something else.
+ * The scan then says nothing rather than something false.
  */
 const SOLAR_CENTERS: ReadonlySet<string> = new Set(['naif-10', 'naif-0']);
 

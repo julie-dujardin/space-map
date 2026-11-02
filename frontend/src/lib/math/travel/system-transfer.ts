@@ -1,32 +1,49 @@
 /**
- * Transfers that stay inside one system — Earth to its Moon, a planet to one
- * of its satellites. The interplanetary solver can't answer these: it
- * connects two orbits about a distant primary, but here one end *is* the
- * primary — no heliocentric arc between them, no hyperbolic escape at
- * departure since you never leave. Instead there's an ellipse with periapsis
- * at the parking orbit and its far end at the satellite's distance — the
- * lunar-transfer geometry.
+ * Transfers that stay inside one system, such as Earth to its Moon. The
+ * interplanetary solver joins two orbits about a distant primary, but here one
+ * end is the primary. Nothing escapes at that end. The arc is an ellipse with
+ * its low point at the orbit the trip names there, or else at the parking orbit,
+ * and its far end at the satellite's distance.
  *
- * The departure point around the primary is free, since you choose when in
- * the parking orbit to burn. That's what makes the arc solvable from a time
- * of flight alone: one ellipse in the family reaches the satellite's distance
- * in exactly that time, running from the Hohmann half-ellipse (slowest,
- * cheapest) up to a nearly parabolic arc (fastest).
+ * The departure point about the primary is free, because the burn can be made
+ * anywhere on the orbit. So a time of flight alone fixes the arc. One ellipse of
+ * the family reaches the satellite in that time, from the Hohmann half-ellipse
+ * (slowest, cheapest) to a nearly parabolic arc (fastest). An orbit outside the
+ * satellite has no arc, because the low point of the family is the near end.
  *
- * Coplanar throughout. The plane change between a parking orbit and the
- * satellite's orbit is a launch-azimuth question, pricing which needs a
- * launch site rather than a body.
+ * Coplanar throughout. The plane change between that orbit and the satellite's
+ * orbit is a launch-azimuth question, and pricing it needs a launch site.
  */
 
 import type { TravelBody } from './body';
 import { SEC_PER_DAY } from './constants';
-import { parkingRadiusKm } from './maneuvers';
+import { parkingOrbit, parkingRadiusKm, type DepartureMode, type EndOrbit } from './maneuvers';
 import { elementsToState, type StateVector } from './state';
 import { norm, sub } from './vec3';
 
+/** The terms of a trip that say which orbit it holds at the primary. */
+export interface PrimaryEndTerms {
+	departureMode: DepartureMode;
+	departureOrbit?: EndOrbit;
+	targetOrbit?: EndOrbit;
+}
+
+/** The orbit a same-system arc starts from at the primary: the one that end names,
+ *  else the parking orbit. A launch goes through the parking orbit whatever it names.
+ *  Pricing, the search grid and the drawing all read this one rule. */
+export function primaryEndOrbit(
+	primary: TravelBody,
+	outbound: boolean,
+	terms: PrimaryEndTerms
+): EndOrbit {
+	const { departureMode, departureOrbit, targetOrbit } = terms;
+	const named = outbound ? (departureMode === 'surface' ? undefined : departureOrbit) : targetOrbit;
+	return named ?? parkingOrbit(primary);
+}
+
 /** One arc of the family, described where it matters: at each end. */
 export interface RadialArc {
-	/** Speed at the parking-orbit end, km/s. */
+	/** Speed at the near end, km/s. */
 	vNearKms: number;
 	/** Speed components at the satellite's distance, km/s. Radial is positive
 	 *  outbound; the pair is what the satellite's own motion is differenced
@@ -91,11 +108,9 @@ export function fastestArcDays(mu: number, rNearKm: number, rFarKm: number): num
 const SOLVE_STEPS = 60;
 
 /**
- * The arc from a parking orbit at `rNearKm` out to `rFarKm` that takes
- * `tofDays`, or null when no arc in the family does. Slower than the Hohmann
- * time is unreachable by construction: that arc is already the slowest that
- * touches both radii, and anything longer would arrive after apoapsis, on its
- * way back down.
+ * The arc from an orbit at `rNearKm` out to `rFarKm` that takes `tofDays`, or null
+ * when no arc in the family does. The Hohmann arc is the slowest that touches both
+ * radii, because a longer one arrives after apoapsis, on its way back down.
  */
 export function solveRadialArc(
 	mu: number,
@@ -283,23 +298,15 @@ export interface SystemArcBounds {
  *  nearest and furthest without the cost mattering. */
 const BOUNDS_SAMPLES = 13;
 
-/**
- * How long a crossing can take, over a window of dates. The gap isn't fixed —
- * the Moon swings between 356,000 and 407,000 km — so the family's own
- * limits move with it, and a grid built from one date's limits would ask for
- * arcs that don't exist on another. Sampling the window and taking the
- * widest bounds covers every arc that solves anywhere in it, empty where one
- * doesn't.
- */
-export function systemArcBounds(
+/** The widest bounds of the arcs from `rNear` over the dates, or null where the
+ *  satellite is never outside it. */
+function boundsFrom(
 	primary: TravelBody,
 	satellite: TravelBody,
+	rNear: number,
 	fromJd: number,
-	toJd: number = fromJd
+	toJd: number
 ): SystemArcBounds | null {
-	const rNear = parkingRadiusKm(primary);
-	if (!(primary.mu > 0)) return null;
-
 	let slowestDays = -Infinity;
 	let fastestDays = Infinity;
 	const step = (toJd - fromJd) / Math.max(1, BOUNDS_SAMPLES - 1);
@@ -311,4 +318,29 @@ export function systemArcBounds(
 	}
 	if (!isFinite(slowestDays) || !isFinite(fastestDays)) return null;
 	return { slowestDays, fastestDays };
+}
+
+/**
+ * How long a crossing from `orbit` can take, over a window of dates. The gap is
+ * not fixed. The Moon swings between 356,000 and 407,000 km, so the family's limits
+ * move with it, and a grid built from one date's limits asks for arcs that do not
+ * exist on another. The widest bounds of the window cover every arc that solves
+ * in it.
+ *
+ * An orbit outside the satellite has no arc, so it takes the parking orbit's
+ * bounds. The grid then stays empty, and the trip keeps a search for the drives
+ * that need no arc.
+ */
+export function systemArcBounds(
+	primary: TravelBody,
+	satellite: TravelBody,
+	orbit: EndOrbit,
+	fromJd: number,
+	toJd: number = fromJd
+): SystemArcBounds | null {
+	if (!(primary.mu > 0)) return null;
+	return (
+		boundsFrom(primary, satellite, orbit.rPeriKm, fromJd, toJd) ??
+		boundsFrom(primary, satellite, parkingRadiusKm(primary), fromJd, toJd)
+	);
 }

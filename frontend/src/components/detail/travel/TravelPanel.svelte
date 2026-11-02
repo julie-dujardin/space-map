@@ -21,16 +21,15 @@
 	import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
 	import { formatJulianDate } from '$lib/format/date';
 	import {
-		arrivalCost,
 		buildTrajectoryPath,
 		canDepartFrom,
 		checkFeasibility,
-		departureCost,
 		hohmannArcDays,
 		endOrbitPreviewRing,
 		nextTransferWindows,
 		orbitChangeEnds,
 		SAME_RADIUS_KM,
+		primaryEndOrbit,
 		systemArcBounds,
 		transferScale,
 		travelConstants,
@@ -46,7 +45,6 @@
 	} from '$lib/math/travel';
 	import { sunPlaceKm } from '$lib/scene/extensions/ephemeris';
 	import type { OrbitPreview } from '$lib/scene/objects/travel/orbit-preview';
-	import { systemOf } from '$lib/state/nav-end';
 	import { jdToDate, LAST_DATE_JD } from '$lib/time/jd';
 	import {
 		aeroPressurePa,
@@ -87,10 +85,13 @@
 	import { surfaceSiteAt } from '$lib/travel/surface-site';
 	import { fetchBodyNomenclature } from '$lib/fetch/nomenclature/fetch';
 	import {
+		choicePriceKms,
 		hasGround,
 		maxCustomAltitudeKm,
+		minCustomAltitudeKm,
 		orbitChoices,
 		orbitFacts,
+		settledMode,
 		type OrbitChoice
 	} from '$lib/travel/orbits';
 	import { activeFamily, familyOf, routeTabs, type RouteFamily } from '$lib/travel/route-families';
@@ -354,9 +355,13 @@
 	// body's own moon, or between two moons of one planet — and so which orbit
 	// each end is described by and what the arc goes round.
 	let lookup = $derived(lookupIn(bodiesById));
+	// A star end has only its own record, and a planet's fit can fill its mass.
+	let starMu = $derived(
+		ends.target.extrasolar?.star.muKm3S2 ?? ends.origin.extrasolar?.star.muKm3S2
+	);
 	let plan = $derived<TransferPlan | null>(
 		ends.origin.body && ends.target.body
-			? transferPlan(ends.origin.body, ends.target.body, lookup)
+			? transferPlan(ends.origin.body, ends.target.body, lookup, starMu)
 			: null
 	);
 	let frame = $derived(transferFrame(plan));
@@ -409,7 +414,7 @@
 	 *  changes. */
 	function travelOf(role: TripRole): TravelBody | null {
 		const { body, detail, extrasolar } = ends[role];
-		if (extrasolar) return extrasolarTravelBody(extrasolar);
+		if (extrasolar) return extrasolarTravelBody(extrasolar, frame.centralMu);
 		return measured(body ? toTravelBody(body, lookup, detail, frame.orbit) : null);
 	}
 	let travel = $derived.by(() => ({ origin: travelOf('origin'), target: travelOf('target') }));
@@ -440,15 +445,12 @@
 
 	/** What a body contributes to which orbits it can hold: its spin, from the
 	 *  detail bundle, and how much room it has, from the orbit it is itself on.
-	 *  Between two systems the Sun is met as any other star is, so that both
-	 *  drives price it the same way. */
+	 *  What a star offers turns on the trip: see `OrbitFacts.crossing`. */
 	function factsOf(role: TripRole) {
 		const { body, detail } = ends[role];
 		const known = travel[role];
 		if (!body || !known) return null;
-		const facts = orbitFacts(body, known, detail);
-		const star = interstellar && systemOf(body.id) === body.id;
-		return star ? { ...facts, isStar: true } : facts;
+		return { ...orbitFacts(body, known, detail), crossing: interstellar };
 	}
 	let facts = $derived.by(() => ({ origin: factsOf('origin'), target: factsOf('target') }));
 
@@ -497,7 +499,7 @@
 
 	/**
 	 * Replace a mode that the body cannot hold, such as a stationary orbit at
-	 * Venus. The low orbit takes its place where the body has one.
+	 * Venus.
 	 *
 	 * The spin that gives a stationary orbit comes with the detail bundle, so
 	 * the check waits for the bundle. An end outside the solar system has no
@@ -508,11 +510,7 @@
 		const settled = !!ends[role].detail || !!ends[role].extrasolar;
 		if (!settled || !list.length) return;
 		const end = panel.ends[role];
-		if (list.some((c) => c.kind === end.mode)) return;
-		// The low orbit wherever it is offered, and otherwise whatever is — a craft
-		// holds none and is cast off from instead, and on a same-body trip the low
-		// orbit is sometimes the end the craft is already at.
-		end.mode = list.find((c) => c.kind === 'low-orbit')?.kind ?? list[0].kind;
+		end.mode = settledMode(list, end.mode);
 	}
 	// One effect each, so neither end's list can retire the other's mode.
 	$effect(() => {
@@ -639,20 +637,7 @@
 			null;
 		const body = travel[role];
 		if (!route || !body) return null;
-		// Meeting a craft is cancelling the speed you close on it with, which no
-		// orbit enters into — so it is priced from the arc alone.
-		if (choice.kind === 'rendezvous') {
-			return role === 'target'
-				? arrivalCost(body, route.vInfArrKms, 'rendezvous').captureKms
-				: departureCost(body, route.vInfDepKms, 'rendezvous').injectionKms;
-		}
-		if (!choice.orbit) return null;
-		if (role === 'target') {
-			const mode = choice.kind === 'elliptical' ? 'capture' : 'low-orbit';
-			return arrivalCost(body, route.vInfArrKms, mode, panel.effectiveAero, choice.orbit)
-				.captureKms;
-		}
-		return departureCost(body, route.vInfDepKms, 'orbit', choice.orbit).injectionKms;
+		return choicePriceKms(route, body, role, choice, panel.effectiveAero, !!facts[role]?.isStar);
 	}
 
 	// A flyby never slows down, so there is nothing for an atmosphere to do. A
@@ -665,7 +650,13 @@
 		(aeroPressurePa(ends.target.detail) ?? 0) >= travelConstants.AERO_MIN_PRESSURE_PA
 	);
 	let isLanding = $derived(panel.ends.target.atSite || panel.ends.target.mode === 'surface');
-	let showAero = $derived(targetHasAir && panel.ends.target.mode !== 'flyby');
+	// A held stop between two systems reaches the planet at rest, so the air has no
+	// part in it.
+	let heldStop = $derived.by(() => {
+		const route = panel.selectedRoute ?? panel.offered[0]?.route;
+		return route?.interstellar !== undefined && !(route.vInfArrKms > 0);
+	});
+	let showAero = $derived(targetHasAir && panel.ends.target.mode !== 'flyby' && !heldStop);
 	// Ordered by how much of the arrival is still flown on the engine: all of it,
 	// then the capture burn only, then none of it. Aerobraking walks a loose orbit
 	// down into a tight one, so it is only on offer when a tight one is what was
@@ -793,10 +784,16 @@
 				)
 			);
 		}
+		const outbound = frame.systemPrimary === 'departure';
+		const primary = outbound ? origin : target;
 		const slowest = frame.systemPrimary
 			? (systemArcBounds(
-					frame.systemPrimary === 'departure' ? origin : target,
-					frame.systemPrimary === 'departure' ? target : origin,
+					primary,
+					outbound ? target : origin,
+					primaryEndOrbit(primary, outbound, {
+						departureMode: panel.departureMode,
+						...panel.endTerms
+					}),
 					nowJd
 				)?.slowestDays ?? null)
 			: (transferScale(origin, target, nowJd, frame.centralMu)?.days ?? null);
@@ -1346,11 +1343,13 @@
 		choices={choices[role]}
 		customAltKm={terms.altKm}
 		customApoAltKm={terms.apoAltKm}
+		minAltKm={known && room ? minCustomAltitudeKm(known, room) : 1}
 		maxAltKm={known && room ? maxCustomAltitudeKm(known, room) : 0}
 		onCustomAlt={(km: number) => (terms.altKm = km)}
 		onCustomApoAlt={(km: number) => (terms.apoAltKm = km)}
 		incDeg={terms.incDeg}
 		onIncChange={(deg: number | null) => (terms.incDeg = deg)}
+		hasPlane={!room?.noPole}
 		onPreview={(shown) => showList(role, shown)}
 		argPeriDeg={terms.argPeriDeg}
 		onArgPeriChange={(deg: number | null) => (terms.argPeriDeg = deg)}
@@ -1545,8 +1544,6 @@
 					<p class="text-muted-foreground text-xs">{m.travel_same_place()}</p>
 				{:else if panel.blocked === 'surface-hop'}
 					<p class="text-muted-foreground text-xs">{m.travel_surface_hop()}</p>
-				{:else if panel.blocked === 'same-system'}
-					<p class="text-muted-foreground text-xs">{m.travel_same_system()}</p>
 				{:else}
 					<p class="text-muted-foreground flex items-start gap-2 text-xs">
 						<CircleAlertIcon class="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />

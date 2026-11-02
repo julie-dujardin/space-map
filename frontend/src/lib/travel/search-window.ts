@@ -19,6 +19,7 @@ import {
 	fastestArcDays,
 	hohmannArcDays,
 	orbitChangeEnds,
+	primaryEndOrbit,
 	synodicPeriodDays,
 	systemArcBounds,
 	transferScale
@@ -130,8 +131,14 @@ function systemWindow(request: WindowRequest): PorkchopOptions | null {
 		latestArriveJd > departFromJd ? latestArriveJd : Infinity
 	);
 	// One orbit of the satellite covers every distance it reaches, so bounds
-	// taken across the window bracket every arc the grid can contain.
-	const bounds = systemArcBounds(primary, satellite, departFromJd, departToJd);
+	// taken across the window bracket every arc the grid can contain. They start
+	// from the priced orbit, because the arcs do.
+	const orbit = primaryEndOrbit(primary, outbound, {
+		departureMode: request.departureMode ?? 'surface',
+		departureOrbit: request.departureOrbit,
+		targetOrbit: request.targetOrbit
+	});
+	const bounds = systemArcBounds(primary, satellite, orbit, departFromJd, departToJd);
 	if (!bounds || !(bounds.slowestDays > 0)) return null;
 
 	return {

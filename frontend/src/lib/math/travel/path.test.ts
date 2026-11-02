@@ -3,7 +3,8 @@ import {
 	buildTrajectoryPath,
 	pathViewpoint,
 	type EndOrbitPath,
-	type TrajectoryFrame
+	type TrajectoryFrame,
+	type TrajectoryPath
 } from './path';
 import { craftPositionAt, crossingWindow } from './path-sample';
 import { buildRoute, type Route } from './route';
@@ -28,7 +29,7 @@ import { G0_M_S2, GM_SUN_KM3_S2, SEC_PER_DAY } from './constants';
 import * as travelConstants from './constants';
 import { AU_KM, LIGHT_YEAR_KM } from '$lib/math/units';
 import { sphereOfInfluenceKm } from './body';
-import { aeroPassRadiusKm, parkingOrbit, parkingRadiusKm } from './maneuvers';
+import { aeroPassRadiusKm, parkingOrbit, parkingRadiusKm, type EndOrbit } from './maneuvers';
 import { add, cross, dot, norm, normalize, scale, sub, type Vec3 } from './vec3';
 import {
 	EARTH,
@@ -273,6 +274,90 @@ describe('buildTrajectoryPath', () => {
 		expect(norm(homePoints[0])).toBeGreaterThan(300_000);
 		expect(norm(homePoints[homePoints.length - 1])).toBeLessThan(10_000);
 		expect(out.arcs[0].points).toHaveLength(homePoints.length);
+	});
+});
+
+describe('a same-system arc from a priced orbit', () => {
+	const TOF = 4;
+	const HIGH: EndOrbit = { rPeriKm: 100_000, rApoKm: 100_000 };
+	const ELLIPSE: EndOrbit = { rPeriKm: 60_000, rApoKm: 200_000 };
+	const AWAY = { departureMode: 'orbit', systemPrimary: 'departure' } as const;
+	const HOME = { arrivalMode: 'low-orbit', systemPrimary: 'target' } as const;
+	const OPTIONS = { centerId: EARTH.id };
+
+	function outbound(departureOrbit?: EndOrbit) {
+		const route = buildRoute(EARTH, MOON, J2000, TOF, { ...AWAY, departureOrbit })!;
+		const path = buildTrajectoryPath(EARTH, MOON, route, { ...OPTIONS, ...AWAY })!;
+		return { route, path, first: path.arcs[0].points[0] };
+	}
+
+	function inbound(targetOrbit: EndOrbit) {
+		const route = buildRoute(MOON, EARTH, J2000, TOF, { ...HOME, targetOrbit })!;
+		const path = buildTrajectoryPath(MOON, EARTH, route, { ...OPTIONS, ...HOME })!;
+		const points = path.arcs[0].points;
+		return { route, path, last: points[points.length - 1] };
+	}
+
+	const ringAt = (path: TrajectoryPath, at: 'departure' | 'arrival') =>
+		path.endOrbits.find((end) => end.at === at)!;
+
+	it('leaves the orbit the trip was priced from', () => {
+		const { first, route } = outbound(HIGH);
+		expect(route.departureOrbit).toEqual(HIGH);
+		expect(norm(first)).toBeCloseTo(HIGH.rPeriKm, 3);
+	});
+
+	it('comes home to the orbit it was priced to', () => {
+		expect(norm(inbound(HIGH).last)).toBeCloseTo(HIGH.rPeriKm, 3);
+	});
+
+	it('meets its ring where it starts', () => {
+		const { first, path } = outbound(HIGH);
+		const ring = ringAt(path, 'departure').points;
+		const gap = Math.min(...ring.map((point) => norm(sub(point, first))));
+		// Half the spacing of 96 points on the ring, at most.
+		expect(gap).toBeLessThan((Math.PI * HIGH.rPeriKm) / 96 + 1);
+	});
+
+	it('starts on the low point of an ellipse', () => {
+		const out = outbound(ELLIPSE);
+		const ring = ringAt(out.path, 'departure').points;
+		expect(Math.min(...ring.map((point) => norm(sub(point, out.first))))).toBeLessThan(1);
+
+		const back = inbound(ELLIPSE);
+		const home = ringAt(back.path, 'arrival').points;
+		expect(Math.min(...home.map((point) => norm(sub(point, back.last))))).toBeLessThan(1);
+	});
+
+	it('stops where the arc ends, on the way out and on the way home', () => {
+		const out = outbound(HIGH);
+		expect(out.path.stops.find((stop) => stop.kind === 'departure')!.r).toEqual(out.first);
+		const back = inbound(HIGH);
+		expect(back.path.stops.find((stop) => stop.kind === 'arrival')!.r).toEqual(back.last);
+	});
+
+	it('keeps a trip on the parking orbit as it was', () => {
+		const { first, path } = outbound();
+		expect(norm(first)).toBeCloseTo(parkingRadiusKm(EARTH), 3);
+		const stop = path.stops.find((s) => s.kind === 'departure')!;
+		expect(norm(stop.r)).toBeCloseTo(parkingRadiusKm(EARTH), 3);
+		expect(norm(sub(stop.r, first))).toBeGreaterThan(0);
+	});
+
+	it('crosses a held drive from the ring, in a straight line', () => {
+		const terms = { ...AWAY, departureOrbit: HIGH };
+		const route = buildConstantThrustRoute(EARTH, MOON, J2000, 9.8, terms)!;
+		const path = buildTrajectoryPath(EARTH, MOON, route, { ...OPTIONS, ...AWAY })!;
+		expect(norm(path.arcs[0].points[0])).toBeCloseTo(HIGH.rPeriKm, 3);
+	});
+
+	it('draws a held drive in from an orbit outside the satellite', () => {
+		const outside: EndOrbit = { rPeriKm: 600_000, rApoKm: 600_000 };
+		const terms = { ...AWAY, departureOrbit: outside };
+		const route = buildConstantThrustRoute(EARTH, MOON, J2000, 9.8, terms)!;
+		const path = buildTrajectoryPath(EARTH, MOON, route, { ...OPTIONS, ...AWAY })!;
+		expect(norm(path.arcs[0].points[0])).toBeCloseTo(outside.rPeriKm, 3);
+		expect(buildRoute(EARTH, MOON, J2000, TOF, terms)).toBeNull();
 	});
 });
 
@@ -1791,7 +1876,7 @@ describe('the ends of a crossing', () => {
 			const end = endAt(path, 'arrival')!;
 			const last = path.arcs.at(-1)!;
 			const rKm = route.targetOrbit?.rPeriKm ?? parkingOrbit(to.body).rPeriKm;
-			expect(end.trimTo).toBeLessThan(last.points.length);
+			if (!to.atStar) expect(end.trimTo).toBeLessThan(last.points.length);
 			const place = endPlaceKm(to, route.arriveJd);
 			expect(norm(sub(last.points[end.trimTo - 1], place)) / rKm).toBeCloseTo(1, 4);
 		}
@@ -2027,17 +2112,160 @@ describe('the ends of a crossing', () => {
 		expectWhole(path, route, about, { ...BETA, starKm: sub(BETA.starKm, ALPHA.starKm) }, 'room');
 	});
 
-	it('runs the line to the place where a star has no μ', () => {
-		const unknown: SystemEnd = { ...FAR, body: { ...FAR.body, mu: 0 }, starMu: undefined };
-		const route = trip('coast', HOME, unknown, {
-			departureMode: 'orbit',
+	it.each(['rendezvous', 'flyby'] as const)(
+		'stands a coast off a star with no μ on a %s',
+		(arrivalMode) => {
+			const unknown: SystemEnd = { ...FAR, body: { ...FAR.body, mu: 0 }, starMu: undefined };
+			const route = trip('coast', HOME, unknown, { departureMode: 'orbit', arrivalMode });
+			expect(coastShape(route, HOME, unknown)!.arrival).toBeNull();
+			const path = draw(HOME, unknown, route);
+			expect(path.arcs).toHaveLength(2);
+			const end = path.arcs.at(-1)!.points.at(-1)!;
+			expect(norm(sub(end, unknown.starKm)) / AU_KM).toBeCloseTo(1, 6);
+			expect(dot(sub(end, unknown.starKm), sub(HOME.starKm, unknown.starKm))).toBeGreaterThan(0);
+			expect(path.meeting.r).toEqual(end);
+			expect(path.arcs.at(-1)!.endJd).toBe(route.arriveJd);
+			expect(route.interstellar!.conics!.arrival.km / AU_KM).toBeCloseTo(1, 6);
+			expect(route.interstellar!.conics!.arrival.days).toBe(0);
+		}
+	);
+
+	it.each(['rendezvous', 'flyby'] as const)(
+		'stands a coast off a giant with no μ by 2 radii on a %s',
+		(arrivalMode) => {
+			const giant: SystemEnd = {
+				...FAR,
+				body: { ...FAR.body, mu: 0, radiusKm: 8 * AU_KM },
+				starMu: undefined
+			};
+			const route = trip('coast', HOME, giant, { departureMode: 'orbit', arrivalMode });
+			const end = draw(HOME, giant, route).arcs.at(-1)!.points.at(-1)!;
+			expect(norm(sub(end, giant.starKm)) / AU_KM).toBeCloseTo(16, 6);
+			expect(route.interstellar!.conics!.arrival.km / AU_KM).toBeCloseTo(16, 6);
+		}
+	);
+
+	it('stands a coast off a star with no μ at the start, less in a close binary', () => {
+		const unknown: SystemEnd = { ...ALPHA, body: { ...ALPHA.body, mu: 0 }, starMu: undefined };
+		const near = starEnd('x-8', add(ALPHA.starKm, [2 * AU_KM, 0, 0]), 0.9);
+		const route = trip('coast', unknown, near, {
+			departureMode: 'rendezvous',
 			arrivalMode: 'rendezvous'
 		});
-		expect(coastShape(route, HOME, unknown)!.arrival).toBeNull();
-		const path = draw(HOME, unknown, route);
-		expect(path.arcs).toHaveLength(2);
-		expect(path.arcs.at(-1)!.points.at(-1)).toEqual(unknown.starKm);
-		expect(path.arcs.at(-1)!.endJd).toBe(route.arriveJd);
+		const path = draw(unknown, near, route, { centerId: ALPHA.body.id, centerKm: ALPHA.starKm });
+		expect(path.arcs[0].points[0][0] / AU_KM).toBeCloseTo(0.5, 6);
+		expect(path.arcs[0].startJd).toBe(route.departJd);
+	});
+
+	describe('a held line and a ring wider than a stretch', () => {
+		const WIDE = { rPeriKm: 20 * AU_KM, rApoKm: 20 * AU_KM };
+		const LOCAL = { centerId: ALPHA.body.id, centerKm: ALPHA.starKm };
+		const reaching = { departureMode: 'rendezvous', arrivalMode: 'low-orbit' } as const;
+		const leaving = { departureMode: 'orbit', arrivalMode: 'rendezvous' } as const;
+
+		/** The drawn line, km about ALPHA along x, in flight order. */
+		function line(path: Path): number[] {
+			return path.arcs.flatMap((arc, index) => {
+				const { from, to } = crossingWindow(path, index);
+				return arc.points.slice(from, to).map((point) => point[0] / AU_KM);
+			});
+		}
+
+		it('stops the line at the ring of the target', () => {
+			const route = trip('held', ALPHA, BETA, { ...reaching, targetOrbit: WIDE });
+			const path = draw(ALPHA, BETA, route, LOCAL);
+			expect(route.legs.map((leg) => leg.kind)).toContain('brake');
+			expect(path.arcs).toHaveLength(1);
+			const xs = line(path);
+			expect(xs[0]).toBeCloseTo(1, 6);
+			expect(xs.at(-1)).toBeCloseTo(3, 4);
+			expect(Math.max(...xs)).toBeLessThan(3.001);
+			expect(path.arcs.at(-1)!.endJd).toBe(route.arriveJd);
+			expect(endAt(path, 'arrival')!.points.length).toBeGreaterThan(0);
+		});
+
+		it('starts the line at the ring of the origin', () => {
+			const route = trip('held', ALPHA, BETA, { ...leaving, departureOrbit: WIDE });
+			const path = draw(ALPHA, BETA, route, LOCAL);
+			expect(path.arcs).toHaveLength(1);
+			const xs = line(path);
+			expect(xs[0]).toBeCloseTo(20, 4);
+			expect(Math.min(...xs)).toBeGreaterThan(19.999);
+			expect(xs.at(-1)).toBeCloseTo(22, 6);
+			expect(path.arcs[0].startJd).toBe(route.departJd);
+		});
+
+		it('keeps a craft on the drawn line, in date order', () => {
+			const route = trip('held', ALPHA, BETA, { ...reaching, targetOrbit: WIDE });
+			const path = draw(ALPHA, BETA, route, LOCAL);
+			const { jds } = path.arcs[0];
+			for (let i = 1; i < jds.length; i++) expect(jds[i]).toBeGreaterThan(jds[i - 1]);
+			const middle = (route.departJd + route.arriveJd) / 2;
+			expect(craftPositionAt(path, middle)!.r[0] / AU_KM).toBeLessThan(3.001);
+		});
+
+		it('leaves a stretch that the ring does not reach', () => {
+			const route = trip('held', ALPHA, BETA, {
+				...reaching,
+				targetOrbit: { rPeriKm: 12 * AU_KM, rApoKm: 12 * AU_KM }
+			});
+			const path = draw(ALPHA, BETA, route, LOCAL);
+			expect(path.arcs).toHaveLength(1);
+			expect(line(path).at(-1)).toBeCloseTo(11, 4);
+		});
+
+		it.each([
+			['a ring wider than the whole line', { departureMode: 'rendezvous' }, 30, null],
+			['two rings that overlap', { departureMode: 'orbit' }, 15, 15]
+		] as const)('keeps a line and no centre with %s', (_name, modes, toAu, fromAu) => {
+			const route = trip('held', ALPHA, BETA, {
+				...modes,
+				arrivalMode: 'low-orbit',
+				targetOrbit: { rPeriKm: toAu * AU_KM, rApoKm: toAu * AU_KM },
+				departureOrbit: fromAu ? { rPeriKm: fromAu * AU_KM, rApoKm: fromAu * AU_KM } : undefined
+			});
+			const path = draw(ALPHA, BETA, route, LOCAL);
+			const xs = line(path);
+			expect(xs.length).toBeGreaterThan(1);
+			expect(Math.min(...xs)).toBeGreaterThan(0.5);
+			expect(Math.max(...xs)).toBeLessThan(22.5);
+			expect(path.arcs[0].startJd).toBe(route.departJd);
+			expect(path.arcs.at(-1)!.endJd).toBe(route.arriveJd);
+		});
+
+		it('stops at a narrow ring as well, so that an offer stops there too', () => {
+			const route = trip('held', ALPHA, BETA, { ...reaching, targetOrbit: RING });
+			const path = draw(ALPHA, BETA, route, LOCAL);
+			expect(path.arcs).toHaveLength(2);
+			expect(path.arcs.at(-1)!.points.at(-1)![0] / AU_KM).toBeCloseTo(21, 4);
+			expect(endAt(path, 'arrival')!.trimTo).toBe(path.arcs.at(-1)!.points.length);
+		});
+
+		it('keeps the passage from a ring at a star, on a line that starts at the ring', () => {
+			const route = trip('held', SUN_END, FAR, {
+				departureMode: 'orbit',
+				arrivalMode: 'rendezvous',
+				departureOrbit: RING
+			});
+			const path = draw(SUN_END, FAR, route);
+			expect(norm(path.arcs[0].points[0]) / RING.rPeriKm).toBeCloseTo(1, 4);
+			expect(endAt(path, 'departure')!.approach.length).toBeGreaterThan(1);
+			expect(path.arcs[0].startJd).toBe(route.departJd);
+		});
+	});
+
+	it.each(DRIVES)('reaches no centre of a star on any arc of a %s', (drive) => {
+		const TERMS: Terms[] = [
+			{ arrivalMode: 'rendezvous' },
+			{ arrivalMode: 'flyby' },
+			{ arrivalMode: 'low-orbit', targetOrbit: RING }
+		];
+		for (const terms of TERMS) {
+			const route = trip(drive, HOME, FAR, { departureMode: 'orbit', ...terms });
+			const points = draw(HOME, FAR, route).arcs.flatMap((arc) => arc.points);
+			const nearest = Math.min(...points.map((point) => norm(sub(point, FAR.starKm))));
+			expect(nearest / AU_KM).toBeGreaterThan(0.9);
+		}
 	});
 
 	it('keeps a line between two passages that would meet', () => {

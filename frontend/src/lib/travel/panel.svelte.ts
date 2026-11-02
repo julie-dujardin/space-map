@@ -86,8 +86,6 @@ export interface OfferedRoute {
 export type BlockReason =
 	| 'unknown-primary'
 	| 'unknown-orbit'
-	/** Both ends are in the system of one other star. */
-	| 'same-system'
 	/** A planet of another star has neither a mass nor a radius. */
 	| 'unknown-size'
 	| 'no-target'
@@ -171,12 +169,12 @@ export function endTermsKey(terms: EndTerms): string {
 	].join('|');
 }
 
-/** What an end is worth to a request key: what it is, and the two things about
- *  it that move a price. Its elements are deliberately left out — they belong
- *  to the scene, which rewrites them as its clock runs, and the same trip asked
- *  again is the same question however far the planets have moved since. */
+/** What an end is worth to a request key: what it is, and the things about it
+ *  that move a price. A star's radius can come from a μ that is known late. The
+ *  elements stay out: the scene rewrites them as its clock runs, and the same
+ *  trip asked again is the same question. */
 function endKey(body: TravelBody): string {
-	return `${body.id}/${air(body)}/${body.samples ? 'm' : ''}`;
+	return `${body.id}/${air(body)}/${body.samples ? 'm' : ''}/${body.radiusKm}`;
 }
 
 /**
@@ -229,7 +227,6 @@ function systemEndKey(end: SystemEnd): string {
 	return [
 		endKey(body),
 		body.mu,
-		body.radiusKm,
 		starKm.join(','),
 		starMu ?? '',
 		atStar ? 'star' : '',

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { G0_M_S2, GM_SUN_KM3_S2 } from '$lib/math/travel/constants';
-import { LIGHT_YEAR_KM } from '$lib/math/units';
+import { AU_KM, LIGHT_YEAR_KM } from '$lib/math/units';
 import { LAST_DATE_JD } from '$lib/time/jd';
 import { EARTH, J2000, JUPITER, MARS, SATURN } from '$lib/math/travel/test-fixtures';
 import {
@@ -626,6 +626,119 @@ describe('TravelPanelState arrival deadline', () => {
 			panel.ends.target.mode = 'low-orbit';
 			expect(panel.effectiveAero).toBe('aerobraking');
 		});
+	});
+});
+
+describe('TravelPanelState inside the system of another star', () => {
+	const MU = 0.09 * GM_SUN_KM3_S2;
+	const STAR_ID = 'x-558442032';
+	const planet = (number: number, a: number, n: number): TravelBody => ({
+		id: `${STAR_ID}-b-${number}`,
+		mu: 4e5,
+		muEstimated: false,
+		radiusKm: 6500,
+		elements: { a, e: 0, i: 89.7, om: 40, w: 10, ma: 20 * number, n, epoch: 2457000 },
+		parentId: STAR_ID
+	});
+	const B = planet(1, 0.01154, 238.28);
+	const E = planet(4, 0.02925, 59.007);
+	const STAR: TravelBody = {
+		id: STAR_ID,
+		mu: MU,
+		muEstimated: true,
+		radiusKm: 83_000,
+		elements: { a: 0, e: 0, i: 0, om: 0, w: 0, ma: 0, n: 0, epoch: 0 }
+	};
+
+	/** A panel that meets both ends in orbit. */
+	function orbiting(): TravelPanelState {
+		return new TravelPanelState(departingFrom('low-orbit'));
+	}
+
+	it('answers two planets from the grid, with no window to leave for', async () => {
+		const panel = orbiting();
+		await solveTrip(panel, B, E, J2000, undefined, { orbit: 'own', centralMu: MU });
+		expect(panel.status).toBe('ready');
+		expect(panel.routes.length).toBeGreaterThan(0);
+		expect(panel.blocked).toBeNull();
+		for (const { route } of panel.routes) expect(route.tofDays).toBeLessThan(10);
+	});
+
+	it('answers a star and its planet, both ways', async () => {
+		for (const [origin, target, systemPrimary] of [
+			[STAR, B, 'departure'],
+			[B, STAR, 'target']
+		] as const) {
+			const panel = orbiting();
+			const frame = { orbit: 'own', systemPrimary, centralMu: MU } as const;
+			await solveTrip(panel, origin, target, J2000, undefined, frame);
+			expect(panel.status).toBe('ready');
+		}
+	});
+
+	it('flies the held drive and the spiral of the craft on the same frame', () => {
+		const panel = orbiting();
+		panel.acceptVehicles([
+			{
+				id: 'dawn',
+				kind: 'probe',
+				propulsion: 'electric',
+				status: 'retired',
+				departsFrom: ['orbit'],
+				dryMassKg: { value: 793, source: 'test' },
+				propellantMassKg: { value: 425, source: 'test' },
+				ispS: { value: 3100, source: 'test' },
+				thrustN: { value: 0.092, source: 'test' },
+				dvKms: 3100 * G0_M_S2 * Math.log(1218 / 793) * 1e-3
+			} as unknown as Vehicle,
+			{
+				id: 'torch',
+				kind: 'crewed',
+				status: 'fiction',
+				unlimitedDv: true,
+				accelMs2: { value: 9.8, source: 'test' }
+			} as unknown as Vehicle
+		]);
+		const frame = { orbit: 'own', centralMu: MU } as const;
+		panel.selectVehicle('dawn');
+		panel.updateSpiral(B, E, J2000, frame);
+		expect(panel.spiral).not.toBeNull();
+		panel.selectVehicle('torch');
+		panel.updateTorch(B, E, J2000, frame);
+		expect(panel.torchPresets.length).toBeGreaterThan(0);
+	});
+
+	it('joins two orbits of the star, one of them custom', async () => {
+		const panel = orbiting();
+		panel.ends.origin.orbit = { rPeriKm: 200_000, rApoKm: 200_000 };
+		panel.ends.target.orbit = { rPeriKm: 1000 * AU_KM, rApoKm: 1000 * AU_KM };
+		await solveTrip(panel, STAR, STAR, J2000, undefined, { orbit: 'own', orbitChange: true });
+		expect(panel.status).toBe('ready');
+		expect(panel.routes[0].route.targetOrbit?.rPeriKm).toBe(1000 * AU_KM);
+	});
+
+	it('asks again when the μ of the frame changes', () => {
+		const panel = orbiting();
+		const key = (frame: TransferFrame) => solveRequestKey(requestFor(panel, B, E, J2000, frame));
+		expect(key({ orbit: 'own', centralMu: MU })).not.toBe(key({ orbit: 'own', centralMu: 2 * MU }));
+		const system = { orbit: 'own', systemPrimary: 'target' } as const;
+		expect(key({ ...system, centralMu: MU })).not.toBe(key({ ...system, centralMu: 2 * MU }));
+	});
+
+	it('asks again when a custom orbit moves, at any scale', () => {
+		const panel = orbiting();
+		const key = () => solveRequestKey(requestFor(panel, STAR, B, J2000));
+		panel.setEndOrbit('origin', { rPeriKm: 800 * AU_KM, rApoKm: 800 * AU_KM });
+		const before = key();
+		panel.setEndOrbit('origin', { rPeriKm: 800.001 * AU_KM, rApoKm: 800.001 * AU_KM });
+		expect(key()).not.toBe(before);
+	});
+
+	it('asks again when the forecast radius of a star moves', () => {
+		const panel = orbiting();
+		const key = (radiusKm: number) =>
+			solveRequestKey(requestFor(panel, { ...STAR, radiusKm }, B, J2000));
+		expect(key(300_000)).not.toBe(key(310_000));
 	});
 });
 
@@ -1423,7 +1536,7 @@ describe('TravelPanelState between two systems', () => {
 		const panel = new TravelPanelState();
 		await solveTrip(panel, EARTH, MARS, J2000);
 		expect(panel.offered.length).toBeGreaterThan(0);
-		panel.block('same-system');
+		panel.block('unknown-size');
 		solveInterstellar(panel);
 		expect(panel.blocked).toBeNull();
 		expect(panel.routes).toEqual([]);

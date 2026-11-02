@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { durationUnits, formatDurationNarrow, formatSignedDuration } from './duration';
+import {
+	durationUnits,
+	formatDuration,
+	formatDurationNarrow,
+	formatSignedDuration
+} from './duration';
 
 /** Days per month the formatter rounds against. */
 const MONTH = 30.44;
@@ -47,6 +52,13 @@ describe('formatDurationNarrow', () => {
 	it('refuses to render a nonsense duration', () => {
 		expect(formatDurationNarrow(NaN)).toBe('—');
 		expect(formatDurationNarrow(-1)).toBe('—');
+	});
+});
+
+describe('formatDuration', () => {
+	it('reads the period of an orbit of 1000 au', () => {
+		expect(formatDuration(31_623 * 365.25)).toBe('31,623 years');
+		expect(formatDuration(105_000 * 365.25)).toBe('105,000 years');
 	});
 });
 

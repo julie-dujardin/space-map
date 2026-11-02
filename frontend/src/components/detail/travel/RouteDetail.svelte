@@ -32,7 +32,7 @@
 		type TravelBody
 	} from '$lib/math/travel';
 	import type { TimelineKind } from '$lib/travel/timeline';
-	import { returnDvKms, signalDelaySeconds } from '$lib/travel/arrival-stats';
+	import { arrivalSpeedKms, returnDvKms, signalDelaySeconds } from '$lib/travel/arrival-stats';
 	import { formatJulianDate } from '$lib/format/date';
 	import { formatKm } from '$lib/format/distance';
 	import { formatDurationNarrow, SECONDS_PER_DAY } from '$lib/format/duration';
@@ -101,6 +101,7 @@
 	let shownHazards = $derived(adjustForVehicle(hazards, state.vehicle, route));
 	// The shield covers several hazards, so its rows come after all of them.
 	let shield = $derived(crossingShield(route));
+	let arrivalSpeed = $derived(arrivalSpeedKms(route));
 	let shieldList = $derived(shield ? shieldRows(shield) : []);
 	// The id is the last resort rather than the first: it is at least unambiguous,
 	// where a blank would leave a sentence with a hole in it.
@@ -521,17 +522,19 @@
 		<h4 class="text-sm font-medium">{m.travel_on_arrival()}</h4>
 		<div class="border-border/60 border-t"></div>
 		<dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
-			<dt class="text-muted-foreground">{m.travel_arrival_speed()}</dt>
-			<dd class="text-end tabular-nums">
-				{#if lightPercent(route.vInfArrKms) !== null}
-					<Tooltip.Root>
-						<Tooltip.Trigger class="cursor-help">{formatSpeed(route.vInfArrKms)}</Tooltip.Trigger>
-						<Tooltip.Content>{m.travel_percent_c_name()}</Tooltip.Content>
-					</Tooltip.Root>
-				{:else}
-					{formatSpeed(route.vInfArrKms)}
-				{/if}
-			</dd>
+			{#if arrivalSpeed !== null}
+				<dt class="text-muted-foreground">{m.travel_arrival_speed()}</dt>
+				<dd class="text-end tabular-nums">
+					{#if lightPercent(arrivalSpeed) !== null}
+						<Tooltip.Root>
+							<Tooltip.Trigger class="cursor-help">{formatSpeed(arrivalSpeed)}</Tooltip.Trigger>
+							<Tooltip.Content>{m.travel_percent_c_name()}</Tooltip.Content>
+						</Tooltip.Root>
+					{:else}
+						{formatSpeed(arrivalSpeed)}
+					{/if}
+				</dd>
+			{/if}
 
 			<!-- What the heat shield sees, which is the arrival speed plus everything
 			     the body's own gravity adds on the way down to the pass. -->

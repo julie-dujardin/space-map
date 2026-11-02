@@ -28,7 +28,7 @@
 	import { withinValidity } from '$lib/math/orbit/offset';
 	import type { LabelledPath } from '$lib/travel/labelled-path';
 	import type { EphemerisSamples, TrajectoryFrame } from '$lib/math/travel';
-	import { lookupIn, transferPlan } from '$lib/travel/travel-body';
+	import { unplannedEnds } from '$lib/travel/travel-body';
 	import { DEFAULT_TRIP } from '$lib/travel/trip';
 	import { resolveTripBodies } from '$lib/travel/resolve';
 	import type { ExtrasolarEnd } from '$lib/travel/extrasolar-end';
@@ -319,7 +319,7 @@
 	});
 
 	// Bodies to test the search results against. The scene's own, since only
-	// something already loaded can be compared cheaply — see `excluded` below.
+	// something already loaded can be compared cheaply. See `unplannedEnds`.
 	let sceneBodies = $derived.by((): Map<string, BodyData> => {
 		void ctx?.bodies.minorBodyVersion;
 		const out = new Map<string, BodyData>();
@@ -366,26 +366,8 @@
 		return names[body.id] ?? awayNames[body.id] ?? body.name ?? body.id;
 	}
 
-	// Bodies the search must not offer for one end, given the other. Only loaded
-	// bodies can be tested up front, so this catches the case that actually comes
-	// up — a moon of the other end's own primary — and leaves the rest to the
-	// panel, which says why once the pick resolves.
-	//
-	// The other end's own body is offered: a trip from one of its orbits to
-	// another is a trip. Which pair of ends is one is the panel's to answer,
-	// since it is the orbits rather than the bodies that have to differ.
-	function excluded(against: BodyData | null): ReadonlySet<string> {
-		const out = new Set<string>();
-		if (!against) return out;
-		const lookup = lookupIn(sceneBodies);
-		for (const b of sceneBodies.values()) {
-			if (transferPlan(b, against, lookup).kind === 'blocked') out.add(b.id);
-		}
-		return out;
-	}
-
-	let excludeForOrigin = $derived(excluded(target));
-	let excludeForTarget = $derived(excluded(origin));
+	let excludeForOrigin = $derived(unplannedEnds(target, sceneBodies));
+	let excludeForTarget = $derived(unplannedEnds(origin, sceneBodies));
 
 	// A feature endpoint is labelled by the place, not by the planet under it.
 	// Resolved from the body's nomenclature so a shared link reads correctly on

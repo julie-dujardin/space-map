@@ -10,8 +10,15 @@ import { SEC_PER_DAY } from './constants';
 import { EARTH_BARYCENTRIC, MOON_BARYCENTRIC, J2000 } from './test-fixtures';
 import type { TravelBody } from './body';
 import { computePorkchop, selectRoutes } from './porkchop';
-import { parkingRadiusKm } from './maneuvers';
-import { hohmannArcDays, separationKm, solveRadialArc, systemArcBounds } from './system-transfer';
+import { parkingOrbit, parkingRadiusKm } from './maneuvers';
+import {
+	fastestArcDays,
+	hohmannArcDays,
+	primaryEndOrbit,
+	separationKm,
+	solveRadialArc,
+	systemArcBounds
+} from './system-transfer';
 
 const R_NEAR = parkingRadiusKm(EARTH_BARYCENTRIC);
 const R_FAR = 384748;
@@ -133,9 +140,87 @@ describe('measured separation', () => {
 	// The whole point: the family the grid is built from, and every arc in it,
 	// now runs to where the body is rather than to where the fit says.
 	it('bounds the transfer family on the measured gap', () => {
-		const bounds = systemArcBounds(EARTH_BARYCENTRIC, HELD, J2000, J2000 + 4)!;
+		const bounds = systemArcBounds(
+			EARTH_BARYCENTRIC,
+			HELD,
+			parkingOrbit(EARTH_BARYCENTRIC),
+			J2000,
+			J2000 + 4
+		)!;
 		const rNear = parkingRadiusKm(EARTH_BARYCENTRIC);
 		expect(bounds.slowestDays).toBeCloseTo(hohmannArcDays(EARTH_BARYCENTRIC.mu, rNear, HELD_KM), 6);
+	});
+});
+
+describe('the orbit a same-system arc starts from', () => {
+	const NAMED = { rPeriKm: 20_000, rApoKm: 50_000 };
+	const OTHER = { rPeriKm: 9000, rApoKm: 9000 };
+	const PARKING = parkingOrbit(EARTH_BARYCENTRIC);
+
+	it('is the one the end at the primary names', () => {
+		const terms = { departureMode: 'orbit', departureOrbit: NAMED, targetOrbit: OTHER } as const;
+		expect(primaryEndOrbit(EARTH_BARYCENTRIC, true, terms)).toBe(NAMED);
+		expect(primaryEndOrbit(EARTH_BARYCENTRIC, false, terms)).toBe(OTHER);
+	});
+
+	it('is the parking orbit where that end names none', () => {
+		const terms = { departureMode: 'orbit', targetOrbit: OTHER } as const;
+		expect(primaryEndOrbit(EARTH_BARYCENTRIC, true, terms)).toEqual(PARKING);
+		expect(
+			primaryEndOrbit(EARTH_BARYCENTRIC, false, { departureMode: 'orbit', departureOrbit: NAMED })
+		).toEqual(PARKING);
+	});
+
+	it('is the parking orbit under a launch, which goes through it', () => {
+		const terms = { departureMode: 'surface', departureOrbit: NAMED } as const;
+		expect(primaryEndOrbit(EARTH_BARYCENTRIC, true, terms)).toEqual(PARKING);
+	});
+});
+
+describe('bounds from a priced orbit', () => {
+	const HIGH = { rPeriKm: 100_000, rApoKm: 100_000 };
+	const WEEK = J2000 + 7;
+	const rFar = separationKm(MOON_BARYCENTRIC, EARTH_BARYCENTRIC, J2000)!;
+
+	it('runs the family from that orbit, not from the parking orbit', () => {
+		const bounds = systemArcBounds(EARTH_BARYCENTRIC, MOON_BARYCENTRIC, HIGH, J2000)!;
+		const low = systemArcBounds(
+			EARTH_BARYCENTRIC,
+			MOON_BARYCENTRIC,
+			parkingOrbit(EARTH_BARYCENTRIC),
+			J2000
+		)!;
+		expect(bounds.slowestDays).toBeCloseTo(
+			hohmannArcDays(EARTH_BARYCENTRIC.mu, HIGH.rPeriKm, rFar),
+			6
+		);
+		expect(bounds.fastestDays).toBeCloseTo(
+			fastestArcDays(EARTH_BARYCENTRIC.mu, HIGH.rPeriKm, rFar),
+			6
+		);
+		expect(bounds.slowestDays).toBeGreaterThan(low.slowestDays);
+	});
+
+	it('asks for arcs that solve at both ends of that family', () => {
+		const { slowestDays, fastestDays } = systemArcBounds(
+			EARTH_BARYCENTRIC,
+			MOON_BARYCENTRIC,
+			HIGH,
+			J2000
+		)!;
+		for (const days of [slowestDays, fastestDays]) {
+			expect(solveRadialArc(EARTH_BARYCENTRIC.mu, HIGH.rPeriKm, rFar, days)).not.toBeNull();
+		}
+	});
+
+	it('takes the bounds of the parking orbit from an orbit outside the satellite', () => {
+		const outside = { rPeriKm: 500_000, rApoKm: 500_000 };
+		const parking = parkingOrbit(EARTH_BARYCENTRIC);
+		const asked = systemArcBounds(EARTH_BARYCENTRIC, MOON_BARYCENTRIC, outside, J2000, WEEK);
+		const fallback = systemArcBounds(EARTH_BARYCENTRIC, MOON_BARYCENTRIC, parking, J2000, WEEK);
+		expect(asked).toEqual(fallback);
+		// No arc from there, so the grid built on them stays empty.
+		expect(solveRadialArc(EARTH_BARYCENTRIC.mu, outside.rPeriKm, rFar, 5)).toBeNull();
 	});
 });
 
@@ -144,7 +229,13 @@ describe('offered routes', () => {
 	// leave the porkchop drawn from that grid with nowhere to mark the route it
 	// just offered.
 	it('keeps every route inside the grid it was drawn from', () => {
-		const bounds = systemArcBounds(EARTH_BARYCENTRIC, MOON_BARYCENTRIC, J2000, J2000 + 27)!;
+		const bounds = systemArcBounds(
+			EARTH_BARYCENTRIC,
+			MOON_BARYCENTRIC,
+			parkingOrbit(EARTH_BARYCENTRIC),
+			J2000,
+			J2000 + 27
+		)!;
 		const options = {
 			departFromJd: J2000,
 			departToJd: J2000 + 27,
@@ -175,7 +266,13 @@ describe('reporting', () => {
 			id: 'naif-399-degenerate',
 			elements: { ...EARTH_BARYCENTRIC.elements, e: 0.9999981, n: 30122 }
 		};
-		const bounds = systemArcBounds(degenerate, MOON_BARYCENTRIC, J2000, J2000 + 27)!;
+		const bounds = systemArcBounds(
+			degenerate,
+			MOON_BARYCENTRIC,
+			parkingOrbit(degenerate),
+			J2000,
+			J2000 + 27
+		)!;
 		const options = {
 			departFromJd: J2000,
 			departToJd: J2000 + 27,

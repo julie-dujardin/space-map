@@ -32,6 +32,16 @@ export function signalDelaySeconds(
 }
 
 /**
+ * The excess speed at the target, km/s, as the panel reads it. Null for a plan
+ * with no such figure. An arc that ends bound to its primary, a spiral and a
+ * change of orbit have no excess speed there, and their route holds 0. A held arc
+ * has one: a stop at rest reads 0.
+ */
+export function arrivalSpeedKms(route: Route): number | null {
+	return route.vInfArrKms > 0 || route.constantThrust ? route.vInfArrKms : null;
+}
+
+/**
  * Δv to start the journey home, km/s.
  *
  * This is an estimate. It prices a departure at the same excess speed as the

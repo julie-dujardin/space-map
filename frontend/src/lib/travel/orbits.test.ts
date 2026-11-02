@@ -1,17 +1,35 @@
 import { describe, expect, it } from 'vitest';
 import { EARTH, JUPITER, MARS, MOON, VENUS } from '$lib/math/travel/test-fixtures';
-import type { TravelBody } from '$lib/math/travel';
+import {
+	buildInterstellarCruiseRoute,
+	buildInterstellarTorchRoute,
+	GM_SUN_KM3_S2,
+	type Route,
+	type SystemEnd,
+	type TravelBody
+} from '$lib/math/travel';
+import { LIGHT_YEAR_KM } from '$lib/math/units';
+import { AU_KM } from '$lib/math/units';
 import type { BodyData } from '$lib/types/objects';
 import { ObjectType } from '$lib/types/objects';
 import {
+	altitudeScale,
+	choicePriceKms,
+	customReachKm,
 	hasGround,
 	isCraft,
 	lowOrbitAltitudeKm,
+	maxCustomAltitudeKm,
+	maxRadiusKm,
+	minCustomAltitudeKm,
 	orbitChoices,
+	orbitFacts,
+	settledMode,
 	synchronousRadiusKm,
 	type OrbitFacts
 } from './orbits';
 import { hillPrimaryOf } from './travel-body';
+import { DEFAULT_CUSTOM_ALT_KM } from './trip';
 
 /** Sidereal days, hours. */
 const EARTH_DAY_H = 23.9345;
@@ -35,6 +53,27 @@ function kinds(body: TravelBody, facts: OrbitFacts, role: 'origin' | 'target' = 
 	return orbitChoices(body, facts, role, OPTS).map((c) => c.kind);
 }
 
+const STAR: TravelBody = {
+	id: 'x-1',
+	mu: 0.09 * GM_SUN_KM3_S2,
+	muEstimated: true,
+	radiusKm: 83_000,
+	elements: { a: 0, e: 0, i: 0, om: 0, w: 0, ma: 0, n: 0, epoch: 0 }
+};
+const UNKNOWN_MASS: TravelBody = { ...STAR, mu: 0 };
+const PLANET: TravelBody = { ...EARTH, id: 'x-1-b-1', parentId: 'x-1' };
+
+const SUN_FACTS: OrbitFacts = { isStar: true, rotationHours: 609 };
+const SUN: TravelBody = {
+	id: 'naif-10',
+	mu: GM_SUN_KM3_S2,
+	muEstimated: false,
+	radiusKm: 695_700,
+	elements: STAR.elements
+};
+const FAR_STAR: OrbitFacts = { isStar: true, noPole: true };
+const BETWEEN: OrbitFacts = { ...FAR_STAR, crossing: true };
+
 describe('synchronousRadiusKm', () => {
 	it('puts geostationary where it is', () => {
 		expect(synchronousRadiusKm(EARTH.mu, EARTH_DAY_H)).toBeCloseTo(42164, -1);
@@ -42,6 +81,241 @@ describe('synchronousRadiusKm', () => {
 
 	it('puts areostationary where it is', () => {
 		expect(synchronousRadiusKm(MARS.mu, MARS_SOL_H)).toBeCloseTo(20428, -1);
+	});
+});
+
+describe('a star as an end', () => {
+	it('offers a hold, a custom orbit and a flyby between two systems', () => {
+		expect(kinds(STAR, BETWEEN)).toEqual(['rendezvous', 'custom', 'flyby']);
+		expect(kinds(STAR, BETWEEN, 'origin')).toEqual(['rendezvous', 'custom']);
+	});
+
+	it('offers the Sun the same between two systems', () => {
+		const facts = { ...SUN_FACTS, crossing: true };
+		expect(kinds(SUN, facts)).toEqual(['rendezvous', 'custom', 'flyby']);
+		expect(kinds(SUN, facts, 'origin')).toEqual(['rendezvous', 'custom']);
+	});
+
+	it('keeps a hold and a flyby at a star of unknown mass, on any trip', () => {
+		expect(kinds(UNKNOWN_MASS, BETWEEN)).toEqual(['rendezvous', 'flyby']);
+		expect(kinds(UNKNOWN_MASS, BETWEEN, 'origin')).toEqual(['rendezvous']);
+		expect(kinds(UNKNOWN_MASS, FAR_STAR)).toEqual(['rendezvous', 'flyby']);
+	});
+
+	it('offers what the Sun offers inside its own system, and no ground', () => {
+		expect(kinds(STAR, FAR_STAR)).toEqual(['elliptical', 'low-orbit', 'custom', 'flyby']);
+		expect(kinds(STAR, FAR_STAR, 'origin')).toEqual(['low-orbit', 'custom']);
+		const sun = kinds(SUN, SUN_FACTS);
+		expect(sun).not.toContain('surface');
+		expect(sun).not.toContain('rendezvous');
+		expect(sun).toEqual(expect.arrayContaining(['low-orbit', 'custom', 'flyby']));
+	});
+
+	it('reaches 1000 au from any star, the Sun included', () => {
+		const reach = 1000 * AU_KM;
+		expect(maxRadiusKm(FAR_STAR)).toBe(reach);
+		expect(maxRadiusKm(SUN_FACTS)).toBe(reach);
+		expect(maxCustomAltitudeKm(STAR, FAR_STAR)).toBe(reach - STAR.radiusKm);
+		expect(maxCustomAltitudeKm(SUN, SUN_FACTS)).toBe(reach - SUN.radiusKm);
+
+		const wide = { hasSurface: false, customAltKm: 5000 * AU_KM, customApoAltKm: 9000 * AU_KM };
+		for (const [body, facts] of [
+			[STAR, BETWEEN],
+			[SUN, SUN_FACTS]
+		] as const) {
+			const custom = orbitChoices(body, facts, 'target', wide).find((c) => c.kind === 'custom')!;
+			expect(custom.orbit).toEqual({ rPeriKm: reach, rApoKm: reach });
+		}
+	});
+
+	it('starts the control just over the surface of a star, and at 1 km elsewhere', () => {
+		expect(minCustomAltitudeKm(STAR, FAR_STAR)).toBe(830);
+		expect(minCustomAltitudeKm({ ...STAR, radiusKm: 1 }, FAR_STAR)).toBe(1);
+		expect(minCustomAltitudeKm(EARTH, EARTH_FACTS)).toBe(1);
+	});
+
+	it('opens the custom row on a place the control can show, at any size of star', () => {
+		// A forecast radius of 0.45 solar radii, and the Sun's.
+		for (const radiusKm of [313_000, 695_700]) {
+			const star = { ...STAR, radiusKm };
+			expect(minCustomAltitudeKm(star, FAR_STAR)).toBe(DEFAULT_CUSTOM_ALT_KM);
+			const row = orbitChoices(star, FAR_STAR, 'target', {
+				hasSurface: false,
+				customAltKm: DEFAULT_CUSTOM_ALT_KM
+			}).find((c) => c.kind === 'custom')!;
+			expect(row.periAltKm).toBeCloseTo(DEFAULT_CUSTOM_ALT_KM, 6);
+			const scale = altitudeScale(minCustomAltitudeKm(star, FAR_STAR), 1000 * AU_KM);
+			expect(scale.position(row.periAltKm!)).toBe(0);
+			expect(scale.altitude(0)).toBe(DEFAULT_CUSTOM_ALT_KM);
+		}
+	});
+
+	it('holds a period of tens of thousands of years', () => {
+		const options = { hasSurface: false, customAltKm: 900 * AU_KM };
+		const custom = orbitChoices(STAR, BETWEEN, 'target', options).find((c) => c.kind === 'custom')!;
+		expect(custom.periodHours! / 24 / 365.25).toBeGreaterThan(90_000);
+	});
+});
+
+describe('a body with no known pole', () => {
+	const NAMED = {
+		hasSurface: false,
+		customAltKm: 1000,
+		customApoAltKm: 5000,
+		incDeg: 40,
+		argPeriDeg: 90
+	};
+	const customAt = (body: TravelBody, facts: OrbitFacts) =>
+		orbitChoices(body, facts, 'target', NAMED).find((c) => c.kind === 'custom')!.orbit!;
+
+	it('leaves the plane of a custom orbit free, whatever a link says', () => {
+		for (const [body, facts] of [
+			[STAR, BETWEEN],
+			[STAR, FAR_STAR],
+			[PLANET, { noPole: true }]
+		] as const) {
+			const orbit = customAt(body, facts);
+			expect(orbit.incDeg).toBeUndefined();
+			expect(orbit.argPeriDeg).toBeUndefined();
+		}
+	});
+
+	it('keeps the plane at the Sun, which has a pole', () => {
+		const orbit = customAt(SUN, { ...SUN_FACTS, crossing: true });
+		expect(orbit.incDeg).toBe(40);
+		expect(orbit.argPeriDeg).toBe(90);
+	});
+
+	it('reads the facts off the body', () => {
+		const row = (id: string) => ({ id, objectType: ObjectType.PLANET }) as BodyData;
+		const star = { isStar: true, noPole: true };
+		expect(orbitFacts(row('x-27424668'), STAR, null)).toMatchObject(star);
+		expect(orbitFacts(row('x-27424668-b-1'), PLANET, null)).toMatchObject({
+			...star,
+			isStar: false
+		});
+		expect(orbitFacts(row('naif-10'), SUN, null)).toMatchObject({ ...star, noPole: false });
+		expect(orbitFacts(row('naif-399'), EARTH, null)).toMatchObject({
+			isStar: false,
+			noPole: false
+		});
+	});
+});
+
+describe('the price of a choice at a star', () => {
+	const J2000 = 2451545;
+	const HOME: SystemEnd = { body: EARTH, starKm: [0, 0, 0], starMu: GM_SUN_KM3_S2, atStar: false };
+	const FAR: SystemEnd = {
+		body: STAR,
+		starKm: [4 * LIGHT_YEAR_KM, 0, 0],
+		starMu: STAR.mu,
+		atStar: true
+	};
+	const WIDE = 2 * AU_KM;
+	const options = { hasSurface: false, customAltKm: WIDE, customApoAltKm: 0 };
+	const choices = orbitChoices(STAR, BETWEEN, 'target', options);
+	const custom = choices.find((c) => c.kind === 'custom')!;
+	const hold = choices.find((c) => c.kind === 'rendezvous')!;
+
+	/** The cost of the arrival of `route`, by its legs. */
+	const arrivalKms = (route: Route) =>
+		route.legs
+			.filter((leg) => leg.kind === 'capture' || leg.kind === 'rendezvous')
+			.reduce((sum, leg) => sum + leg.dvKms, 0);
+
+	/** A budget this size coasts at a good part of the speed of light. */
+	function coast(terms: Parameters<typeof buildInterstellarCruiseRoute>[4]): Route {
+		const drive = { kind: 'budget', dvKms: 150_000 } as const;
+		return buildInterstellarCruiseRoute(HOME, FAR, J2000, drive, {
+			departureMode: 'orbit',
+			...terms
+		}) as Route;
+	}
+
+	it('reads the price of the route for a custom orbit, at any speed', () => {
+		const route = coast({ arrivalMode: 'low-orbit', targetOrbit: custom.orbit });
+		expect(route.interstellar!.cruiseKms).toBeGreaterThan(30_000);
+		const hint = choicePriceKms(route, STAR, 'target', custom, 'none', true)!;
+		expect(hint / arrivalKms(route)).toBeCloseTo(1, 6);
+	});
+
+	it('reads the price of the hold at 1 au, not the speed of the coast', () => {
+		const route = coast({ arrivalMode: 'rendezvous' });
+		const hint = choicePriceKms(route, STAR, 'target', hold, 'none', true)!;
+		expect(hint / arrivalKms(route)).toBeCloseTo(1, 6);
+	});
+
+	it('reads what leaving a custom orbit costs at a star', () => {
+		const route = buildInterstellarCruiseRoute(
+			FAR,
+			HOME,
+			J2000,
+			{ kind: 'budget', dvKms: 300 },
+			{ departureMode: 'orbit', arrivalMode: 'flyby', departureOrbit: custom.orbit }
+		) as Route;
+		const origin = orbitChoices(STAR, BETWEEN, 'origin', options).find((c) => c.kind === 'custom')!;
+		const hint = choicePriceKms(route, STAR, 'origin', origin, 'none', true)!;
+		const injection = route.legs.find((leg) => leg.kind === 'injection')!.dvKms;
+		expect(hint / injection).toBeCloseTo(1, 6);
+	});
+
+	it('reads no burn from a held drive, which stops at rest', () => {
+		const route = buildInterstellarTorchRoute(HOME, FAR, J2000, 9.8, {
+			departureMode: 'orbit',
+			arrivalMode: 'rendezvous'
+		})!;
+		expect(choicePriceKms(route, STAR, 'target', hold, 'none', true)).toBeCloseTo(0, 6);
+	});
+
+	it('reads the price of the hold at 2 radii of a giant', () => {
+		const giant = { ...STAR, radiusKm: 8 * AU_KM };
+		const route = buildInterstellarCruiseRoute(
+			HOME,
+			{ ...FAR, body: giant },
+			J2000,
+			{ kind: 'budget', dvKms: 150_000 },
+			{ departureMode: 'orbit', arrivalMode: 'rendezvous' }
+		) as Route;
+		const hint = choicePriceKms(route, giant, 'target', hold, 'none', true)!;
+		expect(hint / arrivalKms(route)).toBeCloseTo(1, 6);
+	});
+
+	it('reads no pass through the air from a held stop', () => {
+		const route = buildInterstellarTorchRoute(FAR, HOME, J2000, 9.8, {
+			departureMode: 'rendezvous',
+			arrivalMode: 'low-orbit',
+			aero: 'aerocapture'
+		})!;
+		const low = orbitChoices(EARTH, {}, 'target', OPTS).find((c) => c.kind === 'low-orbit')!;
+		const engine = choicePriceKms(route, EARTH, 'target', low, 'none', false);
+		expect(choicePriceKms(route, EARTH, 'target', low, 'aerocapture', false)).toBe(engine);
+	});
+
+	it('names no price for a flyby', () => {
+		const flyby = choices.find((c) => c.kind === 'flyby')!;
+		const route = coast({ arrivalMode: 'flyby' });
+		expect(choicePriceKms(route, STAR, 'target', flyby, 'none', true)).toBeNull();
+	});
+});
+
+describe('settledMode', () => {
+	const list = (body: TravelBody, facts: OrbitFacts) => orbitChoices(body, facts, 'target', OPTS);
+
+	it('keeps a mode the end can hold', () => {
+		expect(settledMode(list(STAR, BETWEEN), 'custom')).toBe('custom');
+	});
+
+	it('falls back from a custom orbit at a star of unknown mass', () => {
+		expect(settledMode(list(UNKNOWN_MASS, BETWEEN), 'custom')).toBe('rendezvous');
+	});
+
+	it('takes a hold off a star inside its own system', () => {
+		expect(settledMode(list(STAR, FAR_STAR), 'rendezvous')).toBe('low-orbit');
+	});
+
+	it('takes the ground off a star', () => {
+		expect(settledMode(list(STAR, BETWEEN), 'surface')).toBe('rendezvous');
+		expect(settledMode(list(STAR, FAR_STAR), 'surface')).toBe('low-orbit');
 	});
 });
 
@@ -231,6 +505,129 @@ describe('isCraft', () => {
 
 	it('does not count a body', () => {
 		expect(isCraft(typed(ObjectType.MOON))).toBe(false);
+	});
+});
+
+describe('the custom orbit at a body with little room', () => {
+	/** Phobos, with a third of its Hill radius under its surface. */
+	const SMALL: TravelBody = { ...MOON, id: 'naif-401', radiusKm: 11, mu: 7.1e-4 };
+	const ROOM: OrbitFacts = { hillKm: 16 };
+	const NO_ROOM: OrbitFacts = { hillKm: 9 };
+	const row = (body: TravelBody, facts: OrbitFacts, role: 'origin' | 'target' = 'target') =>
+		orbitChoices(body, facts, role, {
+			hasSurface: true,
+			customAltKm: DEFAULT_CUSTOM_ALT_KM,
+			customApoAltKm: DEFAULT_CUSTOM_ALT_KM
+		}).find((c) => c.kind === 'custom');
+
+	it('reaches a third of the Hill radius where that clears the low orbit', () => {
+		expect(customReachKm(EARTH, EARTH_FACTS)).toBeCloseTo(HILL.earth / 3, 6);
+		expect(customReachKm(STAR, FAR_STAR)).toBe(1000 * AU_KM);
+		expect(customReachKm(EARTH, {})).toBe(Infinity);
+	});
+
+	it('reaches the whole Hill radius where a third falls under the surface', () => {
+		expect(customReachKm(SMALL, ROOM)).toBe(16);
+		expect(row(SMALL, ROOM)).toMatchObject({ orbit: { rPeriKm: 16, rApoKm: 16 } });
+		expect(row(SMALL, ROOM, 'origin')?.apoAltKm).toBe(5);
+	});
+
+	it('reaches the low orbit itself where the whole Hill radius falls under the surface', () => {
+		const rLow = SMALL.radiusKm + lowOrbitAltitudeKm(SMALL, NO_ROOM);
+		expect(customReachKm(SMALL, NO_ROOM)).toBe(rLow);
+		expect(row(SMALL, NO_ROOM)).toMatchObject({ orbit: { rPeriKm: rLow, rApoKm: rLow } });
+	});
+
+	it('leaves every named row where it was', () => {
+		const named = (facts: OrbitFacts) =>
+			orbitChoices(SMALL, facts, 'target', { hasSurface: true, customAltKm: 500 }).filter(
+				(c) => c.kind !== 'custom'
+			);
+		expect(maxRadiusKm(ROOM)).toBeCloseTo(16 / 3, 9);
+		expect(named(ROOM).map((c) => c.kind)).toEqual(['surface', 'low-orbit', 'flyby']);
+		expect(named(ROOM).find((c) => c.kind === 'low-orbit')?.periAltKm).toBeCloseTo(0.001, 9);
+	});
+
+	it('keeps a body with room on the reach it had', () => {
+		const wide = orbitChoices(EARTH, EARTH_FACTS, 'target', {
+			hasSurface: true,
+			customAltKm: 1e9
+		}).find((c) => c.kind === 'custom')!;
+		expect(wide.orbit?.rPeriKm).toBeCloseTo(HILL.earth / 3, 6);
+		expect(maxCustomAltitudeKm(EARTH, EARTH_FACTS)).toBeCloseTo(HILL.earth / 3 - EARTH.radiusKm, 6);
+	});
+
+	it('gives the control a range that fits the room', () => {
+		for (const facts of [ROOM, NO_ROOM, { hillKm: 12 }, { hillKm: 11.2 }]) {
+			const min = minCustomAltitudeKm(SMALL, facts);
+			const max = maxCustomAltitudeKm(SMALL, facts);
+			expect(max).toBeGreaterThan(0);
+			expect(min).toBeLessThanOrEqual(max);
+		}
+		expect(maxCustomAltitudeKm(SMALL, ROOM)).toBe(5);
+		expect(minCustomAltitudeKm(SMALL, ROOM)).toBe(1);
+		const empty = maxCustomAltitudeKm(SMALL, NO_ROOM);
+		expect(minCustomAltitudeKm(SMALL, NO_ROOM)).toBe(empty);
+	});
+
+	it('still only meets or passes a craft', () => {
+		const facts: OrbitFacts = { isCraft: true, hillKm: 0.001 };
+		expect(row({ ...SMALL, radiusKm: 0.01 }, facts)).toBeUndefined();
+		expect(kinds({ ...SMALL, radiusKm: 0.01 }, facts)).toEqual(['rendezvous', 'flyby']);
+	});
+});
+
+describe('altitudeScale', () => {
+	it('runs from one end of the range to the other', () => {
+		const scale = altitudeScale(1, 1e5);
+		expect(scale.steps).toBe(875);
+		expect(scale.position(1)).toBe(0);
+		expect(scale.position(1e5)).toBe(875);
+		expect(scale.altitude(0)).toBe(1);
+		expect(scale.altitude(875)).toBe(1e5);
+	});
+
+	it('comes back to the altitude it was given, to a step', () => {
+		const scale = altitudeScale(1, 1.5e11);
+		for (const km of [600, 39750, 1e9]) {
+			const share = scale.altitude(scale.position(km)) / km;
+			expect(Math.abs(Math.log10(share))).toBeLessThan(1 / 175);
+		}
+	});
+
+	it('holds what it is given inside the range', () => {
+		const scale = altitudeScale(10, 1000);
+		expect(scale.position(1)).toBe(0);
+		expect(scale.position(1e6)).toBe(scale.steps);
+	});
+
+	it('has no steps on an empty, an inverted or an unknown range', () => {
+		for (const [min, max] of [
+			[0.4, 0.4],
+			[1, 0.4],
+			[1, 0],
+			[0.001, 0.001]
+		]) {
+			const scale = altitudeScale(min, max);
+			expect(scale.steps).toBe(0);
+			expect(scale.position(1000)).toBe(0);
+			expect(scale.altitude(0)).toBe(min);
+		}
+	});
+
+	it('sets tenths on a short range, so that it can move', () => {
+		const scale = altitudeScale(1, 1.4);
+		expect(scale.altitude(scale.steps)).toBe(1.4);
+		expect(scale.altitude(0)).toBe(1);
+		expect(altitudeScale(1, 3.3148).altitude(91)).toBe(3.3);
+	});
+
+	it('stays a number on a range too small for one step', () => {
+		const scale = altitudeScale(1, 1.0001);
+		expect(scale.steps).toBe(0);
+		expect(scale.position(1.00005)).toBe(0);
+		expect(altitudeScale(1, 1.2).steps).toBeGreaterThan(0);
+		expect(Number.isFinite(altitudeScale(1, 1.2).position(1.1))).toBe(true);
 	});
 });
 

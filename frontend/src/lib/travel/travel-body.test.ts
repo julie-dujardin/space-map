@@ -3,14 +3,21 @@ import { loadSystemsGlobal } from '$lib/fetch/systems-global';
 import type { BodyData } from '$lib/types/objects';
 import { ObjectType } from '$lib/types/objects';
 import { OrbitalSource } from '$lib/fetch/position/format';
-import { elementsToState } from '$lib/math/travel';
+import {
+	elementsToState,
+	GM_SUN_KM3_S2,
+	muFromElements,
+	parkingAltitudeKm
+} from '$lib/math/travel';
 import { AU_KM } from '$lib/math/units';
 import {
 	heliocentricAncestor,
 	lookupIn,
 	toTravelBody,
 	transferCenterId,
+	transferFrame,
 	transferPlan,
+	unplannedEnds,
 	wellsAbove
 } from './travel-body';
 import { systemOf } from '$lib/state/nav-end';
@@ -106,6 +113,24 @@ describe('toTravelBody', () => {
 		expect(borrowed('naif-599')).toBe(false);
 		expect(borrowed('naif-301')).toBe(true);
 		expect(borrowed('naif-502')).toBe(true);
+	});
+
+	it('gives the Sun no Hill radius, so its low orbit takes the ordinary path', () => {
+		// Its row is a fit about the barycentre, 0.0046 au and e = 0.6.
+		const row = {
+			...bodies.get('naif-399')!,
+			id: 'naif-10',
+			parentId: 'naif-0',
+			radiusKm: 695_700
+		};
+		const fit = { ...row, a: 0.0046, e: 0.6 };
+		const sun = toTravelBody(fit, lookupIn(new Map([[fit.id, fit]])), null, 'own')!;
+		expect(sun.hillKm).toBeUndefined();
+		expect(parkingAltitudeKm(sun.radiusKm, sun.hillKm)).toBe(200);
+	});
+
+	it('still gives a planet its Hill radius', () => {
+		expect(toTravelBody(bodies.get('naif-399')!, look)!.hillKm).toBeGreaterThan(0);
 	});
 
 	it('estimates mu when no measured value is loaded', () => {
@@ -504,11 +529,98 @@ describe('a trip to another star', () => {
 		expect(transferPlan(tauCeti, proximaB, look)).toMatchObject({ kind: 'interstellar' });
 	});
 
-	it('blocks a trip inside the system of another star', () => {
-		const inside = { kind: 'blocked', reason: 'same-system' };
-		expect(transferPlan(proximaB, proximaD, look)).toEqual(inside);
-		expect(transferPlan(proxima, proximaB, look)).toEqual(inside);
-		expect(transferPlan(proxima, proxima, look)).toEqual(inside);
+	describe('inside the system of another star', () => {
+		const MU = 0.12 * GM_SUN_KM3_S2;
+		/** No star row in the lookup: the trip has only its two ends. */
+		const none = lookupIn(new Map());
+		const noOrbit = body('x-27424668-b-4', 'x-27424668', {
+			objectType: ObjectType.EXOPLANET,
+			n: 0
+		});
+
+		it('goes between two planets about the star', () => {
+			expect(transferPlan(proximaB, proximaD, none, MU)).toEqual({
+				kind: 'sibling',
+				centreId: 'x-27424668',
+				centralMu: MU
+			});
+		});
+
+		it('goes between a star and its own planet, either way round', () => {
+			expect(transferPlan(proxima, proximaB, none, MU)).toEqual({
+				kind: 'system',
+				primary: 'origin',
+				centralMu: MU
+			});
+			expect(transferPlan(proximaB, proxima, none, MU)).toEqual({
+				kind: 'system',
+				primary: 'target',
+				centralMu: MU
+			});
+		});
+
+		it('joins two orbits about one body', () => {
+			expect(transferPlan(proxima, proxima, none, MU)).toEqual({ kind: 'orbit-change' });
+			expect(transferPlan(proximaB, proximaB, none, MU)).toEqual({ kind: 'orbit-change' });
+			expect(transferPlan(noOrbit, noOrbit, none)).toEqual({ kind: 'orbit-change' });
+		});
+
+		it("takes μ from a planet's period when the mass of the star is unknown", () => {
+			const fromPeriod = muFromElements(proximaB);
+			expect(transferPlan(proximaB, proximaD, none)).toMatchObject({ centralMu: fromPeriod });
+			expect(transferPlan(proxima, proximaD, none, null)).toMatchObject({
+				centralMu: muFromElements(proximaD)
+			});
+			expect(fromPeriod).toBeGreaterThan(0);
+		});
+
+		it('blocks a planet with no published orbit', () => {
+			const blocked = { kind: 'blocked', reason: 'unknown-orbit' };
+			expect(transferPlan(proximaB, noOrbit, none, MU)).toEqual(blocked);
+			expect(transferPlan(noOrbit, proximaB, none, MU)).toEqual(blocked);
+			expect(transferPlan(proxima, noOrbit, none, MU)).toEqual(blocked);
+		});
+
+		it('keeps each frame about its own orbits, with the μ of the star', () => {
+			const sibling = transferFrame(transferPlan(proximaB, proximaD, none, MU));
+			expect(sibling).toEqual({ orbit: 'own', centralMu: MU });
+			const outbound = transferFrame(transferPlan(proxima, proximaB, none, MU));
+			expect(outbound).toEqual({ orbit: 'own', systemPrimary: 'departure', centralMu: MU });
+			const inbound = transferFrame(transferPlan(proximaB, proxima, none, MU));
+			expect(inbound).toEqual({ orbit: 'own', systemPrimary: 'target', centralMu: MU });
+			const same = transferFrame(transferPlan(proxima, proxima, none, MU));
+			expect(same).toEqual({ orbit: 'own', orbitChange: true });
+		});
+
+		it('measures every frame from the star, or from the body it stays at', () => {
+			const center = (from: BodyData, to: BodyData) =>
+				transferCenterId(transferPlan(from, to, none, MU), from, to, none);
+			expect(center(proximaB, proximaD)).toBe('x-27424668');
+			expect(center(proxima, proximaB)).toBe('x-27424668');
+			expect(center(proximaB, proxima)).toBe('x-27424668');
+			expect(center(proxima, proxima)).toBe('x-27424668');
+			expect(center(proximaB, proximaB)).toBe('x-27424668-b-1');
+		});
+
+		it('never reads the solar lookup', () => {
+			const lookup = vi.fn(look);
+			transferPlan(proximaB, proximaD, lookup, MU);
+			transferPlan(proxima, proximaB, lookup, MU);
+			expect(lookup).not.toHaveBeenCalled();
+		});
+
+		it('offers the search the star and the planets of the other end', () => {
+			const away = [proxima, proximaB, proximaD, noOrbit, tauCeti];
+			const scene = new Map([...bodies, ...away.map((b) => [b.id, b] as const)]);
+			const ids = (against: BodyData) => unplannedEnds(against, scene);
+			expect(ids(proximaB)).toEqual(new Set([noOrbit.id]));
+			expect(ids(proxima)).toEqual(new Set([noOrbit.id]));
+			expect(ids(earth).has(proximaB.id)).toBe(false);
+			expect(ids(earth).has(proxima.id)).toBe(false);
+			expect(unplannedEnds(null, scene).size).toBe(0);
+			// Nothing plans a trip to a planet with no orbit, but its own orbits.
+			expect(ids(noOrbit)).toEqual(new Set([proxima.id, proximaB.id, proximaD.id]));
+		});
 	});
 
 	it('measures a trip to or from the solar system about the barycentre', () => {

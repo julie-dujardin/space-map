@@ -2,6 +2,8 @@
  * km, km/s and km³/s², with time in Julian days — the units the export's
  * gravitational parameters already use. */
 
+import { AU_KM } from '$lib/math/units';
+
 /** IAU 2015 heliocentric gravitational constant, km³/s². */
 export const GM_SUN_KM3_S2 = 1.32712440018e11;
 
@@ -16,6 +18,11 @@ export const PARKING_ALTITUDE_KM = 200;
 
 /** Beyond a third of the Hill radius the primary stops being what you orbit. */
 export const HILL_STABLE_FRACTION = 1 / 3;
+
+/** The widest orbit about a star, km, and where a hyperbola about a star joins
+ *  the line. A star has no Hill radius, and the speed of escape from a solar mass
+ *  is 1.3 km/s here. */
+export const STAR_REACH_KM = 1000 * AU_KM;
 
 /** Share of the room a body has that a low orbit may take up. A quarter of the
  *  way to the ceiling is still recognisably low; the whole way is the ceiling. */

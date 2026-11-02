@@ -2,7 +2,7 @@ import { afterEach, describe, it, expect } from 'vitest';
 import { ltrIsolate } from '$lib/format/bidi';
 import { formatJulianDate } from '$lib/format/date';
 import { G0_M_S2 } from '$lib/math/travel/constants';
-import { LIGHT_YEAR_KM, SPEED_OF_LIGHT_KM_S } from '$lib/math/units';
+import { AU_KM, LIGHT_YEAR_KM, SPEED_OF_LIGHT_KM_S } from '$lib/math/units';
 import { getLocale, overwriteGetLocale } from '$lib/paraglide/runtime.js';
 import { getSettings } from '$lib/state/settings.svelte';
 import { DAYS_PER_YEAR, J2000_JD } from '$lib/time/jd';
@@ -11,6 +11,7 @@ import {
 	formatAcceleration,
 	formatDv,
 	formatDvBrief,
+	formatEndOrbit,
 	formatGray,
 	formatLorentzFactor,
 	formatSievert,
@@ -21,6 +22,21 @@ import {
 	lightYearParts,
 	shipDuration
 } from './format';
+
+describe('formatEndOrbit', () => {
+	const circle = (km: number) => ({ rPeriKm: km, rApoKm: km });
+
+	it('reads kilometres low over a body', () => {
+		expect(formatEndOrbit(circle(6778), 6378)).toBe('400 km');
+		expect(formatEndOrbit({ rPeriKm: 6778, rApoKm: 42164 }, 6378)).toBe('400–35,786 km');
+	});
+
+	it('reads au at the scale of an orbit about a star', () => {
+		expect(formatEndOrbit(circle(5 * AU_KM), 0)).toBe('5 AU');
+		expect(formatEndOrbit(circle(1000 * AU_KM), 0)).toBe('1,000 AU');
+		expect(formatEndOrbit({ rPeriKm: AU_KM, rApoKm: 600 * AU_KM }, 0)).toBe('1–600 AU');
+	});
+});
 
 describe('formatAcceleration', () => {
 	it('quotes a drive you could stand up in as a fraction of a gravity', () => {

@@ -37,7 +37,7 @@ import {
 import { equatorialTiltDeg } from './body';
 import { endTurn } from './passage-node';
 import { elementsToState } from './state';
-import { relativeState, solveRadialArc } from './system-transfer';
+import { primaryEndOrbit, relativeState, solveRadialArc } from './system-transfer';
 import { cross, dot, norm, sub } from './vec3';
 
 export type LegKind =
@@ -566,10 +566,11 @@ function buildSystemRoute(
 	const targetSite = surfaceSite(target, targetSiteLatDeg, null);
 	const primary = outbound ? departure : target;
 	const satellite = outbound ? target : departure;
-	// Which end of the trip the primary is decides which orbit is its own.
-	const primaryOrbit =
-		(outbound ? (departureMode === 'surface' ? undefined : departureOrbit) : targetOrbit) ??
-		parkingOrbit(primary);
+	const primaryOrbit = primaryEndOrbit(primary, outbound, {
+		departureMode,
+		departureOrbit,
+		targetOrbit
+	});
 	const satelliteOrbit = outbound ? targetOrbit : departureOrbit;
 	const arriveJd = departJd + tofDays;
 
@@ -596,8 +597,8 @@ function buildSystemRoute(
 	// a named primary orbit that leans less than the satellite's declination
 	// owes the shortfall as a turn.
 	const primaryTurn = asymptoteTurnDeg(primaryOrbit, equatorialTiltDeg(primary, state.r));
-	// At the primary the craft never leaves, so the burn is measured against the
-	// parking orbit rather than against an escape.
+	// The craft never leaves the primary, so the burn is measured against this
+	// orbit and not against an escape.
 	const primaryBurn = periapsisBurnWithTurn(primary.mu, primaryOrbit, arc.vNearKms, {
 		deg: primaryTurn
 	});

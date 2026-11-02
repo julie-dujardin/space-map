@@ -39,9 +39,26 @@ export function formatKm(value: number): string {
 	return formatQuantity({ value, unit: 'kilometre' }, true);
 }
 
+/** Where a height above a body starts to read in AU, km. */
+const HEIGHT_AU_FROM_KM = AU_TO_KM_THRESHOLD * AU_KM;
+
+/** A height above a body: km, and AU at the scale of an orbit about a star, which
+ *  reaches 1,000 AU. */
+export function formatHeight(km: number): string {
+	return Math.abs(km) < HEIGHT_AU_FROM_KM ? formatKm(km) : formatDistance(km / AU_KM);
+}
+
 /** A span too long for a stat box as it stands: "1.97B km". */
 export function formatCompactKm(value: number): string {
 	return joinParts({ value: formatCompactNumber(value), unit: formatUnit('kilometre', true) });
+}
+
+/** Two ends of a range with one unit, said once. */
+function rangeIn(from: number, to: number, widest: number, unit: string): string {
+	const format = new Intl.NumberFormat(getLocale(), precisionOptions(widest));
+	const start = format.format(from);
+	if (start === format.format(to)) return joinParts({ value: start, unit });
+	return joinParts({ value: format.formatRange(from, to), unit });
 }
 
 /**
@@ -54,16 +71,25 @@ export function formatKmRange(fromKm: number, toKm: number): string {
 	// reads as two quantities rather than one span. The wider end decides.
 	const widest = Math.max(Math.abs(fromKm), Math.abs(toKm));
 	const metres = widest !== 0 && widest < 1;
-	const [from_, to_] = metres ? [fromKm * 1000, toKm * 1000] : [fromKm, toKm];
-
-	const format = new Intl.NumberFormat(
-		getLocale(),
-		precisionOptions(metres ? widest * 1000 : widest)
+	const [from, to] = metres ? [fromKm * 1000, toKm * 1000] : [fromKm, toKm];
+	return rangeIn(
+		from,
+		to,
+		metres ? widest * 1000 : widest,
+		formatUnit(metres ? 'metre' : 'kilometre', true)
 	);
-	const unit = formatUnit(metres ? 'metre' : 'kilometre', true);
-	const from = format.format(from_);
-	if (from === format.format(to_)) return joinParts({ value: from, unit });
-	return joinParts({ value: format.formatRange(from_, to_), unit });
+}
+
+/** A range of heights above a body, in the unit of its wider end. */
+export function formatHeightRange(fromKm: number, toKm: number): string {
+	const widest = Math.max(Math.abs(fromKm), Math.abs(toKm));
+	if (widest < HEIGHT_AU_FROM_KM) return formatKmRange(fromKm, toKm);
+	return rangeIn(
+		fromKm / AU_KM,
+		toKm / AU_KM,
+		widest / AU_KM,
+		formatUnit('astronomical_unit', true)
+	);
 }
 
 /** A length under a metre, in µm below 1 mm and in mm above, to `digits`
