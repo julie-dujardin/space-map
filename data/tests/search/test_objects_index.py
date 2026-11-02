@@ -33,6 +33,14 @@ class TestDateToInt:
     def test_zero_month_and_day_default_to_one(self):
         assert _date_to_int("2018-00-00") == 20180101
 
+    def test_bce_year_keeps_its_sign_and_sorts_by_month(self):
+        assert _date_to_int("-43-05-30") == -429470
+        assert _date_to_int("-43-01-01") == -429899
+        assert _date_to_int("-0466-00-00T00:00:00Z") == -4659899
+
+    def test_formation_date_returns_none(self):
+        assert _date_to_int("-4540000000-00-00T00:00:00Z") is None
+
     def test_unparseable_returns_none(self):
         assert _date_to_int("not a date") is None
 

@@ -244,19 +244,20 @@ def _radii_diameter_km(radii: dict[str, Any]) -> float | None:
     return sum(vals) / len(vals) * 2.0
 
 
-# Leading +/- (Wikidata times), year, then optional -MM-DD; trailing time ignored.
-_DATE_RE = re.compile(r"[+-]?(\d{1,4})(?:-(\d{2})(?:-(\d{2}))?)?")
+# A longer year is a formation date, which no list of discoveries should show.
+_DATE_RE = re.compile(r"([+-]?)(\d{1,4})(?!\d)(?:-(\d{2})(?:-(\d{2}))?)?")
 
 
 def _date_to_int(value: str) -> int | None:
     """Parse 'YYYY', 'YYYY-MM-DD' or a Wikidata '+YYYY-MM-DDT..Z' time into a
-    sortable YYYYMMDD int. Missing or zero month/day default to 01."""
+    sortable YYYYMMDD int. Missing or zero month/day default to 01. A date BCE
+    is negative, and still sorts by month: floor division gives its year."""
     m = _DATE_RE.match(value.strip())
     if not m:
         return None
-    year = int(m.group(1))
-    month = int(m.group(2)) if m.group(2) and m.group(2) != "00" else 1
-    day = int(m.group(3)) if m.group(3) and m.group(3) != "00" else 1
+    year = int(m.group(1) + m.group(2))
+    month = int(m.group(3)) if m.group(3) and m.group(3) != "00" else 1
+    day = int(m.group(4)) if m.group(4) and m.group(4) != "00" else 1
     return year * 10000 + month * 100 + day
 
 

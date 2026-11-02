@@ -19,7 +19,7 @@ const messages = m as unknown as Record<
 
 /** YYYYMMDD int → calendar year (negative = BCE). */
 export function inceptionYear(yyyymmdd: number): number {
-	return Math.trunc(yyyymmdd / 10000);
+	return Math.floor(yyyymmdd / 10000);
 }
 
 /** DOM id for a result row, shared by the option elements and the combobox
