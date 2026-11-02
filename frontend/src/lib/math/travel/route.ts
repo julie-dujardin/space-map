@@ -38,7 +38,7 @@ import { equatorialTiltDeg } from './body';
 import { endTurn } from './passage-node';
 import { elementsToState } from './state';
 import { relativeState, solveRadialArc } from './system-transfer';
-import { cross, dot, norm, sub, type Vec3 } from './vec3';
+import { cross, dot, norm, sub } from './vec3';
 
 export type LegKind =
 	| 'ascent'
@@ -136,7 +136,8 @@ export interface ConicSpan {
 
 /** What a crossing between two star systems adds to a route. */
 export interface InterstellarCrossing {
-	/** Distance from `originKm` to `targetKm`, km. */
+	/** Length of the crossing between its two ends, km. A held arc stops short of
+	 *  a star, as `heldLine` gives it. */
 	distanceKm: number;
 	/** Speed against the stars on the coast, km/s, below c. On a held arc this is the peak. */
 	cruiseKms: number;
@@ -145,13 +146,6 @@ export interface InterstellarCrossing {
 	/** The rapidity at that speed times c, km/s. This figure can pass c. See
 	 *  `speedOfRapidity`. */
 	rapidityKms: number;
-	/** Place of the origin end at departure, km, ecliptic J2000 from the
-	 *  solar-system barycentre. The Sun is at the barycentre in this frame. A held
-	 *  arc starts short of a star: see `heldLine`. */
-	originKm: Vec3;
-	/** Place of the target end at arrival, km, in the same frame. A held arc stops
-	 *  short of a star: see `heldLine`. */
-	targetKm: Vec3;
 	/** The hyperbolas at the two ends of a coast. Absent on a held arc. `flownKm` is
 	 *  the length of the path, which a ring wider than the gap makes longer than
 	 *  `distanceKm`. */

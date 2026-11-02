@@ -38,6 +38,7 @@ export function routeKey(route: Route, center: string, transfer: TransferFrame):
 		route.constantThrust ?? '',
 		route.lowThrust?.accelMs2 ?? '',
 		via ? `${via.bodyId}@${via.jd}` : '',
+		route.interstellar?.cruiseKms ?? '',
 		transfer.systemPrimary ?? '',
 		transfer.orbitChange ?? '',
 		transfer.centralMu ?? ''

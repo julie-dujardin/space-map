@@ -205,6 +205,18 @@ export async function distanceKm(from: Anchor, to: Anchor, date: Date): Promise<
 }
 
 /**
+ * Where the Sun is at `date`, in kilometres on ecliptic J2000 axes from the
+ * barycentre of the Solar System. Null past the ephemeris. Rejects when the data
+ * does not load.
+ */
+export function sunPlaceKm(date: Date): Promise<OffsetKm | null> {
+	return inTurn(async () => {
+		const sun = await place(SUN_ID, await open(date));
+		return sun && sceneToEcliptic(sun.centre);
+	});
+}
+
+/**
  * The place on `id` where the Sun is overhead at `date`, in the frame of a
  * surface anchor. Null for the Sun, and for a body that is nowhere at that
  * date. Rejects when the data does not load.

@@ -243,23 +243,29 @@ function drawnStateAt(end: SystemEnd, jd: number): StateVector | null {
 
 /** The state of an end about its star at `jd`. A hyperbola about the star reads
  *  its μ, the star's own where it is known. */
-function orbitStateAt(end: SystemEnd, jd: number): StateVector | null {
+export function orbitStateAt(end: SystemEnd, jd: number): StateVector | null {
 	if (end.atStar) return null;
 	const state = drawnStateAt(end, jd);
 	return state && { ...state, mu: end.starMu ?? state.mu };
 }
 
-/** Where an end is at `jd`, km, ecliptic J2000 from the solar-system barycentre.
- *  This is the place the map gives it. A solar end is about the Sun. With no
- *  motion known, any mean motion gives the place at the epoch. With no orbit, the
- *  end is at its star. */
-export function endPlaceKm(end: SystemEnd, jd: number): Vec3 {
-	if (end.atStar) return end.starKm;
+/** Where an end is about its star at `jd`, km. With no motion known, any mean
+ *  motion gives the place at the epoch. With no orbit, the end is at its star. */
+export function endOffsetKm(end: SystemEnd, jd: number): Vec3 {
+	if (end.atStar) return [0, 0, 0];
 	const { elements } = end.body;
 	const state =
 		orbitStateAt(end, jd) ??
 		elementsToState({ ...elements, n: 1 }, clockJd(elements, elements.epoch));
-	return state ? add(end.starKm, state.r) : end.starKm;
+	// Not a place: the offset from the star of an end that sits at its star.
+	// eslint-disable-next-line no-restricted-syntax
+	return state?.r ?? [0, 0, 0];
+}
+
+/** Where an end is at `jd`, km, ecliptic J2000 from the solar-system barycentre.
+ *  This is the place the map gives it. A solar end is about the Sun. */
+export function endPlaceKm(end: SystemEnd, jd: number): Vec3 {
+	return end.atStar ? end.starKm : add(end.starKm, endOffsetKm(end, jd));
 }
 
 /** `orbit` if the end can hold it. An orbit about a star of unknown μ has no price. */
@@ -477,7 +483,7 @@ export function buildInterstellarTorchRoute(
 	const arcTo = (jd: number) => heldFlight(lineTo(jd).distanceKm, accelKmS2, burns, share);
 	const flownDays = (jd: number) => arcTo(jd).seconds / SEC_PER_DAY;
 	const placedJd = settledArrivalJd(departJd, flownDays);
-	const { originKm, targetKm, distanceKm } = lineTo(placedJd);
+	const { distanceKm } = lineTo(placedJd);
 	if (!(distanceKm > 0)) return null;
 
 	const arc = arcTo(placedJd);
@@ -551,9 +557,7 @@ export function buildInterstellarTorchRoute(
 				distanceKm,
 				cruiseKms: arc.peakKms,
 				gamma,
-				rapidityKms,
-				originKm,
-				targetKm
+				rapidityKms
 			}
 		},
 		legs
@@ -1357,8 +1361,6 @@ export function buildInterstellarCruiseRoute(
 				cruiseKms: speedOfRapidity(rapidityKms),
 				gamma,
 				rapidityKms,
-				originKm,
-				targetKm,
 				conics: {
 					departure: conicSpan(shape.departure, originKm),
 					arrival: conicSpan(shape.arrival, targetKm),

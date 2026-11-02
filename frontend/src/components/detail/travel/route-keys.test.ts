@@ -46,6 +46,19 @@ describe('route view keys', () => {
 		expect(routeKey(low, CENTER, FRAME)).not.toBe(routeKey(high, CENTER, FRAME));
 	});
 
+	it('rebuilds a crossing when only its cruise speed changed', () => {
+		const route = priced({});
+		const crossing = {
+			distanceKm: 1e14,
+			cruiseKms: 40,
+			gamma: 1,
+			rapidityKms: 40
+		};
+		const slow = { ...route, interstellar: crossing };
+		const fast = { ...route, interstellar: { ...crossing, cruiseKms: 41 } };
+		expect(routeKey(slow, CENTER, FRAME)).not.toBe(routeKey(fast, CENTER, FRAME));
+	});
+
 	it('rescans hazards when the atmosphere turns out to exist', () => {
 		// The detail bundle lands after the first solve: same trip and braking
 		// request, but the arrival goes from priced-airless to flown through air.

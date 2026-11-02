@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ObjectDetailData } from '$lib/fetch/objects/object-data';
 import { dateToJD, utcToTdb } from '$lib/time/jd';
-import { distanceKm, offsetKm, subsolarPoint, sunlight } from './ephemeris';
+import { distanceKm, offsetKm, subsolarPoint, sunlight, sunPlaceKm } from './ephemeris';
 
 const AU_KM = 149597870.7;
 const DATE = new Date('1971-07-31T13:00:00Z');
@@ -91,6 +91,12 @@ describe('distanceKm', () => {
 		]);
 		expect(now).toBeCloseTo(3 * AU_KM, 0);
 		expect(then).toBeCloseTo(AU_KM, 0);
+	});
+});
+
+describe('sunPlaceKm', () => {
+	it('reads the place of the Sun from the barycentre', async () => {
+		expect(Math.hypot(...(await sunPlaceKm(DATE))!)).toBe(0);
 	});
 });
 

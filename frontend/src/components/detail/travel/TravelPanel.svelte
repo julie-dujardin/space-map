@@ -41,10 +41,13 @@
 		type TrajectoryFrame,
 		type SystemEnd,
 		type TrajectoryPath,
-		type TravelBody
+		type TravelBody,
+		type Vec3
 	} from '$lib/math/travel';
+	import { sunPlaceKm } from '$lib/scene/extensions/ephemeris';
 	import type { OrbitPreview } from '$lib/scene/objects/travel/orbit-preview';
 	import { systemOf } from '$lib/state/nav-end';
+	import { jdToDate, LAST_DATE_JD } from '$lib/time/jd';
 	import {
 		aeroPressurePa,
 		lookupIn,
@@ -965,6 +968,34 @@
 		};
 	}
 
+	// Where the Sun is on the dates of the solar ends on offer. The kernel keeps the
+	// Sun at the barycentre, so the line misses a solar body by up to 0.01 au until
+	// this lands, late like the site coordinates. Whole days: the Sun moves about
+	// 1,100 km a day, and a drag of the coast moves a date on every frame.
+	let sunPlaces = $state.raw<ReadonlyMap<number, Vec3 | null>>(new Map());
+	let sunDays = $derived.by(() => {
+		const days = new Set<number>();
+		if (!interstellar) return days;
+		for (const route of [panel.selectedRoute, ...panel.offered.map((choice) => choice.route)]) {
+			if (route && !ends.origin.extrasolar) days.add(Math.round(route.departJd));
+			if (route && !ends.target.extrasolar) days.add(Math.round(route.arriveJd));
+		}
+		return days;
+	});
+	let sunDaysKey = $derived([...sunDays].join());
+	$effect(() => {
+		void sunDaysKey;
+		untrack(() => {
+			const wanted = [...sunDays].filter((day) => !sunPlaces.has(day));
+			if (wanted.length === 0) return;
+			const reads = wanted.map(async (day): Promise<[number, Vec3 | null]> => {
+				if (day >= LAST_DATE_JD) return [day, null];
+				return [day, await sunPlaceKm(jdToDate(day)).catch(() => null)];
+			});
+			void Promise.all(reads).then((found) => (sunPlaces = new Map([...sunPlaces, ...found])));
+		});
+	});
+
 	/** One route as geometry, or null when it cannot be drawn. */
 	function buildPath(
 		route: Route,
@@ -977,6 +1008,13 @@
 			centerId: center,
 			// A trip between two other stars is drawn about the star it leaves.
 			centerKm: leaving?.id === center ? leaving.positionKm : undefined,
+			systems: interstellar
+				? {
+						origin: systemEndFor('origin', pathOrigin),
+						target: systemEndFor('target', pathTarget)
+					}
+				: undefined,
+			sunOffsetKm: (jd) => sunPlaces.get(Math.round(jd)) ?? null,
 			centralMu: frame.centralMu,
 			systemPrimary: frame.systemPrimary,
 			orbitChange: frame.orbitChange,
@@ -1004,6 +1042,7 @@
 			ends.target.name ?? '',
 			viewFrame,
 			sitesKey,
+			sunPlaces.size,
 			panel.pricedRevision,
 			routeKey(route, centerId, frame)
 		].join(';');
@@ -1077,6 +1116,7 @@
 					ends.origin.name ?? '',
 					ends.target.name ?? '',
 					sitesKey,
+					sunPlaces.size,
 					panel.pricedRevision,
 					...keys
 				].join(';')

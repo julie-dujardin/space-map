@@ -5,24 +5,31 @@ import {
 	type EndOrbitPath,
 	type TrajectoryFrame
 } from './path';
-import { craftPositionAt } from './path-sample';
-import { buildRoute } from './route';
+import { craftPositionAt, crossingWindow } from './path-sample';
+import { buildRoute, type Route } from './route';
 import { buildAssistRoute } from './assist';
 import { buildConstantThrustRoute } from './brachistochrone';
 import {
 	buildInterstellarCruiseRoute,
 	buildInterstellarTorchRoute,
+	coastShape,
+	conicPlaceKm,
 	crossingElapsed,
+	endPlaceKm,
+	heldLine,
+	orbitStateAt,
+	rapidityOfSpeed,
+	type InterstellarCruiseOptions,
 	type SystemEnd
 } from './interstellar';
 import { elementsToState } from './state';
 import { hohmannTransferDays, nextTransferWindows } from './windows';
-import { G0_M_S2, GM_SUN_KM3_S2 } from './constants';
+import { G0_M_S2, GM_SUN_KM3_S2, SEC_PER_DAY } from './constants';
 import * as travelConstants from './constants';
 import { AU_KM, LIGHT_YEAR_KM } from '$lib/math/units';
 import { sphereOfInfluenceKm } from './body';
 import { aeroPassRadiusKm, parkingOrbit, parkingRadiusKm } from './maneuvers';
-import { add, cross, dot, norm, normalize, sub, type Vec3 } from './vec3';
+import { add, cross, dot, norm, normalize, scale, sub, type Vec3 } from './vec3';
 import {
 	EARTH,
 	J2000,
@@ -1297,6 +1304,14 @@ describe('a crossing between two systems', () => {
 		})!;
 	}
 
+	/** The path of a trip from home to Tau Ceti. */
+	function drawn(route: Route) {
+		return buildTrajectoryPath(EARTH, TAU_CETI.body, route, {
+			centerId: SSB,
+			systems: { origin: HOME, target: TAU_CETI }
+		})!;
+	}
+
 	/** Where the craft is along the line, as a share of the whole crossing. */
 	function share(path: NonNullable<ReturnType<typeof buildTrajectoryPath>>, jd: number): number {
 		const start = path.arcs[0].points[0];
@@ -1305,15 +1320,14 @@ describe('a crossing between two systems', () => {
 		return dot(sub(at, start), sub(end, start)) / dot(sub(end, start), sub(end, start));
 	}
 
-	it('runs straight from star to star, ends exactly on the two places', () => {
+	it('runs straight between its two ends, exactly on the two places', () => {
 		const route = torch(0);
-		const path = buildTrajectoryPath(EARTH, TAU_CETI.body, route, { centerId: SSB })!;
-		const { originKm: start, targetKm } = route.interstellar!;
+		const path = drawn(route);
+		const { originKm: start, targetKm } = heldLine(HOME, TAU_CETI, route);
 		expect(path.arcs[0].points[0]).toEqual(start);
 		expect(path.arcs.at(-1)!.points.at(-1)).toEqual(targetKm);
 		expect(path.meeting.r).toEqual(targetKm);
 		expect(path.stops.map((stop) => stop.bodyId)).toEqual([EARTH.id, TAU_CETI.body.id]);
-		expect(path.endOrbits).toEqual([]);
 		// Every sample is on the line between the two ends.
 		const axis = normalize(sub(TAU_CETI.starKm, start));
 		for (const arc of path.arcs) {
@@ -1325,7 +1339,7 @@ describe('a crossing between two systems', () => {
 
 	it('marks the boost and the brake of a stop, and flips half way', () => {
 		const route = torch(0);
-		const path = buildTrajectoryPath(EARTH, TAU_CETI.body, route, { centerId: SSB })!;
+		const path = drawn(route);
 		expect(path.arcs.map((arc) => arc.kind)).toEqual(['boost', 'brake']);
 		const [boost, brake] = path.arcs;
 		expect(relative(boost.points.at(-1)!, brake.points[0])).toBeLessThan(1e-15);
@@ -1339,24 +1353,18 @@ describe('a crossing between two systems', () => {
 	});
 
 	it('marks the coast between the burns', () => {
-		const path = buildTrajectoryPath(EARTH, TAU_CETI.body, torch(0.25), { centerId: SSB })!;
+		const path = drawn(torch(0.25));
 		expect(path.arcs.map((arc) => arc.kind)).toEqual(['boost', 'cruise', 'brake']);
 	});
 
 	it('never brakes on a flyby', () => {
-		const flat = buildTrajectoryPath(EARTH, TAU_CETI.body, torch(0, 'flyby'), {
-			centerId: SSB
-		})!;
-		expect(flat.arcs.map((arc) => arc.kind)).toEqual(['boost']);
-		const coasting = buildTrajectoryPath(EARTH, TAU_CETI.body, torch(0.25, 'flyby'), {
-			centerId: SSB
-		})!;
-		expect(coasting.arcs.map((arc) => arc.kind)).toEqual(['boost', 'cruise']);
+		expect(drawn(torch(0, 'flyby')).arcs.map((arc) => arc.kind)).toEqual(['boost']);
+		expect(drawn(torch(0.25, 'flyby')).arcs.map((arc) => arc.kind)).toEqual(['boost', 'cruise']);
 	});
 
 	it('dates the line by the relativistic motion along it', () => {
 		const route = torch(0.25);
-		const path = buildTrajectoryPath(EARTH, TAU_CETI.body, route, { centerId: SSB })!;
+		const path = drawn(route);
 		for (const arc of path.arcs) {
 			for (let i = 1; i < arc.jds.length; i++) expect(arc.jds[i]).toBeGreaterThan(arc.jds[i - 1]);
 		}
@@ -1369,7 +1377,7 @@ describe('a crossing between two systems', () => {
 		expect(craftPositionAt(path, route.arriveJd + 1)).toBeNull();
 	});
 
-	it('draws a coast as one cruise at an even pace', () => {
+	it('draws a coast as cruise arcs that span one leg, at an even pace', () => {
 		const route = buildInterstellarCruiseRoute(
 			HOME,
 			TAU_CETI,
@@ -1378,9 +1386,10 @@ describe('a crossing between two systems', () => {
 			{ departureMode: 'orbit', arrivalMode: 'flyby' }
 		);
 		if (typeof route !== 'object' || route === null) throw new Error('no coast');
-		const path = buildTrajectoryPath(EARTH, TAU_CETI.body, route, { centerId: SSB })!;
-		expect(path.arcs.map((arc) => arc.kind)).toEqual(['cruise']);
-		expect(path.arcs[0].endJd).toBe(route.arriveJd);
+		const path = drawn(route);
+		expect(path.arcs.map((arc) => arc.kind)).toEqual(['cruise', 'cruise', 'cruise']);
+		expect(path.arcs[0].startJd).toBe(route.departJd);
+		expect(path.arcs.at(-1)!.endJd).toBe(route.arriveJd);
 		const middle = (route.departJd + route.arriveJd) / 2;
 		expect(share(path, middle)).toBeCloseTo(0.5, 5);
 	});
@@ -1392,11 +1401,779 @@ describe('a crossing between two systems', () => {
 		})!;
 		const path = buildTrajectoryPath(PROXIMA.body, TAU_CETI.body, route, {
 			centerId: PROXIMA.body.id,
-			centerKm: PROXIMA.starKm
+			centerKm: PROXIMA.starKm,
+			systems: { origin: PROXIMA, target: TAU_CETI }
 		})!;
 		expect(path.centerId).toBe(PROXIMA.body.id);
 		const gapKm = sub(TAU_CETI.starKm, PROXIMA.starKm);
-		expect(norm(path.arcs[0].points[0]) / AU_KM).toBeCloseTo(1, 6);
+		expect(path.arcs[0].points[0]).toEqual(scale(normalize(gapKm), AU_KM));
 		expect(norm(sub(path.meeting.r, gapKm)) / AU_KM).toBeCloseTo(1, 6);
+	});
+});
+
+describe('the ends of a crossing', () => {
+	const SSB = 'naif-0';
+	const ORIGIN: Vec3 = [0, 0, 0];
+
+	function starEnd(id: string, starKm: Vec3, massSolar = 1): SystemEnd {
+		return {
+			body: {
+				id,
+				mu: massSolar * GM_SUN_KM3_S2,
+				muEstimated: true,
+				radiusKm: 700_000,
+				elements: { a: 0, e: 0, i: 0, om: 0, w: 0, ma: 0, n: 0, epoch: J2000 }
+			},
+			starKm,
+			starMu: massSolar * GM_SUN_KM3_S2,
+			atStar: true
+		};
+	}
+
+	/** A rocky planet with air on a tilted orbit of `star`. */
+	function planetOf(star: SystemEnd, name: string, aAu: number): SystemEnd {
+		const n = (Math.sqrt(star.starMu! / (aAu * AU_KM) ** 3) * SEC_PER_DAY * 180) / Math.PI;
+		const elements = { a: aAu, e: 0.05, i: 20, om: 40, w: 50, ma: 60, n, epoch: J2000 };
+		const body = {
+			id: `${star.body.id}-${name}`,
+			mu: 4e5,
+			muEstimated: true,
+			radiusKm: 6_500,
+			aeroPressurePa: 100_000,
+			elements,
+			parentId: star.body.id
+		};
+		return { ...star, body, atStar: false };
+	}
+
+	const HOME: SystemEnd = { body: EARTH, starKm: ORIGIN, starMu: GM_SUN_KM3_S2, atStar: false };
+	const AT_MARS: SystemEnd = { ...HOME, body: MARS };
+	const AT_MOON: SystemEnd = {
+		...HOME,
+		body: { ...MOON, elements: EARTH.elements, borrowedElements: true },
+		wells: [{ mu: EARTH.mu, radiusKm: MOON.elements.a * AU_KM }]
+	};
+	const SUN_END = starEnd(SUN, ORIGIN);
+	const FAR = starEnd('x-1', [3 * LIGHT_YEAR_KM, 2.2 * LIGHT_YEAR_KM, 1.1 * LIGHT_YEAR_KM], 0.5);
+	const FAR_PLANET = planetOf(FAR, 'b', 0.2);
+	/** The two stars of a binary, 23 au apart. */
+	const ALPHA = starEnd('x-2', [-2 * LIGHT_YEAR_KM, 3 * LIGHT_YEAR_KM, -1 * LIGHT_YEAR_KM], 1.1);
+	const BETA = starEnd('x-3', add(ALPHA.starKm, [23 * AU_KM, 0, 0]), 0.9);
+
+	const RING = { rPeriKm: 2 * AU_KM, rApoKm: 3 * AU_KM };
+	const MOLNIYA = { rPeriKm: 7_000, rApoKm: 46_000, incDeg: 63.4, argPeriDeg: 270 };
+	const STATION = { rPeriKm: 7_000, rApoKm: 7_000, incDeg: 51.6 };
+
+	type Terms = InterstellarCruiseOptions;
+	type Drive = 'coast' | 'held';
+	const DRIVES: Drive[] = ['coast', 'held'];
+	const FRAMES: TrajectoryFrame[] = ['interplanetary', 'planetary'];
+
+	/** The route of `drive`, or the reason it has none. */
+	function fly(drive: Drive, from: SystemEnd, to: SystemEnd, terms: Terms) {
+		return drive === 'held'
+			? buildInterstellarTorchRoute(from, to, J2000, G0_M_S2, terms)
+			: buildInterstellarCruiseRoute(from, to, J2000, { kind: 'budget', dvKms: 600 }, terms);
+	}
+
+	function trip(drive: Drive, from: SystemEnd, to: SystemEnd, terms: Terms): Route {
+		const route = fly(drive, from, to, terms);
+		if (route === null || typeof route === 'string') throw new Error(`no route: ${route}`);
+		return route;
+	}
+
+	function draw(
+		from: SystemEnd,
+		to: SystemEnd,
+		route: Route,
+		options: Partial<Parameters<typeof buildTrajectoryPath>[3]> = {}
+	) {
+		const path = buildTrajectoryPath(from.body, to.body, route, {
+			centerId: SSB,
+			systems: { origin: from, target: to },
+			...options
+		});
+		if (!path) throw new Error('no path');
+		return path;
+	}
+
+	type Path = ReturnType<typeof draw>;
+
+	const inSameSystem = (a: SystemEnd, b: SystemEnd) => norm(sub(a.starKm, b.starKm)) === 0;
+	const endAt = (path: Path, at: EndOrbitPath['at']) => path.endOrbits.find((e) => e.at === at);
+
+	/** What the line of an end has to reach. `conic` says the arc stops at a pass. */
+	function expectAtEnd(
+		point: Vec3,
+		end: SystemEnd,
+		jd: number,
+		passKm: number | null,
+		name: string
+	) {
+		const place = endPlaceKm(end, jd);
+		if (passKm === null) expect(norm(sub(point, place)), name).toBeLessThan(0.1);
+		else expect(norm(sub(point, place)) / passKm, name).toBeCloseTo(1, 3);
+	}
+
+	function expectWhole(path: Path, route: Route, from: SystemEnd, to: SystemEnd, name: string) {
+		const { arcs, endOrbits, frame } = path;
+		expect(arcs[0].startJd, name).toBe(route.departJd);
+		expect(arcs.at(-1)!.endJd, name).toBe(route.arriveJd);
+		expect(path.stops[0].r, name).toEqual(arcs[0].points[0]);
+		expect(path.stops[1].r, name).toEqual(arcs.at(-1)!.points.at(-1));
+
+		let lastJd = -Infinity;
+		arcs.forEach((arc, index) => {
+			expect(arc.jds.length, name).toBe(arc.points.length);
+			if (index > 0) {
+				expect(arc.jds[0], name).toBe(lastJd);
+				expect(arc.points[0], name).toEqual(arcs[index - 1].points.at(-1));
+			} else lastJd = arc.jds[0] - 1;
+			for (const [i, jd] of arc.jds.entries()) {
+				if (i > 0) expect(jd, name).toBeGreaterThan(arc.jds[i - 1]);
+				expect(jd, name).toBeGreaterThanOrEqual(lastJd);
+			}
+			lastJd = arc.jds.at(-1)!;
+			// A trim never eats the arc.
+			const { from: kept, to: stop } = crossingWindow(path, index);
+			expect(stop - kept, name).toBeGreaterThanOrEqual(2);
+		});
+
+		for (const end of endOrbits) {
+			const body = end.at === 'departure' ? from.body : to.body;
+			const anchored = frame === 'planetary' || body.borrowedElements === true;
+			expect(end.anchorId, name).toBe(anchored ? body.id : path.centerId);
+			expect(end.jds.length, name).toBe(end.approach.length);
+			for (let i = 1; i < end.jds.length; i++) {
+				expect(end.jds[i], name).toBeGreaterThan(end.jds[i - 1]);
+			}
+			for (const point of [...end.approach, ...end.points]) {
+				expect(Number.isFinite(norm(point)), name).toBe(true);
+			}
+			if (end.surfaceJd === undefined) {
+				expect(end.points.length, name).toBeGreaterThan(2);
+				// Closed in the frame of the body, a trochoid outside it.
+				if (anchored) expect(relative(end.points[0], end.points.at(-1)!), name).toBeLessThan(1e-9);
+			}
+			const passage = end.approach.length >= 100;
+			if (passage && frame === 'interplanetary' && !anchored) {
+				const index = end.at === 'departure' ? 0 : arcs.length - 1;
+				const { from: kept, to: stop } = crossingWindow(path, index);
+				const join = end.at === 'departure' ? kept : stop - 1;
+				const seam = end.at === 'departure' ? end.approach.at(-1)! : end.approach[0];
+				expect(norm(sub(seam, arcs[index].points[join])), name).toBeLessThan(1);
+			}
+		}
+
+		// The craft is somewhere on every date of the trip.
+		for (let i = 0; i <= 40; i++) {
+			const jd = route.departJd + (route.tofDays * i) / 40;
+			const at = craftPositionAt(path, jd);
+			expect(at, name).not.toBeNull();
+			expect(Number.isFinite(norm(at!.r)), name).toBe(true);
+		}
+	}
+
+	const LEAVING: [string, SystemEnd, Terms][] = [
+		['the ground of Earth', HOME, { departureMode: 'surface' }],
+		['low Earth orbit', HOME, { departureMode: 'orbit' }],
+		['an orbit named for its plane', HOME, { departureMode: 'orbit', departureOrbit: STATION }],
+		['a custom orbit with a pole', HOME, { departureMode: 'orbit', departureOrbit: MOLNIYA }],
+		['the Moon', AT_MOON, { departureMode: 'orbit' }],
+		['the Sun, in a hold', SUN_END, { departureMode: 'rendezvous' }],
+		['an orbit of the Sun', SUN_END, { departureMode: 'orbit', departureOrbit: RING }],
+		['a planet of another star', FAR_PLANET, { departureMode: 'orbit' }],
+		['the ground of that planet', FAR_PLANET, { departureMode: 'surface' }],
+		['another star, in a hold', FAR, { departureMode: 'rendezvous' }],
+		['an orbit of another star', FAR, { departureMode: 'orbit', departureOrbit: RING }]
+	];
+
+	const REACHING: [string, SystemEnd, Terms][] = [
+		['low orbit of a planet of a star', FAR_PLANET, { arrivalMode: 'low-orbit' }],
+		['a custom orbit there', FAR_PLANET, { arrivalMode: 'capture', targetOrbit: MOLNIYA }],
+		['its ground', FAR_PLANET, { arrivalMode: 'landing' }],
+		['a flyby of it', FAR_PLANET, { arrivalMode: 'flyby' }],
+		['its air', FAR_PLANET, { arrivalMode: 'low-orbit', aero: 'aerocapture' }],
+		['a star, to hold', FAR, { arrivalMode: 'rendezvous' }],
+		['an orbit of the star', FAR, { arrivalMode: 'capture', targetOrbit: RING }],
+		['a flyby of the star', FAR, { arrivalMode: 'flyby' }],
+		['low orbit of Mars', AT_MARS, { arrivalMode: 'low-orbit' }],
+		['a named orbit of Mars', AT_MARS, { arrivalMode: 'capture', targetOrbit: STATION }],
+		['the ground of Mars', AT_MARS, { arrivalMode: 'landing' }],
+		['the air of Mars', AT_MARS, { arrivalMode: 'low-orbit', aero: 'aerocapture' }],
+		['the Moon', AT_MOON, { arrivalMode: 'low-orbit' }],
+		['the Sun, to hold', SUN_END, { arrivalMode: 'rendezvous' }],
+		['an orbit of the Sun', SUN_END, { arrivalMode: 'capture', targetOrbit: RING }]
+	];
+
+	describe.each(DRIVES)('on a %s', (drive) => {
+		it.each(FRAMES)('joins every kind of end in the %s frame', (frame) => {
+			let flown = 0;
+			for (const [fromName, from, leaving] of LEAVING) {
+				for (const [toName, to, reaching] of REACHING) {
+					if (inSameSystem(from, to)) continue;
+					const name = `${fromName} → ${toName}`;
+					const route = fly(drive, from, to, { ...leaving, ...reaching });
+					if (route === null || typeof route === 'string') continue;
+					flown++;
+					expectWhole(draw(from, to, route, { frame }), route, from, to, name);
+				}
+			}
+			expect(flown).toBe(84);
+		});
+	});
+
+	it('leaves Earth and reaches a planet of another star, each on its own date', () => {
+		const terms: Terms = { departureMode: 'orbit', arrivalMode: 'low-orbit' };
+		for (const drive of DRIVES) {
+			const route = trip(drive, HOME, FAR_PLANET, terms);
+			const path = draw(HOME, FAR_PLANET, route);
+			expectAtEnd(path.arcs[0].points[0], HOME, route.departJd, null, drive);
+			expectAtEnd(path.arcs.at(-1)!.points.at(-1)!, FAR_PLANET, route.arriveJd, null, drive);
+			expect(path.soiKm[EARTH.id]).toBeCloseTo(soiOf(EARTH, GM_SUN_KM3_S2), 3);
+			expect(path.soiKm[FAR_PLANET.body.id]).toBeGreaterThan(0);
+			expect(path.endOrbits.map((end) => end.at)).toEqual(['departure', 'arrival']);
+		}
+	});
+
+	it('draws the ring that was priced, about the body', () => {
+		const route = trip('coast', HOME, FAR_PLANET, {
+			departureMode: 'orbit',
+			departureOrbit: MOLNIYA,
+			arrivalMode: 'low-orbit'
+		});
+		const path = draw(HOME, FAR_PLANET, route, { frame: 'planetary' });
+		const ring = endAt(path, 'departure')!;
+		const radii = ring.points.map(norm);
+		expect(Math.min(...radii)).toBeCloseTo(MOLNIYA.rPeriKm, 3);
+		expect(Math.max(...radii)).toBeCloseTo(MOLNIYA.rApoKm, 3);
+		expect(ring.radiusKm).toBe(MOLNIYA.rApoKm);
+		const low = parkingOrbit(FAR_PLANET.body).rPeriKm;
+		for (const point of endAt(path, 'arrival')!.points) expect(norm(point)).toBeCloseTo(low, 3);
+	});
+
+	it('hands a passage down to the periapsis of the orbit', () => {
+		const route = trip('coast', HOME, FAR_PLANET, {
+			departureMode: 'orbit',
+			arrivalMode: 'low-orbit'
+		});
+		const path = draw(HOME, FAR_PLANET, route, { frame: 'planetary' });
+		const arrival = endAt(path, 'arrival')!;
+		const low = parkingOrbit(FAR_PLANET.body).rPeriKm;
+		expect(norm(arrival.approach.at(-1)!)).toBeCloseTo(low, 3);
+		expect(relative(arrival.approach.at(-1)!, arrival.points[0])).toBeLessThan(1e-6);
+		// The speed there is the one the route was priced on.
+		const steps = arrival.approach.length;
+		const stepKm = norm(sub(arrival.approach[steps - 1], arrival.approach[steps - 2]));
+		const stepSec = (arrival.jds[steps - 1] - arrival.jds[steps - 2]) * SEC_PER_DAY;
+		const speed = Math.sqrt(route.vInfArrKms ** 2 + (2 * FAR_PLANET.body.mu) / low);
+		expect(stepKm / stepSec / speed).toBeCloseTo(1, 2);
+	});
+
+	it('draws the conics of the route, and the closing speed it was priced on', () => {
+		const route = trip('coast', HOME, FAR_PLANET, {
+			departureMode: 'orbit',
+			arrivalMode: 'low-orbit'
+		});
+		const shape = coastShape(route, HOME, FAR_PLANET)!;
+		const path = draw(HOME, FAR_PLANET, route);
+		expect(path.arcs).toHaveLength(3);
+		const [out, line, back] = path.arcs;
+		const conicTolerance = 1e-9;
+		out.points.forEach((point, i) => {
+			const seconds = (out.jds[i] - route.departJd) * SEC_PER_DAY;
+			expect(relative(point, conicPlaceKm(shape.departure!, seconds))).toBeLessThan(1e-6);
+		});
+		back.points.forEach((point, i) => {
+			const seconds = (route.arriveJd - back.jds[i]) * SEC_PER_DAY;
+			const at = sub(conicPlaceKm(shape.arrival!, seconds), shape.arrival!.starKm);
+			expect(norm(sub(sub(point, shape.arrival!.starKm), at)) / norm(at)).toBeLessThan(1e-6);
+		});
+		expect(relative(line.points[0], shape.lineFromKm)).toBeLessThan(conicTolerance);
+		expect(relative(line.points.at(-1)!, shape.lineToKm)).toBeLessThan(conicTolerance);
+		expect(out.endJd).toBeCloseTo(route.departJd + shape.departure!.seconds / SEC_PER_DAY, 6);
+		expect(back.startJd).toBeCloseTo(route.arriveJd - shape.arrival!.seconds / SEC_PER_DAY, 6);
+
+		// The line runs at the cruise speed.
+		const lineSeconds = (line.endJd - line.startJd) * SEC_PER_DAY;
+		const lineKm = norm(sub(line.points.at(-1)!, line.points[0]));
+		expect(lineKm / lineSeconds / route.interstellar!.cruiseKms).toBeCloseTo(1, 6);
+
+		const met = orbitStateAt(FAR_PLANET, route.arriveJd)!;
+		const closing = norm(sub(scale(shape.arrival!.v, -1), met.v));
+		expect(closing).toBeCloseTo(rapidityOfSpeed(route.vInfArrKms), 3);
+	});
+
+	it('samples a hyperbola by anomaly, so a slow bend is smooth', () => {
+		const route = buildInterstellarCruiseRoute(
+			SUN_END,
+			FAR,
+			J2000,
+			{ kind: 'budget', dvKms: 30 },
+			{ departureMode: 'orbit', departureOrbit: RING }
+		) as Route;
+		const out = draw(SUN_END, FAR, route).arcs[0];
+		const shape = coastShape(route, SUN_END, FAR)!.departure!;
+		// It really bends, by more than 15°.
+		const turned = dot(normalize(shape.v), normalize(sub(shape.joinKm, shape.starKm)));
+		expect(turned).toBeLessThan(Math.cos((15 * Math.PI) / 180));
+		const turns = out.points.slice(2).map((point, i) => {
+			const one = normalize(sub(out.points[i + 1], out.points[i]));
+			const two = normalize(sub(point, out.points[i + 1]));
+			return Math.acos(Math.min(1, dot(one, two)));
+		});
+		expect(Math.max(...turns)).toBeLessThan(0.05);
+		// The straight part keeps samples too, out to the join.
+		const radii = out.points.map(norm);
+		expect(radii[radii.length - 2] / radii[radii.length - 1]).toBeGreaterThan(0.1);
+	});
+
+	it('ends a coast at a star on the conic, not on the star', () => {
+		const hold = trip('coast', HOME, FAR, { departureMode: 'orbit', arrivalMode: 'rendezvous' });
+		const path = draw(HOME, FAR, hold);
+		const held = path.arcs.at(-1)!.points.at(-1)!;
+		expectAtEnd(held, FAR, hold.arriveJd, AU_KM, 'hold');
+		expect(path.meeting.r).toEqual(held);
+		expect(path.meeting.jd).toBe(hold.arriveJd);
+		expect(endAt(path, 'arrival')).toBeUndefined();
+
+		const away = trip('coast', FAR, HOME, { departureMode: 'rendezvous', arrivalMode: 'flyby' });
+		expectAtEnd(draw(FAR, HOME, away).arcs[0].points[0], FAR, away.departJd, AU_KM, 'away');
+	});
+
+	it('lays an orbit at a star in the plane of its conic', () => {
+		const route = trip('coast', HOME, FAR, {
+			departureMode: 'orbit',
+			arrivalMode: 'capture',
+			targetOrbit: RING
+		});
+		for (const frame of FRAMES) {
+			const path = draw(HOME, FAR, route, { frame });
+			const conic = coastShape(route, HOME, FAR)!.arrival!;
+			const ring = endAt(path, 'arrival')!;
+			const about = frame === 'planetary' ? ORIGIN : FAR.starKm;
+			const normal = normalize(cross(conic.r, conic.v));
+			const flat = ring.points.map((point) => sub(point, about));
+			for (const point of flat) expect(Math.abs(dot(point, normal)) / AU_KM).toBeLessThan(1e-6);
+			// Its low point is the end of the conic, and the craft goes on the way it came.
+			expect(norm(sub(flat[0], conic.r)) / AU_KM).toBeLessThan(1e-6);
+			const onward = sub(flat[1], flat[0]);
+			expect(dot(onward, scale(conic.v, -1))).toBeGreaterThan(0);
+			expect(ring.approach).toEqual([]);
+			expect(ring.trimTo).toBe(path.arcs.at(-1)!.points.length);
+			expect(ring.periJd).toBe(route.arriveJd);
+			expect(ring.center).toEqual(FAR.starKm);
+		}
+	});
+
+	it('honours a plane named at the Sun, which has a pole', () => {
+		const sun = {
+			...SUN_END,
+			body: { ...SUN_END.body, poleEcliptic: [0.1, 0.2, 0.97] as Vec3 }
+		};
+		const orbit = { ...RING, incDeg: 40 };
+		const route = trip('coast', FAR, sun, { arrivalMode: 'capture', targetOrbit: orbit });
+		const ring = endAt(draw(FAR, sun, route, { frame: 'planetary' }), 'arrival')!;
+		const normal = normalize(cross(ring.points[10], ring.points[30]));
+		const lean = (Math.acos(dot(normal, normalize(sun.body.poleEcliptic))) * 180) / Math.PI;
+		expect(Math.min(lean, 180 - lean)).toBeCloseTo(40, 3);
+		expect(ring.turn).toBeDefined();
+		expect(ring.turnJd).toBeGreaterThan(route.arriveJd);
+	});
+
+	it('stops a held drive at the orbit, not at the centre', () => {
+		for (const [to, terms] of [
+			[FAR, { arrivalMode: 'capture', targetOrbit: RING }],
+			[FAR_PLANET, { arrivalMode: 'low-orbit' }]
+		] as [SystemEnd, Terms][]) {
+			const route = trip('held', HOME, to, { departureMode: 'orbit', ...terms });
+			const path = draw(HOME, to, route);
+			const end = endAt(path, 'arrival')!;
+			const last = path.arcs.at(-1)!;
+			const rKm = route.targetOrbit?.rPeriKm ?? parkingOrbit(to.body).rPeriKm;
+			expect(end.trimTo).toBeLessThan(last.points.length);
+			const place = endPlaceKm(to, route.arriveJd);
+			expect(norm(sub(last.points[end.trimTo - 1], place)) / rKm).toBeCloseTo(1, 4);
+		}
+	});
+
+	it('climbs out under thrust and joins the line', () => {
+		const route = trip('held', HOME, FAR, { departureMode: 'orbit', arrivalMode: 'rendezvous' });
+		const path = draw(HOME, FAR, route);
+		const end = endAt(path, 'departure')!;
+		expect(end.trimFrom).toBeGreaterThan(0);
+		expect(norm(sub(end.approach.at(-1)!, path.arcs[0].points[end.trimFrom]))).toBeLessThan(1e-3);
+		// Earth's own sphere of influence bounds the climb.
+		const reach = norm(sub(end.approach.at(-1)!, end.center));
+		expect(reach / soiOf(EARTH, GM_SUN_KM3_S2)).toBeGreaterThan(0.5);
+		expect(reach / soiOf(EARTH, GM_SUN_KM3_S2)).toBeLessThan(1.5);
+	});
+
+	it('finds the middle of a stretch whose samples crowd toward an end', () => {
+		const route = trip('held', HOME, FAR, { departureMode: 'orbit', arrivalMode: 'rendezvous' });
+		const path = draw(HOME, FAR, route);
+		const [boost] = path.arcs;
+		const view = pathViewpoint(path, boost.startJd, boost.endJd)!;
+		const half = norm(sub(boost.points.at(-1)!, boost.points[0])) / 2;
+		expect(norm(sub(view.r, boost.points[0])) / half).toBeCloseTo(1, 6);
+	});
+
+	it('turns a named plane at a node of the passage', () => {
+		const route = trip('coast', HOME, FAR, {
+			departureMode: 'orbit',
+			departureOrbit: STATION,
+			arrivalMode: 'rendezvous'
+		});
+		const end = endAt(draw(HOME, FAR, route, { frame: 'planetary' }), 'departure')!;
+		const normal = normalize(cross(end.points[10], end.points[30]));
+		const lean = (Math.acos(dot(normal, normalize(EARTH.poleEcliptic!))) * 180) / Math.PI;
+		expect(Math.min(lean, 180 - lean)).toBeCloseTo(STATION.incDeg, 3);
+		expect(end.turn).toBeDefined();
+	});
+
+	it('flies an aerocapture down through the air of a far planet', () => {
+		const route = trip('coast', HOME, FAR_PLANET, {
+			departureMode: 'orbit',
+			arrivalMode: 'low-orbit',
+			aero: 'aerocapture'
+		});
+		expect(route.legs.some((leg) => leg.aerobraked)).toBe(true);
+		const end = endAt(draw(HOME, FAR_PLANET, route, { frame: 'planetary' }), 'arrival')!;
+		const lowest = Math.min(...end.approach.map(norm));
+		expect(lowest).toBeCloseTo(aeroPassRadiusKm(FAR_PLANET.body), 3);
+		expect(end.ground?.length).toBeGreaterThan(0);
+	});
+
+	it('lands on the site of a far planet and lifts off from one at home', () => {
+		const site = (jd: number): Vec3 => [6_300 * Math.cos(jd), 6_300 * Math.sin(jd), 1_000];
+		for (const drive of DRIVES) {
+			const route = trip(drive, HOME, FAR_PLANET, {
+				departureMode: 'surface',
+				arrivalMode: 'landing'
+			});
+			const path = draw(HOME, FAR_PLANET, route, {
+				frame: 'planetary',
+				surfaceSites: { departure: site, arrival: site }
+			});
+			const [leaving, reaching] = path.endOrbits;
+			expect(relative(leaving.approach[0], site(leaving.surfaceJd!))).toBeLessThan(1e-9);
+			expect(relative(reaching.approach.at(-1)!, site(reaching.surfaceJd!))).toBeLessThan(1e-9);
+			expect(leaving.surfaceJd).toBeLessThan(route.departJd);
+			expect(reaching.surfaceJd).toBeGreaterThan(path.meeting.jd);
+		}
+	});
+
+	it('flies by with no end orbit', () => {
+		for (const drive of DRIVES) {
+			const route = trip(drive, HOME, FAR_PLANET, {
+				departureMode: 'orbit',
+				arrivalMode: 'flyby'
+			});
+			const path = draw(HOME, FAR_PLANET, route);
+			expect(path.endOrbits.map((end) => end.at)).toEqual(['departure']);
+			expectAtEnd(path.arcs.at(-1)!.points.at(-1)!, FAR_PLANET, route.arriveJd, null, drive);
+		}
+	});
+
+	it('draws a solar moon off its live body, on the elements it borrows', () => {
+		const route = trip('coast', AT_MOON, FAR, {
+			departureMode: 'orbit',
+			arrivalMode: 'rendezvous'
+		});
+		const path = draw(AT_MOON, FAR, route);
+		const end = endAt(path, 'departure')!;
+		expect(end.anchorId).toBe(MOON.id);
+		// The priced centre stays the planet's place.
+		expect(relative(end.center, endPlaceKm(AT_MOON, route.departJd))).toBeLessThan(1e-12);
+		const low = parkingOrbit(AT_MOON.body).rPeriKm;
+		expect(norm(end.approach[0])).toBeCloseTo(low, 3);
+	});
+
+	it('leaves the Sun from a conic and arrives at it on one', () => {
+		for (const [from, to, terms] of [
+			[SUN_END, FAR, { departureMode: 'orbit', departureOrbit: RING }],
+			[FAR, SUN_END, { arrivalMode: 'capture', targetOrbit: RING }]
+		] as [SystemEnd, SystemEnd, Terms][]) {
+			const route = trip('coast', from, to, terms);
+			const path = draw(from, to, route);
+			const end = path.endOrbits.find((orbit) => orbit.bodyId === SUN)!;
+			expect(end.points.length).toBeGreaterThan(2);
+			const inner = from === SUN_END ? path.arcs[0].points[0] : path.arcs.at(-1)!.points.at(-1)!;
+			expect(norm(inner) / RING.rPeriKm).toBeCloseTo(1, 6);
+		}
+	});
+
+	describe('a held drive at a star with no orbit', () => {
+		const HOLD = { departureMode: 'rendezvous', arrivalMode: 'rendezvous' } as const;
+
+		it('starts 1 au from the Sun on the line, and the first stop is there', () => {
+			const route = trip('held', SUN_END, FAR, HOLD);
+			const path = draw(SUN_END, FAR, route);
+			const start = path.arcs[0].points[0];
+			expect(norm(start)).toBeCloseTo(AU_KM, 3);
+			expect(norm(cross(normalize(start), normalize(FAR.starKm)))).toBeLessThan(1e-12);
+			expect(dot(start, FAR.starKm)).toBeGreaterThan(0);
+			expect(start).toEqual(heldLine(SUN_END, FAR, route).originKm);
+			expect(path.stops[0].r).toEqual(start);
+			expect(path.endOrbits).toEqual([]);
+		});
+
+		it.each(['rendezvous', 'flyby'] as const)(
+			'stops 1 au short of a star on a %s',
+			(arrivalMode) => {
+				const route = trip('held', HOME, FAR, { departureMode: 'orbit', arrivalMode });
+				const path = draw(HOME, FAR, route);
+				const end = path.arcs.at(-1)!.points.at(-1)!;
+				expect(norm(sub(end, FAR.starKm)) / AU_KM).toBeCloseTo(1, 6);
+				expect(end).toEqual(heldLine(HOME, FAR, route).targetKm);
+				expect(path.stops[1].r).toEqual(end);
+				expect(path.meeting.r).toEqual(end);
+				expect(endAt(path, 'arrival')).toBeUndefined();
+			}
+		);
+
+		it.each(['rendezvous', 'flyby'] as const)(
+			'stops 2 radii short of a giant on a %s',
+			(arrivalMode) => {
+				const giant = { ...FAR, body: { ...FAR.body, radiusKm: 8 * AU_KM } };
+				const route = trip('held', HOME, giant, { departureMode: 'orbit', arrivalMode });
+				const path = draw(HOME, giant, route);
+				const end = path.arcs.at(-1)!.points.at(-1)!;
+				expect(norm(sub(end, giant.starKm)) / AU_KM).toBeCloseTo(16, 6);
+				expect(path.meeting.r).toEqual(end);
+			}
+		);
+
+		it('starts 2 radii out from a giant', () => {
+			const giant = { ...FAR, body: { ...FAR.body, radiusKm: 8 * AU_KM } };
+			const route = trip('held', giant, HOME, {
+				departureMode: 'rendezvous',
+				arrivalMode: 'flyby'
+			});
+			const start = draw(giant, HOME, route).arcs[0].points[0];
+			expect(norm(sub(start, giant.starKm)) / AU_KM).toBeCloseTo(16, 6);
+		});
+
+		it('adds the offset of the Sun to the place it stands off from', () => {
+			const offset: Vec3 = [1e6, -2e6, 3e5];
+			const route = trip('held', SUN_END, FAR, HOLD);
+			const plain = draw(SUN_END, FAR, route);
+			const moved = draw(SUN_END, FAR, route, { sunOffsetKm: () => offset });
+			expect(norm(sub(moved.arcs[0].points[0], add(plain.arcs[0].points[0], offset)))).toBeLessThan(
+				1e-6
+			);
+		});
+
+		it('keeps every digit of the stand-off at a far star', () => {
+			const star = starEnd('x-9', [8e15, 5e15, -3e15]);
+			const route = trip('held', HOME, star, { departureMode: 'orbit', arrivalMode: 'rendezvous' });
+			const path = draw(HOME, star, route, { centerId: star.body.id, centerKm: star.starKm });
+			expect(Math.abs(norm(path.meeting.r) - AU_KM)).toBeLessThan(1e-6);
+		});
+
+		it('keeps the two ends of a close binary apart and in order', () => {
+			const near = starEnd('x-7', add(ALPHA.starKm, [0.1 * AU_KM, 0, 0]), 0.9);
+			const route = trip('held', ALPHA, near, HOLD);
+			const path = draw(ALPHA, near, route, { centerId: ALPHA.body.id, centerKm: ALPHA.starKm });
+			const xs = path.arcs.flatMap((arc) => arc.points.map((point) => point[0] / AU_KM));
+			expect(xs[0]).toBeCloseTo(0.025, 6);
+			expect(xs.at(-1)).toBeCloseTo(0.075, 6);
+			for (let i = 1; i < xs.length; i++) expect(xs[i]).toBeGreaterThanOrEqual(xs[i - 1]);
+		});
+	});
+
+	it('flies between both stars of a binary, and between their planets', () => {
+		const alpha = planetOf(ALPHA, 'b', 1);
+		const beta = planetOf(BETA, 'c', 1.5);
+		for (const drive of DRIVES) {
+			for (const [from, to] of [
+				[ALPHA, BETA],
+				[alpha, beta],
+				[alpha, BETA]
+			]) {
+				const terms: Terms = {
+					departureMode: from.atStar ? 'rendezvous' : 'orbit',
+					arrivalMode: to.atStar ? 'rendezvous' : 'low-orbit'
+				};
+				const route = trip(drive, from, to, terms);
+				const path = draw(from, to, route, { centerId: ALPHA.body.id, centerKm: ALPHA.starKm });
+				const about = { ...from, starKm: sub(from.starKm, ALPHA.starKm) };
+				expectAtEnd(
+					path.arcs[0].points[0],
+					about,
+					route.departJd,
+					from.atStar ? AU_KM : null,
+					drive
+				);
+				// The line keeps a place between the two wells.
+				if (drive === 'coast') {
+					expect(
+						norm(sub(path.arcs[1].points.at(-1)!, path.arcs[1].points[0])) / AU_KM
+					).toBeGreaterThan(5);
+				}
+			}
+		}
+	});
+
+	it('runs the line to the place where a conic has no room', () => {
+		// An orbit of 10 au about a star with a neighbour at 23 au fills the room.
+		const wide = planetOf(ALPHA, 'd', 10);
+		const route = trip('coast', wide, BETA, { departureMode: 'orbit', arrivalMode: 'rendezvous' });
+		expect(coastShape(route, wide, BETA)!.departure!.seconds).toBe(0);
+		const path = draw(wide, BETA, route, { centerId: ALPHA.body.id, centerKm: ALPHA.starKm });
+		expect(path.arcs).toHaveLength(2);
+		const about = { ...wide, starKm: ORIGIN };
+		expectAtEnd(path.arcs[0].points[0], about, route.departJd, null, 'start');
+		expectWhole(path, route, about, { ...BETA, starKm: sub(BETA.starKm, ALPHA.starKm) }, 'room');
+	});
+
+	it('runs the line to the place where a star has no μ', () => {
+		const unknown: SystemEnd = { ...FAR, body: { ...FAR.body, mu: 0 }, starMu: undefined };
+		const route = trip('coast', HOME, unknown, {
+			departureMode: 'orbit',
+			arrivalMode: 'rendezvous'
+		});
+		expect(coastShape(route, HOME, unknown)!.arrival).toBeNull();
+		const path = draw(HOME, unknown, route);
+		expect(path.arcs).toHaveLength(2);
+		expect(path.arcs.at(-1)!.points.at(-1)).toEqual(unknown.starKm);
+		expect(path.arcs.at(-1)!.endJd).toBe(route.arriveJd);
+	});
+
+	it('keeps a line between two passages that would meet', () => {
+		// Two planets of unknown stars have no conics, so one arc meets both ends, and
+		// no μ of a star bounds their passages. Each reaches past the middle of it.
+		const still = (id: string, km: Vec3): SystemEnd => {
+			const { body } = planetOf(FAR, id, 1);
+			const elements = { ...body.elements, a: 0, n: 0 };
+			return {
+				body: { ...body, radiusKm: 2_500, elements },
+				starKm: km,
+				atStar: false
+			};
+		};
+		const from = still('near', [LIGHT_YEAR_KM, 0, 0]);
+		const to = still('far', [LIGHT_YEAR_KM + 1e6, 0, 0]);
+		const route = trip('coast', from, to, { departureMode: 'orbit', arrivalMode: 'low-orbit' });
+		const path = draw(from, to, route);
+		expect(path.arcs).toHaveLength(1);
+		expect(path.endOrbits.map((end) => end.approach.length)).toEqual([160, 160]);
+		const { from: kept, to: stop } = crossingWindow(path, 0);
+		expect(stop - kept).toBe(path.arcs[0].points.length);
+	});
+
+	describe("the Sun's offset", () => {
+		const OFFSET = (jd: number): Vec3 => [1e6, -2e6, 3e5 + (jd - J2000)];
+
+		it('moves a coast at the solar end only, by its value at that date', () => {
+			const route = trip('coast', HOME, FAR_PLANET, {
+				departureMode: 'orbit',
+				arrivalMode: 'low-orbit'
+			});
+			const plain = draw(HOME, FAR_PLANET, route);
+			const dates: number[] = [];
+			const moved = draw(HOME, FAR_PLANET, route, {
+				sunOffsetKm: (jd) => {
+					dates.push(jd);
+					return OFFSET(jd);
+				}
+			});
+			expect(dates).toEqual([route.departJd]);
+			const offset = OFFSET(route.departJd);
+			plain.arcs[0].points.forEach((point, i) => {
+				expect(norm(sub(moved.arcs[0].points[i], add(point, offset)))).toBeLessThan(1e-6);
+			});
+			const [plainLine, movedLine] = [plain.arcs[1], moved.arcs[1]];
+			expect(norm(sub(movedLine.points[0], add(plainLine.points[0], offset)))).toBeLessThan(1e-6);
+			expect(movedLine.points.at(-1)).toEqual(plainLine.points.at(-1));
+			expect(moved.arcs.at(-1)!.points).toEqual(plain.arcs.at(-1)!.points);
+			expect(moved.meeting.r).toEqual(plain.meeting.r);
+
+			// The ends of the trip keep the body they were drawn on.
+			const end = endAt(moved, 'departure')!;
+			expect(norm(sub(end.center, add(endAt(plain, 'departure')!.center, offset)))).toBeLessThan(
+				1e-6
+			);
+			expect(norm(sub(end.approach.at(-1)!, moved.arcs[0].points[end.trimFrom]))).toBeLessThan(0.1);
+		});
+
+		it('moves a trip to the Sun at its arrival date', () => {
+			const route = trip('coast', FAR, HOME, {
+				departureMode: 'rendezvous',
+				arrivalMode: 'low-orbit'
+			});
+			const plain = draw(FAR, HOME, route);
+			const moved = draw(FAR, HOME, route, { sunOffsetKm: OFFSET });
+			expect(moved.arcs[0].points).toEqual(plain.arcs[0].points);
+			const offset = OFFSET(route.arriveJd);
+			expect(
+				norm(sub(moved.arcs.at(-1)!.points.at(-1)!, add(plain.arcs.at(-1)!.points.at(-1)!, offset)))
+			).toBeLessThan(1e-6);
+		});
+
+		it('moves only the solar end point of a held arc', () => {
+			const route = trip('held', HOME, FAR, { departureMode: 'orbit', arrivalMode: 'rendezvous' });
+			const plain = draw(HOME, FAR, route);
+			const moved = draw(HOME, FAR, route, { sunOffsetKm: OFFSET });
+			const offset = OFFSET(route.departJd);
+			expect(norm(sub(moved.arcs[0].points[0], add(plain.arcs[0].points[0], offset)))).toBeLessThan(
+				1e-6
+			);
+			expect(moved.arcs.at(-1)!.points.at(-1)).toEqual(heldLine(HOME, FAR, route).targetKm);
+			const middle = norm(sub(moved.arcs[0].points.at(-1)!, plain.arcs[0].points.at(-1)!));
+			expect(middle / norm(offset)).toBeCloseTo(0.5, 3);
+		});
+
+		it('moves nothing without a value, or between two other stars', () => {
+			const route = trip('coast', HOME, FAR, { departureMode: 'orbit', arrivalMode: 'rendezvous' });
+			expect(draw(HOME, FAR, route, { sunOffsetKm: () => null }).arcs).toEqual(
+				draw(HOME, FAR, route).arcs
+			);
+			const between = trip('held', ALPHA, FAR, { arrivalMode: 'rendezvous' });
+			const called = draw(ALPHA, FAR, between, {
+				sunOffsetKm: () => {
+					throw new Error('read at a trip that does not touch the Sun');
+				}
+			});
+			expect(called.arcs[0].points[0]).toEqual(heldLine(ALPHA, FAR, between).originKm);
+		});
+	});
+
+	it('keeps its digits at a far end', () => {
+		const star = starEnd('x-9', [8e15, 5e15, -3e15]);
+		const planet = planetOf(star, 'b', 1);
+		const route = trip('held', HOME, planet, { departureMode: 'orbit', arrivalMode: 'low-orbit' });
+		const low = parkingOrbit(planet.body).rPeriKm;
+
+		// Planet-frame, the ring is measured off the body and has every digit.
+		const near = endAt(draw(HOME, planet, route, { frame: 'planetary' }), 'arrival')!;
+		for (const point of near.points) expect(Math.abs(norm(point) - low)).toBeLessThan(1e-8);
+
+		// Interplanetary, it takes one rounding, of the size of a double out there.
+		const far = endAt(draw(HOME, planet, route), 'arrival')!;
+		for (const point of far.points) {
+			expect(Math.abs(norm(sub(point, far.center)) - low)).toBeLessThan(5);
+		}
+	});
+
+	it('hands the viewpoint of a coast to the line, and the craft along all three arcs', () => {
+		const route = trip('coast', HOME, FAR, { departureMode: 'orbit', arrivalMode: 'rendezvous' });
+		const path = draw(HOME, FAR, route);
+		const view = pathViewpoint(path, route.departJd, route.arriveJd)!;
+		const length = norm(sub(path.meeting.r, path.stops[0].r));
+		expect(norm(sub(view.r, path.stops[0].r)) / length).toBeCloseTo(0.5, 3);
+		expect(view.centerId).toBeUndefined();
+
+		for (const arc of path.arcs) {
+			const middle = (arc.startJd + arc.endJd) / 2;
+			const at = craftPositionAt(path, middle)!.r;
+			const span = norm(sub(arc.points.at(-1)!, arc.points[0]));
+			expect(Math.min(...arc.points.map((point) => norm(sub(point, at))))).toBeLessThan(span);
+		}
+	});
+
+	it('has no geometry without its two ends', () => {
+		const route = trip('held', HOME, FAR, { departureMode: 'orbit', arrivalMode: 'rendezvous' });
+		expect(buildTrajectoryPath(EARTH, FAR.body, route, { centerId: SSB })).toBeNull();
 	});
 });

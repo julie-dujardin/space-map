@@ -15,7 +15,9 @@ import {
 	crossingSweep,
 	endPlaceKm,
 	fastestCrossingEndJd,
+	heldLine,
 	interstellarDrive,
+	orbitStateAt,
 	rapidityOfSpeed,
 	speedOfRapidity,
 	type InterstellarCruiseOptions,
@@ -305,7 +307,7 @@ describe('buildInterstellarCruiseRoute', () => {
 			coast(FROM_CIRCLE, target, drive, options).interstellar!.cruiseKms,
 			3
 		);
-		expect(best.interstellar!.originKm).toEqual(endPlaceKm(still, J2000 + 100));
+		expect(coastShape(best, still, target)!.originKm).toEqual(endPlaceKm(still, J2000 + 100));
 	});
 
 	it('brakes into the orbit through 1 au that holds station at a star', () => {
@@ -741,15 +743,40 @@ describe('the place of an end', () => {
 	});
 });
 
+describe('the state of a planet', () => {
+	// 55 Cnc e. Its period gives 0.905 solar masses, and its star has 1.015.
+	const STAR = starIn([3e13, -2e13, 1e13], 1.015);
+	const PERIOD_DAYS = 0.736547;
+	const A_AU = 0.01544;
+	const CIRCLE_KMS = (2 * Math.PI * A_AU * AU_KM) / (PERIOD_DAYS * SEC_PER_DAY);
+
+	it('has the speed of its drawn motion, not the speed of the mass of its star', () => {
+		const planet = planetOf(STAR, A_AU, { e: 0, n: 360 / PERIOD_DAYS });
+		expect(norm(orbitStateAt(planet, J2000)!.v)).toBeCloseTo(CIRCLE_KMS, 9);
+		expect(CIRCLE_KMS).toBeCloseTo(228.1, 1);
+	});
+
+	it('keeps the μ of its star for a hyperbola about the star', () => {
+		const planet = planetOf(STAR, A_AU, { e: 0, n: 360 / PERIOD_DAYS });
+		expect(orbitStateAt(planet, J2000)!.mu).toBe(STAR.starMu);
+	});
+
+	it('takes the μ of its period when its star has none', () => {
+		const planet = { ...planetOf(STAR, A_AU, { e: 0, n: 360 / PERIOD_DAYS }), starMu: undefined };
+		const mu = orbitStateAt(planet, J2000)!.mu;
+		expect(mu / GM_SUN_KM3_S2).toBeCloseTo(0.905, 3);
+	});
+});
+
 describe('a held arc between two bodies', () => {
 	const options = { departureMode: 'orbit', arrivalMode: 'low-orbit' } as const;
 
 	it('runs from the body at departure to the target at arrival', () => {
 		const route = buildInterstellarTorchRoute(FROM_EARTH, PROXIMA_B, J2000, G0_M_S2, options)!;
-		const { originKm, targetKm, distanceKm } = route.interstellar!;
+		const { originKm, targetKm } = heldLine(FROM_EARTH, PROXIMA_B, route);
 		expect(originKm).toEqual(endPlaceKm(FROM_EARTH, J2000));
 		expect(norm(sub(targetKm, endPlaceKm(PROXIMA_B, route.arriveJd)))).toBeLessThan(1);
-		expect(distanceKm).toBe(norm(sub(targetKm, originKm)));
+		expect(route.interstellar!.distanceKm).toBe(norm(sub(targetKm, originKm)));
 	});
 
 	it('settles the arrival date where the target moves far in the time', () => {
@@ -757,7 +784,7 @@ describe('a held arc between two bodies', () => {
 		const target = planetOf(star, 1);
 		const route = buildInterstellarTorchRoute(FROM_EARTH, target, J2000, 0.1, options)!;
 		expect(route.tofDays).toBeGreaterThan(50);
-		const { targetKm } = route.interstellar!;
+		const { targetKm } = heldLine(FROM_EARTH, target, route);
 		expect(norm(sub(targetKm, endPlaceKm(target, route.arriveJd)))).toBeLessThan(1);
 	});
 });
@@ -775,16 +802,17 @@ describe('a held arc at a star', () => {
 	) => buildInterstellarTorchRoute(from, to, J2000, G0_M_S2, options)!;
 
 	it('starts 1 au from the Sun on the line to the star, not at its centre', () => {
-		const { originKm, targetKm, distanceKm } = held(SUN, STAR).interstellar!;
+		const route = held(SUN, STAR);
+		const { originKm, targetKm } = heldLine(SUN, STAR, route);
 		expect(norm(sub(originKm, SUN.starKm))).toBeCloseTo(AU_KM, 3);
 		expect(norm(cross(originKm, [1, 0, 0]))).toBe(0);
 		expect(originKm[0]).toBeGreaterThan(0);
-		expect(distanceKm).toBeCloseTo(norm(sub(targetKm, originKm)), 6);
+		expect(route.interstellar!.distanceKm).toBeCloseTo(norm(sub(targetKm, originKm)), 6);
 	});
 
 	it.each(['rendezvous', 'flyby'] as const)('stops 1 au short of a star on a %s', (arrivalMode) => {
 		const route = held(FROM_EARTH, STAR, { departureMode: 'orbit', arrivalMode });
-		const { originKm, targetKm } = route.interstellar!;
+		const { originKm, targetKm } = heldLine(FROM_EARTH, STAR, route);
 		expect(norm(sub(targetKm, STAR.starKm))).toBeCloseTo(AU_KM, 1);
 		// On the line from the Earth to the star, on the Earth's side.
 		const line = normalize(sub(STAR.starKm, originKm));
@@ -810,10 +838,10 @@ describe('a held arc at a star', () => {
 
 	it('leaves the place of a planet end as it is', () => {
 		const route = held(FROM_EARTH, STAR, { departureMode: 'orbit', arrivalMode: 'rendezvous' });
-		expect(route.interstellar!.originKm).toEqual(endPlaceKm(FROM_EARTH, J2000));
+		expect(heldLine(FROM_EARTH, STAR, route).originKm).toEqual(endPlaceKm(FROM_EARTH, J2000));
 		const back = held(STAR, PROXIMA_B, { departureMode: 'rendezvous', arrivalMode: 'low-orbit' });
 		expect(
-			norm(sub(back.interstellar!.targetKm, endPlaceKm(PROXIMA_B, back.arriveJd)))
+			norm(sub(heldLine(STAR, PROXIMA_B, back).targetKm, endPlaceKm(PROXIMA_B, back.arriveJd)))
 		).toBeLessThan(1);
 	});
 
@@ -821,7 +849,7 @@ describe('a held arc at a star', () => {
 		const star = starIn([40 * AU_KM, 0, 0]);
 		const target = planetOf(star, 1);
 		const route = held(SUN, target, { departureMode: 'rendezvous', arrivalMode: 'low-orbit' });
-		const { originKm, targetKm } = route.interstellar!;
+		const { originKm, targetKm } = heldLine(SUN, target, route);
 		expect(norm(originKm)).toBeCloseTo(AU_KM, 3);
 		expect(norm(sub(targetKm, endPlaceKm(target, route.arriveJd)))).toBeLessThan(1);
 		expect(norm(cross(normalize(originKm), normalize(targetKm)))).toBeLessThan(1e-9);
@@ -833,14 +861,15 @@ describe('a held arc at a star', () => {
 			arrivalMode: 'low-orbit',
 			targetOrbit: CIRCLE
 		});
-		expect(route.interstellar!.targetKm).toEqual(STAR.starKm);
+		expect(heldLine(FROM_EARTH, STAR, route).targetKm).toEqual(STAR.starKm);
 		const leaving = held(STAR, SUN, {
 			departureMode: 'orbit',
 			departureOrbit: CIRCLE,
 			arrivalMode: 'rendezvous'
 		});
-		expect(leaving.interstellar!.originKm).toEqual(STAR.starKm);
-		expect(norm(sub(leaving.interstellar!.targetKm, SUN.starKm))).toBeCloseTo(AU_KM, 3);
+		const line = heldLine(STAR, SUN, leaving);
+		expect(line.originKm).toEqual(STAR.starKm);
+		expect(norm(sub(line.targetKm, SUN.starKm))).toBeCloseTo(AU_KM, 3);
 	});
 
 	it('stands off in any mode that leaves no orbit to stop at', () => {
@@ -851,12 +880,12 @@ describe('a held arc at a star', () => {
 			{ arrivalMode: 'low-orbit' },
 			{ arrivalMode: 'capture' }
 		] as const) {
-			const { targetKm } = held(FROM_EARTH, STAR, options).interstellar!;
+			const { targetKm } = heldLine(FROM_EARTH, STAR, held(FROM_EARTH, STAR, options));
 			expect(norm(sub(targetKm, STAR.starKm))).toBeCloseTo(AU_KM, 1);
 		}
 		for (const departureMode of ['rendezvous', 'surface'] as const) {
 			const options = { departureMode, departureOrbit: CIRCLE };
-			const { originKm } = held(STAR, SUN, options).interstellar!;
+			const { originKm } = heldLine(STAR, SUN, held(STAR, SUN, options));
 			expect(norm(sub(originKm, STAR.starKm))).toBeCloseTo(AU_KM, 1);
 		}
 	});
@@ -869,17 +898,21 @@ describe('a held arc at a star', () => {
 			targetOrbit: CIRCLE
 		});
 		expect(route.targetOrbit).toBeUndefined();
-		expect(norm(sub(route.interstellar!.targetKm, unknown.starKm))).toBeCloseTo(AU_KM, 1);
+		expect(norm(sub(heldLine(FROM_EARTH, unknown, route).targetKm, unknown.starKm))).toBeCloseTo(
+			AU_KM,
+			1
+		);
 	});
 
 	describe('between two close stars', () => {
 		it.each([0.02, 1, 3.99])('keeps the ends apart and in order %f au apart', (gapAu) => {
 			const near = starIn([gapAu * AU_KM, 0, 0]);
-			const { originKm, targetKm, distanceKm } = held(SUN, near).interstellar!;
+			const route = held(SUN, near);
+			const { originKm, targetKm } = heldLine(SUN, near, route);
 			expect(originKm[0]).toBeCloseTo(gapAu * AU_KM * 0.25, 3);
 			expect(near.starKm[0] - targetKm[0]).toBeCloseTo(gapAu * AU_KM * 0.25, 3);
 			expect(targetKm[0]).toBeGreaterThan(originKm[0]);
-			expect(distanceKm).toBeCloseTo(gapAu * AU_KM * 0.5, 3);
+			expect(route.interstellar!.distanceKm).toBeCloseTo(gapAu * AU_KM * 0.5, 3);
 		});
 
 		it('takes the whole hold from 4 au', () => {
@@ -892,7 +925,7 @@ describe('a held arc at a star', () => {
 			// The planet has a place between the two stars, 0.2 au from the star left.
 			const planet = planetOf(near, 2.8, { e: 0, i: 0, om: 0, w: 0, ma: 180, n: 0 });
 			const route = held(SUN, planet, { departureMode: 'rendezvous', arrivalMode: 'low-orbit' });
-			const { originKm, targetKm } = route.interstellar!;
+			const { originKm, targetKm } = heldLine(SUN, planet, route);
 			const gapKm = norm(endPlaceKm(planet, route.arriveJd));
 			expect(gapKm).toBeCloseTo(0.2 * AU_KM, -3);
 			expect(norm(originKm)).toBeCloseTo(gapKm / 4, 3);
@@ -910,10 +943,8 @@ describe('a held arc at a star', () => {
 		const FROM_ORBIT = { departureMode: 'orbit' } as const;
 
 		it.each(['rendezvous', 'flyby'] as const)('stops 2 radii short on a %s', (arrivalMode) => {
-			const { originKm, targetKm } = held(FROM_EARTH, GIANT, {
-				...FROM_ORBIT,
-				arrivalMode
-			}).interstellar!;
+			const route = held(FROM_EARTH, GIANT, { ...FROM_ORBIT, arrivalMode });
+			const { originKm, targetKm } = heldLine(FROM_EARTH, GIANT, route);
 			// On the line from the Earth to the star, on the Earth's side.
 			const line = normalize(sub(GIANT.starKm, originKm));
 			const stop = sub(GIANT.starKm, scale(line, 2 * RADIUS_KM));
@@ -922,7 +953,7 @@ describe('a held arc at a star', () => {
 
 		it('starts 2 radii out from a giant it leaves', () => {
 			const route = held(GIANT, FROM_EARTH, { departureMode: 'rendezvous', arrivalMode: 'flyby' });
-			const { originKm, targetKm } = route.interstellar!;
+			const { originKm, targetKm } = heldLine(GIANT, FROM_EARTH, route);
 			const line = normalize(sub(targetKm, GIANT.starKm));
 			expect(norm(sub(originKm, add(GIANT.starKm, scale(line, 2 * RADIUS_KM))))).toBeLessThan(0.1);
 		});
@@ -940,13 +971,13 @@ describe('a held arc at a star', () => {
 		it('keeps 1 au at a star of up to half an au', () => {
 			const star = sized(STAR, 0.5 * AU_KM);
 			const route = held(SUN, star);
-			expect(norm(sub(route.interstellar!.targetKm, star.starKm))).toBeCloseTo(AU_KM, 1);
+			expect(norm(sub(heldLine(SUN, star, route).targetKm, star.starKm))).toBeCloseTo(AU_KM, 1);
 			expect(route).toEqual(held(SUN, sized(STAR, 1000)));
 		});
 
 		it('keeps the cap between two close stars', () => {
 			const near = sized(starIn([20 * AU_KM, 0, 0]));
-			const { targetKm } = held(SUN, near).interstellar!;
+			const { targetKm } = heldLine(SUN, near, held(SUN, near));
 			expect(near.starKm[0] - targetKm[0]).toBeCloseTo(5 * AU_KM, 3);
 		});
 
@@ -956,7 +987,7 @@ describe('a held arc at a star', () => {
 				arrivalMode: 'low-orbit',
 				targetOrbit: { rPeriKm: 20 * AU_KM, rApoKm: 20 * AU_KM }
 			});
-			expect(norm(sub(route.interstellar!.targetKm, GIANT.starKm))).toBe(0);
+			expect(norm(sub(heldLine(FROM_EARTH, GIANT, route).targetKm, GIANT.starKm))).toBe(0);
 		});
 	});
 });
@@ -1058,8 +1089,8 @@ describe('a coast on its two hyperbolas', () => {
 			expect(norm(sub(join, conic.joinKm)) / AU_KM).toBeLessThan(1e-6);
 			expect(norm(sub(conic.joinKm, conic.starKm)) / AU_KM).toBeCloseTo(1000, 6);
 		}
-		expect(norm(sub(conicPlaceKm(shape.departure!, 0), crossing.originKm))).toBeLessThan(1e-6);
-		expect(norm(sub(conicPlaceKm(shape.arrival!, 0), crossing.targetKm))).toBeLessThan(0.1);
+		expect(norm(sub(conicPlaceKm(shape.departure!, 0), shape.originKm))).toBeLessThan(1e-6);
+		expect(norm(sub(conicPlaceKm(shape.arrival!, 0), shape.targetKm))).toBeLessThan(0.1);
 	});
 
 	it('joins the line along its way, with no turn', () => {
@@ -1088,8 +1119,8 @@ describe('a coast on its two hyperbolas', () => {
 
 	it('meets the planet at its place on the arrival date', () => {
 		expect(route.arriveJd).toBe(route.departJd + route.tofDays);
-		expect(crossing.targetKm).toEqual(endPlaceKm(PLANET, route.arriveJd));
-		expect(norm(sub(shape.arrival!.r, sub(crossing.targetKm, STAR.starKm)))).toBeLessThan(0.1);
+		expect(shape.targetKm).toEqual(endPlaceKm(PLANET, route.arriveJd));
+		expect(norm(sub(shape.arrival!.r, sub(shape.targetKm, STAR.starKm)))).toBeLessThan(0.1);
 	});
 
 	it('leaves just under its fastest speed to make that date', () => {
@@ -1105,13 +1136,13 @@ describe('a coast on its two hyperbolas', () => {
 		const pass = coastShape(stop, FROM_EARTH, STAR)!.arrival!;
 		expect(norm(pass.r) / AU_KM).toBeCloseTo(1, 9);
 		expect(dot(pass.r, pass.v) / (norm(pass.r) * norm(pass.v))).toBeCloseTo(0, 9);
-		expect(stop.interstellar!.targetKm).toEqual(STAR.starKm);
+		expect(coastShape(stop, FROM_EARTH, STAR)!.targetKm).toEqual(STAR.starKm);
 	});
 
 	it('meets a planet with no period at the one place it has', () => {
 		const still = planetOf(STAR, 0.2, { n: 0, e: 0 });
 		const trip = coastOf(FROM_EARTH, still, 80);
-		expect(trip.interstellar!.targetKm).toEqual(endPlaceKm(still, J2000));
+		expect(coastShape(trip, FROM_EARTH, still)!.targetKm).toEqual(endPlaceKm(still, J2000));
 		expect(trip.inSpaceDvKms / 80).toBeCloseTo(1, 9);
 	});
 
@@ -1142,7 +1173,7 @@ describe('a coast on its two hyperbolas', () => {
 			const from = planetOf(A, 1.1);
 			const to = planetOf(B, 0.8);
 			const trip = coastOf(from, to, 120);
-			const { originKm, targetKm } = trip.interstellar!;
+			const { originKm, targetKm } = coastShape(trip, from, to)!;
 			expect(originKm).toEqual(endPlaceKm(from, trip.departJd));
 			expect(norm(sub(targetKm, endPlaceKm(to, trip.arriveJd)))).toBeLessThan(1);
 			expect(trip.inSpaceDvKms).toBeLessThanOrEqual(120);
@@ -1152,9 +1183,9 @@ describe('a coast on its two hyperbolas', () => {
 		it('leaves out a hyperbola when the orbit fills the room for it', () => {
 			const from = planetOf(A, 8, { e: 0 });
 			const trip = coastOf(from, B, 150, { arrivalMode: 'rendezvous' });
-			const { departure, lineFromKm } = coastShape(trip, from, B)!;
+			const { departure, lineFromKm, originKm } = coastShape(trip, from, B)!;
 			expect(departure!.seconds).toBe(0);
-			expect(lineFromKm).toEqual(trip.interstellar!.originKm);
+			expect(lineFromKm).toEqual(originKm);
 		});
 	});
 });
@@ -1268,7 +1299,9 @@ describe('the meeting with a planet', () => {
 		const route = coastOf(SUNLIKE, target, 80, { ...STOP, ...FROM_STAR });
 		expect(route.inSpaceDvKms / 80).toBeCloseTo(1, 3);
 		expect(route.inSpaceDvKms).toBeLessThanOrEqual(80);
-		expect(route.interstellar!.targetKm).toEqual(endPlaceKm(target, route.arriveJd));
+		expect(coastShape(route, SUNLIKE, target)!.targetKm).toEqual(
+			endPlaceKm(target, route.arriveJd)
+		);
 	});
 
 	it('searches the launch window for a planet as for a star', () => {
@@ -1295,7 +1328,7 @@ describe('the meeting with a planet', () => {
 		const wide = planetOf(STAR, 40_000);
 		const trip = coastOf(FROM_EARTH, wide, 80, STOP);
 		expect(trip.inSpaceDvKms / 80).toBeCloseTo(1, 9);
-		const { targetKm } = trip.interstellar!;
+		const { targetKm } = coastShape(trip, FROM_EARTH, wide)!;
 		expect(norm(sub(targetKm, endPlaceKm(wide, trip.arriveJd)))).toBeLessThan(1);
 	});
 
@@ -1370,7 +1403,7 @@ describe('the meeting with a planet', () => {
 			else hi = mid;
 		}
 		const trip = launch(hi) as Route;
-		const { targetKm } = trip.interstellar!;
+		const { targetKm } = coastShape(trip, from, far)!;
 		expect(norm(sub(targetKm, endPlaceKm(far, trip.arriveJd)))).toBeLessThan(1);
 		const closing = drawnClosingKms(trip, from, far);
 		expect(closing).toBeCloseTo(rapidityOfSpeed(trip.vInfArrKms), 3);

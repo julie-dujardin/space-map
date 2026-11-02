@@ -14,7 +14,17 @@ import { sphereOfInfluenceKm, type TravelBody } from './body';
 import { CAPTURE_APOAPSIS_RADII, GM_SUN_KM3_S2, SEC_PER_DAY } from './constants';
 import { solveFlyby } from './flyby';
 import { sampleHeldDrive, samplePoweredFlight, type HeldDriveSample } from './held-drive';
-import { crossingElapsed, crossingStretches } from './interstellar';
+import {
+	coastShape,
+	crossingElapsed,
+	crossingStretches,
+	endOffsetKm,
+	heldLine,
+	hyperbolaThrough,
+	orbitStateAt,
+	type SystemEnd,
+	type WellConic
+} from './interstellar';
 import { solveLambert, transferArc } from './lambert';
 import { rebuildSpiral } from './low-thrust';
 import {
@@ -82,6 +92,9 @@ export interface PathArc {
 	jds: number[];
 	startJd: number;
 	endJd: number;
+	/** The place half way along, on a line whose samples crowd toward its ends.
+	 *  The middle sample stands in for it on every other arc. */
+	middle?: Vec3;
 }
 
 /**
@@ -128,8 +141,9 @@ export interface EndOrbitPath {
 	 * drive climbs out under thrust rather than along an asymptote, so its
 	 * departure is flown instead of derived; its arrival is the ordinary conic
 	 * the capture was priced against. Empty where there is no passage at all: a
-	 * spiral is under thrust the whole way, and an in-system transfer never
-	 * escapes the primary's parking orbit.
+	 * spiral is under thrust the whole way, an in-system transfer never escapes
+	 * the primary's parking orbit, and at a star the hyperbola of a coast is the
+	 * crossing itself.
 	 */
 	approach: Vec3[];
 	/** When each of `approach` is passed, JD. Same length, increasing, but not
@@ -239,7 +253,7 @@ export function pathViewpoint(
 		const arc =
 			crossings.find((a) => a.startJd <= startJd + 1e-6 && a.endJd >= endJd - 1e-6) ??
 			crossings.find((a) => a.startJd <= middle && a.endJd >= middle);
-		if (arc) return { r: arc.points[Math.floor(arc.points.length / 2)] };
+		if (arc) return { r: arc.middle ?? arc.points[Math.floor(arc.points.length / 2)] };
 		// Past the last arc there can still be trip: an aerobraking campaign is
 		// flown on the arrival end's own line, after the crossing is over.
 		const arrival = path.endOrbits.find((end) => end.at === 'arrival');
@@ -295,6 +309,16 @@ export interface PathOptions extends RouteOptions {
 	/** Where `centerId` is on a route between two systems, km, in the frame of
 	 *  the stars. The solar-system barycentre when absent. */
 	centerKm?: Vec3;
+	/** The two ends of a route between two systems, as the route was priced. Such
+	 *  a route has no geometry without them. */
+	systems?: { origin: SystemEnd; target: SystemEnd };
+	/**
+	 * Where the Sun is from the solar-system barycentre at a date, km. The kernel
+	 * keeps the Sun at the barycentre, and the map does not. Read once for each
+	 * solar end of a route between two systems, at the date of that end. Null or
+	 * absent means no offset: past its ephemeris the map places no solar body.
+	 */
+	sunOffsetKm?: (jd: number) => Vec3 | null;
 	/**
 	 * Where a surface end touches its body: the site's position from the body's
 	 * centre, km, in the transfer frame's axes, at a given date. A function of
@@ -399,8 +423,9 @@ type PathGeometry = Omit<TrajectoryPath, 'endOrbits' | 'frame' | 'soiKm'>;
 
 /**
  * Rebuild the geometry of `route`. Null when the arc can't be reproduced — a
- * swing-by whose via body wasn't supplied, or a solve that no longer converges
- * — since a straight line between the ends wouldn't be the route.
+ * swing-by whose via body wasn't supplied, a route between two systems without
+ * its ends, or a solve that no longer converges — since a straight line between
+ * the ends wouldn't be the route.
  */
 export function buildTrajectoryPath(
 	departure: TravelBody,
@@ -409,10 +434,9 @@ export function buildTrajectoryPath(
 	options: PathOptions
 ): TrajectoryPath | null {
 	const frame = options.frame ?? 'interplanetary';
-	// Between two systems the ends are stars, and no orbit at either end shows at that scale.
 	if (route.interstellar) {
-		const crossing = starCrossing(departure.id, target.id, route, options);
-		return crossing && { ...crossing, frame, endOrbits: [], soiKm: {} };
+		const crossing = crossingBetweenSystems(departure, target, route, options);
+		return crossing && withEnds(crossing.path, frame, crossing.endOrbits, crossing.soiKm);
 	}
 	const path = buildCrossing(departure, target, route, options);
 	if (!path) return null;
@@ -426,9 +450,19 @@ export function buildTrajectoryPath(
 		);
 		if (Number.isFinite(soi)) soiKm[body.id] = soi;
 	}
-	// An arrival passage re-dates the encounter, so the meeting follows it or it
-	// would mark a spot the body has already left. Stops stay priced — they're
-	// where the arcs end, which is where the scrubbed craft ends up.
+	return withEnds(path, frame, endOrbits, soiKm);
+}
+
+/** A trajectory with the orbits at its ends hung off it. An arrival passage
+ *  re-dates the encounter, so the meeting follows it or it would mark a spot the
+ *  body has already left. Stops stay priced: they are where the arcs end, which
+ *  is where the scrubbed craft ends up. */
+function withEnds(
+	path: PathGeometry,
+	frame: TrajectoryFrame,
+	endOrbits: EndOrbitPath[],
+	soiKm: Record<string, number>
+): TrajectoryPath {
 	const arrival = endOrbits.find((end) => end.at === 'arrival' && end.approach.length > 0);
 	if (!arrival) return { ...path, frame, endOrbits, soiKm };
 	return {
@@ -598,7 +632,7 @@ function endOrbitPaths(
 	const last = path.arcs[path.arcs.length - 1];
 	if (!centers || !first || !last) return [];
 
-	const { centralMu = GM_SUN_KM3_S2, systemPrimary, frame = 'interplanetary' } = options;
+	const { centralMu = GM_SUN_KM3_S2, systemPrimary } = options;
 	// What each end body's sphere of influence is measured against: the primary
 	// inside one system, the Sun elsewhere.
 	const primaryMu =
@@ -607,8 +641,6 @@ function endOrbitPaths(
 			: centralMu;
 	const approaches = endApproaches(departure, target, route, options, path);
 
-	const orbits: EndOrbitPath[] = [];
-	const sites = options.surfaceSites ?? {};
 	// A trip that stays at one body never leaves an orbit, it joins another, and
 	// nothing else places those rings — there is no passage at either end to read
 	// them off. The arc sets out from one apsis of its own orbit and meets the
@@ -621,50 +653,117 @@ function endOrbitPaths(
 				to: (change.turnDeg > 0 ? 'node' : change.climb ? 'apoapsis' : 'periapsis') as JoinPoint
 			}
 		: undefined;
-	// A launch/landing is priced through the parking orbit, so a surface end
-	// takes that orbit and carries the line on to the ground.
-	const fromGround = route.departureMode === 'surface';
-	const from = endDepartureOrbit(departure, route.departureMode, route.departureOrbit);
-	if (from || fromGround) {
+	return orbitsAtEnds(departure, target, route, options, path.centerId, {
+		from: {
+			center: centers.from,
+			arc: first,
+			approach: approaches.from,
+			primaryMu,
+			join: joins?.from
+		},
+		to: { center: centers.to, arc: last, approach: approaches.to, primaryMu, join: joins?.to }
+	});
+}
+
+/** What an end is measured against, on top of what the route says of it. */
+interface EndSetting {
+	/** Where the body is on the route's date, measured as `arc` is. */
+	center: Vec3;
+	/** The stretch of crossing that meets this end. */
+	arc: PathArc;
+	approach?: EndApproach;
+	/** μ of what the body goes round. Its sphere of influence is measured against this. */
+	primaryMu: number;
+	/** Where the arc joins this end's orbit. Set only for a trip that stays at one
+	 *  body, which has no passage to read the ring off: the shared point is the
+	 *  whole of what places it. A node where the trip turns between two planes,
+	 *  and an apsis where it stays in one. */
+	join?: JoinPoint;
+	/** What takes a point from the frame of `center` to the path's, km. An end of
+	 *  a crossing between two systems is measured from its own star. */
+	shiftKm?: Vec3;
+	/** True at a star: it has no ground, and it holds only an orbit the route names. */
+	star?: boolean;
+	/** The plane and the low point of a ring that no passage places. */
+	plane?: { normal: Vec3; periapsis: Vec3 };
+	/** True where the crossing stops at the orbit and not at the body's centre. */
+	trimAtOrbit?: boolean;
+}
+
+/** The orbits that the two ends ask for, and the passages to them. A launch or a
+ *  landing is priced through the parking orbit, so a surface end takes that orbit
+ *  and carries the line on to the ground. */
+function orbitsAtEnds(
+	departure: TravelBody,
+	target: TravelBody,
+	route: Route,
+	options: PathOptions,
+	centerId: string,
+	ends: { from: EndSetting; to: EndSetting }
+): EndOrbitPath[] {
+	const { frame = 'interplanetary' } = options;
+	const orbits: EndOrbitPath[] = [];
+	const sites = options.surfaceSites ?? {};
+	const from = orbitLeft(departure, route, ends.from.star);
+	if (from) {
 		orbits.push(
 			endOrbitPath({
+				...ends.from,
+				...from,
 				at: 'departure',
 				body: departure,
-				center: centers.from,
-				orbit: from ?? parkingOrbit(departure),
-				arc: first,
 				periJd: route.departJd,
-				approach: approaches.from,
-				primaryMu,
 				frame,
-				centerId: path.centerId,
-				surface: fromGround ? { siteAt: sites.departure } : undefined,
-				join: joins?.from
+				centerId,
+				surface: from.ground ? { siteAt: sites.departure } : undefined
 			})
 		);
 	}
-	const toGround = route.arrivalMode === 'landing';
-	const to = endArrivalOrbit(target, route.arrivalMode, route.targetOrbit);
-	if (to || toGround) {
+	const to = orbitReached(target, route, ends.to.star);
+	if (to) {
 		orbits.push(
 			endOrbitPath({
+				...ends.to,
+				...to,
 				at: 'arrival',
 				body: target,
-				center: centers.to,
-				orbit: to ?? parkingOrbit(target),
-				arc: last,
 				periJd: route.arriveJd,
-				approach: approaches.to,
-				primaryMu,
 				frame,
-				centerId: path.centerId,
-				surface: toGround ? { siteAt: sites.arrival } : undefined,
-				aero: arrivalAero(target, route),
-				join: joins?.to
+				centerId,
+				surface: to.ground ? { siteAt: sites.arrival } : undefined,
+				aero: arrivalAero(target, route)
 			})
 		);
 	}
 	return orbits;
+}
+
+/** The orbit a trip leaves, and whether the line carries on to the ground. Null
+ *  where neither is true. */
+function orbitLeft(
+	body: TravelBody,
+	route: Route,
+	star = false
+): { orbit: EndOrbit; ground: boolean } | null {
+	const ground = route.departureMode === 'surface' && !star;
+	const orbit =
+		star && !route.departureOrbit
+			? null
+			: endDepartureOrbit(body, route.departureMode, route.departureOrbit);
+	return orbit || ground ? { orbit: orbit ?? parkingOrbit(body), ground } : null;
+}
+
+/** The orbit a trip reaches, and whether the line carries on to the ground. Null
+ *  where neither is true. */
+function orbitReached(
+	body: TravelBody,
+	route: Route,
+	star = false
+): { orbit: EndOrbit; ground: boolean } | null {
+	const ground = route.arrivalMode === 'landing' && !star;
+	const orbit =
+		star && !route.targetOrbit ? null : endArrivalOrbit(body, route.arrivalMode, route.targetOrbit);
+	return orbit || ground ? { orbit: orbit ?? parkingOrbit(body), ground } : null;
 }
 
 /**
@@ -692,8 +791,9 @@ interface EndApproach {
 	/** This end's priced date, where that chase starts. */
 	jd: number;
 	/** Set where the craft leaves under thrust rather than on a conic: the
-	 *  drive's inertial direction and what it holds, km/s². */
-	drive?: { dir: Vec3; accelKmS2: number };
+	 *  drive's inertial direction and what it holds, km/s². `fromRest` says that
+	 *  the crossing it joins starts at rest and leaves out the body's motion. */
+	drive?: { dir: Vec3; accelKmS2: number; fromRest?: boolean };
 }
 
 /** Where the crossing conic puts the craft, for the ends flown on one. */
@@ -869,31 +969,51 @@ function heldDriveApproaches(
 	const from: EndApproach | undefined =
 		inSystem || !route.thrustDir
 			? undefined
-			: {
-					vInf: [0, 0, 0],
-					bodyAt: (jd) => elementsToState(departure.elements, jd)?.r ?? null,
-					craftAt,
-					jd: route.departJd,
-					drive: {
-						dir: [route.thrustDir[0], route.thrustDir[1], route.thrustDir[2]],
-						accelKmS2: route.constantThrust / 1000
-					}
-				};
+			: heldLeaving(
+					route,
+					[route.thrustDir[0], route.thrustDir[1], route.thrustDir[2]],
+					(jd) => elementsToState(departure.elements, jd)?.r ?? null,
+					craftAt
+				);
+	return { from, to: heldMeeting(route, last, targetAt, craftAt) };
+}
 
-	const count = last.points.length;
-	const before = targetAt(last.jds[count - 2]);
-	const after = targetAt(last.jds[count - 1]);
-	if (!before || !after) return { from };
-	const step = sub(sub(last.points[count - 1], last.points[count - 2]), sub(after, before));
-	if (!(norm(step) > 0) || !(route.vInfArrKms > 0)) return { from };
+/** How a held drive leaves: flown out along `dir`, with no excess speed. */
+function heldLeaving(
+	route: Route,
+	dir: Vec3,
+	bodyAt: EndApproach['bodyAt'],
+	craftAt: EndApproach['craftAt'],
+	fromRest?: boolean
+): EndApproach {
 	return {
-		from,
-		to: {
-			vInf: scale(normalize(step), route.vInfArrKms),
-			bodyAt: targetAt,
-			craftAt,
-			jd: route.arriveJd
-		}
+		vInf: [0, 0, 0],
+		bodyAt,
+		craftAt,
+		jd: route.departJd,
+		drive: { dir, accelKmS2: route.constantThrust! / 1000, fromRest }
+	};
+}
+
+/** How a held drive meets its target, read off `last`, the stretch that reaches
+ *  it. Undefined where it brakes to a stop, or where the step has no direction. */
+function heldMeeting(
+	route: Route,
+	last: PathArc,
+	bodyAt: EndApproach['bodyAt'],
+	craftAt: EndApproach['craftAt']
+): EndApproach | undefined {
+	const count = last.points.length;
+	const before = bodyAt(last.jds[count - 2]);
+	const after = bodyAt(last.jds[count - 1]);
+	if (!before || !after) return undefined;
+	const step = sub(sub(last.points[count - 1], last.points[count - 2]), sub(after, before));
+	if (!(norm(step) > 0) || !(route.vInfArrKms > 0)) return undefined;
+	return {
+		vInf: scale(normalize(step), route.vInfArrKms),
+		bodyAt,
+		craftAt,
+		jd: route.arriveJd
 	};
 }
 
@@ -935,30 +1055,24 @@ function endCenters(
  * date for this end, which the passage may re-date, and the crossing's last
  * step is cut against whichever date stands.
  */
-function endOrbitPath(end: {
-	at: 'departure' | 'arrival';
-	body: TravelBody;
-	center: Vec3;
-	orbit: EndOrbit;
-	arc: PathArc;
-	periJd: number;
-	approach?: EndApproach;
-	primaryMu: number;
-	frame: TrajectoryFrame;
-	centerId: string;
-	/** Present when this end is the ground rather than the orbit — the trip still
-	 *  passes through the orbit, and the drawn line carries on to the site. */
-	surface?: { siteAt?: (jd: number) => Vec3 | null };
-	/** How the atmosphere takes part in an aero-assisted arrival. */
-	aero?: AeroArrival;
-	/** Where the arc joins this end's orbit. Set only for a trip that stays at one
-	 *  body, which has no passage to read the ring off: the shared point is the
-	 *  whole of what places it. A node where the trip turns between two planes,
-	 *  and an apsis where it stays in one. */
-	join?: JoinPoint;
-}): EndOrbitPath {
+function endOrbitPath(
+	end: EndSetting & {
+		at: 'departure' | 'arrival';
+		body: TravelBody;
+		orbit: EndOrbit;
+		periJd: number;
+		frame: TrajectoryFrame;
+		centerId: string;
+		/** Present when this end is the ground rather than the orbit — the trip still
+		 *  passes through the orbit, and the drawn line carries on to the site. */
+		surface?: { siteAt?: (jd: number) => Vec3 | null };
+		/** How the atmosphere takes part in an aero-assisted arrival. */
+		aero?: AeroArrival;
+	}
+): EndOrbitPath {
 	const { at, body, center, orbit, arc, periJd, approach, primaryMu, frame, centerId, surface } =
 		end;
+	const { shiftKm, plane, trimAtOrbit } = end;
 	// The atmosphere's part of the arrival hangs off the pass, so with no
 	// passage to place it on the end draws as if unassisted.
 	const aero = at === 'arrival' && approach ? end.aero : undefined;
@@ -1056,17 +1170,18 @@ function endOrbitPath(end: {
 		const site = surface.siteAt(passage.periJd + (outward ? -roughDays : roughDays));
 		if (site && norm(site) > 0) passage = passageOf(normalize(site)) ?? passage;
 	}
-	const normal = passage?.normal ?? arcNormal;
-	const periapsis = passage?.periapsis ?? approachSide(arcNormal, a, b);
+	const normal = passage?.normal ?? plane?.normal ?? arcNormal;
+	const periapsis = passage?.periapsis ?? plane?.periapsis ?? approachSide(arcNormal, a, b);
 	// A passage re-dates its end, and the encounter is where the body then is;
 	// without one the priced date stands.
 	const ringCenter = passage?.center ?? center;
+	const pathCenter = shiftKm ? add(ringCenter, shiftKm) : ringCenter;
 	const endPeriJd = passage?.periJd ?? periJd;
 
 	// An anchored end measures everything straight off its body; otherwise it all
 	// hangs where the encounter puts the body, which is somewhere along the
 	// crossing.
-	const origin: Vec3 = anchored ? [0, 0, 0] : ringCenter;
+	const origin: Vec3 = anchored ? [0, 0, 0] : pathCenter;
 
 	// Direct entry: the pass that would have captured the craft puts it on the
 	// ground instead, so the ground leg falls straight from the entry interface
@@ -1090,7 +1205,7 @@ function endOrbitPath(end: {
 	// sets out from the apoapsis it ends on rather than from the passage. A
 	// surface end never reaches the orbit and names no plane, so it has none.
 	const turned =
-		orbitPlane && passage && !surface
+		orbitPlane && (passage || plane) && !surface
 			? planeTurn({
 					orbit,
 					normal,
@@ -1167,16 +1282,17 @@ function endOrbitPath(end: {
 	// finishes the trip. A passage-less borrowed end is left alone instead — its
 	// radius is measured about the ancestor, and the arc is right to run there.
 	const borrowed = body.borrowedElements === true;
+	const stopsAtOrbit = (ground != null || trimAtOrbit === true) && !borrowed;
 	const trimFrom =
 		passage && outward
 			? passage.cut
-			: ground && outward && !borrowed
+			: stopsAtOrbit && outward
 				? radiusCut(arc, ringCenter, orbit.rPeriKm, outward)
 				: 0;
 	const trimTo =
 		passage && !outward
 			? passage.cut + 1
-			: ground && !outward && !borrowed
+			: stopsAtOrbit && !outward
 				? radiusCut(arc, ringCenter, orbit.rPeriKm, outward)
 				: count;
 
@@ -1231,7 +1347,7 @@ function endOrbitPath(end: {
 		jds: approachJds,
 		trimFrom,
 		trimTo,
-		center: ringCenter,
+		center: pathCenter,
 		periJd: endPeriJd,
 		radiusKm: orbit.rApoKm,
 		surfaceJd: ground?.groundJd,
@@ -2111,7 +2227,7 @@ const ESCAPE_STEPS = 8;
 function poweredEscape(end: {
 	body: TravelBody;
 	approach: EndApproach;
-	drive: { dir: Vec3; accelKmS2: number };
+	drive: { dir: Vec3; accelKmS2: number; fromRest?: boolean };
 	rPeriKm: number;
 	arcNormal: Vec3;
 	primaryMu: number;
@@ -2172,6 +2288,9 @@ function poweredEscape(end: {
 	if (!joinCarried) return null;
 	const miss = sub(sub(arc.points[cut], center), add(flown[flown.length - 1], joinCarried));
 	const solar = frame === 'interplanetary' && body.borrowedElements !== true;
+	// A crossing that starts at rest leaves the sphere early, by the body's own
+	// motion, so the climb can end inside the sphere and still has to join it.
+	const seamKm = drive.fromRest ? norm(flown[flown.length - 1]) : outer;
 
 	const points: Vec3[] = [];
 	const jds: number[] = [];
@@ -2179,7 +2298,7 @@ function poweredEscape(end: {
 		const days = spans[i];
 		const point = flown[i];
 		jds.push(endJd + days);
-		const seam = seamBlend((norm(point) - rPeriKm) / (outer - rPeriKm));
+		const seam = seamBlend((norm(point) - rPeriKm) / (seamKm - rPeriKm));
 		const corrected = add(point, scale(miss, seam));
 		if (!solar) {
 			points.push(corrected);
@@ -2405,12 +2524,16 @@ function soiCrossingJd(
 	return (inside + edge) / 2;
 }
 
-/** How long after periapsis a hyperbola is at true anomaly `nu`, seconds, signed
- *  with `nu`. Kepler's equation for e > 1 — the passage has to carry dates to be
- *  blended against anything at all. */
-function hyperbolicSeconds(e: number, nu: number, meanMotion: number): number {
+/** Hyperbolic anomaly at true anomaly `nu`, signed with `nu`. */
+function hyperbolicAnomaly(e: number, nu: number): number {
 	const tanHalf = Math.sqrt((e - 1) / (e + 1)) * Math.tan(nu / 2);
-	const H = 2 * Math.atanh(Math.max(-1 + 1e-15, Math.min(1 - 1e-15, tanHalf)));
+	return 2 * Math.atanh(Math.max(-1 + 1e-15, Math.min(1 - 1e-15, tanHalf)));
+}
+
+/** How long after periapsis a hyperbola is at true anomaly `nu`, seconds, signed
+ *  with `nu`. A passage needs these dates to blend with the arc next to it. */
+function hyperbolicSeconds(e: number, nu: number, meanMotion: number): number {
+	const H = hyperbolicAnomaly(e, nu);
 	return (e * Math.sinh(H) - H) / meanMotion;
 }
 
@@ -2821,25 +2944,260 @@ function straightCrossing(
 	};
 }
 
+/** The sample nearest an end of a crossing, km, and the ratio from one sample to
+ *  the next one out. A passage takes over at a sample, so the samples crowd
+ *  toward an end, down to below any orbit about it. */
+const END_SAMPLE_KM = 100;
+const END_SAMPLE_RATIO = 1.15;
+
+/** How far outside a ring a line that stops at it ends, as a share of the radius. */
+const RING_CLEARANCE = 1e-6;
+
 /**
- * A crossing between two star systems. It is the straight line from one star
- * to the other. Each stretch takes its dates from the motion of the kernel
- * along it, which is relativistic on a held drive. The arcs end on the dates of
- * their legs, so that they agree with the timeline.
+ * One end of a crossing between two systems, measured from its own star as an
+ * end inside one system is. So the machinery of an end meets one star at a time,
+ * and nothing near a far star is built from a far-away absolute.
  */
-function starCrossing(
-	departureId: string,
-	targetId: string,
+interface CrossingEnd {
+	at: 'departure' | 'arrival';
+	system: SystemEnd;
+	/** The date of this end on the route. */
+	jd: number;
+	/** The hyperbola of a coast at this end. */
+	conic: WellConic | null;
+	/** Where the crossing starts or stops, km about the star. */
+	innerKm: Vec3;
+	/** From the star to the path's frame, km. */
+	shiftKm: Vec3;
+}
+
+function crossingEnd(
+	at: CrossingEnd['at'],
+	system: SystemEnd,
+	jd: number,
+	conic: WellConic | null,
+	options: PathOptions,
+	standOffKm: Vec3 = [0, 0, 0]
+): CrossingEnd {
+	const { centerKm, sunOffsetKm } = options;
+	const placed = centerKm ? sub(system.starKm, centerKm) : system.starKm;
+	// The kernel puts the star of a solar end, and no other, at the barycentre.
+	const sun = norm(system.starKm) === 0 ? sunOffsetKm?.(jd) : null;
+	return {
+		at,
+		system,
+		jd,
+		conic,
+		innerKm: conic?.r ?? add(endOffsetKm(system, jd), standOffKm),
+		shiftKm: sun ? add(placed, sun) : placed
+	};
+}
+
+/**
+ * A trip between two star systems, between its real ends: from the origin body
+ * at departure to the target body at arrival, in the frame of the stars. Each
+ * end then takes its orbit and its passage as a trip inside one system does.
+ */
+function crossingBetweenSystems(
+	departure: TravelBody,
+	target: TravelBody,
 	route: Route,
 	options: PathOptions
-): PathGeometry | null {
+): { path: PathGeometry; endOrbits: EndOrbitPath[]; soiKm: Record<string, number> } | null {
+	const { systems, samples = DEFAULT_SAMPLES, centerId } = options;
+	if (!systems) return null;
+	const shape = coastShape(route, systems.origin, systems.target);
+	const line = shape ? null : heldLine(systems.origin, systems.target, route);
+	const from = crossingEnd(
+		'departure',
+		systems.origin,
+		route.departJd,
+		shape?.departure ?? null,
+		options,
+		line?.originStandOffKm
+	);
+	const to = crossingEnd(
+		'arrival',
+		systems.target,
+		route.arriveJd,
+		shape?.arrival ?? null,
+		options,
+		line?.targetStandOffKm
+	);
+	const count = Math.max(2, Math.round(samples / 2));
+	const arcs = shape ? coastArcs(route, from, to, count) : heldArcs(route, from, to, count);
+	if (!arcs || arcs.length === 0) return null;
+
+	const first = arcs[0];
+	const last = arcs[arcs.length - 1];
+	const start = first.points[0];
+	const end = last.points[last.points.length - 1];
+	const path: PathGeometry = {
+		centerId,
+		arcs,
+		stops: [
+			{
+				kind: 'departure',
+				jd: route.departJd,
+				r: start,
+				bodyId: departure.id,
+				dvKms: dvAt(route, 'departure')
+			},
+			{
+				kind: 'arrival',
+				jd: route.arriveJd,
+				r: end,
+				bodyId: target.id,
+				dvKms: dvAt(route, 'arrival')
+			}
+		],
+		meeting: { bodyId: target.id, jd: route.arriveJd, r: end }
+	};
+
+	const along = normalize(sub(end, start));
+	const flown = arcCraftAt(arcs);
+	const ends = {
+		from: crossingSetting(from, route, first, along, flown),
+		to: crossingSetting(to, route, last, along, flown)
+	};
+	const soiKm: Record<string, number> = {};
+	for (const [body, { primaryMu }] of [
+		[departure, ends.from],
+		[target, ends.to]
+	] as const) {
+		const soi = sphereOfInfluenceKm(body, primaryMu, Math.abs(body.elements.a) * AU_KM);
+		if (Number.isFinite(soi)) soiKm[body.id] = soi;
+	}
+	const endOrbits = orbitsAtEnds(departure, target, route, options, centerId, ends);
+	return {
+		path,
+		endOrbits: arcs.length === 1 ? keepingTheArc(endOrbits, first.points.length) : endOrbits,
+		soiKm
+	};
+}
+
+/** The ends of a trip with one arc, whose two trims fall on it. Two ends that
+ *  would leave no line between them give up their trims: a line drawn twice
+ *  beats a trip with a hole. */
+function keepingTheArc(endOrbits: EndOrbitPath[], count: number): EndOrbitPath[] {
+	const from = endOrbits.find((end) => end.at === 'departure')?.trimFrom ?? 0;
+	const to = endOrbits.find((end) => end.at === 'arrival')?.trimTo ?? count;
+	if (to - from >= 2) return endOrbits;
+	return endOrbits.map((end) => ({ ...end, trimFrom: 0, trimTo: count }));
+}
+
+/** What the end of a crossing gives the machinery of an end: everything measured
+ *  from its star. `meeting` is the arc that reaches it. */
+function crossingSetting(
+	end: CrossingEnd,
+	route: Route,
+	meeting: PathArc,
+	along: Vec3,
+	flown: EndApproach['craftAt']
+): EndSetting {
+	const { system, conic, jd, shiftKm } = end;
+	const arc = { ...meeting, points: meeting.points.map((point) => sub(point, shiftKm)) };
+	const craftAt: EndApproach['craftAt'] = (date) => {
+		const place = flown(date);
+		return place && sub(place, shiftKm);
+	};
+	return {
+		center: endOffsetKm(system, jd),
+		arc,
+		approach: crossingApproach(end, route, arc, along, craftAt),
+		primaryMu: orbitStateAt(system, jd)?.mu ?? system.starMu ?? 0,
+		shiftKm,
+		star: system.atStar,
+		plane: system.atStar ? starPlane(end, along) : undefined,
+		trimAtOrbit: !conic
+	};
+}
+
+/** How the craft meets the body at an end of a crossing, against that body. A
+ *  coast at a star has none: its hyperbola is the crossing itself. */
+function crossingApproach(
+	end: CrossingEnd,
+	route: Route,
+	arc: PathArc,
+	along: Vec3,
+	craftAt: EndApproach['craftAt']
+): EndApproach | undefined {
+	const { at, system, conic, jd } = end;
+	const outward = at === 'departure';
+	const bodyAt = (date: number) => endOffsetKm(system, date);
+	if (route.constantThrust != null) {
+		return outward
+			? heldLeaving(route, along, bodyAt, craftAt, true)
+			: heldMeeting(route, arc, bodyAt, craftAt);
+	}
+	if (system.atStar) return undefined;
+	const craftKms = conic
+		? scale(conic.v, outward ? 1 : -1)
+		: scale(along, route.interstellar!.cruiseKms);
+	const body = orbitStateAt(system, jd);
+	const excess = body ? sub(craftKms, body.v) : craftKms;
+	const speed = outward ? route.vInfDepKms : route.vInfArrKms;
+	return { vInf: scale(normalize(excess), speed), bodyAt, craftAt, jd };
+}
+
+/** The plane of an orbit at a star, and its low point. Nothing is invented: it is
+ *  the plane of the hyperbola that reaches the orbit. A held drive has only a
+ *  line, and any plane through a line serves. */
+function starPlane({ at, conic }: CrossingEnd, along: Vec3): EndSetting['plane'] {
+	const sense = at === 'departure' ? 1 : -1;
+	if (!conic) return { normal: perpendicularTo(along), periapsis: scale(along, sense) };
+	return {
+		normal: normalize(cross(conic.r, scale(conic.v, sense))),
+		periapsis: normalize(conic.r)
+	};
+}
+
+/** Distances from the end of a line that a sample has to hold near it, km. */
+function crowdedKms(stepKm: number): number[] {
+	const kms: number[] = [];
+	for (let km = END_SAMPLE_KM; km < stepKm; km *= END_SAMPLE_RATIO) kms.push(km);
+	return kms;
+}
+
+/** Where to sample a line, km along it, ascending: `count` even steps, and the
+ *  distances from each end that `nearStart` and `nearEnd` ask for. */
+function lineKms(
+	lengthKm: number,
+	count: number,
+	nearStart: readonly number[],
+	nearEnd: readonly number[]
+): number[] {
+	const kms = [...nearStart, ...nearEnd.map((km) => lengthKm - km)]
+		.filter((km) => km > 0 && km < lengthKm)
+		.concat(Array.from({ length: count }, (_, i) => (lengthKm * i) / (count - 1)))
+		.sort((a, b) => a - b);
+	return kms.filter((km, i) => i === 0 || i === kms.length - 1 || km > kms[i - 1]);
+}
+
+/** Where a line that stops at an end's orbit has to keep a sample, km from the
+ *  body, or else it would end a step short of the ring. */
+function ringKms({ at, system }: CrossingEnd, route: Route): number[] {
+	const outward = at === 'departure';
+	const held = (outward ? orbitLeft : orbitReached)(system.body, route, system.atStar);
+	return held ? [held.orbit.rPeriKm * (1 + RING_CLEARANCE)] : [];
+}
+
+/**
+ * The stretches of a held drive, on the straight line between the two ends. Each
+ * takes its dates from the motion of the kernel along it, which is relativistic.
+ * The arcs end on the dates of their legs, so that they agree with the timeline.
+ */
+function heldArcs(
+	route: Route,
+	from: CrossingEnd,
+	to: CrossingEnd,
+	count: number
+): PathArc[] | null {
 	const crossing = route.interstellar;
 	const stretches = crossingStretches(route);
 	if (!crossing || !stretches || !(crossing.distanceKm > 0)) return null;
-	// Star places are about the barycentre. A centre elsewhere is at `centerKm`.
-	const { centerKm } = options;
-	const start = centerKm ? sub(crossing.originKm, centerKm) : crossing.originKm;
-	const end = centerKm ? sub(crossing.targetKm, centerKm) : crossing.targetKm;
+	const start = add(from.innerKm, from.shiftKm);
+	const end = add(to.innerKm, to.shiftKm);
 	const span = sub(end, start);
 	const totalKm = crossing.distanceKm;
 	const at = (km: number): Vec3 =>
@@ -2857,41 +3215,128 @@ function starCrossing(
 	spans[spans.length - 1].endJd = route.arriveJd;
 
 	const elapsedDays = (km: number): number => crossingElapsed(route, km)?.days ?? 0;
-	// Samples are even along the line. A burn is slow at its start, so they are uneven in time.
-	const count = Math.max(2, Math.round((options.samples ?? DEFAULT_SAMPLES) / 2));
-	const arcs: PathArc[] = stretches.map((stretch, index) => {
+	// A flyby has no end orbit, so nothing takes over from the last stretch.
+	const stops = route.arrivalMode !== 'flyby';
+	return stretches.map((stretch, index) => {
 		const { startJd, endJd } = spans[index];
-		const points: Vec3[] = [];
-		const jds: number[] = [];
-		for (let i = 0; i < count; i++) {
-			const km = stretch.fromKm + ((stretch.toKm - stretch.fromKm) * i) / (count - 1);
-			points.push(at(km));
-			jds.push(i === 0 ? startJd : i === count - 1 ? endJd : route.departJd + elapsedDays(km));
-		}
-		return { kind: stretch.kind, points, jds, startJd, endJd };
+		const lengthKm = stretch.toKm - stretch.fromKm;
+		const crowd = crowdedKms(lengthKm / (count - 1));
+		const kms = lineKms(
+			lengthKm,
+			count,
+			index === 0 ? [...crowd, ...ringKms(from, route)] : [],
+			index === stretches.length - 1 && stops ? [...crowd, ...ringKms(to, route)] : []
+		).map((km) => stretch.fromKm + km);
+		const lastIndex = kms.length - 1;
+		kms[lastIndex] = stretch.toKm;
+		return {
+			kind: stretch.kind,
+			points: kms.map(at),
+			jds: kms.map((km, i) =>
+				i === 0 ? startJd : i === lastIndex ? endJd : route.departJd + elapsedDays(km)
+			),
+			startJd,
+			endJd,
+			middle: at((stretch.fromKm + stretch.toKm) / 2)
+		};
 	});
+}
 
-	return {
-		centerId: options.centerId,
-		arcs,
-		stops: [
-			{
-				kind: 'departure',
-				jd: route.departJd,
-				r: start,
-				bodyId: departureId,
-				dvKms: dvAt(route, 'departure')
-			},
-			{
-				kind: 'arrival',
-				jd: route.arriveJd,
-				r: end,
-				bodyId: targetId,
-				dvKms: dvAt(route, 'arrival')
-			}
-		],
-		meeting: { bodyId: targetId, jd: route.arriveJd, r: end }
+/**
+ * The times to sample a hyperbola at, s from its inner end, ascending. Even steps
+ * of true anomaly hold the bend, and even steps of hyperbolic anomaly hold the
+ * long straight part and a path that runs nearly through the star. Steps of radius
+ * cannot serve, because the radius can fall before it rises. `crowd` adds what a
+ * passage from a body at the inner end needs.
+ */
+function wellSeconds(conic: WellConic, count: number, crowd: boolean): number[] {
+	const { r, v, speedKms, seconds, joinKm, starKm } = conic;
+	const { e, latusKm, anomalyAt, secondsBetween } = hyperbolaThrough(conic, speedKms);
+	const rKm = norm(r);
+	const toKm = norm(sub(joinKm, starKm));
+	const sense = Math.sign(dot(r, v));
+
+	const trueAt = (km: number) => Math.acos(Math.max(-1, Math.min(1, (latusKm / km - 1) / e)));
+	const fromH = sense * anomalyAt(rKm);
+	const toH = anomalyAt(toKm);
+	const fromNu = sense * trueAt(rKm);
+	const toNu = trueAt(toKm);
+
+	const times: number[] = [];
+	for (let i = 1; i < count - 1; i++) {
+		const part = i / (count - 1);
+		times.push(secondsBetween(fromH, fromH + (toH - fromH) * part));
+		times.push(secondsBetween(fromH, hyperbolicAnomaly(e, fromNu + (toNu - fromNu) * part)));
+	}
+	const inside = times.filter((time) => time > 0 && time < seconds).sort((a, b) => a - b);
+	const speed = norm(v);
+	const near = crowd ? crowdedKms(speed * (inside[0] ?? seconds)).map((km) => km / speed) : [];
+	return [0, ...near, ...inside, seconds];
+}
+
+/**
+ * A hyperbola of a coast as an arc, in flight order. Undefined where an end has
+ * none to draw. Null where one will not settle, since a gap in it could not be
+ * drawn across honestly.
+ */
+function wellArc(end: CrossingEnd, count: number): PathArc | null | undefined {
+	const { at, conic, jd, shiftKm } = end;
+	if (!conic || !(conic.seconds > 0)) return undefined;
+	const { r, v, mu } = conic;
+	const outward = at === 'departure';
+	const seconds = wellSeconds(conic, count, !end.system.atStar);
+	const points: Vec3[] = [];
+	for (const time of seconds) {
+		const place = time > 0 ? propagateState(r, v, time, mu) : r;
+		if (!place) return null;
+		points.push(add(place, shiftKm));
+	}
+	const jds = seconds.map((time) => jd + ((outward ? 1 : -1) * time) / SEC_PER_DAY);
+	if (!outward) {
+		points.reverse();
+		jds.reverse();
+	}
+	return { kind: 'cruise', points, jds, startJd: jds[0], endJd: jds[jds.length - 1] };
+}
+
+/**
+ * A coast: a hyperbola about each star, where it has one, and the line between
+ * them. The whole of it is one cruise leg of the route, and the arcs together
+ * span that leg's dates.
+ */
+function coastArcs(
+	route: Route,
+	from: CrossingEnd,
+	to: CrossingEnd,
+	count: number
+): PathArc[] | null {
+	const out = wellArc(from, count);
+	const back = wellArc(to, count);
+	if (out === null || back === null) return null;
+
+	const start = out ? out.points[out.points.length - 1] : add(from.innerKm, from.shiftKm);
+	const stop = back ? back.points[0] : add(to.innerKm, to.shiftKm);
+	const startJd = out?.endJd ?? route.departJd;
+	const endJd = back?.startJd ?? route.arriveJd;
+	const span = sub(stop, start);
+	const lengthKm = norm(span);
+	if (!(lengthKm > 0)) return [out, back].filter((arc) => arc !== undefined);
+
+	// The line only reaches an end that has no hyperbola to take it there.
+	const crowd = crowdedKms(lengthKm / (count - 1));
+	const kms = lineKms(lengthKm, count, out ? [] : crowd, back ? [] : crowd);
+	const lastIndex = kms.length - 1;
+	const line: PathArc = {
+		kind: 'cruise',
+		points: kms.map((km, i) => (i === lastIndex ? stop : add(start, scale(span, km / lengthKm)))),
+		jds: kms.map((km, i) =>
+			i === lastIndex ? endJd : startJd + ((endJd - startJd) * km) / lengthKm
+		),
+		startJd,
+		endJd,
+		middle: add(start, scale(span, 0.5))
 	};
+	return [out, line, back].filter((arc) => arc !== undefined);
 }
 
 /**
