@@ -28,6 +28,9 @@ export class TrailBuffer {
 	 *  ellipses; `Infinity` for hyperbolic flybys, where capacity and zone
 	 *  coverage bound the walk instead of one chunk window. */
 	spanDays: number;
+	/** Length cap as a share of the head's distance from the frame centre, for
+	 *  an escape trail: its time span would grow without bound. 0 = no cap. */
+	lengthShare: number;
 	/** Back-fill still owed: it runs the first frame the trail is visible, not
 	 *  at load, since most probe trails never show. */
 	needsPopulate = false;
@@ -37,11 +40,18 @@ export class TrailBuffer {
 	private head = 0;
 	private _count = 0;
 
-	constructor(capacity: number, stepDays: number, epsilonScene = Infinity, spanDays?: number) {
+	constructor(
+		capacity: number,
+		stepDays: number,
+		epsilonScene = Infinity,
+		spanDays?: number,
+		lengthShare = 0
+	) {
 		this.capacity = capacity;
 		this.stepDays = stepDays;
 		this.epsilonScene = epsilonScene;
 		this.spanDays = spanDays ?? stepDays * capacity;
+		this.lengthShare = lengthShare;
 		this.positions = new Float32Array(capacity * 3);
 		this.jds = new Float64Array(capacity);
 	}
@@ -55,10 +65,11 @@ export class TrailBuffer {
 	 *  orbit-scale-dependent, so reusing heliocentric-cruise values for a
 	 *  planet-frame flyby samples far too coarsely or too little time.
 	 *  Non-finite/non-positive `stepDays` keeps the previous value. */
-	reconfigure(stepDays: number, epsilonScene: number, spanDays?: number): void {
+	reconfigure(stepDays: number, epsilonScene: number, spanDays?: number, lengthShare = 0): void {
 		if (Number.isFinite(stepDays) && stepDays > 0) this.stepDays = stepDays;
 		this.epsilonScene = epsilonScene;
 		this.spanDays = spanDays ?? this.stepDays * this.capacity;
+		this.lengthShare = lengthShare;
 	}
 
 	/** JD of the most-recent sample, or NaN when empty. */
@@ -80,6 +91,30 @@ export class TrailBuffer {
 		out[1] = this.positions[base + 1];
 		out[2] = this.positions[base + 2];
 		return true;
+	}
+
+	/** JD and position of the sample before the newest, or NaN when there is
+	 *  none (in which case `out` is untouched). */
+	readSecondNewest(out: [number, number, number]): number {
+		if (this._count < 2) return NaN;
+		const idx = (this.head - 2 + this.capacity) % this.capacity;
+		out[0] = this.positions[idx * 3];
+		out[1] = this.positions[idx * 3 + 1];
+		out[2] = this.positions[idx * 3 + 2];
+		return this.jds[idx];
+	}
+
+	/** Overwrite the newest sample; appends when the buffer is empty. */
+	replaceNewest(jd: number, x: number, y: number, z: number): void {
+		if (this._count === 0) {
+			this.append(jd, x, y, z);
+			return;
+		}
+		const idx = (this.head - 1 + this.capacity) % this.capacity;
+		this.jds[idx] = jd;
+		this.positions[idx * 3] = x;
+		this.positions[idx * 3 + 1] = y;
+		this.positions[idx * 3 + 2] = z;
 	}
 
 	append(jd: number, x: number, y: number, z: number): void {

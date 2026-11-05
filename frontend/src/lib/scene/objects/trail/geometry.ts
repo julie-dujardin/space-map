@@ -223,7 +223,8 @@ export function commitTrail(
 	fullArr: Float32Array,
 	n: number,
 	isOpenCurve: boolean,
-	useTrail: boolean
+	useTrail: boolean,
+	trailReach?: number
 ): void {
 	if (n < 2) {
 		line.geometry.setDrawRange(0, 0);
@@ -237,7 +238,8 @@ export function commitTrail(
 		trailArr.subarray(0, n) as Float32Array,
 		posArr,
 		isOpenCurve,
-		useTrail
+		useTrail,
+		trailReach
 	);
 	if (line.userData.isFatLine) {
 		writeFatTrailVertices(line.geometry, posArr, trailArr, fullArr, n);

@@ -564,9 +564,10 @@ export class Placer {
 				freshElements,
 				d.validityEnd - d.validityStart,
 				buf.capacity,
-				lagrangeTrail
+				lagrangeTrail,
+				probeParentKey === SUN_ID
 			);
-			buf.reconfigure(params.stepDays, params.epsilonScene, params.spanDays);
+			buf.reconfigure(params.stepDays, params.epsilonScene, params.spanDays, params.lengthShare);
 			populateProbeTrailBuffer(
 				buf,
 				ctx.probeStore,
@@ -618,19 +619,23 @@ export class Placer {
 			// the samples. A tight orbit trips this every frame above ~day/s, so a
 			// full per-period reseed would run continuously for every probe.
 			const discontinuity = isFinite(last) && (dt < 0 || dt > span);
-			if (discontinuity && d.id === this.focusedId && ctx.probeStore) {
-				// Focused probe only: rebuild one accurate osculating period ending on
-				// the body so a close-up stays smooth even when a frame skips many
-				// orbits. Re-derive params — the orbit may have changed across the jump.
+			if (discontinuity && (d.id === this.focusedId || tb.lengthShare > 0) && ctx.probeStore) {
+				// Rebuild one accurate osculating period ending on the body, so a
+				// close-up stays smooth even when a frame skips many orbits. The
+				// focused probe only, and escape trails: theirs span years, so only a
+				// jump or reverse play trips this, and a restart on the body would
+				// leave them empty. Re-derive params — the orbit may have changed
+				// across the jump.
 				tb.clear();
 				const jumpElements = probeOsculatingElements(located.probe, jd, primaryMu);
 				const params = deriveProbeTrailParams(
 					jumpElements,
 					d.validityEnd - d.validityStart,
 					tb.capacity,
-					lagrangeTrail
+					lagrangeTrail,
+					probeParentKey === SUN_ID
 				);
-				tb.reconfigure(params.stepDays, params.epsilonScene, params.spanDays);
+				tb.reconfigure(params.stepDays, params.epsilonScene, params.spanDays, params.lengthShare);
 				populateProbeTrailBuffer(
 					tb,
 					ctx.probeStore,

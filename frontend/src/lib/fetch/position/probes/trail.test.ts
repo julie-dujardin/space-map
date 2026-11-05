@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { deriveProbeTrailParams, extendProbeTrailBuffer, frameFitPreference } from './trail';
+import {
+	ESCAPE_TRAIL_SUN_SHARE,
+	backfillTrailFromSampler,
+	deriveProbeTrailParams,
+	extendProbeTrailBuffer,
+	frameFitPreference
+} from './trail';
 import { TrailBuffer } from '$lib/fetch/position/trail-buffer';
 import type { OrbitalElements } from '$lib/types/objects';
 
@@ -85,6 +91,20 @@ describe('deriveProbeTrailParams', () => {
 		expect(spanDays).toBeCloseTo(365); // uniform path spans its window
 	});
 
+	it('caps a heliocentric hyperbola by length instead of time', () => {
+		const params = deriveProbeTrailParams(elems({ a: -3, e: 1.5, n: 0.1 }), 364, 512, false, true);
+		expect(params.lengthShare).toBe(ESCAPE_TRAIL_SUN_SHARE);
+		expect(params.spanDays).toBe(Infinity);
+		expect(isFinite(params.epsilonScene)).toBe(true);
+	});
+
+	it('leaves a planet-frame hyperbola and a heliocentric ellipse uncapped', () => {
+		const flyby = elems({ a: -3, e: 1.5, n: 0.1 });
+		expect(deriveProbeTrailParams(flyby, 364, 512, false, false).lengthShare).toBe(0);
+		const cruise = elems({ a: 2, e: 0.5, n: 0.5 });
+		expect(deriveProbeTrailParams(cruise, 364, 512, false, true).lengthShare).toBe(0);
+	});
+
 	it('never returns a non-positive step', () => {
 		const { stepDays } = deriveProbeTrailParams(null, 0, 512);
 		expect(stepDays).toBe(1);
@@ -155,5 +175,90 @@ describe('extendProbeTrailBuffer', () => {
 		buf.append(0, ...circle(0));
 		extendProbeTrailBuffer(buf, gated, 0, circle(0), 10);
 		expect(buf.newestJd).toBeLessThanOrEqual(3);
+	});
+});
+
+/**
+ * An escape trail walks back until its length is a share of the distance from
+ * the Sun. Where the loaded data stops first, a tail sampler carries it on.
+ */
+describe('backfillTrailFromSampler on an escape trail', () => {
+	// Radial line from 100 units out, 0.01 units/day; data only for 50 days.
+	const line = (t: number): Vec3 => [100 + 0.01 * t, 0, 0];
+	const loaded = (t: number): Vec3 | null => (t >= -50 ? line(t) : null);
+	const escapeBuffer = () => new TrailBuffer(512, 364 / 512, 0.001, Infinity, 0.3);
+	const lengthOf = (buf: TrailBuffer): number => {
+		const out = new Float32Array(buf.count * 3);
+		const n = buf.writeVertices(out, 0, 0, 0);
+		return out[0] - out[(n - 1) * 3];
+	};
+
+	it('stops at the length target', () => {
+		const buf = escapeBuffer();
+		backfillTrailFromSampler(buf, line, 0);
+		// 0.3 × 100 = 30 units = 3000 days.
+		expect(lengthOf(buf)).toBeGreaterThanOrEqual(30);
+		expect(lengthOf(buf)).toBeLessThan(33);
+		expect(buf.count).toBeLessThan(512 / 2);
+	});
+
+	it('carries on past the data with the tail sampler', () => {
+		const buf = escapeBuffer();
+		let askedAt = NaN;
+		backfillTrailFromSampler(buf, loaded, 0, (oldestJd) => {
+			askedAt = oldestJd;
+			return line;
+		});
+		expect(askedAt).toBeCloseTo(-50, 0);
+		expect(lengthOf(buf)).toBeGreaterThanOrEqual(30);
+	});
+
+	it('ends where the data does when there is no tail', () => {
+		const buf = escapeBuffer();
+		backfillTrailFromSampler(buf, loaded, 0, () => null);
+		expect(lengthOf(buf)).toBeCloseTo(0.5, 1);
+	});
+});
+
+/**
+ * Fast playback appends a sample nearly every frame. A step that leaves the
+ * newest sample redundant moves it instead, so the ring keeps its time span.
+ */
+describe('extendProbeTrailBuffer during playback', () => {
+	const line = (t: number): Vec3 => [t, 0, 0];
+
+	it('keeps a straight trail across thousands of small frames', () => {
+		const buf = new TrailBuffer(512, 364 / 512, 0.001, Infinity);
+		backfillTrailFromSampler(buf, (t) => (t >= -400 ? line(t) : null), 0);
+		const before = buf.count;
+		const newest: Vec3 = [0, 0, 0];
+		let jd = 0;
+		for (let frame = 0; frame < 3600; frame++) {
+			const last = buf.newestJd;
+			jd += 1 / 1440; // one hour per second at 60 fps
+			buf.readNewestPos(newest);
+			extendProbeTrailBuffer(buf, line, last, [...newest], jd);
+		}
+		expect(buf.count).toBeLessThanOrEqual(before + 2);
+		const out = new Float32Array(buf.count * 3);
+		const n = buf.writeVertices(out, 0, 0, 0);
+		expect(out[(n - 1) * 3]).toBeCloseTo(-400, 0);
+		expect(buf.newestJd).toBeCloseTo(jd, 2);
+	});
+
+	it('still adds samples around a curve', () => {
+		const R = 100;
+		const circle = (t: number): Vec3 => [R * Math.cos(0.5 * t), R * Math.sin(0.5 * t), 0];
+		const buf = new TrailBuffer(512, 1, 0.5);
+		buf.append(0, ...circle(0));
+		const newest: Vec3 = [0, 0, 0];
+		let jd = 0;
+		for (let frame = 0; frame < 600; frame++) {
+			const last = buf.newestJd;
+			jd += 10 / 600;
+			buf.readNewestPos(newest);
+			extendProbeTrailBuffer(buf, circle, last, [...newest], jd);
+		}
+		expect(buf.count).toBeGreaterThan(15);
 	});
 });

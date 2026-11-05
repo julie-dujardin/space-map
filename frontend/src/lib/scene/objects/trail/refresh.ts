@@ -5,7 +5,7 @@ import type { PositionedBody } from '$lib/types/objects';
 import type { TrailBuffer } from '$lib/fetch/position/trail-buffer';
 import { NUM_TRAIL_POINTS, buildTrailPoints } from './points';
 import { commitTrail, getTrailWorkingArrays, writeFatTrailVertices } from './geometry';
-import { writeBufferVerticesWithLiveHead } from './builder';
+import { bufferTrailReach, writeBufferVerticesWithLiveHead } from './builder';
 import { lagrangeSampleTransform } from './lagrange-frame';
 
 // Re-render the precessing-elements curve when accumulated drift on Ω or ω
@@ -148,7 +148,16 @@ export function refreshBufferTrail(
 		basisPos,
 		lagrange ?? undefined
 	);
-	commitTrail(line, posArr, trailArr, fullArr, total, true, useTrail);
+	commitTrail(
+		line,
+		posArr,
+		trailArr,
+		fullArr,
+		total,
+		true,
+		useTrail,
+		bufferTrailReach(body, buffer)
+	);
 	recordRewrite(ud, version, offX, offY, offZ, headX, headY, headZ, posArr, total, view);
 }
 

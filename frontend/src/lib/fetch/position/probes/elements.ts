@@ -60,7 +60,13 @@ function keplerDriftElements(sub: KeplerDriftElts, subStartEt: number): OrbitalE
 	};
 }
 
-function chebyshevElements(probe: Probe, jd: number, muKm3S2: number): OrbitalElements | null {
+/** Osculating elements from the position and velocity at `jd`, for any
+ *  sub-chunk method, so an orbit extrapolated from them starts on the sample. */
+export function probeStateElements(
+	probe: Probe,
+	jd: number,
+	muKm3S2: number
+): OrbitalElements | null {
 	if (muKm3S2 <= 0) return null;
 	const state = probeStateKm(probe, jd, muKm3S2);
 	if (!state) return null;
@@ -95,6 +101,6 @@ export function probeOsculatingElements(
 		case PROBE_METHOD_KEPLER_DRIFT:
 			return keplerDriftElements(sub, probe.subStartEt[idx]);
 		case PROBE_METHOD_CHEBYSHEV:
-			return chebyshevElements(probe, jd, muKm3S2);
+			return probeStateElements(probe, jd, muKm3S2);
 	}
 }

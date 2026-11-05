@@ -28,6 +28,7 @@ import type { ProbeStore } from '$lib/fetch/position/probes/store';
 import { probeOsculatingElements } from '$lib/fetch/position/probes/elements';
 import { resolveProbePrimary } from '$lib/fetch/position/probes/primary';
 import { deriveProbeTrailParams } from '$lib/fetch/position/probes/trail';
+import { SUN_ID } from '$lib/constants';
 import { stateVectorToElements } from '$lib/math/orbit/state';
 import { getGmKm3s2 } from '$lib/fetch/systems-global';
 import { TrailBuffer } from '$lib/fetch/position/trail-buffer';
@@ -403,10 +404,12 @@ export class ChunkLoader {
 			// the chunk window when elements are unavailable (mu=0 at first paint).
 			let trailBuffer: TrailBuffer | undefined;
 			{
-				const { stepDays, epsilonScene, spanDays } = deriveProbeTrailParams(
+				const { stepDays, epsilonScene, spanDays, lengthShare } = deriveProbeTrailParams(
 					elements,
 					endJd - startJd,
-					NUM_TRAIL_POINTS
+					NUM_TRAIL_POINTS,
+					false,
+					primaryKey === SUN_ID
 				);
 				const cached = this.probeBuffers.get(id);
 				if (cached && cached.parentKey === primaryKey) {
@@ -415,10 +418,16 @@ export class ChunkLoader {
 					// paint → Infinity) once elements resolve, without dropping the
 					// accumulated samples.
 					if (!isFinite(trailBuffer.epsilonScene) && isFinite(epsilonScene)) {
-						trailBuffer.reconfigure(stepDays, epsilonScene, spanDays);
+						trailBuffer.reconfigure(stepDays, epsilonScene, spanDays, lengthShare);
 					}
 				} else {
-					trailBuffer = new TrailBuffer(NUM_TRAIL_POINTS, stepDays, epsilonScene, spanDays);
+					trailBuffer = new TrailBuffer(
+						NUM_TRAIL_POINTS,
+						stepDays,
+						epsilonScene,
+						spanDays,
+						lengthShare
+					);
 					trailBuffer.needsPopulate = true;
 					this.probeBuffers.set(id, { buffer: trailBuffer, parentKey: primaryKey });
 				}

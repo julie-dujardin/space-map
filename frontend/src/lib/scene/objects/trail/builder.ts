@@ -2,7 +2,12 @@ import { Line, Mesh, Vector3 } from 'three';
 import { isOpenOrbit, sgp4Curve } from '$lib/math/orbit/curves';
 import { ObjectType, isAsteroid, type PositionedBody } from '$lib/types/objects';
 import type { TrailBuffer } from '$lib/fetch/position/trail-buffer';
-import { NUM_TRAIL_POINTS, buildTrailPoints, writeTrailAlphas } from './points';
+import {
+	NUM_TRAIL_POINTS,
+	PARTIAL_TRAIL_REACH,
+	buildTrailPoints,
+	writeTrailAlphas
+} from './points';
 import { buildFatLineFromThin, buildThinLineFromArrays, makeEmptyTrail } from './geometry';
 import type { SampleTransform } from './lagrange-frame';
 import { dateToJD } from '$lib/time/jd';
@@ -29,11 +34,41 @@ function drawsPartialTrail(objectType: ObjectType, isOpenCurve: boolean): boolea
 	);
 }
 
+/** Share of its length a buffer trail fades over unfocused. An escape trail
+ *  is already cut to the length it should show, and a Lagrange trail holds
+ *  less than one halo loop. */
+export function bufferTrailReach(body: PositionedBody, buffer: TrailBuffer): number {
+	return buffer.lengthShare > 0 || body.lagrangeTrail ? 1 : PARTIAL_TRAIL_REACH;
+}
+
+/** Cut the polyline in `posArr` to `limit` of length, moving the last vertex
+ *  onto the limit so the tip grows smoothly. Returns the vertex count. */
+function cutToLength(posArr: Float32Array, n: number, limit: number): number {
+	let length = 0;
+	for (let k = 1; k < n; k++) {
+		const i = k * 3;
+		const dx = posArr[i] - posArr[i - 3];
+		const dy = posArr[i + 1] - posArr[i - 2];
+		const dz = posArr[i + 2] - posArr[i - 1];
+		const seg = Math.hypot(dx, dy, dz);
+		if (length + seg >= limit) {
+			const u = seg > 0 ? (limit - length) / seg : 0;
+			posArr[i] = posArr[i - 3] + dx * u;
+			posArr[i + 1] = posArr[i - 2] + dy * u;
+			posArr[i + 2] = posArr[i - 1] + dz * u;
+			return k + 1;
+		}
+		length += seg;
+	}
+	return n;
+}
+
 /**
  * Write a trail-buffer's contents into `posArr`, prefixed by a live-head
  * vertex at the body's current position — keeps the brightest vertex on the
  * body, same as `points[0] = bodyLocal` for the Kepler path. Samples are
- * fit-center-relative, shifted by `(orbitCenter − basis)`.
+ * fit-center-relative, shifted by `(orbitCenter − basis)`. An escape trail is
+ * cut to its share of the head's distance from the centre.
  */
 export function writeBufferVerticesWithLiveHead(
 	body: PositionedBody,
@@ -54,7 +89,9 @@ export function writeBufferVerticesWithLiveHead(
 	const by = cy - basisPos[1];
 	const bz = cz - basisPos[2];
 	const n = buffer.writeVertices(posArr.subarray(3) as Float32Array, bx, by, bz, transform);
-	return 1 + n;
+	if (buffer.lengthShare <= 0) return 1 + n;
+	const limit = buffer.lengthShare * Math.hypot(head[0] - cx, head[1] - cy, head[2] - cz);
+	return cutToLength(posArr, 1 + n, limit);
 }
 
 /**
@@ -88,7 +125,8 @@ function makeBufferTrail(
 			trailAlphas.subarray(0, total) as Float32Array,
 			posArr,
 			true,
-			useTrail
+			useTrail,
+			bufferTrailReach(body, trailBuffer)
 		);
 	}
 

@@ -104,4 +104,28 @@ describe('TrailBuffer', () => {
 		expect(Array.from(out.slice(0, 3))).toEqual([2, 0, 0]);
 		expect(Array.from(out.slice(3, 6))).toEqual([1, 0, 0]);
 	});
+
+	it('reads the sample before the newest', () => {
+		const buf = new TrailBuffer(3, 1);
+		const out: [number, number, number] = [0, 0, 0];
+		buf.append(1, 1, 0, 0);
+		expect(buf.readSecondNewest(out)).toBeNaN();
+		buf.append(2, 2, 0, 0);
+		buf.append(3, 3, 0, 0);
+		buf.append(4, 4, 0, 0); // wraps the ring
+		expect(buf.readSecondNewest(out)).toBe(3);
+		expect(out).toEqual([3, 0, 0]);
+	});
+
+	it('replaces the newest sample in place', () => {
+		const buf = new TrailBuffer(3, 1);
+		buf.replaceNewest(1, 1, 0, 0); // empty: appends
+		buf.append(2, 2, 0, 0);
+		buf.replaceNewest(5, 5, 0, 0);
+		expect(buf.count).toBe(2);
+		expect(buf.newestJd).toBe(5);
+		const out = new Float32Array(6);
+		buf.writeVertices(out, 0, 0, 0);
+		expect(Array.from(out)).toEqual([5, 0, 0, 1, 0, 0]);
+	});
 });

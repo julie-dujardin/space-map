@@ -30,6 +30,10 @@ import { ChunkWindow, chunkKey } from '$lib/fetch/position/chunk-window';
  *  and each may pull one chunk per zone, so this holds a whole refinement. */
 const WARMED_CHUNKS = 24;
 
+/** How near a chunk's start a trail walk that ran out of data must stop for
+ *  {@link ProbeStore.unloadedBefore} to blame the chunk before. */
+const CHUNK_EDGE_DAYS = 1;
+
 /** Per-zone params from `metadata.position.zones[zone]`. `fit_center_naif_id`
  *  is the body each probe's position is relative to, handed back to callers
  *  to look up world position and GM via systems-global.
@@ -393,6 +397,26 @@ export class ProbeStore extends ChunkWindow<FetchedProbes, ProbeZoneParams> {
 		const loc = this.resolve(objectId, jd, isPreferred);
 		if (!loc) return null;
 		return { probe: loc.probe, fitCenterNaifId: loc.params.fit_center_naif_id };
+	}
+
+	/** True when the record of `objectId` at `jd` starts a loaded chunk whose
+	 *  zone has an earlier chunk that is not loaded: what lies before `jd` is
+	 *  unknown here, not absent. */
+	unloadedBefore(
+		objectId: string,
+		jd: number,
+		isPreferred?: (fitCenterNaif: number) => boolean
+	): boolean {
+		const loc = this.resolve(objectId, jd, isPreferred);
+		if (!loc) return false;
+		const idx = chunkIndexForJd(loc.params, jd);
+		const before = chunkIndexForJd(loc.params, jd - CHUNK_EDGE_DAYS);
+		return (
+			before < idx &&
+			this.isLoadable(loc.params, before) &&
+			!this.isResident(loc.zone, before) &&
+			!this.warmed.has(chunkKey(loc.zone, before))
+		);
 	}
 
 	/** Parent-relative probe position in km at `jd`, with `mu` (km³/s²) of the

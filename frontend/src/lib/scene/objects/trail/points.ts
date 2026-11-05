@@ -76,9 +76,12 @@ function segmentLength(posArr: Float32Array, k: number): number {
 	);
 }
 
+/** Share of its length a partial trail spans: the rest only shows on focus. */
+export const PARTIAL_TRAIL_REACH = 1 / 3;
+
 /**
  * Fill `fullArr` with the fade of the whole trail and `trailArr` with the fade
- * of its nearest third. A body with no partial trail copies the full ramp.
+ * of its nearest `reach`. A body with no partial trail copies the full ramp.
  *
  * An open curve is measured by length, because its vertices can be few and
  * unevenly spaced, and it fades to 0 at its tip. A closed curve is measured by
@@ -89,7 +92,8 @@ export function writeTrailAlphas(
 	trailArr: Float32Array,
 	posArr: Float32Array,
 	isOpenCurve: boolean,
-	useTrail: boolean
+	useTrail: boolean,
+	reach = PARTIAL_TRAIL_REACH
 ): void {
 	const fullMax = 0.55;
 	const fullMin = isOpenCurve ? 0 : fullMax / 3;
@@ -104,6 +108,6 @@ export function writeTrailAlphas(
 	for (let k = 0; k <= last; k++) {
 		const share = end > 0 ? fullArr[k] / end : 0;
 		fullArr[k] = fullMax - share * (fullMax - fullMin);
-		trailArr[k] = useTrail ? trailMax * Math.max(0, 1 - 3 * share) : fullArr[k];
+		trailArr[k] = useTrail ? trailMax * Math.max(0, 1 - share / reach) : fullArr[k];
 	}
 }

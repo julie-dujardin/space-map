@@ -48,6 +48,14 @@ describe('writeTrailAlphas', () => {
 		expect(trail[Math.floor(NUM_TRAIL_POINTS / 6)]).toBeCloseTo(0.35 / 2, 2);
 	});
 
+	it('an open trail with a whole reach fades over its full length', () => {
+		const full = new Float32Array(NUM_TRAIL_POINTS);
+		const trail = new Float32Array(NUM_TRAIL_POINTS);
+		writeTrailAlphas(full, trail, line(even(NUM_TRAIL_POINTS)), true, true, 1);
+		expect(trail[Math.floor((NUM_TRAIL_POINTS - 1) / 2)]).toBeCloseTo(0.35 / 2, 2);
+		expect(trail[NUM_TRAIL_POINTS - 2]).toBeGreaterThan(0);
+	});
+
 	it('a body with no partial trail copies the full ramp', () => {
 		const { full, trail } = alphas(even(NUM_TRAIL_POINTS + 1), false, false);
 		expect(trail).toEqual(full);
