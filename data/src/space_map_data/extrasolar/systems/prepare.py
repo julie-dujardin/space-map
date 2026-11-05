@@ -22,11 +22,9 @@
 3. Each source's trees become groups of points and interiors (`reduce`). El-
    Badry's pairs become groups of two points, and the parallax veto and the
    star-cluster test of the trees apply to them too: shared motion is all
-   that links such a pair, and in a cluster every member has it. A close pair
-   can throw off the astrometry of a point, so the veto skips a point with a
-   Gaia orbit, a SIMBAD close type or an interior. The Gaia orbits become
-   interiors of two stars. A Gaia orbit whose companion is a planet is no
-   interior.
+   that links such a pair, and in a cluster every member has it. The Gaia
+   orbits become interiors of two stars. A Gaia orbit whose companion is a
+   planet is no interior.
 4. A SIMBAD component inside the light of another point joins that point,
    in every source.
 5. A brown dwarf that no tree places joins the outermost group of its host,
@@ -979,7 +977,6 @@ def prepare(inputs: Inputs, resolver: Resolver) -> Prepared:
             block,
             reduced,
             dropped,
-            close_points,
             reach[source],
             clusters,
         ).run()
@@ -994,9 +991,7 @@ def prepare(inputs: Inputs, resolver: Resolver) -> Prepared:
         item.host = remap.get(item.host, item.host)
         item.key = remap.get(item.key, item.key)
     overlaps = [item for item in overlaps if item.host != item.key]
-    exempt = _close_pairs(orbit_keys[orbit_kept], _mapped(close_keys, remap))
-    exempt |= {interior.key for interior in reduced.interiors}
-    vetoed = vetoed_pairs(facts, *el_keys, exempt)
+    vetoed = vetoed_pairs(facts, *el_keys)
     counts[f"{EL_BADRY}: pairs that the parallaxes veto"] = int(vetoed.sum())
     if inputs.el_badry is not None:
         _veto_events(facts, inputs.el_badry, el_keys, vetoed, reduced)
@@ -1133,14 +1128,8 @@ def _close_pairs(orbit_keys: np.ndarray, close_keys: np.ndarray) -> frozenset[in
     return frozenset(orbit_keys.tolist()) | frozenset(close_keys.tolist())
 
 
-def vetoed_pairs(
-    facts: Facts, first: np.ndarray, second: np.ndarray, exempt: frozenset[int]
-) -> np.ndarray:
-    """Whether the parallaxes of each El-Badry pair of two objects disagree.
-
-    A point of `exempt` can hold a close pair, which throws off its
-    astrometry.
-    """
+def vetoed_pairs(facts: Facts, first: np.ndarray, second: np.ndarray) -> np.ndarray:
+    """Whether the parallaxes of each El-Badry pair of two objects disagree."""
     separation = sky_separation(
         facts.column("ra", first),
         facts.column("dec", first),
@@ -1159,7 +1148,6 @@ def vetoed_pairs(
     found &= (first != 0) & (second != 0) & (first != second)
     for keys in (first, second):
         found &= facts.has("astrometry", keys, OWN_ASTROMETRY)
-        found &= ~np.isin(keys, sorted(exempt))
     return found
 
 

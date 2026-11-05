@@ -35,16 +35,32 @@ from space_map_data.extrasolar.match import (
     assign,
     excluded_pairs,
 )
-from space_map_data.extrasolar.placement import COLUMNS, placement
+from space_map_data.extrasolar.placement import (
+    COLUMNS,
+    MEASURED_PARALLAX,
+    ORBIT_PARALLAX_COLUMNS,
+    Placement,
+    placement,
+    star_distance,
+    with_orbit_parallax,
+)
 from space_map_data.extrasolar.registry import Registry
+from space_map_data.extrasolar.sources.literature import LITERATURE
 from space_map_data.extrasolar.systems.elements import GAIA_ELEMENTS
 from space_map_data.extrasolar.systems.msc import MSC_MATCHER
 from space_map_data.extrasolar.systems.nodes import GAIA_DR3, MSC_ID
 from space_map_data.extrasolar.systems.pairs import ORBIT_COLUMNS, PAIRS, orbit_pairs
+from space_map_data.extrasolar.systems.parallax import veto_error
 from space_map_data.extrasolar.systems.planets import PLANETS_INPUT, planet_star_ids
-from space_map_data.extrasolar.systems.resolve import FACTS, GAIA_ASTROMETRY
+from space_map_data.extrasolar.systems.resolve import (
+    FACTS,
+    GAIA_ASTROMETRY,
+    OTHER,
+    PAPER,
+    PARALLAX,
+)
 from space_map_data.extrasolar.systems.wds import COMPONENT_KIND, WDS_MATCHER
-from space_map_data.extrasolar.tables import CROSS_ID
+from space_map_data.extrasolar.tables import BINARY_ORBIT, CROSS_ID, STAR_SYSTEMS
 from space_map_data.utils.arrays import find_sorted, floats
 
 logger = logging.getLogger(__name__)
@@ -117,16 +133,75 @@ def _lookup(
         keys[rows[hit]] = sorted_keys[at[hit]]
 
 
-def point_facts(positions: pa.Table, point: pa.Table, meta: pa.Table) -> pa.Table:
+def _without_system_distance(point: pa.Table) -> pa.Table:
+    """`point` with no star-systems distance. A dry run reads the committed
+    table, where such a row holds the last ingest's result. An ingest reads
+    only its own passes, so it never meets one."""
+    sources = point["distance_source"].to_numpy(zero_copy_only=False)
+    distance = point["distance"].combine_chunks()
+    return point.set_column(
+        point.schema.get_field_index("distance"),
+        "distance",
+        pc.if_else(pa.array(sources == STAR_SYSTEMS), None, distance),
+    )
+
+
+def _votes(
+    point: pa.Table, placed: Placement
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """For each row with a place, what gives it: a parallax in mas, the error
+    that weighs it, and its rank, -1 for a row with no place. A distance with
+    no error counts as ±100%, so any measure outweighs it."""
+    distance, orbit = star_distance(point, placed)
+    methods = point["distance_method"].to_numpy(zero_copy_only=False)
+    sources = point["distance_source"].to_numpy(zero_copy_only=False)
+    astrometry = point["astrometry_source"].to_numpy(zero_copy_only=False)
+    gaia = np.isin(astrometry, sorted(GAIA_ASTROMETRY))
+    ruwe = np.where(gaia, floats(point, "ruwe"), np.nan)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        vote = 1000.0 / distance
+        bounds = (
+            1000.0 / floats(point, "distance_lower")
+            - 1000.0 / floats(point, "distance_upper")
+        ) / 2
+    error = np.select(
+        [
+            orbit,
+            placed.by_parallax | placed.by_suspect,
+            placed.by_group,
+        ],
+        [
+            floats(point, "orbit_parallax_error"),
+            veto_error(floats(point, "parallax_error"), ruwe),
+            bounds,
+        ],
+        np.nan,
+    )
+    error = np.where(np.isfinite(error) & (error > 0), error, vote)
+    rank = np.where(placed.placed, OTHER, -1)
+    measured = placed.by_group & (methods == MEASURED_PARALLAX)
+    rank = np.where(
+        placed.by_parallax | (orbit & placed.by_catalogue) | measured, PARALLAX, rank
+    )
+    rank = np.where(placed.by_group & (sources == LITERATURE.name), PAPER, rank)
+    return vote, error, rank.astype(np.int8)
+
+
+def point_facts(
+    positions: pa.Table, point: pa.Table, meta: pa.Table, orbits: pa.Table | None
+) -> pa.Table:
     """FACTS from the positions (`key`, `ra`, `dec`, `pmra`, `pmdec`, `mag`),
-    the Point source rows (POINT_COLUMNS) and the Metadata rows (`id`,
-    `name`, `name_source`) of some objects."""
+    the Point source rows (POINT_COLUMNS), the Metadata rows (`id`, `name`,
+    `name_source`) and the binary orbit rows (ORBIT_PARALLAX_COLUMNS) of some
+    objects."""
     point = point.take(pc.sort_indices(point["id"]))
+    point = with_orbit_parallax(_without_system_distance(point), orbits)
     meta = meta.take(pc.sort_indices(meta["id"]))
     ids = positions["key"].to_numpy()
     at_point = find_sorted(point["id"].to_numpy(), ids)
     at_meta = find_sorted(meta["id"].to_numpy(), ids)
     placed = placement(point)
+    vote, vote_error, vote_rank = _votes(point, placed)
     parallax = floats(point, "parallax")
     distance = np.full(point.num_rows, np.nan)
     by_parallax = placed.by_parallax | placed.by_suspect
@@ -141,7 +216,11 @@ def point_facts(positions: pa.Table, point: pa.Table, meta: pa.Table) -> pa.Tabl
     astrometry = pick(point, at_point, "astrometry_source")
     gaia = pc.is_in(astrometry, value_set=pa.array(sorted(GAIA_ASTROMETRY)))
     spectral = families.spectral_type(point).take(pa.array(at_point, mask=at_point < 0))
-    point_distance = np.where(at_point >= 0, distance[np.maximum(at_point, 0)], np.nan)
+
+    def per_key(values: np.ndarray, missing: float) -> np.ndarray:
+        return np.where(at_point >= 0, values[np.maximum(at_point, 0)], missing)
+
+    rank = per_key(vote_rank, -1)
     return pa.table(
         {
             "key": positions["key"],
@@ -158,7 +237,10 @@ def point_facts(positions: pa.Table, point: pa.Table, meta: pa.Table) -> pa.Tabl
             "ruwe": pc.if_else(
                 gaia, pick(point, at_point, "ruwe"), pa.scalar(None, pa.float32())
             ),
-            "distance": pa.array(point_distance, from_pandas=True),
+            "distance": pa.array(per_key(distance, np.nan), from_pandas=True),
+            "vote": pa.array(per_key(vote, np.nan), from_pandas=True),
+            "vote_error": pa.array(per_key(vote_error, np.nan), from_pandas=True),
+            "vote_rank": pa.array(rank, pa.int8(), mask=rank < 0),
             "spectral_type": spectral,
             "non_single_star": pick(point, at_point, "non_single_star").cast(
                 pa.int16()
@@ -257,7 +339,12 @@ class RegistryResolver:
         assert point is not None and meta is not None
         point = point.filter(pc.is_in(point["id"], value_set=keys))
         meta = meta.filter(pc.is_in(meta["id"], value_set=keys))
-        return point_facts(positions.rename_columns({"id": "key"}), point, meta)
+        orbits = self.registry.read_table(
+            BINARY_ORBIT.slug, region, list(ORBIT_PARALLAX_COLUMNS)
+        )
+        if orbits is not None:
+            orbits = orbits.filter(pc.is_in(orbits["id"], value_set=keys))
+        return point_facts(positions.rename_columns({"id": "key"}), point, meta, orbits)
 
     def match(self, rows: pa.Table, kind: tuple[str, str]) -> np.ndarray:
         matcher = MSC_MATCHER if kind == MSC_ID else WDS_MATCHER

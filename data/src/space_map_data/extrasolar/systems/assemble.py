@@ -16,8 +16,7 @@ The decisions for the ingest:
   one member is that member;
 - a composite spectral type of a point that holds one star moves to its
   system, and the point takes its own type from the trees, else none;
-- a point of a resolved system with a position and no distance takes the
-  distance of the nearest relative that has one, the most precise first;
+- the points of a system of two or more points share a distance (`distance`);
 - a circumbinary planet's host is the point that holds both stars, else the
   pair's node;
 - the names of a resolved system: SIMBAD's name of the system object, then
@@ -37,6 +36,9 @@ import pyarrow.compute as pc
 
 from space_map_data.constants.stars.families import COMPOSITE_SPECTRAL_TYPE
 from space_map_data.extrasolar.sources.simbad import designation, normal
+from space_map_data.extrasolar.systems.distance import (
+    shared_distances,
+)
 from space_map_data.extrasolar.systems.merge import Merged
 from space_map_data.extrasolar.systems.nodes import (
     EL_BADRY,
@@ -131,8 +133,7 @@ NODES = pa.schema(
         ("stars", pa.int32()),
         ("class", pa.string()),
         ("primary", pa.int64()),
-        # J2016.0 ICRS of the primary point, and its distance in pc, else the
-        # system distance it takes.
+        # J2016.0 ICRS of the primary point, and the node's distance in pc.
         ("ra", pa.float64()),
         ("dec", pa.float64()),
         ("distance", pa.float64()),
@@ -175,14 +176,6 @@ ABSORBED = pa.schema(
         ("into", pa.int64()),
         ("source", pa.string()),
         ("evidence", pa.string()),
-    ]
-)
-DISTANCES = pa.schema(
-    [
-        ("key", pa.int64()),
-        ("node", pa.int64()),
-        ("donor", pa.int64()),
-        ("distance", pa.float64()),
     ]
 )
 HOSTS = pa.schema(
@@ -507,7 +500,6 @@ class Assembler:
             self.next_node += 1
         self.point_parent: dict[int, int] = {}
         self.point_root: dict[int, int] = {}
-        self.distances: list[tuple[int, int, int, float]] = []
         self.moved: dict[int, tuple[int, str | None]] = {}
         self.names_rows: list[tuple[int, int, str, str, list]] = []
         started = time.monotonic()
@@ -829,7 +821,6 @@ class Assembler:
             else:
                 self._member(node.number, ENTRY, 0, 0, value, inner)
         self._composites(node)
-        self._distances(node)
         self._names(node, catalogue_ids)
         return stars
 
@@ -884,45 +875,6 @@ class Assembler:
                 own = None
             self.moved[key] = (node.number, own)
             self.node_spectral.setdefault(node.number, fact.spectral_type)
-
-    def _distances(self, node: _Node) -> None:
-        for kind, key, _, _, _ in node.members:
-            fact = self.facts.get(key) if kind == POINT else None
-            if fact is None or self._distance(key) is not None:
-                continue
-            if not (math.isfinite(fact.ra) and math.isfinite(fact.dec)):
-                continue
-            donor = self._donor(node, key)
-            if donor:
-                distance = self._distance(donor)
-                assert distance is not None
-                self.distances.append((key, node.number, donor, distance))
-
-    def _donor(self, node: _Node, key: int) -> int:
-        """The placed point nearest in the tree, the most precise first."""
-        level: _Node | None = node
-        while level is not None:
-            placed = [
-                k
-                for k in sorted(level.keys)
-                if k != key and self._distance(k) is not None
-            ]
-            if placed:
-                return max(placed, key=lambda k: (self._precision(k), -k))
-            level = level.parent
-        return 0
-
-    def _distance(self, key: int) -> float | None:
-        fact = self.facts.get(key)
-        if fact is None or not math.isfinite(fact.distance):
-            return None
-        return fact.distance
-
-    def _precision(self, key: int) -> float:
-        fact = self.facts.get(key)
-        if fact is None or not fact.parallax_error > 0:
-            return 0.0
-        return fact.parallax / fact.parallax_error
 
     def _names(self, node: _Node, catalogue_ids: list[dict]) -> None:
         lookup = [
@@ -1005,28 +957,6 @@ class Assembler:
             for key, number in zip(side[hit].tolist(), numbers[hit].tolist()):
                 self.point_parent[key] = number
                 self.point_root[key] = number
-        # A star with no distance takes its companion's.
-        d1 = self.facts.column("distance", k1)
-        d2 = self.facts.column("distance", k2)
-        has1 = self.facts.column("ra", k1)
-        has2 = self.facts.column("ra", k2)
-        for keys, mine, other, own_ra, donors in (
-            (k1, d1, d2, has1, k2),
-            (k2, d2, d1, has2, k1),
-        ):
-            take = (
-                (keys != 0)
-                & ~np.isfinite(mine)
-                & np.isfinite(other)
-                & np.isfinite(own_ra)
-            )
-            for key, number, donor, distance in zip(
-                keys[take].tolist(),
-                numbers[take].tolist(),
-                donors[take].tolist(),
-                other[take].tolist(),
-            ):
-                self.distances.append((key, number, donor, distance))
 
     # Points that hold several stars
 
@@ -1072,10 +1002,12 @@ class Assembler:
         tables.append(self._point_table())
         nodes = pa.concat_tables(tables)
         nodes = self._depths(nodes)
-        nodes = self._node_distances(nodes)
         nodes = nodes.take(pc.sort_indices(nodes["node"]))
         members = self._members_table()
         points = self._points_table(nodes, members)
+        shared = shared_distances(nodes, points, self.facts)
+        self.counts.update(shared.counts)
+        nodes = self._node_distances(nodes, shared.nodes)
         absorbed = pa.table(
             {
                 "key": [a.key for a in self.p.reduced.absorbed],
@@ -1084,13 +1016,6 @@ class Assembler:
                 "evidence": [a.evidence for a in self.p.reduced.absorbed],
             },
             schema=ABSORBED,
-        )
-        distances = pa.table(
-            {
-                name: [row[at] for row in self.distances]
-                for at, name in enumerate(DISTANCES.names)
-            },
-            schema=DISTANCES,
         )
         hosts = self._hosts(nodes)
         overlaps = self._overlaps()
@@ -1114,7 +1039,7 @@ class Assembler:
             members,
             points,
             absorbed,
-            distances,
+            shared.distances,
             hosts,
             overlaps,
             names,
@@ -1185,17 +1110,17 @@ class Assembler:
             nodes.schema.get_field_index("depth"), "depth", pa.array(depth)
         )
 
-    def _node_distances(self, nodes: pa.Table) -> pa.Table:
-        """The distance of each node's primary, else its system distance."""
-        primary = nodes["primary"].to_numpy()
-        distance = self.facts.column("distance", primary)
-        donated = {key: d for key, _, _, d in self.distances}
-        for at in np.flatnonzero(~np.isfinite(distance)).tolist():
-            distance[at] = donated.get(int(primary[at]), np.nan)
+    def _node_distances(self, nodes: pa.Table, shared: np.ndarray) -> pa.Table:
+        """Each node's shared distance, else the distance of its primary."""
+        own = self.facts.column("distance", nodes["primary"].to_numpy())
         return nodes.set_column(
             nodes.schema.get_field_index("distance"),
             "distance",
-            pa.array(distance, pa.float64(), from_pandas=True),
+            pa.array(
+                np.where(np.isfinite(shared), shared, own),
+                pa.float64(),
+                from_pandas=True,
+            ),
         )
 
     def _members_table(self) -> pa.Table:

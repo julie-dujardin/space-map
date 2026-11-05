@@ -25,6 +25,7 @@ from space_map_data.extrasolar.sources import wikidata
 from space_map_data.extrasolar.sources.distances import REYLE_2021
 from space_map_data.extrasolar.sources.gaia import GAIA_DR3
 from space_map_data.extrasolar.sources.hipparcos import HIPPARCOS
+from space_map_data.extrasolar.sources.literature import LITERATURE
 from space_map_data.extrasolar.sources.simbad import SIMBAD, UNSEEN, SimbadList
 from space_map_data.extrasolar.systems import assemble, drawn
 from space_map_data.extrasolar.systems import ingest as systems_ingest
@@ -42,6 +43,7 @@ from space_map_data.extrasolar.tables import (
     CROSS_ID,
     METADATA,
     POINT_SOURCE,
+    STAR_SYSTEMS,
     SYSTEM,
     SYSTEM_TABLE,
     merge_by_source_order,
@@ -461,9 +463,10 @@ class TestSystemsIngest:
         point = table(registry, POINT_SOURCE.slug)
         rows = {row["id"]: row for row in point.to_pylist()}
         a, b, p2 = ids_of(registry, ["71683", "71681", "1002"])
-        # α Cen A and B keep the distance of the group rule.
+        # The group rule picks the vote of α Cen A and B. The system places them.
         for star in (a, b):
-            assert rows[star]["distance_source"] == REYLE_2021.name
+            assert rows[star]["distance_source"] == "star-systems"
+            assert rows[star]["distance"] == pytest.approx(REYLE["71683"], rel=1e-3)
         placed = placement(point)
         at = {row: i for i, row in enumerate(point["id"].to_pylist())}
         assert placed.by_group[at[a]] and placed.by_group[at[b]]
@@ -537,6 +540,171 @@ class TestMscComponents:
         ingest(root, stars, msc_rows=rows)
         found = Registry(root).lookup("msc", "component", [f"{w} A", f"{w} B"])
         assert found.tolist() == [*ids_of(Registry(root), ["2001"]), 0]
+
+
+class TestSharedDistance:
+    """The real engine merges the star-systems rows into the distance group."""
+
+    def ingested(self, tmp_path, **more) -> tuple[Registry, dict[int, dict]]:
+        root = tmp_path / "registry"
+        ingest(root, **more)
+        registry = Registry(root)
+        rows = table(registry, "point-source").to_pylist()
+        return registry, {row["id"]: row for row in rows}
+
+    def test_the_stars_take_the_distance_of_their_system(self, tmp_path):
+        registry, rows = self.ingested(tmp_path)
+        first, second = ids_of(registry, ["1003", "1004"])
+        for row in (rows[first], rows[second]):
+            assert row["distance_source"] == STAR_SYSTEMS
+            assert row["distance_method"] == "system"
+            assert row["distance_lower"] <= row["distance"] <= row["distance_upper"]
+        assert rows[first]["distance"] == pytest.approx(100.0, abs=0.01)
+
+    def test_a_star_keeps_its_own_parallax(self, tmp_path):
+        registry, rows = self.ingested(tmp_path)
+        (first,) = ids_of(registry, ["1003"])
+        assert rows[first]["parallax"] == pytest.approx(10.0)
+        assert rows[first]["parallax_error"] == pytest.approx(0.2)
+
+    def test_the_placement_reads_the_system(self, tmp_path):
+        """Each star that had a parallax still has a place, by its system."""
+        registry, _ = self.ingested(tmp_path)
+        (first,) = ids_of(registry, ["1003"])
+        point = table(registry, "point-source")
+        where = placement(point)
+        at = point["id"].to_pylist().index(first)
+        assert where.by_group[at]
+        assert not where.by_parallax[at]
+
+    def test_a_star_with_no_parallax_gets_a_place(self, tmp_path):
+        """B of a pair of the MSC has no parallax: A's system places it."""
+        registry, rows = self.ingested(tmp_path)
+        (second,) = ids_of(registry, ["1002"])
+        assert rows[second]["distance_source"] == STAR_SYSTEMS
+        assert rows[second]["distance"] == pytest.approx(50.0, abs=0.01)
+
+    def test_a_better_group_gives_its_vote(self, tmp_path):
+        """α Cen A and B vote with Reylé's distance, as the placement picks it.
+        Their Hipparcos parallaxes would give 1.32 pc."""
+        registry, rows = self.ingested(tmp_path)
+        first, second = ids_of(registry, ["71683", "71681"])
+        for row in (rows[first], rows[second]):
+            assert row["distance_source"] == STAR_SYSTEMS
+            assert row["distance"] == pytest.approx(REYLE["71683"], rel=1e-3)
+
+    def test_the_system_row_has_the_distance(self, tmp_path):
+        registry, _ = self.ingested(tmp_path)
+        (first,) = ids_of(registry, ["1003"])
+        system = table(registry, SYSTEM.slug).to_pylist()
+        root = next(row for row in system if row["primary"] == first)
+        assert root["distance"] == pytest.approx(100.0, abs=0.01)
+
+    def test_a_paper_stays(self, tmp_path):
+        """The merge keeps the paper for its star. The other star takes it."""
+
+        def paper_rows(run: IngestRun) -> pa.Table:
+            return rows_for(
+                run,
+                LITERATURE,
+                {
+                    "catalogue_id": ["a paper"],
+                    "mint": [False],
+                    "match_ra": [30.0],
+                    "match_dec": [5.0],
+                    "claims": [[dict(zip(CROSS_ID.names, ("hip", "2007", "1003")))]],
+                    "distance": [101.0],
+                    "distance_lower": [100.0],
+                    "distance_upper": [102.0],
+                    "distance_method": ["parallax"],
+                },
+            )
+
+        registry, rows = self.ingested(tmp_path, passes=((LITERATURE, paper_rows),))
+        first, second = ids_of(registry, ["1003", "1004"])
+        assert rows[first]["distance_source"] == LITERATURE.name
+        assert rows[first]["distance"] == pytest.approx(101.0)
+        assert rows[second]["distance_source"] == STAR_SYSTEMS
+        assert rows[second]["distance"] == pytest.approx(101.0, abs=0.01)
+
+    def test_a_second_ingest_repeats_the_first(self, tmp_path):
+        """A run reads its own passes, so a committed star-systems row feeds no
+        vote. α Cen A and B vote with Reylé's distance, which that row hides."""
+        columns = ("distance", "distance_lower", "distance_upper", "distance_source")
+
+        def distances(rows: dict[int, dict]) -> dict[int, tuple]:
+            return {i: tuple(row[c] for c in columns) for i, row in rows.items()}
+
+        registry, first = self.ingested(tmp_path)
+        first_system = table(registry, SYSTEM.slug)["distance"].to_pylist()
+        registry, second = self.ingested(tmp_path)
+        assert distances(second) == distances(first)
+        assert table(registry, SYSTEM.slug)["distance"].to_pylist() == first_system
+        for found in ids_of(registry, ["71683", "71681"]):
+            assert second[found]["distance_source"] == STAR_SYSTEMS
+            assert second[found]["distance"] == pytest.approx(REYLE["71683"], rel=1e-3)
+
+    def test_a_star_with_no_system_keeps_its_own_place(self, tmp_path):
+        stars = STARS | {"2001": (50.0, 20.0, 9.0, 15.0, 0.2)}
+        registry, rows = self.ingested(tmp_path, stars=stars)
+        (lone,) = ids_of(registry, ["2001"])
+        assert rows[lone]["distance"] is None
+
+    def test_an_orbit_parallax_votes(self, tmp_path):
+        """The orbit rows of a Gaia pass reach the vote, as in the render tree.
+        Its single-star parallax would give 98 pc."""
+        first, second = source_id(60.0, 10.0, 1), source_id(60.002, 10.0, 2)
+
+        def gaia_orbit_rows(run: IngestRun) -> pa.Table:
+            ra, dec = [60.0, 60.002], [10.0, 10.0]
+            return rows_for(
+                run,
+                GAIA_DR3,
+                {
+                    "catalogue_id": [str(first), str(second)],
+                    "mint": [True, True],
+                    "match_ra": ra,
+                    "match_dec": dec,
+                    "match_mag": [10.0, 11.0],
+                    "match_error": [0.001, 0.001],
+                    "ra": ra,
+                    "dec": dec,
+                    "parallax": [10.0, 10.4],
+                    "parallax_error": [0.1, 0.1],
+                    "fidelity_v2": [0.9, 0.9],
+                    "epoch": [2016.0, 2016.0],
+                    "class": ["star", "star"],
+                    "nss_solution_type": ["Orbital", None],
+                    "parallax_nss": [10.5, None],
+                    "parallax_nss_error": [0.1, None],
+                },
+            )
+
+        pair = el_badry_pairs(
+            pa.table(
+                {
+                    "source_id1": [first],
+                    "source_id2": [second],
+                    "ra1": [60.0],
+                    "dec1": [10.0],
+                    "ra2": [60.002],
+                    "dec2": [10.0],
+                    "parallax1": [10.0],
+                    "parallax2": [10.4],
+                    "phot_g_mean_mag1": [10.0],
+                    "phot_g_mean_mag2": [11.0],
+                    "sep_arcsec": [7.1],
+                    "R_chance_align": [0.01],
+                    "binary_type": ["MSMS"],
+                }
+            )
+        )
+        registry, rows = self.ingested(
+            tmp_path, passes=((GAIA_DR3, gaia_orbit_rows),), el_badry=pair
+        )
+        ids = registry.lookup("gaia", "dr3", [str(first), str(second)]).tolist()
+        for found in ids:
+            assert rows[found]["distance"] == pytest.approx(1000 / 10.45, abs=0.01)
 
 
 class TestHostInNoTree:

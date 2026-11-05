@@ -6,6 +6,7 @@ from collections import Counter
 import pyarrow as pa
 
 from space_map_data.extrasolar.systems import assemble
+from space_map_data.extrasolar.systems.distance import DISTANCES
 from space_map_data.extrasolar.systems.groups import (
     COMBINED,
     GROUP_LEAVES,
@@ -176,7 +177,7 @@ class TestGroupKind:
             assemble.MEMBERS,
             assemble.POINTS,
             assemble.ABSORBED,
-            assemble.DISTANCES,
+            DISTANCES,
             assemble.HOSTS,
             assemble.OVERLAPS,
             assemble.NAMES,

@@ -279,11 +279,9 @@ class TestTables:
                     JMDC.name,
                 }
         distance = {g.name: g for g in POINT_SOURCE.groups}["distance"]
-        # The system distance comes last.
-        assert distance.sources == (
-            *(source.name for source in DISTANCE_SOURCES),
-            STAR_SYSTEMS,
-        )
+        # A paper is chosen for its star. Under it the system outranks the rest.
+        paper, *rest = [source.name for source in DISTANCE_SOURCES]
+        assert distance.sources == (paper, STAR_SYSTEMS, *rest)
         # A planet host shows the name that its planets' designations use.
         # A catalogue number of Wikidata comes just before the Gaia id.
         assert METADATA.groups[0].sources == (

@@ -24,7 +24,7 @@ from space_map_data.export.extrasolar.build import (
 )
 from space_map_data.export.extrasolar.container import Column
 from space_map_data.export.extrasolar.reader import ExportReader, NodeInfo
-from space_map_data.extrasolar import families, ids
+from space_map_data.extrasolar import families, ids, placement
 from space_map_data.extrasolar.registry import Registry, RegistryBusy
 from space_map_data.extrasolar.sources.hipparcos import g_estimate, propagate
 from space_map_data.extrasolar.tables import (
@@ -468,7 +468,7 @@ class TestExport:
             ("point-source", render.COLUMNS),
             ("binary-orbit", ("id",)),
             ("binary-orbit", None),
-            ("binary-orbit", render.ORBIT_COLUMNS),
+            ("binary-orbit", placement.ORBIT_PARALLAX_COLUMNS),
             ("system", ("id",)),
             ("system", None),
             ("system", tiles.HELD_COLUMNS),
@@ -936,7 +936,7 @@ def _point_rows(rows: list[dict], orbits: pa.Table | None = None) -> pa.Table:
     table = pa.Table.from_pylist(
         [row | {"id": k} for k, row in enumerate(rows, 1)], schema=POINT_SOURCE.schema
     )
-    return render.with_orbit_parallax(table.select(list(render.COLUMNS)), orbits)
+    return placement.with_orbit_parallax(table.select(list(render.COLUMNS)), orbits)
 
 
 def _distances(rows: dict[str, np.ndarray]) -> dict[int, float]:
@@ -962,6 +962,17 @@ class TestRenderRows:
         assert counts["placed by hunt-reffert-2024"] == 1
         assert counts["dropped: no distance, gaia-dr3 astrometry"] == 1
         assert counts["rendered"] == 2
+
+    def test_the_system_comes_before_the_parallax(self):
+        system = {"distance_source": "star-systems", "distance_method": "system"}
+        rows, counts = render.render_rows(
+            _point_rows(
+                [star(10.0, 5.0, 20.0, distance=51.0) | system, star(11.0, 5.0, 20.0)]
+            )
+        )
+        assert _distances(rows) == pytest.approx({1: 51.0, 2: 50.0})
+        assert counts["placed by star-systems"] == 1
+        assert counts["placed by parallax"] == 1
 
     def test_a_distance_from_a_paper_comes_before_the_parallax(self):
         paper = {"distance_source": "literature", "distance_method": "expansion"}

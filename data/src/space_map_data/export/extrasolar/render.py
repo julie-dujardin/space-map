@@ -19,9 +19,10 @@ magnitude reaches RANGE_LIMIT_MAG. The rows of a node file are in order of
 range, the largest first, then by ID.
 
 A star renders at the distance that `extrasolar.placement` gives it: a
-distance from a paper, a trusted 5σ parallax, the distance group, the distance
-of a planet host's exoplanet catalogue, then a 5σ parallax with fidelity under
-0.5. The ingest report uses the same rule. The parallax of an astrometric
+distance from a paper, the distance of its star system, a trusted 5σ parallax,
+the distance group, the distance of a planet host's exoplanet catalogue, then a
+5σ parallax with fidelity under 0.5. The ingest report uses the same rule. The
+parallax of an astrometric
 orbit solution in table 2, where it is over 5 times its error, stands for the
 parallax where a parallax places a star, and for the catalogue distance of a
 planet host: the orbit fit takes out the motion of the light centre. The
@@ -42,16 +43,13 @@ from pathlib import Path
 
 import numpy as np
 import pyarrow as pa
-import pyarrow.compute as pc
 
 from space_map_data.export.extrasolar import container
 from space_map_data.export.extrasolar.container import Column, Written
 from space_map_data.extrasolar import placement
 from space_map_data.extrasolar.registry import Registry
-from space_map_data.extrasolar.sources.gaia_orbits import ASTROMETRIC
 from space_map_data.extrasolar.sources.hipparcos import g_estimate, propagate
 from space_map_data.extrasolar.tables import BINARY_ORBIT, POINT_SOURCE
-from space_map_data.utils.arrays import find_sorted
 
 logger = logging.getLogger(__name__)
 
@@ -204,9 +202,6 @@ COLUMNS = (
     "host_teff",
     "host_star_source",
 )
-ORBIT_COLUMNS = ("id", "nss_solution_type", "parallax_nss", "parallax_nss_error")
-# The parallax of an astrometric orbit solution, null for any other star.
-ORBIT_PARALLAX = ("orbit_parallax", "orbit_parallax_error")
 # Arrays of one render row, in the scratch files.
 ROW_ARRAYS = {
     "id": np.int64,
@@ -291,66 +286,15 @@ def _floats(table: pa.Table, name: str) -> np.ndarray:
     return table[name].to_numpy().astype(np.float64)
 
 
-def with_orbit_parallax(table: pa.Table, orbits: pa.Table | None) -> pa.Table:
-    """Point source rows with ORBIT_PARALLAX from the table-2 rows `orbits`."""
-    ids = table["id"].to_numpy()
-    at = np.full(ids.size, -1, np.int64)
-    if orbits is not None and orbits.num_rows:
-        astrometric = pc.is_in(
-            orbits["nss_solution_type"], value_set=pa.array(sorted(ASTROMETRIC))
-        )
-        orbits = orbits.filter(astrometric)
-        order = np.argsort(orbits["id"].to_numpy())
-        orbits = orbits.take(pa.array(order))
-        at = find_sorted(orbits["id"].to_numpy(), ids)
-    index = pa.array(at, mask=at < 0)
-    for name, source in zip(ORBIT_PARALLAX, ORBIT_COLUMNS[2:]):
-        values = (
-            pa.nulls(ids.size, pa.float32())
-            if orbits is None or not orbits.num_rows
-            else orbits[source].take(index)
-        )
-        table = table.append_column(name, values)
-    return table
-
-
 def region_table(registry: Registry, region: int) -> pa.Table:
     """The Point source rows of a region that `render_rows` reads."""
     table = registry.read_table("point-source", region, list(COLUMNS))
     if table is None:
         table = POINT_SOURCE.schema.empty_table().select(list(COLUMNS))
-    orbits = registry.read_table(BINARY_ORBIT.slug, region, list(ORBIT_COLUMNS))
-    return with_orbit_parallax(table, orbits)
-
-
-def distance_parallax(table: pa.Table) -> tuple[np.ndarray, np.ndarray]:
-    """The parallax (mas) that gives each star its distance, and whether it is
-    the orbit solution's. An orbit parallax under 5 times its error gives none."""
-    orbit = _floats(table, "orbit_parallax")
-    used = orbit / _floats(table, "orbit_parallax_error") > placement.MIN_PARALLAX_SNR
-    return np.where(used, orbit, _floats(table, "parallax")), used
-
-
-def star_distance(
-    table: pa.Table, where: placement.Placement
-) -> tuple[np.ndarray, np.ndarray]:
-    """The distance (pc) of each row that `where` places, NaN for the others,
-    and whether an orbit parallax gives it. A 5σ orbit parallax stands for the
-    parallax where a parallax places the row, and for the catalogue distance
-    of a planet host."""
-    parallax, orbit = distance_parallax(table)
-    from_parallax = where.by_parallax | where.by_suspect | (where.by_catalogue & orbit)
-    with np.errstate(divide="ignore", invalid="ignore"):
-        distance = np.select(
-            [from_parallax, where.by_group, where.by_catalogue],
-            [
-                1000.0 / parallax,
-                _floats(table, "distance"),
-                _floats(table, "host_distance"),
-            ],
-            np.nan,
-        )
-    return distance, orbit & from_parallax
+    orbits = registry.read_table(
+        BINARY_ORBIT.slug, region, list(placement.ORBIT_PARALLAX_COLUMNS)
+    )
+    return placement.with_orbit_parallax(table, orbits)
 
 
 def _valid(table: pa.Table, name: str) -> np.ndarray:
@@ -410,7 +354,7 @@ def render_rows(table: pa.Table) -> tuple[dict[str, np.ndarray], Counter]:
         (placed & host & ~bright).sum()
     )
     keep = placed & (bright | host)
-    distance, orbit = star_distance(table, where)
+    distance, orbit = placement.star_distance(table, where)
     how = table["distance_source"].to_numpy(zero_copy_only=False).astype(object)
     how[where.by_catalogue] = CATALOGUE_DISTANCE
     # An orbit parallax measures the distance as a parallax does.

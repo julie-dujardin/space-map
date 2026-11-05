@@ -383,11 +383,14 @@ class TestCastor:
         inner = dict(zip(entries["letter"].to_pylist(), entries["inner"].to_pylist()))
         assert inner == {"Ca": "Cab", "Cb": "Cab", "Cc": None}
 
-    def test_castor_a_takes_the_system_distance(self):
+    def test_a_star_with_no_parallax_takes_the_distance_of_its_node(self):
+        """No star gives Castor B a place of its own, as in the registry."""
         systems = self.systems()
-        rows = systems.distances.to_pylist()
-        assert [(r["key"], r["donor"]) for r in rows] == [(101, 100)]
-        assert rows[0]["distance"] == 1000 / 66.0
+        rows = {r["key"]: r["distance"] for r in systems.distances.to_pylist()}
+        assert rows.keys() == {100, 101, 102}
+        node = systems.nodes.filter(pc.equal(systems.nodes["key"], 101))
+        assert rows[101] == pytest.approx(node["distance"][0].as_py())
+        assert np.isfinite(rows[101])
 
 
 class TestProcyon:
@@ -425,8 +428,14 @@ class TestProcyon:
         assert points[110]["spectral_type_moved"] is True
         assert points[110]["spectral_type"] is None
         assert points[111]["spectral_type"] == "DQZ"
-        # Procyon B has no distance: it takes Procyon A's.
-        assert systems.distances["key"].to_pylist() == [111]
+        # Procyon B has no distance: it takes the system's, Procyon A's vote.
+        rows = dict(
+            zip(
+                systems.distances["key"].to_pylist(),
+                systems.distances["distance"].to_pylist(),
+            )
+        )
+        assert rows[111] == pytest.approx(1000 / 284.6)
 
     def test_an_unmatched_entry_that_is_a_point(self):
         """WDS B finds no object; the MSC has it as a point. The orbit moved B
@@ -1883,13 +1892,12 @@ class TestCommonProperMotion:
 
 class TestParallaxVeto:
     """A physical member leaves when its parallax and its primary's clearly
-    disagree, unless it is an orbit pair or a point that holds several stars."""
+    disagree, unless it is an orbit pair."""
 
     def reduced(
         self,
         parallax: float,
         known: list[str] | None = None,
-        close: frozenset[int] = frozenset(),
         astrometry: str = "gaia-dr3",
     ) -> Reduced:
         table = wds_tree(
@@ -1917,7 +1925,7 @@ class TestParallaxVeto:
         facts = Facts(pa.Table.from_pylist([a, b], schema=FACTS))
         out = Reduced()
         candidates = [[], [(100, 2)], [(101, 2)]]
-        TreeReducer(table, 0, candidates, facts, 0, out, close=close).run()
+        TreeReducer(table, 0, candidates, facts, 0, out).run()
         return out
 
     def test_a_physical_member_leaves(self):
@@ -1936,17 +1944,12 @@ class TestParallaxVeto:
         (group,) = self.reduced(9.767, known=[VISUAL, VISUAL_ORBIT]).groups
         assert group.keys == frozenset({100, 101})
 
-    def test_a_close_pair_is_exempt(self):
-        """A Gaia orbit or a SIMBAD close type shows 101 as a close pair."""
-        (group,) = self.reduced(9.767, close=frozenset({101})).groups
-        assert group.keys == frozenset({100, 101})
-
     def test_only_own_astrometry(self):
         (group,) = self.reduced(9.767, astrometry="simbad").groups
         assert group.keys == frozenset({100, 101})
 
-    def test_a_point_that_holds_several_stars_is_exempt(self):
-        """B's point holds Ba and Bb."""
+    def test_a_point_that_holds_several_stars_is_no_exemption(self):
+        """B's point holds Ba and Bb, and leaves with them."""
         table = wds_tree(
             [
                 ("AB", -1, None, None, None),
@@ -1962,13 +1965,13 @@ class TestParallaxVeto:
         out = Reduced()
         candidates = [[], [(100, 2)], [], [(101, 2)], []]
         TreeReducer(table, 0, candidates, facts, 0, out).run()
-        (group,) = out.groups
-        assert group.keys == frozenset({100, 101})
+        assert out.groups == []
         (interior,) = out.interiors
         assert interior.key == 101
+        assert out.counts[f"{WDS}: physical members that the parallaxes veto"] == 1
 
     def test_el_badry_pairs(self):
-        """The veto drops an El-Badry pair, except a star with a Gaia orbit."""
+        """The veto drops an El-Badry pair."""
         facts = Facts(
             pa.Table.from_pylist(
                 [
@@ -1981,69 +1984,16 @@ class TestParallaxVeto:
         )
         first = np.array([100, 100, 100, 0], np.int64)
         second = np.array([101, 102, 101, 101], np.int64)
-        found = vetoed_pairs(facts, first, second, frozenset())
+        found = vetoed_pairs(facts, first, second)
         assert found.tolist() == [True, False, True, False]
-        found = vetoed_pairs(facts, first, second, frozenset({101}))
-        assert found.tolist() == [False, False, False, False]
 
     def test_el_badry_pairs_with_no_facts(self):
         found = vetoed_pairs(
             Facts(FACTS.empty_table()),
             np.array([0, 5], np.int64),
             np.array([0, 0], np.int64),
-            frozenset(),
         )
         assert found.tolist() == [False, False]
-
-    def test_several_stars_in_another_tree(self):
-        """101 holds Xa and Xb in the first tree, and one star in the second.
-        So the veto applies in the second tree."""
-        table = wds_tree(
-            [
-                ("XY", -1, None, None, None),
-                ("Xa", 0, None, 8.0, None),
-                ("Xb", 0, 0.1, 8.5, None),
-                ("AB", -1, None, None, None),
-                ("A", 3, None, 7.0, None),
-                ("B", 3, 1000.0, 8.0, None),
-            ]
-        )
-        a = fact(100, 183.7, -55.79, 7.0, parallax=8.735)
-        b = fact(101, 183.7, -55.79 + 1000 / 3600, 8.0, parallax=9.767)
-        facts = Facts(pa.Table.from_pylist([a, b], schema=FACTS))
-        out = Reduced()
-        candidates = [[], [(101, 2)], [], [], [(100, 2)], [(101, 2)]]
-        TreeReducer(table, 0, candidates, facts, 0, out).run()
-        assert out.groups == []
-        assert [interior.key for interior in out.interiors] == [101]
-        assert out.counts[f"{WDS}: physical members that the parallaxes veto"] == 1
-
-    def test_several_stars_in_an_abandoned_pass(self):
-        """A and B reach X, and B keeps it, then leaves. So the members pass
-        three times. M holds Ma and Mb on Q and leaves in each pass. N holds
-        one star on Q, so the veto applies to N."""
-        table = wds_tree(
-            [
-                ("ABMN", -1, None, None, None),
-                ("A", 0, None, 5.0, None),
-                ("B", 0, 1.1, 5.3, UNVERIFIED),
-                ("N", 0, 1000.0, 8.0, None),
-                ("M", 0, 1000.0, 8.0, UNVERIFIED),
-                ("Ma", 4, None, 8.0, None),
-                ("Mb", 4, 0.1, 8.5, None),
-            ]
-        )
-        rows = [
-            fact(100, 10.0, 10.0, 5.3, parallax=10.0),
-            fact(103, 10.0, 10.0 + 1000 / 3600, 8.0, parallax=13.0),
-        ]
-        facts = Facts(pa.Table.from_pylist(rows, schema=FACTS))
-        out = Reduced()
-        candidates = [[], [(100, 2)], [(100, 2)], [(103, 2)], [], [(103, 2)], []]
-        TreeReducer(table, 0, candidates, facts, 0, out).run()
-        assert out.groups == []
-        assert [interior.key for interior in out.interiors] == [103]
-        assert out.counts[f"{WDS}: physical members that the parallaxes veto"] == 1
 
 
 class TestElBadryVeto:
@@ -2090,14 +2040,14 @@ class TestElBadryVeto:
         (text,) = events["text"].to_pylist()
         assert "100 8.735" in text and "101 9.767" in text
 
-    def test_a_close_type_is_exempt(self):
+    def test_a_close_type_is_no_exemption(self):
         systems = self.systems(otype="EB*")
-        assert systems.counts[f"{EL_BADRY}: pairs that the parallaxes veto"] == 0
+        assert systems.counts[f"{EL_BADRY}: pairs that the parallaxes veto"] == 1
 
-    def test_a_point_with_an_interior_is_exempt(self):
+    def test_a_point_with_an_interior_is_no_exemption(self):
         """WDS B is inside the point of A, so the point holds two stars."""
         systems = self.systems(wds=True)
-        assert systems.counts[f"{EL_BADRY}: pairs that the parallaxes veto"] == 0
+        assert systems.counts[f"{EL_BADRY}: pairs that the parallaxes veto"] == 1
 
 
 class TestGroupPrimary:

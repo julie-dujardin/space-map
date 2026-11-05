@@ -65,6 +65,11 @@ FACTS = pa.schema(
         ("ruwe", pa.float32()),
         # Parsecs where the object renders, by `placement`, else null.
         ("distance", pa.float64()),
+        # What places it, in the render tree's order, as a parallax in mas: the
+        # error that weighs it and its rank (PAPER, PARALLAX, OTHER), else null.
+        ("vote", pa.float64()),
+        ("vote_error", pa.float64()),
+        ("vote_rank", pa.int8()),
         ("spectral_type", pa.string()),
         ("non_single_star", pa.int16()),
         ("name", pa.string()),
@@ -86,6 +91,10 @@ MATCH = pa.schema(
         ("match_exclude", pa.list_(pa.int64())),
     ]
 )
+# The ranks of a vote for a system's distance, best first. PARALLAX holds a
+# measured parallax, of the star's own or of its distance group. OTHER holds a
+# parallax that fidelity flags and a distance from a prior or a group of stars.
+PAPER, PARALLAX, OTHER = 0, 1, 2
 GAIA_ASTROMETRY = frozenset({"gaia-dr3", "gaia-dr3-named"})
 HIPPARCOS_ASTROMETRY = frozenset({"hipparcos-2007", "hipparcos-1997"})
 OWN_ASTROMETRY = GAIA_ASTROMETRY | HIPPARCOS_ASTROMETRY

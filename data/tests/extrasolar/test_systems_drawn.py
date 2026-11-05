@@ -17,6 +17,7 @@ from space_map_data.extrasolar.exoplanets.catalogues import OEC
 from space_map_data.extrasolar.exoplanets.table import default_node
 from space_map_data.extrasolar.systems import assemble, drawn, elements, orbits
 from space_map_data.extrasolar.systems.assemble import Systems
+from space_map_data.extrasolar.systems.distance import DISTANCES
 from space_map_data.extrasolar.systems.ingest import (
     _held_rows,
     _node_names,
@@ -51,7 +52,7 @@ def _systems(
         pa.Table.from_pylist(members, schema=assemble.MEMBERS),
         pa.Table.from_pylist(list(points), schema=assemble.POINTS),
         assemble.ABSORBED.empty_table(),
-        assemble.DISTANCES.empty_table(),
+        DISTANCES.empty_table(),
         assemble.HOSTS.empty_table(),
         assemble.OVERLAPS.empty_table(),
         pa.Table.from_pylist(list(names), schema=assemble.NAMES),

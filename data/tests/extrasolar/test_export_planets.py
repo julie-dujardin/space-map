@@ -440,6 +440,23 @@ class TestHostsInTheTree:
         assert row["mag"] == pytest.approx(12.0 - 5 * math.log10(500.0) + 5, abs=1e-3)
         assert row["colour"] == pytest.approx(1.73 + (1.7 - 1.73) * 10 / 110, abs=1e-3)
 
+    def test_a_host_follows_its_system(self, tmp_path, out):
+        """The planets take the place that the system gives their host."""
+        system = {
+            "distance": 21.0,
+            "distance_source": "star-systems",
+            "distance_method": "system",
+        }
+        stars = [star(100.0, 20.0, 50.0, name="In a system") | HOST | system]
+        built = write_registry(tmp_path / "reg", stars, planets=[planet(0, 1)])
+        export_extrasolar(built.root, out, workers=1)
+        reader = ExportReader(out / "v1" / "x")
+        host = reader.system(built.ids[0])["hosts"][0]
+        assert host["placement"] == "star-systems"
+        assert host["distance"] == pytest.approx(21.0)
+        position = reader.planet_hosts()[built.ids[0]]["position"]
+        assert np.linalg.norm(position) == pytest.approx(21.0)
+
     def test_an_orbit_parallax_gives_the_distance(self, tmp_path, out):
         """A 5σ orbit parallax comes before the single-star parallax and the
         catalogue distance, and a host it places says parallax."""

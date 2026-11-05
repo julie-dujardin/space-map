@@ -16,6 +16,7 @@ import numpy as np
 from space_map_data.extrasolar.sky import separation as sky_separation
 from space_map_data.extrasolar.systems.resolve import (
     GAIA_ASTROMETRY,
+    HIPPARCOS_ASTROMETRY,
     OWN_ASTROMETRY,
     Fact,
 )
@@ -40,6 +41,10 @@ VETO_SHARE = 0.1
 # small. Scaled by the RUWE, the vetoes that go agree in RV 65% of the time, and
 # the ones that stay 12%. Skipping every veto over this RUWE frees 50%.
 MAX_RUWE = 1.4
+# The scale stops here. On pairs that RV shows real, a parallax gap stops growing
+# with the RUWE at about 3 raw errors. Pairs that a stop at 4 refutes agree in RV
+# 14% of the time, the chance level, and a stop at 3 refutes ρ Ori and δ Ser.
+MAX_SCALE = 4.0
 # The tidal radius of 2 M☉ is 1.7 pc (Jiang & Tremaine 2010).
 MAX_PARSEC = 2.0
 # km/s beyond an orbit plus EXCESS_SIGMA. Gaia radial velocities agree in 41%
@@ -111,9 +116,9 @@ def _motions_apart(first: Fact, second: Fact) -> tuple[float, float]:
 
 
 def veto_error(error: np.ndarray, ruwe: np.ndarray) -> np.ndarray:
-    """The parallax error that the veto reads."""
+    """The error that the veto and the motion test read."""
     with np.errstate(invalid="ignore"):
-        return np.where(ruwe > MAX_RUWE, error * ruwe, error)
+        return np.where(ruwe > MAX_RUWE, error * np.minimum(ruwe, MAX_SCALE), error)
 
 
 def parallaxes_disagree(
@@ -169,10 +174,18 @@ def projected(first: Fact, second: Fact) -> float:
     return _apart(first, second) * parsecs(first, second) / (1000 * PARSEC_SEPARATION)
 
 
+def _has_motion(fact: Fact) -> bool:
+    """Whether the motion of a point can refute a pair. A Hipparcos star with
+    no 5σ parallax has no distance to turn its motion into km/s."""
+    if fact.astrometry in HIPPARCOS_ASTROMETRY:
+        return fact.parallax > MIN_PARALLAX_SNR * fact.parallax_error
+    return fact.astrometry in GAIA_ASTROMETRY
+
+
 def excess(first: Fact, second: Fact) -> float:
     """km/s by which two points move apart beyond an orbit plus 3σ, NaN when
     unknown. Gaia's motions are not reliable under CLOSE_SEPARATION."""
-    if not {first.astrometry, second.astrometry} <= GAIA_ASTROMETRY:
+    if not (_has_motion(first) and _has_motion(second)):
         return math.nan
     distance = parsecs(first, second)
     separation = _apart(first, second)

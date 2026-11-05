@@ -14,8 +14,8 @@
    its primary's position. Its catalogue ids (the SIMBAD system object, WDS,
    MSC, the El-Badry pair) are its claims, so the next ingest keeps its ID. A
    point claims one of its own ids. The rows carry the System columns, the
-   class and the name of a node, and the system distance and the spectral
-   type of a star.
+   class and the name of a node, and the shared distance (`distance`) and the
+   spectral type of a star.
    A held star (`drawn`) mints an ID of the System table too, in the cell
    of its node. It claims its node's anchor and its tag in the node.
 3. `SystemsExtension` sets the links between IDs at the commit, when every
@@ -51,7 +51,11 @@ from space_map_data.extrasolar.exoplanets.ingest import Prepared
 from space_map_data.extrasolar.exoplanets.simbad import Simbad
 from space_map_data.extrasolar.ids import table_of
 from space_map_data.extrasolar.match import SYSTEM_KIND
-from space_map_data.extrasolar.placement import COLUMNS, placement
+from space_map_data.extrasolar.placement import (
+    COLUMNS,
+    ORBIT_PARALLAX_COLUMNS,
+    placement,
+)
 from space_map_data.extrasolar.registry import (
     LIVE,
     STATUS_CODES,
@@ -108,6 +112,7 @@ from space_map_data.extrasolar.systems.wds import (
     WdsCatalogue,
 )
 from space_map_data.extrasolar.tables import (
+    BINARY_ORBIT,
     CROSS_ID,
     METADATA,
     POINT_SOURCE,
@@ -194,6 +199,22 @@ def _with_groups(table: TableDef, wanted: frozenset[str]) -> TableDef:
 
 
 FACT_POINT = _with_groups(POINT_SOURCE, FACT_COLUMNS)
+# The group's other columns are large, and no fact reads them.
+FACT_ORBIT = TableDef(
+    None,
+    BINARY_ORBIT.slug,
+    tuple(
+        replace(
+            group,
+            columns=tuple(
+                column
+                for column in group.columns
+                if column.name in ORBIT_PARALLAX_COLUMNS
+            ),
+        )
+        for group in BINARY_ORBIT.groups
+    ),
+)
 # The columns of the star-systems rows in the tables.
 SOURCE_FIELDS = tuple(
     column
@@ -202,7 +223,11 @@ SOURCE_FIELDS = tuple(
     for column in group.columns
 )
 FACT_METADATA = TableDef(None, METADATA.slug, METADATA.groups)
-FACT_FIELDS = [f.name for t in (FACT_POINT, FACT_METADATA) for f in t.group_fields]
+FACT_FIELDS = [
+    field.name
+    for table in (FACT_POINT, FACT_METADATA, FACT_ORBIT)
+    for field in table.group_fields
+]
 CLASS = _with_groups(METADATA, frozenset({"class"}))
 
 
@@ -404,9 +429,10 @@ class RunResolver:
         rows_of = self.run.pass_rows(keys, FACT_FIELDS)
         point = self.run.merged(FACT_POINT, rows_of)
         meta = self.run.merged(FACT_METADATA, rows_of)
+        orbits = self.run.merged(FACT_ORBIT, rows_of)
         self._own_ids(rows_of)
         del rows_of
-        table = point_facts(positions, point, meta)
+        table = point_facts(positions, point, meta, orbits)
         # A distance group places only a row that is seen.
         seen = placement(point).seen
         self.unseen = np.sort(point["id"].to_numpy()[~seen])
@@ -816,21 +842,37 @@ def pass_rows(
     counts["rows of resolved systems"] = resolved_rows.num_rows
     counts["rows of points that hold several stars"] = point_rows.num_rows
 
-    # The distances of the stars that no step places, of seen rows only.
+    # A flagged star that no other catalogue sees has no place to take.
     distances = systems.distances
     placed = ~np.isin(distances["key"].to_numpy(), resolver.unseen)
     counts["system distances left out: flagged stars that no other catalogue sees"] = (
         int((~placed).sum())
     )
+    distances = distances.filter(pa.array(placed))
+    distances = distances.take(pc.sort_indices(distances["key"]))
+    distance_keys = distances["key"].to_numpy()
     counts["entries whose id reaches an object that is not minted"] = _lost_entries(
         systems.members, resolver.lost
     )
-    by_key = _sorted(
-        distances["key"].to_numpy()[placed], distances["distance"].to_numpy()[placed]
-    )
+
+    def distance_columns(keys: np.ndarray) -> dict[str, pa.Array]:
+        """The distance group of the rows of `keys`, null where a key has none."""
+
+        def values(name: str) -> pa.Array:
+            found = map_sorted(distance_keys, distances[name].to_numpy(), keys, np.nan)
+            return pa.array(found, pa.float32(), from_pandas=True)
+
+        distance = map_sorted(
+            distance_keys, distances["distance"].to_numpy(), keys, np.nan
+        )
+        return {
+            "distance": pa.array(distance, pa.float32(), from_pandas=True),
+            "distance_lower": values("lower"),
+            "distance_upper": values("upper"),
+            "distance_method": _method(distance),
+        }
 
     def node_columns(rows: pa.Table, table: dict, keys: np.ndarray) -> pa.Table:
-        distance = map_sorted(*by_key, keys, np.nan)
         table |= {
             "match_ra": rows["ra"],
             "match_dec": rows["dec"],
@@ -850,8 +892,7 @@ def pass_rows(
                     "class",
                 )
             },
-            "distance": pa.array(distance, pa.float32(), from_pandas=True),
-            "distance_method": _method(distance),
+            **distance_columns(keys),
         }
         return pa.table(table)
 
@@ -859,16 +900,16 @@ def pass_rows(
         resolved_rows, resolved_table, np.zeros(resolved_rows.num_rows, np.int64)
     )
     point_part = node_columns(point_rows, point_table, point_rows["key"].to_numpy())
-    counts["points that hold several stars placed by system distance"] = int(
+    counts["points that hold several stars with a shared distance"] = int(
         pc.sum(pc.is_valid(point_part["distance"])).as_py() or 0
     )
 
-    # A star of a system: its system distance and its own spectral type.
+    # A star of a system: its shared distance and its own spectral type.
     single = points["node"].to_numpy()[point_index] == 0
     star_at = np.flatnonzero(single)
     star_keys = point_keys[star_at]
     star_points = points.take(pa.array(point_index[star_at]))
-    distance = map_sorted(*by_key, star_keys, np.nan)
+    star_distances = distance_columns(star_keys)
     moved = star_points["spectral_type_moved"].fill_null(False).to_numpy()
     star_table = {
         "catalogue_id": point_labels.take(pa.array(star_at)),
@@ -877,15 +918,16 @@ def pass_rows(
         "match_dec": fact(star_keys, "dec"),
         "match_mag": fact(star_keys, "mag"),
         "claims": _one_claim(point_claims.take(pa.array(star_at))),
-        "distance": pa.array(distance, pa.float32(), from_pandas=True),
-        "distance_method": _method(distance),
+        **star_distances,
         "composite_moved": pa.array(moved, mask=~moved),
         "member_spectral_type": pc.if_else(
             pa.array(moved), star_points["spectral_type"].combine_chunks(), None
         ),
     }
     counts["rows of stars"] = int(star_at.size)
-    counts["stars placed by system distance"] = int(np.isfinite(distance).sum())
+    counts["stars with a shared distance"] = (
+        len(star_keys) - star_distances["distance"].null_count
+    )
     counts["composite spectral types moved"] = int(moved.sum())
     parts = [resolved_part, point_part, pa.table(star_table)]
     held_labels = pa.array([], pa.string())
@@ -1184,7 +1226,7 @@ def _lost_entries(members: pa.Table, lost: pa.Array) -> int:
 
 
 def _method(distance: np.ndarray) -> pa.Array:
-    """The `distance_method` of the rows with a system distance, else null."""
+    """The `distance_method` of the rows with a shared distance, else null."""
     return pa.array(
         np.full(distance.size, SYSTEM_METHOD), pa.string(), mask=~np.isfinite(distance)
     )
@@ -1490,9 +1532,7 @@ def _with_ids(systems: Systems, node_id: IdMap, point_id: IdMap) -> Systems:
         systems.points,
         {"key": point_id, "node": node_id, "parent": node_id, "root": node_id},
     )
-    distances = mapped(
-        systems.distances, {"key": point_id, "node": node_id, "donor": point_id}
-    )
+    distances = mapped(systems.distances, {"key": point_id, "node": node_id})
     hosts = mapped(systems.hosts, {"node": node_id, "key": point_id})
     names = mapped(systems.names, {"node": node_id})
     return Systems(

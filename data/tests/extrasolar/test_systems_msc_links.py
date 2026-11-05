@@ -18,6 +18,7 @@ from space_map_data.extrasolar.systems.msc import (
 from space_map_data.extrasolar.systems.nodes import MSC, MSC_ID, WDS, WDS_ID
 from space_map_data.extrasolar.systems.parallax import (
     MAX_RUWE,
+    MAX_SCALE,
     disagree,
     unbound,
     veto_error,
@@ -544,8 +545,23 @@ class TestRuinedParallax:
         assert disagree(a, b)
 
     def test_veto_error(self):
-        found = veto_error(np.array([0.1, 0.1, 0.1]), np.array([1.4, 3.0, np.nan]))
-        assert found == pytest.approx([0.1, 0.3, 0.1])
+        found = veto_error(
+            np.full(4, 0.1), np.array([MAX_RUWE, 3.0, MAX_SCALE * 3, np.nan])
+        )
+        assert found == pytest.approx([0.1, 0.3, 0.1 * MAX_SCALE, 0.1])
+
+    def test_the_scale_stops(self):
+        """HD 2057 A has RUWE 18.4. × RUWE would keep its chance star C."""
+        a = one(gaia_star(A, 20.620, 0.477, 18.408))
+        b = one(gaia_star(B, 1.288, 0.025, 0.989, 221.3))
+        assert disagree(a, b)
+
+    def test_the_scale_goes_as_far_as_rho_ori(self):
+        """RUWE 4.31 beside a good partner, 6.9″ away: real, and at 5.4σ when the
+        scale stops at 3."""
+        a = one(gaia_star(A, 13.33, 0.31, 4.31))
+        b = one(gaia_star(B, 8.30, 0.04, 1.01, 6.88))
+        assert not disagree(a, b)
 
     def test_el_badry_pairs_read_the_same_error(self):
         table = facts(
@@ -555,7 +571,7 @@ class TestRuinedParallax:
             gaia_star(D, 13.662, 0.033, 1.0, 0.992),
         )
         first, second = np.array([A, C]), np.array([B, D])
-        found = vetoed_pairs(table, first, second, frozenset())
+        found = vetoed_pairs(table, first, second)
         assert found.tolist() == [False, True]
 
     def test_a_ruined_parallax_keeps_its_sky_place(self):
@@ -630,5 +646,5 @@ class TestRuinedParallax:
                 "name_source": pa.array([None, None], pa.string()),
             }
         )
-        found = point_facts(positions, point, meta)
+        found = point_facts(positions, point, meta, None)
         assert found["ruwe"].to_pylist() == [2.0, None]

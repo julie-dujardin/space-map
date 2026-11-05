@@ -9,6 +9,7 @@ import pytest
 
 from space_map_data.extrasolar.systems import assemble
 from space_map_data.extrasolar.systems.build import build
+from space_map_data.extrasolar.systems.distance import DISTANCES
 from space_map_data.extrasolar.systems.groups import GROUP_LEAVES
 from space_map_data.extrasolar.systems.msc import msc_nodes
 from space_map_data.extrasolar.systems.nodes import (
@@ -111,11 +112,83 @@ def one(row: dict):
     return found
 
 
+# Hipparcos 2007, and Gaia DR3 3322963321574168064.
+BETELGEUSE = fact(
+    22821649,
+    88.793062,
+    7.407114,
+    -0.137637,
+    "hipparcos-2007",
+    6.55,
+    parallax_error=0.83,
+    pmra=27.54,
+    pmdec=11.30,
+    pmra_error=1.03,
+    pmdec_error=0.65,
+)
+BETELGEUSE_D = fact(
+    559692563,
+    88.787908,
+    7.426378,
+    13.048707,
+    "gaia-dr3",
+    3.183362,
+    parallax_error=0.016219,
+    ruwe=1.026116,
+    pmra=7.731902,
+    pmdec=-37.707024,
+    pmra_error=0.018341,
+    pmdec_error=0.01381,
+)
+# Gaia DR3.
+HD_2057 = fact(
+    17491282,
+    6.288326,
+    48.047481,
+    7.412349,
+    "gaia-dr3",
+    20.620485,
+    parallax_error=0.477382,
+    ruwe=18.40777,
+    pmra=278.815948,
+    pmdec=17.66227,
+    pmra_error=0.4147,
+    pmdec_error=0.307279,
+)
+HD_2057_D = fact(
+    8070554962,
+    6.282687,
+    48.046725,
+    16.302095,
+    "gaia-dr3",
+    18.48851,
+    parallax_error=0.057195,
+    ruwe=1.081386,
+    pmra=280.285706,
+    pmdec=0.083786,
+    pmra_error=0.058742,
+    pmdec_error=0.043258,
+)
+HD_2057_C = fact(
+    554362183,
+    6.267015,
+    47.987683,
+    14.897724,
+    "gaia-dr3",
+    1.287876,
+    parallax_error=0.025131,
+    ruwe=0.988779,
+    pmra=-9.191151,
+    pmdec=-9.527093,
+    pmra_error=0.021202,
+    pmdec_error=0.018089,
+)
+
+
 def reduced(
     rows: Sequence[tuple],
     candidates: list[list[tuple[int, int]]],
     points: list[dict],
-    close: frozenset[int] = frozenset(),
     dropped: frozenset[int] = frozenset(),
     source: str = WDS,
     clusters: dict[int, frozenset[str]] | None = None,
@@ -148,7 +221,6 @@ def reduced(
         0,
         out,
         dropped=dropped,
-        close=close,
         clusters=clusters,
     ).run()
     return out
@@ -203,9 +275,22 @@ class TestUnbound:
         assert unbound(one(star(A, 0.0)), one(star(B, 3.9, pmra=30.0))) is None
         assert unbound(one(star(A, 0.0)), one(star(B, 4.1, pmra=30.0))) == MOTION
 
-    def test_only_gaia_motions_count(self):
-        second = star(B, 100.0, pmra=30.0, astrometry=min(HIPPARCOS_ASTROMETRY))
-        assert unbound(one(star(A, 0.0)), one(second)) is None
+    def test_a_hipparcos_motion_counts(self):
+        second = star(
+            B, 100.0, pmra=30.0, astrometry=min(HIPPARCOS_ASTROMETRY), parallax_error=1
+        )
+        assert unbound(one(star(A, 0.0)), one(second)) == MOTION
+
+    def test_a_hipparcos_star_with_no_measured_parallax_has_no_motion(self):
+        """Garnet Star, 0.55 ± 0.20 mas: no distance turns its motion into km/s."""
+        second = star(
+            B, 100.0, pmra=30.0, astrometry=min(HIPPARCOS_ASTROMETRY), parallax_error=3
+        )
+        assert math.isnan(excess(one(star(A, 0.0)), one(second)))
+
+    def test_another_position_has_no_motion(self):
+        second = star(B, 100.0, pmra=30.0, astrometry="simbad")
+        assert math.isnan(excess(one(star(A, 0.0)), one(second)))
 
 
 class TestWrongObject:
@@ -247,19 +332,47 @@ class TestBoundMembers:
         out = pair(star(B, 3 * PARSEC), 3 * PARSEC, [VISUAL, VISUAL_ORBIT])
         assert not out.groups
 
-    def test_a_point_that_holds_several_has_no_motion_test(self):
+    def test_a_point_that_holds_several_stars_meets_the_motion_test(self):
+        """WDS 05552+0724 D, at 72″ from Betelgeuse's Aa, Ab: 53 mas/yr apart."""
         rows = [
-            ("AB", -1, None, None, None),
+            ("AD", -1, None, None, None),
             ("A", 0, None, None, None),
-            ("B", 0, 100.0, [VISUAL], None),
+            ("Aa", 1, None, None, None),
+            ("Ab", 1, 0.1, [VISUAL], None),
+            ("D", 0, 71.7, [VISUAL], None),
         ]
-        out = reduced(
-            rows,
-            [[], [(A, 2)], [(B, 2)]],
-            [star(A, 0.0), star(B, 100.0, pmra=30.0)],
-            close=frozenset({B}),
-        )
-        assert [group.keys for group in out.groups] == [frozenset({A, B})]
+        candidates = [
+            [],
+            [],
+            [(BETELGEUSE["key"], 2)],
+            [],
+            [(BETELGEUSE_D["key"], 2)],
+        ]
+        out = reduced(rows, candidates, [BETELGEUSE, BETELGEUSE_D])
+        assert not out.groups
+        assert kinds(out) == [f"{UNBOUND}: {MOTION}"]
+        assert [interior.key for interior in out.interiors] == [BETELGEUSE["key"]]
+
+    def test_a_chance_star_leaves_a_ruined_primary(self):
+        """WDS 00251+4803: A has RUWE 18.4, D is its real companion, and C, the
+        most precise of the three, a field star at 1.29 mas."""
+        rows = [
+            ("ACD", -1, None, None, None),
+            ("A", 0, None, None, None),
+            ("D", 0, 13.8, [VISUAL], None),
+            ("C", 0, 121.0, [VISUAL], None),
+        ]
+        candidates = [
+            [],
+            [(HD_2057["key"], 2)],
+            [(HD_2057_D["key"], 2)],
+            [(HD_2057_C["key"], 2)],
+        ]
+        out = reduced(rows, candidates, [HD_2057, HD_2057_D, HD_2057_C])
+        assert [group.keys for group in out.groups] == [
+            frozenset({HD_2057["key"], HD_2057_D["key"]})
+        ]
+        assert kinds(out) == ["parallaxes disagree"]
 
     def test_a_wrong_object_stays_an_entry(self):
         """The catalogue lists a star at 5″, and the id reaches a star 3 pc
@@ -488,7 +601,6 @@ def wide_pair(
     clusters: dict[int, frozenset[str]],
     separation: float | None = None,
     known=None,
-    close: frozenset[int] = frozenset(),
 ) -> Reduced:
     rows = [
         ("AB", -1, None, None, None),
@@ -499,7 +611,6 @@ def wide_pair(
         rows,
         [[], [(first["key"], 2)], [(second["key"], 2)]],
         [first, second],
-        close=close,
         clusters=clusters,
     )
 
@@ -561,12 +672,6 @@ class TestClusterRule:
             HD_23924, HD_23912, {A: PLEIADES, B: frozenset({"NGC_1"})}, 179.7
         )
         assert [group.keys for group in out.groups] == [frozenset({A, B})]
-
-    def test_a_point_that_holds_several_leaves(self):
-        """The rule reads no astrometry that a close pair can throw off."""
-        out = wide_pair(KAPPA1_TAU, KAPPA2_TAU, TWO, 339.4, close=frozenset({A}))
-        assert not out.groups
-        assert kinds(out) == [f"{UNBOUND}: {IN_CLUSTER}"]
 
     def test_a_point_with_two_members_leaves(self):
         rows = [
@@ -1091,7 +1196,7 @@ class TestReport:
             assemble.MEMBERS,
             assemble.POINTS,
             assemble.ABSORBED,
-            assemble.DISTANCES,
+            DISTANCES,
             assemble.HOSTS,
             assemble.OVERLAPS,
             assemble.NAMES,

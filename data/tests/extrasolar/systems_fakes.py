@@ -12,7 +12,7 @@ from space_map_data.download.providers.stars import msc, orb6, sbx
 from space_map_data.extrasolar.sources.simbad import SimbadList, SimbadObject
 from space_map_data.extrasolar.systems import orbits
 from space_map_data.extrasolar.systems import wds as wds_source
-from space_map_data.extrasolar.systems.resolve import FACTS
+from space_map_data.extrasolar.systems.resolve import FACTS, OTHER, PARALLAX
 from space_map_data.extrasolar.systems.simbad import SimbadIndex
 from space_map_data.extrasolar.systems.wds import WdsCatalogue
 from tests.download.orbit_catalogue_files import (
@@ -88,6 +88,13 @@ def fact(
         "parallax_error": error,
         "distance": distance,
     }
+    if distance is not None:
+        vote = 1000 / distance
+        row |= {
+            "vote": vote,
+            "vote_error": vote if error is None else error,
+            "vote_rank": OTHER if error is None else PARALLAX,
+        }
     row |= values
     return row
 

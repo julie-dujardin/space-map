@@ -155,11 +155,7 @@ def report_lines(
     moved = int(pc.sum(systems.points["spectral_type_moved"]).as_py() or 0)
     lines.append(f"composite spectral types moved to their system: {moved:,}")
     lines += _name_moves(systems, examples)
-    lines.append(f"placements by system distance: {systems.distances.num_rows:,}")
-    for row in systems.distances.slice(0, examples).to_pylist():
-        lines.append(
-            f"  {row['key']} takes {row['distance']:.2f} pc from {row['donor']}"
-        )
+    lines.append(f"points that share a distance: {systems.distances.num_rows:,}")
     lines.append(
         f"SIMBAD components inside another point: {systems.absorbed.num_rows:,}"
     )

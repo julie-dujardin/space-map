@@ -68,7 +68,12 @@ from space_map_data.extrasolar.exoplanets.ingest import hosts_with_several_syste
 from space_map_data.extrasolar.exoplanets.table import SCHEMA, SLUG
 from space_map_data.extrasolar.exoplanets.wikidata import planet_qid
 from space_map_data.extrasolar.ids import cell_of
-from space_map_data.extrasolar.placement import placement
+from space_map_data.extrasolar.placement import (
+    ORBIT_PARALLAX_COLUMNS,
+    placement,
+    star_distance,
+    with_orbit_parallax,
+)
 from space_map_data.extrasolar.registry import ALIAS, LIVE, RETIRED, Registry
 from space_map_data.extrasolar.sky import region_of
 from space_map_data.extrasolar.tables import BINARY_ORBIT, METADATA, SYSTEM
@@ -239,7 +244,7 @@ def _host(
     meta: dict, point: dict, placed: str | None, distance: float | None, position
 ) -> dict:
     """The host record of a system file, before its planets. `distance` is
-    the render row's, from `render.star_distance`."""
+    the render row's, from `star_distance`."""
     catalogue = point["host_star_source"]
     teff, teff_source = _f32(point["host_teff"]), catalogue
     if teff is None:
@@ -291,11 +296,11 @@ def _places(job: HostJob) -> Places:
     if point_table is not None:
         point_table = point_table.filter(pc.is_in(point_table["id"], wanted))
         orbit_table = job.registry.read_table(
-            BINARY_ORBIT.slug, job.region, list(render.ORBIT_COLUMNS)
+            BINARY_ORBIT.slug, job.region, list(ORBIT_PARALLAX_COLUMNS)
         )
-        point_table = render.with_orbit_parallax(point_table, orbit_table)
+        point_table = with_orbit_parallax(point_table, orbit_table)
         where = placement(point_table)
-        distance, orbit = render.star_distance(point_table, where)
+        distance, orbit = star_distance(point_table, where)
         for at, row in enumerate(point_table.to_pylist()):
             out.points[row["id"]] = row
             # An orbit parallax measures the distance as a parallax does.

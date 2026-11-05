@@ -273,7 +273,7 @@ POINT_SOURCE = TableDef(
         # `dynamical` (parallax from a binary's orbit and masses), `model` (a
         # fit to the object) or `system` (of the star's system). A value from
         # a paper comes first: it is chosen for that star. The system distance
-        # comes last. Only a star that no other step places gets one.
+        # comes next: it is better than any one star's value (`placement`).
         ColumnGroup(
             "distance",
             (
@@ -287,13 +287,13 @@ POINT_SOURCE = TableDef(
             ),
             (
                 "literature",
+                STAR_SYSTEMS,
                 "simbad-parallax",
                 "reyle-2021",
                 "ultracoolsheet",
                 "hunt-reffert-2024",
                 "magellanic-clouds",
                 "bailer-jones-2021",
-                STAR_SYSTEMS,
             ),
         ),
         ColumnGroup(

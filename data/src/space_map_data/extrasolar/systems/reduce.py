@@ -27,19 +27,18 @@ The main star is the first point down the tree and gives the group its
 position. A primary with no object tests nothing, so the first point that
 stays stands for it.
 - A member leaves when its parallax and its primary's clearly disagree
-  (`parallaxes_disagree`). An orbit pair is exempt, and so is a point that
-  holds several stars in its subtree or that a Gaia DR3 orbit or a SIMBAD
-  type shows as a close pair, because a close orbit can throw off the
-  parallax.
+  (`parallaxes_disagree`). An orbit pair is exempt: an orbit proves a pair. A
+  point that holds a close pair is not: `veto_error` covers the parallax that
+  a close pair throws off, and the pairs of such a point that these tests
+  refute agree in RV at the chance level.
 - A member leaves when it is not bound to its primary (`unbound`). Each point
   of the member counts for the width, so no chain of pairs reaches past
   MAX_PARSEC from a main star. Only the member's main star counts for the
-  motion, as the others move on their own orbits, and the exemptions of the
-  veto apply. Each point counts as a neighbour in one star cluster, unless an
-  orbit shows the pair: this reads no astrometry that a close pair can throw
-  off. A refuted member stays as an entry when its object is not at the
-  catalogue's separation (`wrong_object`): the star is real, its object is
-  not.
+  motion, as the others move on their own orbits, and an orbit pair is exempt.
+  Each point counts as a neighbour in one star cluster, unless an orbit shows
+  the pair: this reads no astrometry that a close pair can throw off. A
+  refuted member stays as an entry when its object is not at the catalogue's
+  separation (`wrong_object`): the star is real, its object is not.
 - A member that the source lists as unverified stays only when it and its
   primary pass El-Badry's test of a bound pair (`same_distance`). It also
   stays when it reaches its primary's point and the source gives their
@@ -229,10 +228,8 @@ class _Part:
     # A group: its index in the records that hold it, and its objects.
     group: int = -1
     group_keys: frozenset[int] = frozenset()
-    # A group: its first point down the tree, and its points that hold
-    # several stars.
+    # A group: its first point down the tree.
     first_point: int = 0
-    several: frozenset[int] = frozenset()
 
     @property
     def main(self) -> int:
@@ -281,10 +278,9 @@ class TreeReducer:
     """Reduces the trees of one source.
 
     `candidates` holds the (key, rank) candidates of each row, best first.
-    `offset` turns a row of the source into a global value row. `close` are
-    the points that a close pair can hold, as a Gaia DR3 orbit or a SIMBAD
-    type shows. `reach` gives how many ids of a row reach a key, by (row,
-    key), where more than one. `clusters` gives the star clusters of a key.
+    `offset` turns a row of the source into a global value row. `reach` gives
+    how many ids of a row reach a key, by (row, key), where more than one.
+    `clusters` gives the star clusters of a key.
     """
 
     def __init__(
@@ -296,7 +292,6 @@ class TreeReducer:
         offset: int,
         out: Reduced,
         dropped: frozenset[int] = frozenset(),
-        close: frozenset[int] = frozenset(),
         reach: dict[tuple[int, int], int] | None = None,
         clusters: dict[int, frozenset[str]] | None = None,
     ) -> None:
@@ -306,7 +301,6 @@ class TreeReducer:
         self.offset = offset
         self.out = out
         self.dropped = dropped
-        self.close = close
         self.candidates = candidates
         self.reach = reach or {}
         self.clusters = clusters or {}
@@ -516,7 +510,7 @@ class TreeReducer:
             if pair and self._vetoed(main, part, *pair, out):
                 self._leave(part, out)
                 continue
-            if pair and self._unbound(main, part, *pair, out):
+            if pair and self._unbound(part, *pair, out):
                 # The catalogue measures from the primary, not from a stand-in.
                 listed = self.separation[part.node] if main is primary else None
                 if len(part.leaves) == 1 and wrong_object(*pair, listed):
@@ -557,7 +551,7 @@ class TreeReducer:
         self, primary: _Part, part: _Part, first: Fact, second: Fact, out: Reduced
     ) -> bool:
         """Whether the parallaxes of a member and its primary disagree."""
-        if self._exempt(primary, part) or not disagree(first, second):
+        if self._orbit(part) or not disagree(first, second):
             return False
         evidence = self.evidence[part.node] or "physical"
         out.counts[f"{self.source}: {evidence} members that the parallaxes veto"] += 1
@@ -571,24 +565,22 @@ class TreeReducer:
         )
         return True
 
-    def _unbound(
-        self, primary: _Part, part: _Part, first: Fact, second: Fact, out: Reduced
-    ) -> bool:
+    def _unbound(self, part: _Part, first: Fact, second: Fact, out: Reduced) -> bool:
         """Whether a member is not bound to its primary."""
-        moving = not self._exempt(primary, part)
-        crowd = not self._orbit(part)
+        orbit = self._orbit(part)
 
         def why_not(point: Fact, motion: bool) -> str | None:
-            return unbound(first, point, motion, crowd and self._crowd(first, point))
+            crowd = not orbit and self._crowd(first, point)
+            return unbound(first, point, motion, crowd)
 
         points = [self.facts.get(key) for key in sorted(part.held)]
         far = next((p for p in points if p and why_not(p, False)), second)
-        why = why_not(far, moving)
+        why = why_not(far, not orbit)
         if why is None:
             return False
         evidence = self.evidence[part.node] or "physical"
         out.counts[f"{self.source}: {evidence} members {why}"] += 1
-        fast = excess(first, far) if moving else math.nan
+        fast = math.nan if orbit else excess(first, far)
         text = (
             f"{self._name(part.node)}: {far.key} from {first.key}:"
             f" {projected(first, far):.2f} pc, {fast:.1f} km/s, {evidence},"
@@ -603,23 +595,9 @@ class TreeReducer:
         """Whether one star cluster holds both points."""
         return bool(one_cluster(self.clusters, first, second))
 
-    def _exempt(self, primary: _Part, part: _Part) -> bool:
-        """Whether an orbit or a close pair explains how the astrometry of a
-        member and its primary differ."""
-        if self._orbit(part):
-            return True
-        return self._holds_several(primary) or self._holds_several(part)
-
     def _orbit(self, part: _Part) -> bool:
         """Whether the source gives an orbit of a member and its primary."""
         return bool(set(self.known[part.node] or ()) & ORBITS)
-
-    def _holds_several(self, part: _Part) -> bool:
-        """Whether a close pair can throw off the astrometry of the part's
-        point."""
-        if part.key and len(part.leaves) > 1:
-            return True
-        return part.main in part.several or part.main in self.close
 
     def _leave(self, part: _Part, out: Reduced) -> None:
         """Keep the inner system of a member that leaves as a system of its own.
@@ -850,17 +828,13 @@ class TreeReducer:
     def _group(self, row: int, parts: list[_Part], out: Reduced) -> _Part:
         members = []
         keys: set[int] = set()
-        several: set[int] = set()
         first_point = next((p.main for p in parts if p.main), 0)
         for part in parts:
             if part.group >= 0:
-                several |= part.several
                 members.append(
                     Member(GROUP, group=part.group, value=self.offset + part.node)
                 )
             elif part.key:
-                if len(part.leaves) > 1:
-                    several.add(part.key)
                 self._close(part, part.node, out)
                 members.append(
                     Member(POINT, key=part.key, value=self.offset + part.node)
@@ -888,5 +862,4 @@ class TreeReducer:
             len(out.groups) - 1,
             frozenset(keys),
             first_point,
-            frozenset(several),
         )

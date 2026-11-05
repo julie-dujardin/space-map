@@ -15,9 +15,8 @@ numbers of its stars with a Gaia DR3 id. A HIP number whose Gaia best
 neighbour SIMBAD gives to another star has no best neighbour. The distance
 passes never mint, so they come after every pass that matches by position.
 The star systems come after them: they read the stars that the passes made,
-and a star that no pass places takes its system's distance. Wikidata goes
-last: it is not permanent, so its claims settle on the joins of all the
-other passes.
+and the stars of a system take its shared distance. Wikidata goes last: it is
+not permanent, so its claims settle on the joins of all the other passes.
 
 The metallicity catalogues (PASTEL, APOGEE DR17, the LAMOST DR10 M dwarfs)
 and the class catalogues (GCVS, SPICY, ATNF) are no pass. Their rows join the
