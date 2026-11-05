@@ -6,10 +6,14 @@ host, and the Solar System. A pair that a planet circles is on both pages.
 
 A page lists the systems with a Wikipedia article, most sitelinks first. The
 Solar System heads the planetary systems, and links to its category page.
+
+The Planetary Systems page has a discovery timeline: each host by the year its
+first planet was found. The Solar System has no such year, and stays out.
 """
 
 import logging
 from collections import Counter
+from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from functools import partial
@@ -51,6 +55,8 @@ class SystemPages:
     extra_stats: dict[str, GroupExtraStats] = field(default_factory=dict)
     # The names of the systems that the stat cards name, by object id.
     card_names: dict[str, dict[str, Names]] = field(default_factory=dict)
+    # Page slug -> {discovery year: systems}.
+    discovery_histograms: dict[str, dict[int, int]] = field(default_factory=dict)
 
 
 def served_system_pages_stamp(extrasolar_dir: Path = EXTRASOLAR_DIR) -> dict | None:
@@ -65,12 +71,16 @@ def build_system_pages(
     hosts: Counter[int],
     names: ObjectNames,
     extrasolar_dir: Path = EXTRASOLAR_DIR,
+    host_years: Mapping[int, int] | None = None,
 ) -> SystemPages:
     """Counts, stats and lists of both pages. `hosts` has the planets of the
-    class planet of each host. With no export served, the Planetary Systems
-    page has the Solar System alone."""
+    class planet of each host, and `host_years` the year the first of them
+    was found. With no export served, the Planetary Systems page has the
+    Solar System alone."""
     out = SystemPages()
     out.member_counts[PLANETARY_SYSTEMS_SLUG] = len(hosts) + 1
+    if found := _first_planet_years(hosts, host_years or {}):
+        out.discovery_histograms[PLANETARY_SYSTEMS_SLUG] = found
     out.extra_stats[PLANETARY_SYSTEMS_SLUG] = GroupExtraStats(
         multi_planet_system_count=1 + sum(n >= MULTIPLE_PLANETS for n in hosts.values())
     )
@@ -120,6 +130,17 @@ def build_system_pages(
         systems,
         out.member_counts[PLANETARY_SYSTEMS_SLUG],
     )
+    return out
+
+
+def _first_planet_years(
+    hosts: Counter[int], host_years: Mapping[int, int]
+) -> dict[int, int]:
+    """The hosts of `hosts` by the year their first planet was found."""
+    out: dict[int, int] = {}
+    for host in hosts:
+        if (year := host_years.get(host)) is not None:
+            out[year] = out.get(year, 0) + 1
     return out
 
 

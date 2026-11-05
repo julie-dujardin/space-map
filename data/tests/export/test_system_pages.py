@@ -53,6 +53,29 @@ class TestHosts:
         assert stats.multi_planet_system_count == 2
 
 
+class TestDiscoveryTimeline:
+    """Each host by the year its first planet was found."""
+
+    def test_by_first_planet(self, tmp_path, session):
+        pages = build_system_pages(
+            [],
+            Counter({1: 1, 2: 3, 3: 1, 4: 1}),
+            ObjectNames(_entities({}), session),
+            tmp_path / "none",
+            host_years={1: 1995, 2: 1995, 3: 2004, 9: 1990},
+        )
+        # Host 4 has no year, and host 9 is no host of the page.
+        assert pages.discovery_histograms == {
+            PLANETARY_SYSTEMS_SLUG: {1995: 2, 2004: 1}
+        }
+
+    def test_no_years_no_timeline(self, tmp_path, session):
+        pages = build_system_pages(
+            [], Counter({1: 1}), ObjectNames(_entities({}), session), tmp_path / "none"
+        )
+        assert pages.discovery_histograms == {}
+
+
 class TestCards:
     """The system of the most stars or planets, among the roots of the tiles."""
 

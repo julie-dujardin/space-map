@@ -292,6 +292,13 @@ interface GlobalGroupData {
   // class an object belongs to, so the same row contributes to multiple
   // small-body histograms. Also present on the Asteroids and Comets
   // categories, summed over their constituent orbit classes (flags excluded).
+  // The Planets category and each planet- family count their served
+  // exoplanets by discovery year, a family its published and its estimated
+  // members alike; the Solar System planets are left out (most have no
+  // year, and Uranus and Neptune would stretch the axis back to 1781). The
+  // Planetary Systems category counts each host by the year its first planet
+  // was found; the Solar System has none. Stars carry no discovery year, so
+  // the Stars, Star Systems and star- pages have no histogram.
   discovery_histogram?: Record<string, number>;  // year string → count, sorted ascending
 
   // Biggest member by diameter; absent when nothing has a measured size.

@@ -474,7 +474,12 @@ def run_groups_tier(
         ),
     )
     planets_page = planet_families.planets
-    system_pages = build_system_pages(star_objects or [], planet_families.hosts, names)
+    system_pages = build_system_pages(
+        star_objects or [],
+        planet_families.hosts,
+        names,
+        host_years=planet_families.host_years,
+    )
     sky_pages = build_sky_pages(star_objects or [], names)
 
     # Each constellation lists the buses its members fly, most-used first; the
@@ -523,6 +528,8 @@ def run_groups_tier(
     # carry no GroupSatcatStats.
     extra_histograms = dict(small_body_stats.discovery_histograms)
     extra_histograms.update(category_data.discovery_histograms)
+    extra_histograms.update(planet_families.discovery_histograms)
+    extra_histograms.update(system_pages.discovery_histograms)
     extra_largest_bodies = dict(small_body_stats.largest_bodies)
     extra_largest_bodies.update(category_data.largest_bodies)
     extra_pha_counts = dict(small_body_stats.pha_counts)

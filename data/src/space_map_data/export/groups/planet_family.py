@@ -15,6 +15,11 @@ plot of all of them.
 A list puts the planets with a Wikipedia article first, most sitelinks
 first, then the other planets, nearest host first. An exoplanet entry has the
 diameter of its measured radius and the year of its discovery.
+
+Each page has a discovery timeline: its exoplanets by the year of their
+discovery. The Solar System planets stay out of it. Five of them have no
+year, and Uranus and Neptune alone would stretch the axis from 1781 and bin
+three decades of exoplanets into a few bars.
 """
 
 import gzip
@@ -122,6 +127,10 @@ class PlanetGroups(FamilyGroups):
     planets: PlanetsPage | None = None
     # The served planets of each host.
     hosts: Counter[int] = field(default_factory=Counter)
+    # The earliest discovery year of the served planets of each host.
+    host_years: dict[int, int] = field(default_factory=dict)
+    # Page slug -> {discovery year: exoplanets}, the Planets page included.
+    discovery_histograms: dict[str, dict[int, int]] = field(default_factory=dict)
 
 
 @dataclass
@@ -156,6 +165,8 @@ class _Planet:
     first_obs: str | None = None
     # A card can show its radius.
     precise_radius: bool = False
+    # Its estimated families: those that are not published.
+    estimated: tuple[str, ...] = ()
 
 
 def build_planet_family_groups(
@@ -201,6 +212,8 @@ def build_planet_family_groups(
     out.notable_members = _family_lists(ranked, names)
     out.planets = _planets_page(planets, ranked, names, out.member_counts)
     out.hosts = Counter(p.host for p in exoplanets if p.host is not None)
+    out.host_years = _host_years(exoplanets)
+    out.discovery_histograms = _discovery_histograms(exoplanets)
     logger.info(
         "Planet pages: %d planets (%d exoplanets), %d families, %d with planets,"
         " %d with listed planets",
@@ -210,6 +223,31 @@ def build_planet_family_groups(
         sum(1 for n in out.member_counts.values() if n),
         len(out.notable_members),
     )
+    return out
+
+
+def _discovery_histograms(exoplanets: list[_Planet]) -> dict[str, dict[int, int]]:
+    """The exoplanets of each page by the year of their discovery, the Planets
+    page included. A page counts a planet of a published or an estimated
+    family, as its member count does; both lists hold the parent families."""
+    out: dict[str, dict[int, int]] = defaultdict(dict)
+    for planet in exoplanets:
+        if planet.first_obs is None:
+            continue
+        year = int(planet.first_obs)
+        for slug in PAGES.pages_of((*planet.families, *planet.estimated)):
+            out[slug][year] = out[slug].get(year, 0) + 1
+    return dict(out)
+
+
+def _host_years(exoplanets: list[_Planet]) -> dict[int, int]:
+    """The year of the first discovery of a planet around each host."""
+    out: dict[int, int] = {}
+    for planet in exoplanets:
+        if planet.host is None or planet.first_obs is None:
+            continue
+        year = int(planet.first_obs)
+        out[planet.host] = min(year, out.get(planet.host, year))
     return out
 
 
@@ -264,6 +302,7 @@ def _planet(
         diameter_km=measured_diameter_km(record),
         first_obs=None if year is None else str(year),
         precise_radius=body is not None or _precise_radius(record),
+        estimated=tuple(record["families_estimated"]),
     )
 
 

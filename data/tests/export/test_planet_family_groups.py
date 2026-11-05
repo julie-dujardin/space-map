@@ -2,6 +2,7 @@
 
 import gzip
 import json
+from collections import Counter
 from pathlib import Path
 
 import pytest
@@ -318,6 +319,82 @@ class TestBuild:
         assert [entry["slug"] for entry in stamp["families"]] == list(FAMILIES)
         reader = ExportReader(out / "v1" / "x")
         assert stamp["planets"] == reader.metadata["planets"]["token"]
+
+
+class TestDiscoveryTimeline:
+    """Each page counts its exoplanets by the year of their discovery."""
+
+    @pytest.fixture
+    def groups(self, tmp_path, session):
+        built = write_registry(
+            tmp_path / "reg",
+            [star(10.0, 5.0, 50.0, name="Near"), star(11.0, 5.0, 5.0, name="Far")],
+            planets=[
+                planet(0, 1, discovery_year=1995),  # warm
+                planet(0, 2, period=3.0, letter="c", discovery_year=2001),  # hot
+                planet(1, 1, period=3.0),  # hot, 2000
+                # an estimated mini-Neptune
+                planet(
+                    1,
+                    2,
+                    mass=None,
+                    radius=0.25,
+                    estimated=["radius"],
+                    letter="c",
+                    discovery_year=2010,
+                ),
+                planet(
+                    1,
+                    4,
+                    mass=30.0,
+                    letter="e",
+                    discovery_year=1990,
+                    **{"class": "brown dwarf"},
+                ),
+            ],
+        )
+        out = tmp_path / "space-map-extrasolar"
+        export_extrasolar(built.root, out, workers=1, cultures_dir=tmp_path / "none")
+        found = planet_family.build_planet_family_groups(
+            ObjectNames(_entities({}), session), SOLAR, out
+        )
+        return built.ids, found
+
+    def test_the_planets_page_counts_every_exoplanet(self, groups):
+        """The brown dwarf is no planet, and the Solar System has no year."""
+        _, found = groups
+        assert found.discovery_histograms["cat-planets"] == {
+            1995: 1,
+            2000: 1,
+            2001: 1,
+            2010: 1,
+        }
+
+    def test_a_family_counts_its_members(self, groups):
+        _, found = groups
+        histograms = found.discovery_histograms
+        assert histograms["planet-gas-giant"] == {1995: 1, 2000: 1, 2001: 1}
+        assert histograms["planet-hot-jupiter"] == {2000: 1, 2001: 1}
+        # An estimated member counts, as in the member count.
+        assert histograms["planet-mini-neptune"] == {2010: 1}
+        assert "planet-ice-giant" not in histograms
+
+    def test_a_histogram_counts_what_the_page_counts(self, groups):
+        """Every exoplanet here has a year, so a family's histogram adds up to
+        its members past the Solar System's."""
+        _, found = groups
+        solar = Counter(
+            slug
+            for p in planet_family._solar_planets(SOLAR)
+            for slug in planet_family.PAGES.pages_of(p.families)
+        )
+        for slug, n in found.member_counts.items():
+            dated = sum(found.discovery_histograms.get(slug, {}).values())
+            assert dated == n - solar[slug], slug
+
+    def test_the_first_planet_of_each_host(self, groups):
+        ids, found = groups
+        assert found.host_years == {ids[0]: 1995, ids[1]: 2000}
 
 
 class TestPlanetsPage:
