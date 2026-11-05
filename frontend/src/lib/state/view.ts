@@ -215,6 +215,11 @@ export interface MapViewState {
 	 *  it goes, what flies it, what it carries, which trajectory is being read.
 	 *  Its own codec; see `$lib/travel/trip`. DEFAULT_TRIP off `/nav`. */
 	trip: TripState;
+	/** The camera's north, as `NorthChoice.ref` names it: relative to the
+	 *  subject the path names (`body`, `feature`, an ancestor by its steps up as
+	 *  `parent`, `parent-2`, …), or `galactic`. Null = the planetary system of
+	 *  the place. Deep-linked as `&north=`. */
+	north: string | null;
 }
 
 /** A point on a body's surface, as a trip end names one. */
@@ -261,5 +266,6 @@ export const DEFAULT_VIEW: MapViewState = {
 	navToFeature: null,
 	navFromPlace: null,
 	navToPlace: null,
-	trip: DEFAULT_TRIP
+	trip: DEFAULT_TRIP,
+	north: null
 };

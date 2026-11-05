@@ -1278,6 +1278,7 @@
 	"north_reference": "北の基準",
 	"north_solar_system": "太陽系",
 	"north_solar_system_desc": "J2000 黄道面",
+	"north_system_desc": "軌道面",
 	"north_body_desc": "天体の自転軸",
 	"north_probe_desc": "宇宙機の垂直軸",
 	"north_feature_desc": "ローカル鉛直方向",

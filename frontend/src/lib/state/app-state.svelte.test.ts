@@ -56,7 +56,8 @@ const initialView: MapViewState = {
 	navToFeature: null,
 	navFromPlace: null,
 	navToPlace: null,
-	trip: DEFAULT_TRIP
+	trip: DEFAULT_TRIP,
+	north: null
 };
 
 beforeEach(() => {

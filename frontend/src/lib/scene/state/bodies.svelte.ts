@@ -106,6 +106,10 @@ export class BodyIndex {
 	 *  consumers of it (compass-north list) derive again. */
 	orientationVersion = $state(0);
 
+	/** Bumped when the planets or the star-system plan of an extrasolar system
+	 *  land, giving its plane: the compass-north list derives again. */
+	planeVersion = $state(0);
+
 	/** Bodies whose record has been read for a spin: one of these with no
 	 *  `orientation` has none to be given. */
 	readonly orientationRead = new Set<string>();

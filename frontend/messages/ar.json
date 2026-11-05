@@ -1243,6 +1243,7 @@
 	"north_reference": "مرجع الشمال",
 	"north_solar_system": "النظام الشمسي",
 	"north_solar_system_desc": "مستوى مسار الشمس J2000",
+	"north_system_desc": "المستوى المداري",
 	"north_body_desc": "محور دوران الجرم",
 	"north_probe_desc": "المحور الرأسي للمركبة الفضائية",
 	"north_feature_desc": "العمودي المحلي",

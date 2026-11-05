@@ -1200,6 +1200,7 @@
 	"north_reference": "Северное направление",
 	"north_solar_system": "Солнечная система",
 	"north_solar_system_desc": "Плоскость эклиптики J2000",
+	"north_system_desc": "Плоскость орбиты",
 	"north_body_desc": "Ось вращения тела",
 	"north_probe_desc": "Вертикальная ось космического аппарата",
 	"north_feature_desc": "Локальная вертикаль",

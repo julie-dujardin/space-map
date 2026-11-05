@@ -87,7 +87,12 @@
 	import MyLocation from './MyLocation.svelte';
 	import ClearPromoted from './ClearPromoted.svelte';
 	import CompassNorthSelector from './CompassNorthSelector.svelte';
-	import { getNorthChoices } from '$lib/scene/camera/north-reference';
+	import {
+		defaultNorthChoice,
+		getNorthChoices,
+		northRefHolds,
+		resolveNorthChoice
+	} from '$lib/scene/camera/north-reference';
 	import AttributionBar from './attribution/AttributionBar.svelte';
 	import TimeControls from './time/TimeControls.svelte';
 	import TimeMenuButton from './time/TimeMenuButton.svelte';
@@ -373,7 +378,6 @@
 	// That search overlay is opaque, so the map under it can stop drawing.
 	mapCover.hold(() => bgInert);
 	let userPromotedCount = $state(0);
-	let northRefId = $state<string | null>(null);
 
 	// Resolved feature record for the currently URL-pinned featureId. Driven by
 	// the effect below; cleared when the URL has no feature or the lookup fails.
@@ -396,16 +400,23 @@
 	// Feature whose camera a 3D label click already drove (a pan in place). The
 	// resolve effect skips re-driving it so the pan isn't restarted a beat later.
 	let panFeatureId: number | null = null;
-	// Orientation version the active feature was framed against. A cross-body
-	// pick frames before the host's PCK orientation lands, seating the feature
-	// in an unrotated frame; bumps here re-frame it once the real pole arrives.
-	let framedOrientationVersion = -1;
+	// A feature framed before its host's spin landed sits in an unrotated frame:
+	// it is framed again, the same way, once the spin arrives. Other bodies'
+	// spins landing must not move a camera framed on a real pole.
+	let reframe: { hostId: string; mode: 'snap' | 'frame'; view: typeof initialFeatureView } | null =
+		null;
 
 	const northChoices = $derived.by(() => {
 		void ctx.bodies.orientationVersion; // re-run when system data lands orientation
+		void ctx.bodies.planeVersion; // and when an extrasolar system lands its plane
 		void activeFeature; // re-run when a surface feature is focused/cleared
 		return getNorthChoices(cameraFocus, ctx);
 	});
+	// Primitives, so the view's clock ticks wake neither.
+	const northRef = $derived(appState.view.north);
+	const viewId = $derived(appState.view.id);
+	const viewFeatured = $derived(appState.view.featureId !== null);
+	const northChoice = $derived(resolveNorthChoice(northChoices, northRef));
 
 	// One derived per end, not one object: `view` ticks twice a second, and an
 	// object derived from it would get a fresh identity each tick, waking every
@@ -843,9 +854,13 @@
 		if (refocusMain) tick().then(() => document.getElementById('main-content')?.focus());
 	}
 
+	// A ref the place can no longer give is dropped; one whose data is still on
+	// its way stays, so a link keeps its north while the spin or feature loads.
 	$effect(() => {
-		if (northRefId === null) return;
-		if (!northChoices.some((c) => c.id === northRefId)) northRefId = null;
+		const ref = northRef;
+		const focus = cameraFocus;
+		if (ref === null || !focus || focus.data.id !== viewId) return;
+		if (!northRefHolds(ref, focus, viewFeatured, ctx)) appState.setNorth(null);
 	});
 
 	// Repopulate selectedBody from ctx when a pinned featureId outlives a
@@ -857,15 +872,13 @@
 		if (target) selectedBody = target;
 	});
 
-	// Re-frame the active feature when its host's orientation lands after the
-	// framing (streamed-in host: the seat was computed unrotated).
 	$effect(() => {
-		const version = ctx.bodies.orientationVersion;
+		void ctx.bodies.orientationVersion;
 		const f = activeFeature;
-		const body = selectedBody;
-		if (!f || !body || framedOrientationVersion < 0 || version === framedOrientationVersion) return;
-		framedOrientationVersion = version;
-		map.focusOnFeature(body.data.id, f.featureId, f.lat, f.lon, f.diameterM, f.name, 'frame');
+		const r = reframe;
+		if (!f || !r || !ctx.getBody(r.hostId)?.orientation) return;
+		reframe = null;
+		map.focusOnFeature(r.hostId, f.featureId, f.lat, f.lon, f.diameterM, f.name, r.mode, r.view);
 	});
 
 	// Resolve `view.featureId` → `activeFeature` whenever either the URL's
@@ -901,8 +914,11 @@
 					// effect-only paths (deep-link, browser nav) drive from here.
 					if (panFeatureId === fid) {
 						panFeatureId = null;
+						reframe = null;
 					} else {
-						framedOrientationVersion = ctx.bodies.orientationVersion;
+						const mode = firstFeatureResolve ? 'snap' : 'frame';
+						const view = firstFeatureResolve ? initialFeatureView : null;
+						reframe = ctx.getBody(bodyId)?.orientation ? null : { hostId: bodyId, mode, view };
 						map.focusOnFeature(
 							bodyId,
 							found.featureId,
@@ -910,8 +926,8 @@
 							found.lon,
 							found.diameterM,
 							found.name,
-							firstFeatureResolve ? 'snap' : 'frame',
-							firstFeatureResolve ? initialFeatureView : null
+							mode,
+							view
 						);
 					}
 					firstFeatureResolve = false;
@@ -1197,7 +1213,7 @@
 			<div class="contents" inert={bgInert}>
 				<Scene
 					{map}
-					{northRefId}
+					northRefId={northChoice.id}
 					onFocusChange={(body) => {
 						cameraFocus = body;
 						if (!searchLinkOpening) selectedBody = body;
@@ -1427,8 +1443,11 @@
 				{#if northChoices.length > 1}
 					<CompassNorthSelector
 						choices={northChoices}
-						selectedId={northRefId}
-						onSelect={(id) => (northRefId = id)}
+						selectedId={northChoice.id}
+						onSelect={(choice) =>
+							appState.setNorth(
+								choice.id === defaultNorthChoice(northChoices).id ? null : choice.ref
+							)}
 					/>
 				{/if}
 				{#if userPromotedCount > 0}

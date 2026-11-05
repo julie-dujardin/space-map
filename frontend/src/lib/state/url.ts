@@ -17,6 +17,7 @@ import { DEFAULT_TRIP, parseTrip, serializeTripSuffix, type TripState } from '$l
 import { EARTH_ID, SUN_ID } from '$lib/constants';
 import { SUN_VIEW_ZOOM } from '$lib/scene/framing';
 import type { PageSky } from '$lib/scene/settings.svelte';
+import { parseNorth } from './north';
 import { formatNavEnd, isBodyId, NAV_UNSET, parseNavEnd } from './nav-end';
 import { bodyHref, featureHref, groupHref } from './page-href';
 import {
@@ -150,7 +151,7 @@ export function parseUrl(): MapViewState | null {
 		// A bare /nav is a blank form, and Earth is where its traffic leaves from;
 		// an unset segment means the departure was cleared on purpose.
 		const navFrom = fromParam === undefined ? EARTH_ID : (from?.bodyId ?? null);
-		return applyAtParam({
+		return applySharedParams({
 			...DEFAULT_VIEW,
 			type: UrlType.Nav,
 			// The renderer always frames a body; on a trip that's where you're going,
@@ -190,7 +191,7 @@ export function parseUrl(): MapViewState | null {
 			console.warn(`parseUrl: no planet at /x/${page.params.id}/b/${planetN}`);
 			return null;
 		}
-		return applyAtParam({
+		return applySharedParams({
 			...DEFAULT_VIEW,
 			type: UrlType.Extrasolar,
 			id,
@@ -237,7 +238,7 @@ export function parseUrl(): MapViewState | null {
 			featureType: null,
 			ring: null
 		};
-		return applyAtParam(defaults);
+		return applySharedParams(defaults);
 	}
 
 	const id = objectIdOfRoute(type, idStr);
@@ -263,7 +264,7 @@ export function parseUrl(): MapViewState | null {
 			gallery: page.url.searchParams.get('gal'),
 			tab: parseTab(page.url.searchParams.get('tab'))
 		};
-		return applyAtParam(defaults);
+		return applySharedParams(defaults);
 	}
 
 	const imageIndex = parseImageIndex(page.url.searchParams.get('img'));
@@ -281,12 +282,13 @@ export function parseUrl(): MapViewState | null {
 		featureType: page.url.searchParams.get('ftype'),
 		ring: page.url.searchParams.get('ring')
 	};
-	return applyAtParam(defaults);
+	return applySharedParams(defaults);
 }
 
-/** Overlay the `?at=<date,lat,lon,zoom>` query block on top of a defaults
- *  object. Extracted so both route branches share the same parsing. */
-function applyAtParam(defaults: MapViewState): MapViewState {
+/** Overlay the query blocks every route shares, `?at=<date,lat,lon,zoom>` and
+ *  `&north=`, on top of a defaults object. */
+function applySharedParams(view: MapViewState): MapViewState {
+	const defaults = { ...view, north: parseNorth(page.url.searchParams.get('north')) };
 	const at = page.url.searchParams.get('at');
 	if (!at) return defaults;
 
@@ -553,11 +555,13 @@ export function applyFeature(
  *  `/g/culture-<key>/f/<figure>/<name>` for figures,
  *  `/x/<host>/b/<n>/<name>` for planets, or
  *  `/<type>/<id>/f/<featureId>/<name>` for features — plus the shared
- *  `?at=<date>,<lat>,<lon>,<zoom>` query block. */
+ *  `?at=<date>,<lat>,<lon>,<zoom>` and `&north=` query blocks. */
 export function serializeUrl(state: MapViewState): string {
 	const r = (n: number) => n.toFixed(5);
 	const dateStr = state.isNow ? 'now' : state.date.toISOString();
 	const at = `${dateStr},${r(state.latitude)},${r(state.longitude)},${state.zoom.toPrecision(5).replace('e+', 'e')}`;
+	// The camera's north goes with the camera, on every route.
+	const north = state.north ? `&north=${encodeURIComponent(state.north)}` : '';
 
 	const img =
 		typeof state.imageIndex === 'number' && Number.isInteger(state.imageIndex)
@@ -596,7 +600,7 @@ export function serializeUrl(state: MapViewState): string {
 		const sites = placeParams('f', state.navFromPlace) + placeParams('t', state.navToPlace);
 		// A trip is described by its two ends and the terms it is flown on; the rest
 		// of the query block belongs to drawer tabs the planner doesn't have.
-		return `${path}?at=${at}${sites}${serializeTripSuffix(state.trip)}`;
+		return `${path}?at=${at}${north}${sites}${serializeTripSuffix(state.trip)}`;
 	}
 
 	if (state.type === UrlType.Group && state.groupSlug !== null) {
@@ -605,15 +609,15 @@ export function serializeUrl(state: MapViewState): string {
 		// A sky page has no subject of its own to frame, so it always names one.
 		const focused = isSkyPage(state.groupSlug) || state.id !== groupAnchor(state.groupSlug).id;
 		const focus = focused ? `&focus=${state.id}` : '';
-		return `${path}?at=${at}${focus}${img}${tab}${gal}${surface}${ring}${mp}`;
+		return `${path}?at=${at}${north}${focus}${img}${tab}${gal}${surface}${ring}${mp}`;
 	}
 
 	if (state.type === UrlType.Feature && state.featureId !== null) {
 		const path = featureHref(state.id, state.featureId, state.name);
 		// A feature's own pictures are its only shelf; the rest of the query
 		// block belongs to lists and drills it doesn't have.
-		return `${path}?at=${at}${img}${tab}${gal}`;
+		return `${path}?at=${at}${north}${img}${tab}${gal}`;
 	}
 
-	return `${bodyHref(state.id, state.name)}?at=${at}${img}${tab}${gal}${surface}${ring}${mp}`;
+	return `${bodyHref(state.id, state.name)}?at=${at}${north}${img}${tab}${gal}${surface}${ring}${mp}`;
 }

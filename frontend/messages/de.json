@@ -1155,6 +1155,7 @@
 	"north_reference": "Nordreferenz",
 	"north_solar_system": "Sonnensystem",
 	"north_solar_system_desc": "J2000-Ekliptikebene",
+	"north_system_desc": "Bahnebene",
 	"north_body_desc": "Rotationsachse des Körpers",
 	"north_probe_desc": "Hochachse des Raumfahrzeugs",
 	"north_feature_desc": "Lokale Vertikale",

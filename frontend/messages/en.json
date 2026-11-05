@@ -1331,6 +1331,7 @@
 	"north_reference": "North reference",
 	"north_solar_system": "Solar system",
 	"north_solar_system_desc": "J2000 ecliptic plane",
+	"north_system_desc": "Orbital plane",
 	"north_body_desc": "Body rotation axis",
 	"north_probe_desc": "Spacecraft up axis",
 	"north_feature_desc": "Local vertical",

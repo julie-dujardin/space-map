@@ -1290,6 +1290,7 @@
 	"north_reference": "Référence du nord",
 	"north_solar_system": "Système solaire",
 	"north_solar_system_desc": "Plan de l'écliptique J2000",
+	"north_system_desc": "Plan orbital",
 	"north_body_desc": "Axe de rotation du corps",
 	"north_probe_desc": "Axe vertical de l'engin spatial",
 	"north_feature_desc": "Verticale locale",

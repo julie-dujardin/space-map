@@ -1150,6 +1150,7 @@
 	"north_reference": "北方参考",
 	"north_solar_system": "太阳系",
 	"north_solar_system_desc": "J2000 黄道面",
+	"north_system_desc": "轨道面",
 	"north_body_desc": "天体自转轴",
 	"north_probe_desc": "航天器垂直轴",
 	"north_feature_desc": "本地垂直方向",

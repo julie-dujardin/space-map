@@ -184,6 +184,9 @@ describe('ExoplanetStore', () => {
 		expect(toliman.view.distance).toBeCloseTo(4 * AU_SCALE, 9);
 		const flat = frameDirection(PLACE, [0, 1, 0], FRAME_ELEVATION_DEG);
 		for (let k = 0; k < 3; k++) expect(toliman.at[k]).toBeCloseTo(flat[k], 9);
+		// That ecliptic is no plane of the system.
+		expect(store.planeNormal('x-564339647')).toBeNull();
+		expect(store.planeNormal('x-27424668')).toEqual(orbitNormal(100, 200));
 	});
 
 	it('places a host with no place of its own where the index puts it', async () => {

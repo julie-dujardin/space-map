@@ -60,7 +60,8 @@ const baseView: MapViewState = {
 	navToFeature: null,
 	navFromPlace: null,
 	navToPlace: null,
-	trip: DEFAULT_TRIP
+	trip: DEFAULT_TRIP,
+	north: null
 };
 
 describe('serializeUrl', () => {
@@ -855,5 +856,42 @@ describe('pageSkyOf', () => {
 		expect(pageSkyOf('star-giant', false)).toBeNull();
 		expect(pageSkyOf('sky-orion', false)).toBeNull();
 		expect(pageSkyOf(null, false)).toBeNull();
+	});
+});
+
+describe('the north ref', () => {
+	function open(url: string) {
+		page.params = { type: 'b', id: '301' };
+		page.route = { id: '/[type]/[id]/[[name]]' } as typeof page.route;
+		page.url = new URL(url) as typeof page.url;
+	}
+
+	it('round-trips on a body page', () => {
+		for (const ref of ['body', 'feature', 'galactic', 'parent', 'parent-2']) {
+			open(`http://x/b/301?at=now,1,2,3&north=${ref}`);
+			const view = parseUrl()!;
+			expect(view.north).toBe(ref);
+			expect(serializeUrl(view)).toContain(`&north=${ref}`);
+		}
+	});
+
+	it('names no id: an id, a step of 1 or 0 is no ref', () => {
+		for (const ref of ['naif-399', 'parent-1', 'parent-0', 'parent-02', 'up']) {
+			open(`http://x/b/301?north=${ref}`);
+			expect(parseUrl()!.north).toBeNull();
+		}
+	});
+
+	it('writes nothing for the default', () => {
+		expect(serializeUrl(baseView)).not.toContain('north=');
+	});
+
+	it('rides along on a focus change, a group and a trip', () => {
+		const view = { ...baseView, north: 'parent' };
+		expect(serializeUrl(applyFocus(view, { type: 'b', id: 'naif-401', name: 'Phobos' }))).toContain(
+			'&north=parent'
+		);
+		expect(serializeUrl(applyGroup(view, 'cat-moons', 'Moons'))).toContain('&north=parent');
+		expect(serializeUrl(applyNav(view, 'naif-399', 'naif-499'))).toContain('&north=parent');
 	});
 });

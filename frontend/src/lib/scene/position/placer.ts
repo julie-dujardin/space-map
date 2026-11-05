@@ -133,8 +133,9 @@ export class Placer {
 	noData: OutOfRangeGroup = emptyGroup();
 	private passJd = NaN;
 	private frame: number | undefined;
-	/** Bodies settled for `passJd`. */
-	private readonly settled = new Set<string>();
+	/** Bodies settled for `passJd`, by id. A body that replaces one under its
+	 *  id has no place of its own yet, so the match is on the object. */
+	private readonly settled = new Map<string, PositionedBody>();
 	/** Bodies being settled now, to stop a parent cycle. */
 	private readonly settling = new Set<string>();
 	private ride = planRideMarkers([], undefined, () => undefined);
@@ -194,7 +195,7 @@ export class Placer {
 	place(body: PositionedBody, jd: number): Vec3 | null {
 		if (jd !== this.passJd && this.held()) jd = this.passJd;
 		const id = body.data.id;
-		if (jd === this.passJd && this.settled.has(id)) return body.position;
+		if (jd === this.passJd && this.settled.get(id) === body) return body.position;
 		if (this.settling.has(id)) {
 			this.diagnostics.warnOnce('parent-cycle', id, () => `place[${id}]: parent chain loops`);
 			return null;
@@ -206,7 +207,7 @@ export class Placer {
 				? fixedPlace(body)
 				: this.settle(body, jd);
 		this.settling.delete(id);
-		if (jd === this.passJd) this.settled.add(id);
+		if (jd === this.passJd) this.settled.set(id, body);
 		return pos;
 	}
 

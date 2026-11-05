@@ -291,6 +291,14 @@ export class AppState {
 		if (this.cameraKnown) this.replaceNow();
 	}
 
+	/** Turn the camera's north (null = the planetary system's). replaceState:
+	 *  the place is the same, and browser-back belongs to it. */
+	setNorth(ref: string | null) {
+		if (ref === this.view.north) return;
+		this.view = { ...this.view, north: ref };
+		if (this.cameraKnown) this.replaceNow();
+	}
+
 	/** Switch tabs (replaceState — no history spam). Resets the depth reached
 	 *  inside a tab — member page, open gallery, open picture — so a manual
 	 *  switch lands at the top, including a switch to the tab already showing.

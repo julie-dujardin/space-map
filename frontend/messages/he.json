@@ -1195,6 +1195,7 @@
 	"north_reference": "ייחוס צפון",
 	"north_solar_system": "מערכת השמש",
 	"north_solar_system_desc": "מישור המילקה J2000",
+	"north_system_desc": "מישור המסלול",
 	"north_body_desc": "ציר הסיבוב של הגוף",
 	"north_probe_desc": "הציר האנכי של החללית",
 	"north_feature_desc": "אנך מקומי",

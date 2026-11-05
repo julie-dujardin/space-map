@@ -1,8 +1,15 @@
 import { Quaternion, Vector3, type PerspectiveCamera } from 'three';
 import type { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
+import type { Vec3 } from '$lib/scene/animation/math';
 import { angularDuration, UP_PACING } from '$lib/scene/animation/pacing';
-import { SCENE_UP, bodyNorthVector, galacticNorthVector, GALACTIC_REF_ID } from './north-reference';
+import { GALACTIC_REF_ID } from '$lib/state/north';
+import {
+	SCENE_UP,
+	bodyNorthVector,
+	galacticNorthVector,
+	PLANE_REF_PREFIX
+} from './north-reference';
 
 /**
  * Drives `camera.up` from a north reference, slerping across switches so the
@@ -19,6 +26,9 @@ export class CameraUpController {
 	/** True between `setNorthReference` and the next `update()` — defers the
 	 *  duration calc until we have `jd` to compute the target pole. */
 	private needsDurationCalc = false;
+	/** A plane ref's normal once it is in: orbital elements do not move, so it
+	 *  is not looked up again each frame. */
+	private plane: Readonly<Vec3> | null = null;
 	private readonly _quatA = new Quaternion();
 	private readonly _quatB = new Quaternion();
 
@@ -30,10 +40,12 @@ export class CameraUpController {
 		private readonly isLanded: (id: string) => boolean
 	) {}
 
-	/** `null` reverts to ecliptic Y; any other id triggers a slerp to its pole. */
+	/** `null` reverts to ecliptic Y; any other id triggers a slerp to its north:
+	 *  the galactic pole, a system's plane, or a body's pole. */
 	setNorthReference(id: string | null): void {
 		if (id === this.refId) return;
 		this.refId = id;
+		this.plane = null;
 		this.startVec.copy(this.currentVec);
 		this.animStartTime = performance.now();
 		this.needsDurationCalc = true;
@@ -42,6 +54,11 @@ export class CameraUpController {
 	update(jd: number): void {
 		if (this.refId === GALACTIC_REF_ID) {
 			galacticNorthVector(this.targetVec);
+		} else if (this.refId?.startsWith(PLANE_REF_PREFIX)) {
+			this.plane ??= this.ctx.exoplanets.planeNormal(this.refId.slice(PLANE_REF_PREFIX.length));
+			const normal = this.plane;
+			if (normal) this.targetVec.set(normal[0], normal[1], normal[2]);
+			else this.targetVec.copy(SCENE_UP);
 		} else {
 			const refBody = this.refId ? this.ctx.getBody(this.refId) : undefined;
 			if (refBody) {

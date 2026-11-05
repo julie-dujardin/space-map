@@ -110,6 +110,7 @@ export class ExoplanetStore {
 	private holdPlan(plan: StarSystemPlan): StarSystemPlan {
 		this.plans.delete(plan.root);
 		this.plans.set(plan.root, plan);
+		this.ctx.bodies.planeVersion++;
 		for (const root of this.plans.keys()) {
 			if (this.plans.size <= SYSTEMS_KEPT) break;
 			this.plans.delete(root);
@@ -121,7 +122,10 @@ export class ExoplanetStore {
 	 *  place, so the starfield does not draw it as a star. */
 	private placeHost(entry: PlanetIndexHost): void {
 		const star = this.ctx.getBody(extrasolarObjectId(entry.id))?.extrasolar;
-		if (star && !star.scene) star.scene = hostScene(entry);
+		if (star && !star.scene) {
+			star.scene = hostScene(entry);
+			this.ctx.bodies.planeVersion++;
+		}
 	}
 
 	/** Hold the system of the live planet a planet's scene ID leads to, maybe
@@ -161,15 +165,19 @@ export class ExoplanetStore {
 	 *  that of the star's outermost orbit. */
 	view(objectId: string): SystemView | null {
 		const frame = this.frameOf(objectId);
-		return frame && systemView(frame.at, frame.normal, frame.outer || NO_ORBIT_AU);
+		return frame && systemView(frame.at, frame.normal ?? [0, 1, 0], frame.outer || NO_ORBIT_AU);
 	}
 
-	/** The unit normal of the plane that {@link view} looks at. Null when it has no view. */
+	/** The unit normal of the plane that {@link view} looks at. Null when it has
+	 *  no view, or no orbit to give a plane: the ecliptic it then looks at is
+	 *  no plane of the system. */
 	planeNormal(objectId: string): Vec3 | null {
 		return this.frameOf(objectId)?.normal ?? null;
 	}
 
-	private frameOf(objectId: string): { at: Readonly<Vec3>; normal: Vec3; outer: number } | null {
+	private frameOf(
+		objectId: string
+	): { at: Readonly<Vec3>; normal: Vec3 | null; outer: number } | null {
 		const planet = planetOfObjectId(objectId);
 		const hostId = planet?.host ?? extrasolarIdOf(objectId);
 		if (hostId === null) return null;
@@ -181,7 +189,7 @@ export class ExoplanetStore {
 		const planets = held?.file.planets.filter((p) => p.host === hostId) ?? [];
 		const own = planets.find((p) => p.number === planet?.n)?.elements;
 		const plane = own ?? pair?.orbit ?? outermostElements(planets);
-		const normal: Vec3 = plane ? orbitNormal(plane.i, plane.om) : [0, 1, 0];
+		const normal = plane ? orbitNormal(plane.i, plane.om) : null;
 		return { at, normal, outer: Math.max(pair?.orbit.a ?? 0, outerOrbitAU(planets) ?? 0) };
 	}
 
@@ -216,6 +224,7 @@ export class ExoplanetStore {
 		}
 		const held: HeldSystem = { file, planets };
 		this.systems.set(key, held);
+		this.ctx.bodies.planeVersion++;
 		this.trim();
 		return held;
 	}

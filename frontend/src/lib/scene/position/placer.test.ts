@@ -5,6 +5,7 @@ import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { J2000_JD, jdToEt } from '$lib/time/jd';
 import type { Probe } from '$lib/fetch/position/probes/parse';
 import { PositionDiagnostics } from './diagnostics';
+import { makeFeatureBody } from '$lib/scene/focus/feature-focus';
 import { Placer } from './placer';
 
 const JD = 2461300;
@@ -442,5 +443,20 @@ describe('a star on a drawn orbit', () => {
 	it('has no place when its pair has none', () => {
 		const orphan = star({ id: 'x-2', parentId: 'x-1' });
 		expect(placerOver([orphan]).place(orphan, JD)).toBeNull();
+	});
+});
+
+describe('a surface feature focused again', () => {
+	const anchor = { hostId: 'naif-499', featureId: 2757, lat: -7, lon: 275, diameterM: 1e5 };
+
+	it('places a new body under the id of one placed in the same pass', () => {
+		const host = mkBody({ id: 'naif-499', parentId: 'naif-0', radiusKm: 3389 });
+		const placer = placerOver([host]);
+		placer.begin(JD, undefined, undefined);
+		const first = placer.place(makeFeatureBody(anchor, null), JD);
+		expect(first).not.toBeNull();
+		const again = makeFeatureBody(anchor, 'Ius Chasma');
+		expect(placer.place(again, JD)).toEqual(first);
+		expect(again.position).toEqual(first);
 	});
 });

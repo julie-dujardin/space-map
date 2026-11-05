@@ -8,15 +8,17 @@
 	import OrbitIcon from '@lucide/svelte/icons/orbit';
 	import SatelliteIcon from '@lucide/svelte/icons/satellite';
 	import SparklesIcon from '@lucide/svelte/icons/sparkles';
-	import { GALACTIC_REF_ID, type NorthChoice } from '$lib/scene/camera/north-reference';
+	import type { NorthChoice } from '$lib/scene/camera/north-reference';
+	import { GALACTIC_REF_ID } from '$lib/state/north';
 
 	interface Props {
 		choices: NorthChoice[];
 		selectedId: string | null;
-		onSelect: (id: string | null) => void;
+		onSelect: (choice: NorthChoice) => void;
 	}
 
 	let { choices, selectedId, onSelect }: Props = $props();
+	const selected = $derived(choices.find((c) => c.id === selectedId));
 	let open = $state(false);
 
 	// The control sits at the inline-end edge; open the popover toward screen centre.
@@ -39,13 +41,13 @@
 				flex items-center justify-center pointer-events-none"
 			aria-hidden="true"
 		>
-			{#if selectedId === null}
+			{#if selectedId === null || selected?.plane}
 				<OrbitIcon class="size-3.5" />
 			{:else if selectedId === GALACTIC_REF_ID}
 				<SparklesIcon class="size-3.5" />
-			{:else if choices.find((c) => c.id === selectedId)?.probe}
+			{:else if selected?.probe}
 				<SatelliteIcon class="size-3.5" />
-			{:else if choices.find((c) => c.id === selectedId)?.feature}
+			{:else if selected?.feature}
 				<MapPinIcon class="size-3.5" />
 			{:else}
 				<EarthIcon class="size-3.5" />
@@ -66,7 +68,7 @@
 							hover:bg-accent hover:text-accent-foreground transition-colors
 							{active ? 'bg-accent text-accent-foreground font-medium' : ''}"
 						onclick={() => {
-							onSelect(choice.id);
+							onSelect(choice);
 							open = false;
 						}}
 					>
@@ -75,6 +77,8 @@
 								{m.north_solar_system()}
 							{:else if choice.id === GALACTIC_REF_ID}
 								{m.north_galactic()}
+							{:else if choice.plane}
+								{m.planetary_system_title({ primary: choice.name ?? '' })}
 							{:else}
 								{choice.name ?? choice.id}
 							{/if}
@@ -84,6 +88,8 @@
 								{m.north_solar_system_desc()}
 							{:else if choice.id === GALACTIC_REF_ID}
 								{m.north_galactic_desc()}
+							{:else if choice.plane}
+								{m.north_system_desc()}
 							{:else if choice.probe}
 								{m.north_probe_desc()}
 							{:else if choice.feature}

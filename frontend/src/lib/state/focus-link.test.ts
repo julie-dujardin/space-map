@@ -43,7 +43,8 @@ const view: MapViewState = {
 	navToFeature: null,
 	navFromPlace: null,
 	navToPlace: null,
-	trip: DEFAULT_TRIP
+	trip: DEFAULT_TRIP,
+	north: null
 };
 
 const appState = { view } as AppState;

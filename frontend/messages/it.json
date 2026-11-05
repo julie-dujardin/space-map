@@ -1175,6 +1175,7 @@
 	"north_reference": "Riferimento nord",
 	"north_solar_system": "Sistema solare",
 	"north_solar_system_desc": "Piano dell'eclittica J2000",
+	"north_system_desc": "Piano orbitale",
 	"north_body_desc": "Asse di rotazione del corpo",
 	"north_probe_desc": "Asse verticale del veicolo spaziale",
 	"north_feature_desc": "Verticale locale",
