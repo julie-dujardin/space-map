@@ -40,6 +40,12 @@ A brown dwarf's pair has no point, so an orbit that names its host reaches the
 pair only at the period of the record: the host can have a companion that we
 do not see.
 
+A point of three stars of two sides, as Aa and Ab1, Ab2, is the pair of its
+lone star and the first star of the other side (`_outer_pairs`). Gaia DR3 sees
+that outer pair of a close triple. The inner pair has no node of its own, so an
+orbit at its period stays off, unless a paper gives it: then the point is the
+inner pair, as papers win. The third star takes no value of the pair.
+
 An orbit whose secondary is the node's first member is turned round, unless
 the other member is not its primary: the MSC calls a pair by the letter of its
 first star, as A,B for A and BC, so the orbit goes on the pair above. Through
@@ -361,6 +367,14 @@ class Drawer:
         # The periods of the records of each pair of a host and its brown dwarf.
         self.record_periods: dict[int, list[float]] = {}
         self.point_node = self._host_pairs() | self.point_node
+        # The points of three stars with their outer pair, and the letters of
+        # the side that their second member stands for.
+        self.outer: set[int] = set()
+        self.sides: dict[int, str] = {}
+        # The member rows and the period of the inner pair of these points.
+        self.inner_pairs: dict[int, tuple[int, int]] = {}
+        self.inner_periods: dict[int, float] = {}
+        self._outer_pairs(keys, starts, ends)
         # The points that hold three or more stars.
         self.other_points = set(keys[keys != 0].tolist()) - set(self.point_node)
         self.msc_members = self._member_ids((MSC_ID,))
@@ -398,6 +412,34 @@ class Drawer:
                     if item["period"]:
                         periods.append(item["period"])
         return found
+
+    def _outer_pairs(
+        self, keys: np.ndarray, starts: np.ndarray, ends: np.ndarray
+    ) -> None:
+        """Give each point of three stars of two sides its outer pair."""
+        three = np.flatnonzero((ends - starts == 3) & (keys != 0))
+        rows = pa.array(np.repeat(starts[three], 3) + np.tile([0, 1, 2], three.size))
+        members = self.systems.members.select(["inner", "period"]).take(rows)
+        inner = members["inner"].to_pylist()
+        period = members["period"].to_pylist()
+        for index, at in enumerate(three.tolist()):
+            first, second, third = inner[3 * index : 3 * index + 3]
+            if first is None and second is not None and second == third:
+                other = 1
+            elif third is None and first is not None and first == second:
+                other = 2
+            else:
+                continue
+            number = int(self.number[at])
+            start = int(starts[at])
+            self.pairs[number] = _Pair(start, start + other)
+            self.point_node[int(keys[at])] = number
+            self.outer.add(number)
+            self.inner_pairs[number] = (start + 2 - other, start + 3 - other)
+            if other == 1:
+                self.sides[number] = second
+            if (found := period[3 * index + 3 - other]) is not None:
+                self.inner_periods[number] = found
 
     def _member_ids(self, catalogues: tuple[tuple[str, str], ...]) -> dict[str, int]:
         """The member row of each id of these catalogues on a member."""
@@ -481,7 +523,8 @@ class Drawer:
             pair = self.pairs.get(number)
             if pair is None:
                 continue
-            found = (self._letters(pair.first), self._letters(pair.second))
+            side = self.sides.get(number) or self._letters(pair.second)
+            found = (self._letters(pair.first), side)
             if found in ((primary, secondary), (secondary, primary)):
                 return number, found[0] == secondary
         return None
@@ -528,7 +571,7 @@ class Drawer:
             return False
         number, row = hit
         pair = self.pairs.get(number)
-        if pair is None:
+        if pair is None or row not in (pair.first, pair.second):
             self.counts[f"{item.source}: orbits of a node that is no pair"] += 1
             return True
         found = self._secondary_pair(
@@ -574,12 +617,24 @@ class Drawer:
 
     def _of_pair(self, number: int, item: Elements) -> bool:
         """Whether an orbit that names a point is of its pair. The pair of a
-        host and its brown dwarf takes only the orbit of the record's period."""
+        host and its brown dwarf takes only the orbit of the record's period.
+        A point of three stars takes the orbit of its inner pair from a paper
+        only, and then no other."""
+        period = item.period
+        assert period is not None
+        inner = self.inner_periods.get(number)
+        if inner is not None and same_period(period, inner):
+            if item.source != LITERATURE:
+                self.counts[f"{item.source}: orbits of an inner pair"] += 1
+                return False
+            self.pairs[number] = _Pair(*self.inner_pairs[number])
+            self.record_periods[number] = [inner]
+            self.outer.discard(number)
+            self.sides.pop(number, None)
+            del self.inner_periods[number]
         periods = self.record_periods.get(number)
         if periods is None:
             return True
-        period = item.period
-        assert period is not None
         if any(same_period(period, found) for found in periods):
             return True
         self.counts[f"{item.source}: orbits of a host at another period"] += 1
@@ -718,7 +773,7 @@ class Drawer:
             else:
                 number, row = hit
                 pair = self.pairs.get(number)
-                if pair is None:
+                if pair is None or row not in (pair.first, pair.second):
                     self.counts["msc: masses of a node that is no pair"] += 1
                     continue
                 found = self._secondary_pair(number, pair, row, primary, "msc: masses")
@@ -1033,7 +1088,11 @@ class Drawer:
         members = self.systems.members
         for i, (row, number) in enumerate(zip(out["member"], out["number"])):
             pair = self.pairs.get(number)
-            if given[i] is not None or pair is None:
+            if (
+                given[i] is not None
+                or pair is None
+                or row not in (pair.first, pair.second)
+            ):
                 continue
             other = pair.second if row == pair.first else pair.first
             if other in at:
@@ -1056,9 +1115,9 @@ class Drawer:
     def _gaia_masses(self) -> dict[int, float]:
         """The Gaia DR3 mass of each member of a pair with a Gaia orbit."""
         found: dict[int, float] = {}
-        for pair in self.pairs.values():
+        for number, pair in self.pairs.items():
             hit = next((i for i in pair.orbits if i.source == GAIA_ORBITS), None)
-            if hit is None:
+            if hit is None or number in self.outer:
                 continue
             for row, mass in ((pair.first, hit.mass1), (pair.second, hit.mass2)):
                 if mass is not None:
@@ -1069,7 +1128,8 @@ class Drawer:
         """The SYSTEM_STAR values of an entry, and its letter."""
         pair = self.pairs.get(entry["node"])
         given: list[tuple[str, dict]] = []
-        if pair is not None:
+        stands_for_one = pair is not None and entry["node"] not in self.outer
+        if stands_for_one and row in (pair.first, pair.second):
             side = 0 if row == pair.first else 1
             given += [
                 (source, pair.stars[source][side])

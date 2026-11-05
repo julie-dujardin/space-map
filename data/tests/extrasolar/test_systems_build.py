@@ -63,7 +63,7 @@ from space_map_data.extrasolar.systems.registry import (
 from space_map_data.extrasolar.systems.report import report_lines, tree_lines
 from space_map_data.extrasolar.systems.resolve import FACTS, MATCH, Facts
 from space_map_data.extrasolar.systems.simbad import read_simbad
-from space_map_data.extrasolar.systems.wds import WdsCatalogue
+from space_map_data.extrasolar.systems.wds import WDS_MATCHER, WdsCatalogue
 from tests.extrasolar.conftest import offset
 from tests.extrasolar.systems_fakes import (
     KEPLER_16_GAIA,
@@ -1352,7 +1352,7 @@ class TestDryRunMatch:
                 "kind": [kind],
             }
         )
-        return resolver._match(rows, candidates).tolist()
+        return resolver._match(rows, candidates, WDS_MATCHER).tolist()
 
     def test_a_star(self):
         assert self.matched("star") == [92]

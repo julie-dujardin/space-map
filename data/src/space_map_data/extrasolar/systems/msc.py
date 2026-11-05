@@ -7,7 +7,8 @@ with parent `X`, or of type `X`, is refuted or optical, and is left out. A pair
 whose only evidence is common proper motion (`c` or `C` with no criterion but
 `m`) is unverified, as in the WDS. The criteria `p`, `h` and `r` are other
 evidence. A row of comp.tsv gives the catalogue values of one label, which can
-be a pair (Castor A is Aa and Ab).
+be a pair (Castor A is Aa and Ab). A letter with no node of its own gives them
+to the node that holds its light (`letter_holders`).
 
 A zero in a numeric column means "unknown" (Readme note 4), with two
 exceptions. An eccentricity of 0 is a circular orbit. One axis of a proper
@@ -15,14 +16,16 @@ motion can be 0 when the other axis is not. A position angle of 0 stays
 unknown, because most pairs with no measure give 0.
 
 A member joins by its HIP and HD numbers, its HR number and GCVS name through
-SIMBAD, and the WDS id. One with no object takes the object of the WDS
-component at its place, then goes to a match by position. The positions mix
-the epochs J2000 and J1991.25, and the match takes each as J2000.
+SIMBAD, and the WDS id. One with no object goes to a match by position, as MSC
+places are Gaia places, then takes the object of the WDS component at its
+place. A letter comes last. The positions mix the epochs J2000 and J1991.25,
+and the match takes each as J2000.
 """
 
 import logging
 import re
 from collections import Counter, defaultdict
+from dataclasses import replace
 from pathlib import Path
 
 import pyarrow as pa
@@ -47,10 +50,15 @@ from space_map_data.extrasolar.systems.nodes import (
     VISUAL_ORBIT,
     NodeList,
 )
+from space_map_data.extrasolar.systems.wds import WDS_MATCHER
 
 logger = logging.getLogger(__name__)
 
 EPOCH = 2000.0
+# Arcsec. MSC places are Gaia places, 99% of them within 0.76″ of the star. The
+# floor of WDS_MATCHER would give a 5σ limit of 2.1″ instead of 1.5″.
+MSC_POSITION_ERROR = 0.3
+MSC_MATCHER = replace(WDS_MATCHER, min_error=0.01)
 # Days per unit of P, and arcsec per unit of Sep.
 PERIOD_UNITS = {"d": 1.0, "y": 365.25, "k": 365.25e3, "M": 365.25e6}
 SEPARATION_UNITS = {'"': 1.0, "'": 60.0, "m": 1e-3}
@@ -72,6 +80,7 @@ TYPE_CODES = {
 # are a distance or a radial velocity.
 MOTION_CRITERION = "m"
 OPTICAL = "X"
+_LETTER = re.compile(r"([A-Z])[a-z0-9]*")
 _HR = re.compile(r"HR_(\d+)")
 _GCVS = re.compile(r"V\*_([A-Za-z0-9]+)_([A-Z][a-z]{2})")
 
@@ -128,6 +137,51 @@ def _comp_ids(row: dict) -> list[tuple[str, str, str]]:
     ids += [(*HR, str(int(m[1]))) for m in _HR.finditer(text)]
     ids += [(*GCVS, f"V* {m[1]} {m[2]}") for m in _GCVS.finditer(text)]
     return ids
+
+
+def _chain(label: str, above: dict[str, str]) -> list[str]:
+    """A label and the labels above it, lowest first."""
+    chain = [label]
+    while chain[-1] in above and above[chain[-1]] not in chain:
+        chain.append(above[chain[-1]])
+    return chain
+
+
+def _leaves(label: str, children: dict[str, list[str]]) -> set[str]:
+    """The labels with no children at or below a label."""
+    leaves, seen, waiting = set(), set(), [label]
+    while waiting:
+        at = waiting.pop()
+        if at not in seen:
+            seen.add(at)
+            waiting += children.get(at, [])
+            if not children.get(at):
+                leaves.add(at)
+    return leaves
+
+
+def letter_holders(labels: set[str], children: dict[str, list[str]]) -> dict[str, str]:
+    """The letter of each node that stands for a letter with no node.
+
+    Comp A holds the light of Aa and Ab, and a tree can have no node A. The
+    node is the lowest one above all the labels of that letter, when all its
+    leaves are of that letter.
+    """
+    of_letter: dict[str, list[str]] = defaultdict(list)
+    for label in labels:
+        if found := _LETTER.fullmatch(label):
+            of_letter[found[1]].append(label)
+    above = {kid: up for up, kids in children.items() for kid in kids}
+    holders = {}
+    for letter, mine in of_letter.items():
+        chains = [_chain(label, above) for label in mine]
+        shared = [x for x in chains[0] if all(x in chain for chain in chains)]
+        if letter in labels or not shared:
+            continue
+        leaves = _leaves(shared[0], children)
+        if all(leaf in mine for leaf in leaves):
+            holders[shared[0]] = letter
+    return holders
 
 
 def refuted_pairs(directory: Path = msc.OUT_DIR) -> frozenset[tuple[str, str, str]]:
@@ -216,6 +270,16 @@ def _add_system(
     for row in kept:
         primary_value.setdefault(row["Primary"], row)
     added: set[str] = set()
+    holders = letter_holders(labels, children)
+
+    def row_of(label: str) -> dict:
+        """The row of a label, else of the letter that it stands for."""
+        own = values.get((system, label))
+        if own is not None or label not in holders:
+            return own or {}
+        comp = values.get((system, holders[label]))
+        counts["comp rows on the node of their letter"] += comp is not None
+        return comp or {}
 
     def add(label: str, parent: int) -> None:
         if label in added:
@@ -223,7 +287,7 @@ def _add_system(
             logger.debug("MSC %s: %s is its own ancestor", system, label)
             return
         added.add(label)
-        comp = values.get((system, label), {})
+        comp = row_of(label)
         pair = orbit_of.get(label)
         first = primary_value.get(label)
         orbit = elements.get((system, label), {})

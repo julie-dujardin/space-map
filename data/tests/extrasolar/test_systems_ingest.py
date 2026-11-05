@@ -517,6 +517,27 @@ class TestMscComponents:
         found = registry.lookup("wds", "component", ["02000+0500 A", "02000+0500 B"])
         assert found.tolist() == ids_of(registry, ["1003", "1004"])
 
+    def test_a_neighbour_past_the_msc_error_is_no_match(self, tmp_path):
+        """MSC places are Gaia places. The WDS error would reach this star, as
+        it reached the neighbour of 19168+4052 at 4.6″ and 0.9 mag."""
+        root = tmp_path / "registry"
+        w = "04000+1500"
+        stars = STARS | {
+            "2001": (60.0, 15.0, 9.0, 15.0, 0.2),
+            "2002": (60.01, 15.0, 10.0, 15.0, 0.2),
+        }
+        off = 4.6 / 3600
+        rows = (
+            [
+                msc_comp(w, "A", RAdeg=60.0, DEdeg=15.0, Vmag=9.3),
+                msc_comp(w, "B", RAdeg=60.01, DEdeg=15.0 + off, Vmag=10.9),
+            ],
+            [msc_pair(w, "A", "B", "*", Sep=34.8, Sunit='"')],
+        )
+        ingest(root, stars, msc_rows=rows)
+        found = Registry(root).lookup("msc", "component", [f"{w} A", f"{w} B"])
+        assert found.tolist() == [*ids_of(Registry(root), ["2001"]), 0]
+
 
 class TestHostInNoTree:
     """A P-type host that no tree lists is a point that holds two stars."""

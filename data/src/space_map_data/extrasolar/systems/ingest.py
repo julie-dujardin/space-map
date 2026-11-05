@@ -73,7 +73,11 @@ from space_map_data.extrasolar.systems.drawn import (
     scene,
 )
 from space_map_data.extrasolar.systems.elements import GAIA_ELEMENTS
-from space_map_data.extrasolar.systems.msc import read_msc, refuted_pairs
+from space_map_data.extrasolar.systems.msc import (
+    MSC_MATCHER,
+    read_msc,
+    refuted_pairs,
+)
 from space_map_data.extrasolar.systems.nodes import (
     GAIA_DR3,
     MSC_ID,
@@ -138,7 +142,7 @@ MSC_COMPONENTS = Source(
     catalogue="msc",
     release="component",
     home=1,
-    matcher=WDS_MATCHER,
+    matcher=MSC_MATCHER,
     kind=COMPONENT_KIND,
 )
 COMPONENT_PASSES = {WDS_ID: WDS_COMPONENTS, MSC_ID: MSC_COMPONENTS}
@@ -174,6 +178,7 @@ FACT_COLUMNS = frozenset(
         "pmdec_error",
         *families.SPECTRAL_COLUMNS,
         "non_single_star",
+        "ruwe",
     }
 )
 

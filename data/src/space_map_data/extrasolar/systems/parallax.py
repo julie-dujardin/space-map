@@ -2,10 +2,11 @@
 
 `same_distance` is El-Badry's test of a bound pair. `parallaxes_disagree` and
 `disagree` are the veto: two parallaxes that put two points at clearly
-different distances. `unbound` refutes a pair by its projected width, by its
-motion, or as neighbours in one star cluster. `wrong_object` tells which way a
-refuted pair goes: it never refutes a pair itself, because real wide pairs can
-have rough separations.
+different distances, with the error of a Gaia solution that does not fit its
+star scaled by its RUWE (`veto_error`). `unbound` refutes a pair by its
+projected width, by its motion, or as neighbours in one star cluster.
+`wrong_object` tells which way a refuted pair goes: it never refutes a pair
+itself, because real wide pairs can have rough separations.
 """
 
 import math
@@ -35,6 +36,10 @@ MOTION_SIGMA = 2.0
 # closer, and by more than VETO_SHARE of the larger one.
 VETO_WIDE_SIGMA, VETO_CLOSE_SIGMA = 5.0, 6.0
 VETO_SHARE = 0.1
+# A Gaia solution over this RUWE does not fit its star, and its errors are too
+# small. Scaled by the RUWE, the vetoes that go agree in RV 65% of the time, and
+# the ones that stay 12%. Skipping every veto over this RUWE frees 50%.
+MAX_RUWE = 1.4
 # The tidal radius of 2 M☉ is 1.7 pc (Jiang & Tremaine 2010).
 MAX_PARSEC = 2.0
 # km/s beyond an orbit plus EXCESS_SIGMA. Gaia radial velocities agree in 41%
@@ -105,6 +110,12 @@ def _motions_apart(first: Fact, second: Fact) -> tuple[float, float]:
     return apart, error
 
 
+def veto_error(error: np.ndarray, ruwe: np.ndarray) -> np.ndarray:
+    """The parallax error that the veto reads."""
+    with np.errstate(invalid="ignore"):
+        return np.where(ruwe > MAX_RUWE, error * ruwe, error)
+
+
 def parallaxes_disagree(
     parallax: np.ndarray,
     error: np.ndarray,
@@ -135,9 +146,9 @@ def disagree(first: Fact, second: Fact) -> bool:
     return bool(
         parallaxes_disagree(
             np.asarray(first.parallax),
-            np.asarray(first.parallax_error),
+            veto_error(np.asarray(first.parallax_error), np.asarray(first.ruwe)),
             np.asarray(second.parallax),
-            np.asarray(second.parallax_error),
+            veto_error(np.asarray(second.parallax_error), np.asarray(second.ruwe)),
             np.asarray(_apart(first, second)),
         )
     )

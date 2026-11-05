@@ -1,15 +1,19 @@
 """The steps of the builder before the assembly.
 
 1. Each node of a tree source takes its candidate objects (`resolve`). An MSC
-   component with no candidate takes the object of the WDS component of its
-   WDS id at its place, whatever their letters, as MSC and WDS can letter one
-   star differently. A WDS component with no candidate takes the object of
-   the MSC component of the same WDS id and letter, and the other way round,
-   when their separations agree. Separations that disagree make them two
-   stars (`Reduced.two_stars`). A component that still has none goes to
-   `Resolver.match` by position. It never takes the object of a node above
-   it, or of another node of its WDS system near it. A candidate far from
-   the place of its WDS id is a wrong id, and goes (`place_guard`).
+   component with no candidate goes to `Resolver.match` by position: its
+   place is Gaia's, so this comes before any letter, which can name another
+   star. A group goes too, as the MSC's place sits on the group when its
+   stars are unresolved. One that still has none takes the object of the WDS
+   component of its WDS id at its place, whatever their letters, as MSC and
+   WDS can letter one star differently. Then a WDS component with no candidate
+   takes the object of the MSC component of the same WDS id and letter, and
+   the other way round, when their separations agree. Separations that
+   disagree make them two stars (`Reduced.two_stars`). A WDS component that
+   still has none goes to `Resolver.match`. A component never takes the object
+   of a node above it, or of another node of its WDS system near it. A
+   candidate far from the place of its WDS id is a wrong id, and goes
+   (`place_guard`).
 2. A planet record that is also a star of a star catalogue stays a record of
    its host. Under the IAU's line its object leaves every tree, and no other
    record brings it back. A brown dwarf is a member of its system too
@@ -48,6 +52,10 @@ from space_map_data.extrasolar.sky import position_angle
 from space_map_data.extrasolar.sky import separation as sky_separation
 from space_map_data.extrasolar.sources.hipparcos import to_gaia_epoch
 from space_map_data.extrasolar.systems.merge import SetTable
+from space_map_data.extrasolar.systems.msc import (
+    MSC_MATCHER,
+    MSC_POSITION_ERROR,
+)
 from space_map_data.extrasolar.systems.nodes import (
     EL_BADRY,
     GAIA_DR3,
@@ -70,6 +78,7 @@ from space_map_data.extrasolar.systems.parallax import (
     one_cluster,
     parallaxes_disagree,
     unbound,
+    veto_error,
 )
 from space_map_data.extrasolar.systems.reduce import (
     POINT,
@@ -121,6 +130,11 @@ PLANET_MASS = 13 * 9.547919e-4
 PERIOD_TOLERANCE = 0.05
 # Arcsec, for the position of a WDS component.
 WDS_POSITION_ERROR = 1.0
+# The radius within which a row of each id kind can reach an object.
+MATCH_RADIUS = {
+    WDS_ID: float(WDS_MATCHER.radius(np.array([WDS_POSITION_ERROR]), np.zeros(1))[0]),
+    MSC_ID: float(MSC_MATCHER.radius(np.array([MSC_POSITION_ERROR]), np.zeros(1))[0]),
+}
 VALUE_BLOCK = 1 << 40
 # The largest ratio between an MSC separation and the WDS measures of its
 # letter. An orbit moves a pair, and the MSC can give the semi-major axis.
@@ -228,7 +242,7 @@ def letter_links(
     its own, below its own ids. A WDS component lends none when its Gaia id is
     on another letter of its WDS id too. Ids whose separations disagree go in
     `reduced.two_stars`, also with no candidate to lend. An MSC row of `placed`
-    has its object from `place_links`.
+    has its object by place, so it neither takes nor lends one.
     """
     links: dict[tuple[str, str, str], tuple[int, int]] = {}
     if msc is None or wds is None:
@@ -245,7 +259,7 @@ def letter_links(
     first = wds["first_separation"].to_pylist()
     for row, text in wds_ids.items():
         other = msc_by.get(text)
-        if other is None or other in placed:
+        if other is None:
             continue
         measures = (first[row], last[row])
         agree = separations_agree(msc_separation[other], measures, msc_known[other])
@@ -254,6 +268,8 @@ def letter_links(
             reduced.counts[f"{WDS}: letter links that the separations refute"] += 1
             apart = f'MSC {msc_separation[other]}", WDS {first[row]}" to {last[row]}"'
             reduced.events.append(("letters of two stars", WDS, f"{text}: {apart}"))
+            continue
+        if other in placed:
             continue
         mine, theirs = found[WDS][row], found[MSC][other]
         # A Gaia id on several letters is the light of a close pair.
@@ -381,23 +397,27 @@ def place_guard(
 
 
 def match_rows(
-    table: pa.Table, found: list[list[tuple[int, int]]], kind: tuple[str, str]
+    table: pa.Table,
+    found: list[list[tuple[int, int]]],
+    kind: tuple[str, str],
+    groups: bool = False,
 ) -> pa.Table:
-    """The MATCH rows of the leaves of `table` that have no candidate. `kind`
-    is the id that links a row back to its node.
+    """The MATCH rows of the leaves of `table` that have no candidate, and of
+    the groups too with `groups`. `kind` is the id that links a row back to its
+    node.
 
     A component never takes the object of a node above it, or of another
     node of its WDS system within its match radius. That object is the point
     of its pair, or the other star of the pair.
     """
     parent = table["parent"].to_numpy()
-    leaf = np.ones(table.num_rows, bool)
-    leaf[parent[parent >= 0]] = False
-    free = np.array([not items for items in found], bool) & leaf
+    free = np.array([not items for items in found], bool)
+    if not groups:
+        free[parent[parent >= 0]] = False
     free &= table["ra"].is_valid().to_numpy(zero_copy_only=False)
     free &= table["epoch"].is_valid().to_numpy(zero_copy_only=False)
     rows = table.filter(pa.array(free))
-    exclude = _taken(table, found, np.flatnonzero(free))
+    exclude = _taken(table, found, np.flatnonzero(free), MATCH_RADIUS[kind])
     ids = _ids_by_row(rows, kind)
     floats = {
         name: rows[name].cast(pa.float64()).fill_null(np.nan).to_numpy()
@@ -408,6 +428,7 @@ def match_rows(
     )
     mag = np.where(np.isfinite(floats["g_mag"]), floats["g_mag"], floats["v_mag"])
     n = rows.num_rows
+    error = MSC_POSITION_ERROR if kind == MSC_ID else WDS_POSITION_ERROR
     return pa.table(
         {
             "catalogue_id": pa.array([ids.get(i) for i in range(n)], pa.string()),
@@ -417,7 +438,7 @@ def match_rows(
             "match_pmra": pa.array(floats["pmra"], pa.float32(), from_pandas=True),
             "match_pmdec": pa.array(floats["pmdec"], pa.float32(), from_pandas=True),
             "match_mag": pa.array(mag, pa.float32(), from_pandas=True),
-            "match_error": pa.array(np.full(n, WDS_POSITION_ERROR, np.float32)),
+            "match_error": pa.array(np.full(n, error, np.float32)),
             "match_exclude": pa.array(exclude, pa.list_(pa.int64())),
         },
         schema=MATCH,
@@ -425,14 +446,16 @@ def match_rows(
 
 
 def _taken(
-    table: pa.Table, found: list[list[tuple[int, int]]], rows: np.ndarray
+    table: pa.Table,
+    found: list[list[tuple[int, int]]],
+    rows: np.ndarray,
+    radius: float,
 ) -> list[list[int] | None]:
     """For each of `rows`, the candidates of the nodes above it and of the
-    other nodes of its WDS system within its match radius."""
+    other nodes of its WDS system within `radius`."""
     parent = table["parent"].to_numpy()
     ra = table["ra"].fill_null(np.nan).to_numpy()
     dec = table["dec"].fill_null(np.nan).to_numpy()
-    radius = float(WDS_MATCHER.radius(np.array([WDS_POSITION_ERROR]), np.zeros(1))[0])
     held: dict[str, list[int]] = defaultdict(list)
     wds_ids = [text.split(" ")[0] for text in table["system"].to_pylist()]
     for row, (wds_id, items) in enumerate(zip(wds_ids, found)):
@@ -636,7 +659,7 @@ def member_links(
     labels = table["label"].to_pylist()
     separation = table["separation"].fill_null(np.nan).to_numpy()
     angle = table["position_angle"].cast(pa.float64()).fill_null(np.nan).to_numpy()
-    radius = float(WDS_MATCHER.radius(np.array([WDS_POSITION_ERROR]), np.zeros(1))[0])
+    radius = MATCH_RADIUS[WDS_ID]
     for item in members:
         host, star = facts.get(item.host), facts.get(item.key)
         if host is None or star is None:
@@ -884,27 +907,19 @@ def prepare(inputs: Inputs, resolver: Resolver) -> Prepared:
             reduced.counts[f"{SIMBAD}: {NON_STELLAR}"] += 1
             reduced.events.append((NON_STELLAR, SIMBAD, text))
     placed: frozenset[int] = frozenset()
+    if MSC in by_source:
+        placed = position_links(by_source[MSC], MSC_ID, trees, found, resolver, counts)
     if MSC in by_source and WDS in by_source:
-        links, placed = place_links(by_source[MSC], by_source[WDS], found, reduced)
+        links, more = place_links(by_source[MSC], by_source[WDS], found, reduced)
         _add_links(trees, found, links)
+        placed |= more
     _add_links(
         trees,
         found,
         letter_links(by_source.get(MSC), by_source.get(WDS), found, reduced, placed),
     )
-    for source, kind in ((WDS, WDS_ID), (MSC, MSC_ID)):
-        if source not in by_source:
-            continue
-        rows = match_rows(by_source[source], found[source], kind)
-        counts[f"{source}: members sent to match by position"] = rows.num_rows
-        matched = resolver.match(rows, kind) if rows.num_rows else np.zeros(0, np.int64)
-        positions = {
-            (*kind, text): (key, POSITION)
-            for text, key in zip(rows["catalogue_id"].to_pylist(), matched.tolist())
-            if key and text
-        }
-        counts[f"{source}: members matched by position"] = len(positions)
-        _add_links(trees, found, positions)
+    if WDS in by_source:
+        position_links(by_source[WDS], WDS_ID, trees, found, resolver, counts)
 
     el_keys = (np.zeros(0, np.int64), np.zeros(0, np.int64))
     if inputs.el_badry is not None:
@@ -1012,6 +1027,30 @@ def prepare(inputs: Inputs, resolver: Resolver) -> Prepared:
     )
 
 
+def position_links(
+    table: pa.Table,
+    kind: tuple[str, str],
+    trees: list[pa.Table],
+    found: dict[str, list[list[tuple[int, int]]]],
+    resolver: Resolver,
+    counts: Counter,
+) -> frozenset[int]:
+    """Match the rows of a source by position. Gives the rows that it links."""
+    source = table["source"][0].as_py()
+    rows = match_rows(table, found[source], kind, groups=kind == MSC_ID)
+    counts[f"{source}: members sent to match by position"] = rows.num_rows
+    matched = resolver.match(rows, kind) if rows.num_rows else np.zeros(0, np.int64)
+    positions = {
+        (*kind, text): (key, POSITION)
+        for text, key in zip(rows["catalogue_id"].to_pylist(), matched.tolist())
+        if key and text
+    }
+    counts[f"{source}: members matched by position"] = len(positions)
+    _add_links(trees, found, positions)
+    ids = _ids_by_row(table, kind)
+    return frozenset(row for row, text in ids.items() if (*kind, text) in positions)
+
+
 def _add_links(
     trees: list[pa.Table],
     found: dict[str, list[list[tuple[int, int]]]],
@@ -1110,9 +1149,11 @@ def vetoed_pairs(
     )
     found = parallaxes_disagree(
         facts.column("parallax", first),
-        facts.column("parallax_error", first),
+        veto_error(facts.column("parallax_error", first), facts.column("ruwe", first)),
         facts.column("parallax", second),
-        facts.column("parallax_error", second),
+        veto_error(
+            facts.column("parallax_error", second), facts.column("ruwe", second)
+        ),
         separation,
     )
     found &= (first != 0) & (second != 0) & (first != second)

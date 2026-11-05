@@ -154,6 +154,42 @@ def gaia_pair(masses: tuple[float | None, float | None]) -> Systems:
     )
 
 
+def triple(
+    inner: tuple[str | None, str | None, str | None],
+    period: tuple[float | None, float | None, float | None],
+) -> Systems:
+    """A point that holds three stars and a Gaia orbit."""
+    letters = ("Aa", "Ab1", "Ab2") if inner[0] is None else ("Aa1", "Aa2", "Ab")
+    return _systems(
+        [
+            {
+                "node": 1,
+                "key": 20,
+                "point": True,
+                "ra": 289.076,
+                "dec": 51.757,
+                "distance": 75.3,
+                "root": 1,
+                "depth": 0,
+            }
+        ],
+        [
+            {
+                "node": 1,
+                "kind": assemble.ENTRY,
+                "source": "msc",
+                "letter": letter,
+                "label": letter,
+                "inner": within,
+                "period": days,
+                "ids": _ids(("msc", "id", f"19000+5100 {letter}")),
+            }
+            for letter, within, days in zip(letters, inner, period)
+        ],
+        orbit_keys=(20,),
+    )
+
+
 def msc_masses(*rows: tuple[str, str, float, str, float, str]) -> pa.Table:
     """COMPONENTS of α Cen's pairs in the MSC's sys.tsv."""
     return orbits.msc_masses(
@@ -544,6 +580,94 @@ def _held(
     )
     drawer = drawn.Drawer(systems, Inputs(), FakeResolver({}, []))
     return drawer.held(drawn_pairs), drawer.counts
+
+
+def _orbit(source: str, period: float) -> elements.Elements:
+    return elements.Elements(
+        source=source,
+        row=0,
+        reference=None,
+        period=period,
+        a_au=None,
+        a_arcsec=None,
+        eccentricity=None,
+        inclination=None,
+        node=None,
+        node_ascending=False,
+        arg_periastron=None,
+        omega_fixed=False,
+        epoch=None,
+        mean_anomaly=None,
+        phase=None,
+    )
+
+
+class TestPointOfThreeStars:
+    """Gaia DR3 sees the outer pair of a close triple, as MSC 20389+2424 Aa, Ab
+    at 541.56 d, with Ab1, Ab2 at 0.34 d inside Ab. The point holds all three."""
+
+    def draw(self, systems: Systems, period: float | None = None) -> drawn.Drawn:
+        orbit = KEPLER_16_GAIA | ({} if period is None else {"period": period})
+        inputs = Inputs(orbit_elements=pa.Table.from_pylist([orbit]))
+        return drawn.draw(systems, inputs, FakeResolver({}, []))
+
+    def test_the_lone_star_first(self):
+        found = self.draw(triple((None, "Ab", "Ab"), (None, None, 0.34)))
+        assert found.orbits.num_rows == 1
+
+    def test_the_lone_star_last(self):
+        found = self.draw(triple(("Aa", "Aa", None), (None, 0.29, 121.4)))
+        assert found.orbits.num_rows == 1
+        assert found.orbits["period"].to_pylist() == [KEPLER_16_GAIA["period"]]
+
+    def test_the_orbit_of_the_inner_pair_stays_off(self):
+        found = self.draw(triple((None, "Ab", "Ab"), (None, None, 228.0)), 228.8)
+        assert found.orbits.num_rows == 0
+        assert found.counts[f"{GAIA_ORBITS}: orbits of an inner pair"] == 1
+
+    def test_three_stars_of_one_level_hold_no_pair(self):
+        found = self.draw(triple((None, None, None), (None, None, None)))
+        assert found.orbits.num_rows == 0
+
+    def test_each_shape_has_its_outer_pair(self):
+        for inner, period, second in (
+            ((None, "Ab", "Ab"), (None, None, 0.34), 1),
+            (("Aa", "Aa", None), (None, 0.29, 121.4), 2),
+        ):
+            drawer = drawn.Drawer(triple(inner, period), Inputs(), FakeResolver({}, []))
+            assert (drawer.pairs[1].first, drawer.pairs[1].second) == (0, second)
+
+    def test_a_catalogue_orbit_of_the_third_star_stays_off(self):
+        systems = triple(("Aa", "Aa", None), (None, 0.29, 121.4))
+        drawer = drawn.Drawer(systems, Inputs(), FakeResolver({}, []))
+        assert drawer._on_component(_orbit("msc", 0.29), "19000+5100 Aa2")
+        assert drawer.counts["msc: orbits of a node that is no pair"] == 1
+        assert not drawer.pairs[1].orbits
+
+    def test_an_orbit_of_the_side_reaches_the_pair(self):
+        """ORB6 and the MSC name MSC 00447+4817 Aa,Ab, and Ab is no member."""
+        drawer = drawn.Drawer(
+            triple((None, "Ab", "Ab"), (None, None, 11.66)),
+            Inputs(),
+            FakeResolver({}, []),
+        )
+        assert drawer._by_letters("msc", "19000+5100", "Aa", "Ab") == (1, False)
+
+    def test_a_paper_gives_the_orbit_of_the_inner_pair(self):
+        """Papers win, so the point is that pair and takes no other orbit."""
+        drawer = drawn.Drawer(
+            triple(("Aa", "Aa", None), (None, 0.125, 418.0)),
+            Inputs(),
+            FakeResolver({}, []),
+        )
+        assert drawer._of_pair(1, _orbit("literature", 0.125765))
+        assert (drawer.pairs[1].first, drawer.pairs[1].second) == (0, 1)
+        assert not drawer._of_pair(1, _orbit("msc", 418.0))
+
+    def test_the_stars_of_the_outer_pair_take_no_gaia_mass(self):
+        """Its second star stands for a pair, so the mass is not a star's."""
+        found = self.draw(triple((None, "Ab", "Ab"), (None, None, 0.34)))
+        assert found.held["mass"].to_pylist() == [None, None]
 
 
 class TestHeldStars:

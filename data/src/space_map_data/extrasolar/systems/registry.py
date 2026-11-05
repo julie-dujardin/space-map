@@ -11,7 +11,7 @@ region at a time:
 - the ids of the other catalogues come from one pass over every region,
   kept in memory, since they are few;
 - a position match takes the registry positions of the row's region and its
-  neighbours, with WDS_MATCHER and the kind of the rows of the ingest, which
+  neighbours, with the matcher and the kind of the rows of the ingest, which
   runs a pass of the engine instead. It reads no stored component link, which
   the pass keeps, so the two kinds of rows match alike.
 """
@@ -29,14 +29,20 @@ from space_map_data.extrasolar import families, sky
 from space_map_data.extrasolar.exoplanets.catalogues import EU, OEC
 from space_map_data.extrasolar.exoplanets.simbad import Simbad
 from space_map_data.extrasolar.ids import CELL_LEVEL, cell_of
-from space_map_data.extrasolar.match import Pairs, assign, excluded_pairs
+from space_map_data.extrasolar.match import (
+    Pairs,
+    PositionMatcher,
+    assign,
+    excluded_pairs,
+)
 from space_map_data.extrasolar.placement import COLUMNS, placement
 from space_map_data.extrasolar.registry import Registry
 from space_map_data.extrasolar.systems.elements import GAIA_ELEMENTS
-from space_map_data.extrasolar.systems.nodes import GAIA_DR3
+from space_map_data.extrasolar.systems.msc import MSC_MATCHER
+from space_map_data.extrasolar.systems.nodes import GAIA_DR3, MSC_ID
 from space_map_data.extrasolar.systems.pairs import ORBIT_COLUMNS, PAIRS, orbit_pairs
 from space_map_data.extrasolar.systems.planets import PLANETS_INPUT, planet_star_ids
-from space_map_data.extrasolar.systems.resolve import FACTS
+from space_map_data.extrasolar.systems.resolve import FACTS, GAIA_ASTROMETRY
 from space_map_data.extrasolar.systems.wds import COMPONENT_KIND, WDS_MATCHER
 from space_map_data.extrasolar.tables import CROSS_ID
 from space_map_data.utils.arrays import find_sorted, floats
@@ -53,6 +59,7 @@ POINT_COLUMNS = [
     "pmdec_error",
     *families.SPECTRAL_COLUMNS,
     "non_single_star",
+    "ruwe",
 ]
 
 
@@ -131,6 +138,8 @@ def point_facts(positions: pa.Table, point: pa.Table, meta: pa.Table) -> pa.Tabl
         index = pa.array(at, mask=at < 0)
         return table[name].take(index)
 
+    astrometry = pick(point, at_point, "astrometry_source")
+    gaia = pc.is_in(astrometry, value_set=pa.array(sorted(GAIA_ASTROMETRY)))
     spectral = families.spectral_type(point).take(pa.array(at_point, mask=at_point < 0))
     point_distance = np.where(at_point >= 0, distance[np.maximum(at_point, 0)], np.nan)
     return pa.table(
@@ -143,9 +152,12 @@ def point_facts(positions: pa.Table, point: pa.Table, meta: pa.Table) -> pa.Tabl
             "pmra_error": pick(point, at_point, "pmra_error"),
             "pmdec_error": pick(point, at_point, "pmdec_error"),
             "mag": positions["mag"],
-            "astrometry": pick(point, at_point, "astrometry_source"),
+            "astrometry": astrometry,
             "parallax": pick(point, at_point, "parallax"),
             "parallax_error": pick(point, at_point, "parallax_error"),
+            "ruwe": pc.if_else(
+                gaia, pick(point, at_point, "ruwe"), pa.scalar(None, pa.float32())
+            ),
             "distance": pa.array(point_distance, from_pandas=True),
             "spectral_type": spectral,
             "non_single_star": pick(point, at_point, "non_single_star").cast(
@@ -248,6 +260,7 @@ class RegistryResolver:
         return point_facts(positions.rename_columns({"id": "key"}), point, meta)
 
     def match(self, rows: pa.Table, kind: tuple[str, str]) -> np.ndarray:
+        matcher = MSC_MATCHER if kind == MSC_ID else WDS_MATCHER
         ra, dec = floats(rows, "match_ra"), floats(rows, "match_dec")
         keys = np.zeros(rows.num_rows, np.int64)
         valid = np.isfinite(ra) & np.isfinite(dec)
@@ -259,11 +272,13 @@ class RegistryResolver:
             candidates = pa.concat_tables(
                 [self.registry.positions(r) for r in hood if r >= 0]
             )
-            keys[at] = self._match(rows.take(pa.array(at)), candidates)
+            keys[at] = self._match(rows.take(pa.array(at)), candidates, matcher)
         self.counts["matched by position"] += int((keys > 0).sum())
         return keys
 
-    def _match(self, rows: pa.Table, candidates: pa.Table) -> np.ndarray:
+    def _match(
+        self, rows: pa.Table, candidates: pa.Table, matcher: PositionMatcher
+    ) -> np.ndarray:
         fine = sky.cells(
             floats(candidates, "ra"), floats(candidates, "dec"), sky.MATCH_LEVEL
         )
@@ -271,7 +286,7 @@ class RegistryResolver:
         fine, candidates = fine[order], candidates.take(pa.array(order))
         ra, dec = floats(rows, "match_ra"), floats(rows, "match_dec")
         error = floats(rows, "match_error")
-        radius = WDS_MATCHER.radius(error, np.full(ra.size, np.nan))
+        radius = matcher.radius(error, np.full(ra.size, np.nan))
         row, low, high = sky.disc_ranges(ra, dec, radius)
         first = np.searchsorted(fine, low)
         count = np.searchsorted(fine, high) - first
@@ -297,7 +312,7 @@ class RegistryResolver:
             key_mag=floats(candidates, "mag")[pair_cand],
             key_kind=candidates["kind"].combine_chunks().take(pa.array(pair_cand)),
         )
-        score = WDS_MATCHER.score(pairs)
+        score = matcher.score(pairs)
         ids = candidates["id"].to_numpy()
         banned = excluded_pairs(
             pair_row, ids[pair_cand], rows["match_exclude"].combine_chunks()

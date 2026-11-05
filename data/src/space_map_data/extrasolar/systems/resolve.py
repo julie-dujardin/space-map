@@ -61,6 +61,8 @@ FACTS = pa.schema(
         ("astrometry", pa.string()),
         ("parallax", pa.float32()),
         ("parallax_error", pa.float32()),
+        # Of the Gaia solution that gives the parallax, else null.
+        ("ruwe", pa.float32()),
         # Parsecs where the object renders, by `placement`, else null.
         ("distance", pa.float64()),
         ("spectral_type", pa.string()),
@@ -138,6 +140,7 @@ class Fact(NamedTuple):
     astrometry: str | None
     parallax: float
     parallax_error: float
+    ruwe: float
     distance: float
     spectral_type: str | None
     non_single_star: int | None
@@ -207,6 +210,7 @@ class Facts:
             astrometry=row["astrometry"],
             parallax=number("parallax"),
             parallax_error=number("parallax_error"),
+            ruwe=number("ruwe"),
             distance=number("distance"),
             spectral_type=row["spectral_type"],
             non_single_star=row["non_single_star"],
