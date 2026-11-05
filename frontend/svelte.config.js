@@ -10,6 +10,8 @@ if (dev) connectSrc.push('http://127.0.0.1:*', 'http://localhost:*', 'ws:', 'wss
 
 // Cloudflare serves the Turnstile script and its frame from here only.
 const TURNSTILE = 'https://challenges.cloudflare.com';
+// Cloudflare Web Analytics: performance metrics reporting.
+const WEB_ANALYTICS = 'https://static.cloudflareinsights.com';
 
 /** @type {import('@sveltejs/kit').Config} */
 const config = {
@@ -30,6 +32,7 @@ const config = {
 					'self',
 					'wasm-unsafe-eval',
 					TURNSTILE,
+					WEB_ANALYTICS,
 					'sha256-/5ozVzgeMHeJpMEVlzzJ/6dkOg7+w1n5I+ARm1PXT1w=',
 					'sha256-3GkLjh8hUINKAQM1DYGLTD5hrwnZc1a0cFwUcKJaKSs='
 				],

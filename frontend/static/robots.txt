@@ -1,5 +1,7 @@
-# allow crawling everything
 User-agent: *
 Allow: /
+# The page's own calls. A crawler that renders the page needs none of them to
+# read it, and each one costs a Worker request.
+Disallow: /api/
 
 Sitemap: https://spacemap.co/sitemap.xml
