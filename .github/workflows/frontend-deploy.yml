@@ -7,39 +7,30 @@ on:
       - frontend/**
       - .github/workflows/frontend-deploy.yml
       - .github/workflows/frontend-test.yml
-  pull_request:
-    paths:
-      - frontend/**
-      - .github/workflows/frontend-deploy.yml
-      - .github/workflows/frontend-test.yml
   workflow_dispatch:
 
-# Cancelling is only safe for superseded PR previews; a main deploy must run to
-# completion, so later pushes queue behind it.
+# A deploy must run to completion, so later pushes queue behind it.
 concurrency:
-  group: frontend-deploy-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: frontend-deploy
+  cancel-in-progress: false
 
 jobs:
-  # On PRs the test workflows run standalone via their own pull_request
-  # triggers; gating here too would run everything twice. Only deploys that
-  # ship (main + manual) are gated.
+  # Only main deploys. A dispatch from another branch skips the gates, and so
+  # the deploy.
   test:
-    if: github.event_name != 'pull_request'
+    if: github.ref == 'refs/heads/main'
     uses: ./.github/workflows/frontend-test.yml
     permissions:
       contents: read
 
   precommit:
-    if: github.event_name != 'pull_request'
+    if: github.ref == 'refs/heads/main'
     uses: ./.github/workflows/test.yml
     permissions:
       contents: read
 
   deploy:
     needs: [test, precommit]
-    # Gates passed or were skipped (PR previews); a red gate blocks.
-    if: ${{ !failure() && !cancelled() }}
     runs-on: ubuntu-latest
     environment: cf-pages-deploy
     permissions:
@@ -68,7 +59,6 @@ jobs:
       - name: SEO page records
         run: cd frontend && pnpm build:seo
 
-      # PRs upload a preview-only version; main promotes the live Worker.
       - name: Deploy to Cloudflare Workers
         id: deploy
         uses: cloudflare/wrangler-action@v3
@@ -78,15 +68,14 @@ jobs:
           workingDirectory: frontend
           # Before 4.42.1, a version upload drops the dashboard variables.
           wranglerVersion: '4.148.0'
-          command: ${{ github.event_name == 'pull_request' && 'versions upload' || 'deploy' }}
+          command: deploy
 
       - name: Verify deployment
         env:
-          # On main, spacemap.co additionally checks that prod routing
-          # picked it up.
+          # spacemap.co checks that prod routing picked it up.
           URLS: >-
             ${{ steps.deploy.outputs.deployment-url }}
-            ${{ github.ref == 'refs/heads/main' && 'https://spacemap.co' || '' }}
+            https://spacemap.co
         run: |
           for url in $URLS; do
             echo "Probing $url"
