@@ -25,40 +25,55 @@ Space Map computes positions at any date, using orbital elements from NASA, ESA,
 | [Satellite debris](https://spacemap.co/g/cat-debris/Space%20Debris) | 42k | [CelesTrak](https://celestrak.org/), [Space-Track](https://www.space-track.org/) |
 | [Surface features](https://spacemap.co/g/cat-surface-features/Surface%20features) | 16k | [Gazetteer of Planetary Nomenclature (IAU/USGS/NASA)](https://planetarynames.wr.usgs.gov/) |
 
+See the full list at [spacemap.co/about/data](https://spacemap.co/about/data)
+
 Each of these is displayed at its current position, and shown at its real size (when known). Click any object to focus it.
 
 - Time control: Speed up or reverse time, go to any date.
 - [Navigation to any object](https://spacemap.co/nav/naif-399/naif-499?at=2029-12-20T12:28:52.605Z,53.98086,8.01888,26.955), with transfer windows, gravity assists, and brachistochrone trajectories, real & fictional spacecraft, and [end-to-end directions](https://spacemap.co/nav/naif-399/naif-699?at=2029-12-20T12:28:04.084Z,25.07064,-78.08883,0.050851&tm=custom&talt=221099&tinc=9&route=balanced).
-- Streetview-like [ground level panoramas](https://spacemap.co/view).
-- Search: Text search & filters, infinite scroll - it's 2026, time to doomscroll [potentially hazardous asteroids](https://spacemap.co/b/399?f=pha).
-- Collections: See all [Starlink](https://spacemap.co/g/const-starlink), [GPS](https://spacemap.co/g/const-gps), [Geostationary](https://spacemap.co/g/class-GEO) satellites, the [Jupiter Trojan asteroids](https://spacemap.co/g/class-TJN/Jupiter%20Trojan?at=now,34.60900,58.08478,131.68), [hyperbolic comets](https://spacemap.co/g/class-HYP/Hyperbolic%20Comet?at=now,20.47956,140.22461,42.430).
+- 14k Streetview-like [ground level panoramas](https://spacemap.co/view) on Mars, the Moon, Titan, and Venus.
+- Search: Text search & advanced filters, infinite scroll - it's 2026, time to doomscroll [potentially hazardous asteroids](https://spacemap.co/b/399?f=pha).
+- Detailed facts about each object & place: mass & size, classification, date of discovery, source datasets, and more.
+- Collections: See all [Starlink](https://spacemap.co/g/const-starlink), [GPS](https://spacemap.co/g/const-gps), [Geostationary](https://spacemap.co/g/class-GEO) satellites, the [Jupiter Trojan asteroids](https://spacemap.co/g/class-TJN/Jupiter%20Trojan?at=now,34.60900,58.08478,131.68), [hyperbolic comets](https://spacemap.co/g/class-HYP/Hyperbolic%20Comet?at=now,20.47956,140.22461,42.430), [Craters](https://spacemap.co/g/ft-crater), etc.
 
 ### Natural bodies
 
 - [Data driven atmospheric rendering](https://spacemap.co/e/25544/International%20Space%20Station?at=2026-07-08T22:35:21.390Z,12.53355,29.96924,1.0570e-8) down to [ground level](https://spacemap.co/p/100265984/Mars%20Science%20Laboratory?at=2026-07-28T14:17:41.132Z,-42.90792,-107.14203,4.6896e-10).
-- Textures for all planets, 28 moons, and 13 minor bodies; 3d models for 10k [asteroids](https://spacemap.co/s/20101955/101955%20Bennu?at=now,-0.99190,142.87246,4.7560e-8), [comets](https://spacemap.co/s/1000012/67P%2FChuryumov%E2%80%93Gerasimenko?at=now,48.95132,65.96561,3.7911e-7), and [moons](https://spacemap.co/b/618/Pan?at=now,20.79260,41.75821,0.0000048744); colors for 138k small bodies from [TrueColorTools](https://github.com/Askaniy/TrueColorTools).
+- High-resolution streamed textures & topography for all planets, 28 moons, and 13 minor bodies. Mars: 5m per pixel, the Moon: 100m per pixel, Mercury: 166m per pixel, Lander areas: up to 0.25m per pixel.
+- 3D models for 10k [asteroids](https://spacemap.co/s/20101955/101955%20Bennu?at=now,-0.99190,142.87246,4.7560e-8), [comets](https://spacemap.co/s/1000012/67P%2FChuryumov%E2%80%93Gerasimenko?at=now,48.95132,65.96561,3.7911e-7), and [moons](https://spacemap.co/b/618/Pan?at=now,20.79260,41.75821,0.0000048744); colors for 138k small bodies from [TrueColorTools](https://github.com/Askaniy/TrueColorTools).
 - System-scale lighting with [sunsets](https://spacemap.co/b/499/f/2757/Ius%20Chasma?at=2026-09-04T13:54:43.410Z,-23.46737,133.08964,0.0000038200), [accurate eclipses](https://spacemap.co/b/399/Earth?at=2027-08-02T10:00:00.000Z,28.17996,30.91585,0.00082651), [self-shadowing](https://spacemap.co/b/301/f/6163/Tycho?at=2026-11-02T01:24:12.715Z,-88.15920,31.68708,0.000012024), [ringshine](https://spacemap.co/b/699/Saturn?at=2020-11-17T22:58:33.684Z,11.90051,-20.83658,0.010587), and [planetshine](https://spacemap.co/b/401/Phobos?at=2026-11-01T21:27:18.499Z,21.10221,-22.17875,0.0000022496).
-- Rich data on planetary ring systems from [NASA PDS](https://pds-rings.seti.org/saturn/saturn_rings_table.html), the atmospheres & interiors of 21 planets and moons from 100+ papers.
+- Rich data on [planetary ring systems](https://spacemap.co/g/cat-ring-systems) from [NASA PDS](https://pds-rings.seti.org/saturn/saturn_rings_table.html), the [atmospheres & interiors](https://spacemap.co/g/cat-structure-activity) of 21 planets and moons from 100+ papers.
 
 ### Probes
 
-- Historical positions for earth satellites & probes from [1959](https://spacemap.co/b/399/Earth?at=1959-06-30T23:46:01.557Z,42.14541,151.20487,0.0023256). Coverage is limited for early & non-US/EU/JA spacecraft.
+- Historical positions for Earth satellites & probes from [1959](https://spacemap.co/b/399/Earth?at=1959-06-30T23:46:01.557Z,42.14541,151.20487,0.0023256), in flight and on the ground. Coverage is limited for early & non-US/EU/JA spacecraft.
+- Historical attitude & orientation for 26 probes and 5 landers.
 - Over 290 spacecraft with 3D models: [ISS](https://spacemap.co/e/25544/International%20Space%20Station?at=now,35.24905,-17.25253,1.3451e-8), [Hubble](https://spacemap.co/e/20580/Hubble%20Space%20Telescope?at=now,19.83363,-95.19624,1.9914e-9), [James Webb](https://spacemap.co/p/115347456/James%20Webb%20Space%20Telescope?at=now,54.61394,115.76731,1.9039e-9), [Juno](https://spacemap.co/p/107159552/Juno?at=2022-08-17T15:29:50.557Z,64.88818,-21.50912,1.0027e-9), [Cassini](https://spacemap.co/p/88592384/Cassini?at=2013-07-09T06:37:40.977Z,63.94176,-121.21263,2.1247e-9), [New Horizons](https://spacemap.co/p/104804352/New%20Horizons?at=2015-07-14T11:30:51.731Z,45.06167,34.07062,8.5505e-10), [Voyager 2](https://spacemap.co/p/49000448/Voyager%202?at=1989-08-25T02:58:36.961Z,76.62626,0.66449,1.4615e-9).
 
 ### More
 
+- [Compare any object that renders on the map](https://spacemap.co/compare) in a side-by-side, to-scale comparison with everyday objects.
 - Deep links: Easily share what you're looking at.
 - Images from Wikimedia Commons for 15k objects, descriptions from Wikipedia for 92k. Metadata from Wikidata and [Jonathan C. McDowell's GCAT](https://planet4589.org/space/gcat/index.html).
-- Localization: Full localization in 12 languages, with content from Wikipedia. UI elements were localized by Claude Opus 4.8 & Fable 5.
+- Localization: Full localization in 12 languages, with content from Wikipedia. UI elements were localized by Claude Opus & Fable.
 - Credits & sources: see full attributions in the [credits page](https://spacemap.co/credits).
 - Performance: Load a solar system faster than your bank can show you your balance.
 - Easter eggs: I won't spoil them for you.
+
+### SDK
+
+SpaceMap can be easily integrated into your websites with the [SpaceMap SDK](https://www.npmjs.com/package/spacemap).
+
+- Use 3D & 2D maps and surface panoramas.
+- Full control over what's rendered, camera focus & position.
+- Draw on the map, and add in your own content.
+- Check out [SpaceGuesser.com](https://spaceguesser.com/) for examples.
 
 ## Architecture
 
 Space Map's frontend is built with SvelteKit and Three.js (WebGL), and is hosted on Cloudflare Workers.
 
-Three.js has 32-bit precision for positions. To make a continous solar system work at all scales, the map uses camera-based rendering and reverse-z logaritmic depth buffer: the world's origin coordinates is the camera. Objects that are very close to it exist in an area where lots of precision is available, and precision is not wasted on far-off objects. When this goes wrong, the effects are [very visible](https://godotengine.org/article/emulating-double-precision-gpu-render-large-worlds/).
+Three.js has 32-bit precision for positions. To make a continuous solar system work at all scales, the map uses camera-based rendering and reverse-z logarithmic depth buffer: the world's origin is the camera. Objects that are very close to it exist in an area where lots of precision is available, and precision is not wasted on far-off objects. When this goes wrong, the effects are [very visible](https://godotengine.org/article/emulating-double-precision-gpu-render-large-worlds/).
 
 The positions for most asteroids & comets are computed in web workers, and updated only when necessary: that's what makes real-time positions possible with 1.6m objects.
 
@@ -72,9 +87,9 @@ Sources for these major objects are [spice kernels](https://en.wikipedia.org/wik
 
 Important objects (famous probes, planets, major moons) have a higher size budget, so their positions will be more accurate.
 
-For earth satellites, positions are computed with [SGP4](https://en.wikipedia.org/wiki/Simplified_perturbations_models) with [satellites.js](https://github.com/shashwatak/satellite-js). Orbital elements are exported weekly from the [US Space Force](https://www.space-track.org), with a historical archive from [1959](https://spacemap.co/b/399/Earth?at=1959-06-30T23:46:01.557Z,42.14541,151.20487,0.0023256).
+For Earth satellites, positions are computed with [SGP4](https://en.wikipedia.org/wiki/Simplified_perturbations_models) with [satellite.js](https://github.com/shashwatak/satellite-js). Orbital elements are exported weekly from the [US Space Force](https://www.space-track.org), with a historical archive from [1959](https://spacemap.co/b/399/Earth?at=1959-06-30T23:46:01.557Z,42.14541,151.20487,0.0023256).
 
-Orbital elements for Asteroids & comets are retrieved from the [JPL Small-Body Database](https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/), which only provides static current orbital elements. Positions for these 1.5m objects will be less accurate the further from the current date you go.
+Orbital elements for asteroids & comets are retrieved from the [JPL Small-Body Database](https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/), which only provides static current orbital elements. Positions for these 1.5m objects will be less accurate the further from the current date you go.
 
 ## Other space maps
 

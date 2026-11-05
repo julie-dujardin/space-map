@@ -688,6 +688,7 @@
 			}
 		}
 	],
+	"panorama_gallery_intro": "La maggior parte dei panorami proviene dalle telecamere di navigazione dei rover: un rover in genere sa raggiungere un punto in modo autonomo, ma raramente sceglie i propri obiettivi. Gli scienziati usano questi panorami per individuare i luoghi di interesse, e gli operatori li usano quando serve un controllo manuale.",
 	"panorama_date": "Data",
 	"panorama_instrument": "Strumento",
 	"panorama_elevation": "Altitudine",

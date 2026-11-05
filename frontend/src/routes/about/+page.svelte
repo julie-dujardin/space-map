@@ -13,7 +13,9 @@
 		CAT_DWARF_PLANETS,
 		CAT_MOONS,
 		CAT_PLANETS,
+		CAT_RING_SYSTEMS,
 		CAT_SPACECRAFT,
+		CAT_STRUCTURE_ACTIVITY,
 		CAT_SURFACE_FEATURES
 	} from '$lib/fetch/groups/registry';
 	import { roundCount, shortCount, type AboutFigures } from '$lib/about/about-figures';
@@ -179,6 +181,7 @@
 				{/each}
 			</tbody>
 		</table>
+		<p>See the full list at <a href="/about/data">spacemap.co/about/data</a></p>
 		<p>
 			Each of these is displayed at its current position, and shown at its real size (when known).
 			Click any object to focus it.
@@ -195,10 +198,17 @@
 					>end-to-end directions</a
 				>.
 			</li>
-			<li>Streetview-like <a href="/view">ground level panoramas</a>.</li>
 			<li>
-				Search: Text search & filters, infinite scroll - it's 2026, time to doomscroll
+				{@render num(figures.value?.panoramas)} Streetview-like
+				<a href="/view">ground level panoramas</a> on Mars, the Moon, Titan, and Venus.
+			</li>
+			<li>
+				Search: Text search & advanced filters, infinite scroll - it's 2026, time to doomscroll
 				<a href="/b/399?f=pha">potentially hazardous asteroids</a>.
+			</li>
+			<li>
+				Detailed facts about each object & place: mass & size, classification, date of discovery,
+				source datasets, and more.
 			</li>
 			<li>
 				Collections: See all <a href="/g/const-starlink">Starlink</a>,
@@ -208,7 +218,7 @@
 				>,
 				<a href="/g/class-HYP/Hyperbolic%20Comet?at=now,20.47956,140.22461,42.430"
 					>hyperbolic comets</a
-				>.
+				>, <a href="/g/ft-crater">Craters</a>, etc.
 			</li>
 		</ul>
 
@@ -226,9 +236,13 @@
 				>.
 			</li>
 			<li>
-				Textures for all planets, {@render num(figures.value?.texturedMoons)} moons, and {@render num(
-					figures.value?.texturedMinorBodies
-				)} minor bodies; 3d models for {@render num(figures.value?.shapedBodies)}
+				High-resolution streamed textures & topography for all planets, {@render num(
+					figures.value?.texturedMoons
+				)} moons, and {@render num(figures.value?.texturedMinorBodies)} minor bodies. Mars: 5m per pixel,
+				the Moon: 100m per pixel, Mercury: 166m per pixel, Lander areas: up to 0.25m per pixel.
+			</li>
+			<li>
+				3D models for {@render num(figures.value?.shapedBodies)}
 				<a href="/s/20101955/101955%20Bennu?at=now,-0.99190,142.87246,4.7560e-8">asteroids</a>,
 				<a href="/s/1000012/67P%2FChuryumov%E2%80%93Gerasimenko?at=now,48.95132,65.96561,3.7911e-7"
 					>comets</a
@@ -258,20 +272,27 @@
 				>.
 			</li>
 			<li>
-				Rich data on planetary ring systems from {@render out(
-					'https://pds-rings.seti.org/saturn/saturn_rings_table.html',
-					'NASA PDS'
-				)}, the atmospheres & interiors of 21 planets and moons from 100+ papers.
+				Rich data on
+				<a href={groupHref(CAT_RING_SYSTEMS, categoryLabel(CAT_RING_SYSTEMS))}
+					>planetary ring systems</a
+				>
+				from {@render out('https://pds-rings.seti.org/saturn/saturn_rings_table.html', 'NASA PDS')},
+				the
+				<a href={groupHref(CAT_STRUCTURE_ACTIVITY, categoryLabel(CAT_STRUCTURE_ACTIVITY))}
+					>atmospheres & interiors</a
+				>
+				of 21 planets and moons from 100+ papers.
 			</li>
 		</ul>
 
 		<h3>Probes</h3>
 		<ul>
 			<li>
-				Historical positions for earth satellites & probes from
-				<a href="/b/399/Earth?at=1959-06-30T23:46:01.557Z,42.14541,151.20487,0.0023256">1959</a>.
-				Coverage is limited for early & non-US/EU/JA spacecraft.
+				Historical positions for Earth satellites & probes from
+				<a href="/b/399/Earth?at=1959-06-30T23:46:01.557Z,42.14541,151.20487,0.0023256">1959</a>, in
+				flight and on the ground. Coverage is limited for early & non-US/EU/JA spacecraft.
 			</li>
+			<li>Historical attitude & orientation for 26 probes and 5 landers.</li>
 			<li>
 				Over {@render num(figures.value && String(roundCount(figures.value.craftModels)))} spacecraft
 				with 3D models:
@@ -300,6 +321,10 @@
 
 		<h3>More</h3>
 		<ul>
+			<li>
+				<a href="/compare">Compare any object that renders on the map</a> in a side-by-side, to-scale
+				comparison with everyday objects.
+			</li>
 			<li>Deep links: Easily share what you're looking at.</li>
 			<li>
 				Images from Wikimedia Commons for {@render num(figures.value?.images)} objects, descriptions from
@@ -310,11 +335,27 @@
 			</li>
 			<li>
 				Localization: Full localization in {locales.length} languages, with content from Wikipedia. UI
-				elements were localized by Claude Opus 4.8 & Fable 5.
+				elements were localized by Claude Opus & Fable.
 			</li>
 			<li>Credits & sources: see full attributions in the <a href="/credits">credits page</a>.</li>
 			<li>Performance: Load a solar system faster than your bank can show you your balance.</li>
 			<li>Easter eggs: I won't spoil them for you.</li>
+		</ul>
+
+		<h3>SDK</h3>
+		<p>
+			SpaceMap can be easily integrated into your websites with the {@render out(
+				'https://www.npmjs.com/package/spacemap',
+				'SpaceMap SDK'
+			)}.
+		</p>
+		<ul>
+			<li>Use 3D & 2D maps and surface panoramas.</li>
+			<li>Full control over what's rendered, camera focus & position.</li>
+			<li>Draw on the map, and add in your own content.</li>
+			<li>
+				Check out {@render out('https://spaceguesser.com/', 'SpaceGuesser.com')} for examples.
+			</li>
 		</ul>
 	</div>
 </SitePage>

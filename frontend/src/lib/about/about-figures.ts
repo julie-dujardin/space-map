@@ -1,6 +1,8 @@
-/** The figures the /about page quotes, from the payload of /about/data. */
+/** The figures the /about page quotes, from the payload of /about/data and
+ *  the panorama index. */
 
 import type { AboutData, ObjectKind } from './data-payload';
+import type { PanoramaBodySummary } from '$lib/fetch/panoramas';
 
 export interface AboutFigures {
 	generatedAt: string;
@@ -23,6 +25,7 @@ export interface AboutFigures {
 	colouredBodies: number;
 	images: number;
 	descriptions: number;
+	panoramas: number;
 }
 
 /** The planets are the 8 of the planet kind that SPICE positions; the others
@@ -48,7 +51,7 @@ function fromSourceInAll(data: AboutData, key: string): number {
 	return data.objects.reduce((sum, kind) => sum + fromSource(kind, key), 0);
 }
 
-export function aboutFigures(data: AboutData): AboutFigures {
+export function aboutFigures(data: AboutData, panoramas: PanoramaBodySummary[]): AboutFigures {
 	const planets = fromSource(kindOf(data, 'planet'), NAIF);
 	const solar = ['dwarf_planet', 'moon', 'asteroid', 'comet', 'satellite', 'probe', 'debris'];
 	const worlds = data.systems.flatMap((system) => system.worlds).map((world) => world.id);
@@ -74,7 +77,10 @@ export function aboutFigures(data: AboutData): AboutFigures {
 			.reduce((sum, group) => sum + group.models.length, 0),
 		colouredBodies: fromSourceInAll(data, 'truecolortools'),
 		images: fromSourceInAll(data, 'commons'),
-		descriptions: fromSourceInAll(data, 'wikipedia')
+		descriptions: fromSourceInAll(data, 'wikipedia'),
+		panoramas: panoramas
+			.flatMap((body) => body.missions)
+			.reduce((sum, mission) => sum + mission.count, 0)
 	};
 }
 

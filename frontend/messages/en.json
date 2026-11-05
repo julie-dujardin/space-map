@@ -737,6 +737,7 @@
 			}
 		}
 	],
+	"panorama_gallery_intro": "Most panoramas come from rovers' navigation cameras: rovers can generally drive to a point autonomously, but rarely choose their targets. Scientists use these panoramas to identify interesting locations, and operators use them when manual control is needed.",
 	"panorama_date": "Date",
 	"panorama_instrument": "Instrument",
 	"panorama_elevation": "Elevation",

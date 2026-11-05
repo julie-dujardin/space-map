@@ -688,6 +688,7 @@
 			}
 		}
 	],
+	"panorama_gallery_intro": "La mayoría de los panoramas proceden de las cámaras de navegación de los róveres: un róver suele poder llegar a un punto de forma autónoma, pero rara vez elige sus objetivos. Los científicos usan estos panoramas para identificar lugares de interés, y los operadores los usan cuando hace falta un control manual.",
 	"panorama_date": "Fecha",
 	"panorama_instrument": "Instrumento",
 	"panorama_elevation": "Altitud",

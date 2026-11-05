@@ -699,6 +699,7 @@
 			}
 		}
 	],
+	"panorama_gallery_intro": "Większość panoram pochodzi z kamer nawigacyjnych łazików: łazik zwykle potrafi samodzielnie dojechać do wskazanego punktu, ale rzadko sam wybiera cele. Naukowcy używają tych panoram do wskazywania interesujących miejsc, a operatorzy korzystają z nich, gdy potrzebne jest sterowanie ręczne.",
 	"panorama_date": "Data",
 	"panorama_instrument": "Instrument",
 	"panorama_elevation": "Wysokość",

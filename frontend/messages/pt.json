@@ -688,6 +688,7 @@
 			}
 		}
 	],
+	"panorama_gallery_intro": "A maioria dos panoramas provém das câmaras de navegação dos rovers: um rover consegue, em geral, deslocar-se até um ponto de forma autónoma, mas raramente escolhe os seus alvos. Os cientistas usam estes panoramas para identificar locais de interesse, e os operadores usam-nos quando é necessário controlo manual.",
 	"panorama_date": "Data",
 	"panorama_instrument": "Instrumento",
 	"panorama_elevation": "Altitude",

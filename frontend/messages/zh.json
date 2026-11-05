@@ -603,6 +603,7 @@
 			}
 		}
 	],
+	"panorama_gallery_intro": "大多数全景图来自巡视器的导航相机：巡视器通常能自主行驶到指定地点，但很少自行选择目标。科学家利用这些全景图寻找值得研究的地点，操作人员则在需要手动控制时使用它们。",
 	"panorama_date": "日期",
 	"panorama_instrument": "仪器",
 	"panorama_elevation": "海拔",

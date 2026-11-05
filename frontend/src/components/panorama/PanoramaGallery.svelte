@@ -50,7 +50,8 @@
 {:else if bodies.length === 0}
 	<p class="text-sm text-muted-foreground">{m.panorama_gallery_empty()}</p>
 {:else}
-	<p class="-mt-6 mb-8 text-sm text-muted-foreground">{summary}</p>
+	<p class="-mt-6 mb-3 text-sm text-muted-foreground">{summary}</p>
+	<p class="mb-8 max-w-prose text-sm text-muted-foreground">{m.panorama_gallery_intro()}</p>
 {/if}
 
 {#each bodies as body (body.id)}

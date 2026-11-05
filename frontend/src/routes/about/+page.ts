@@ -1,6 +1,8 @@
-/** Loader of the about page: its figures come from the payload of /about/data. */
+/** Loader of the about page: its figures come from the payload of /about/data
+ *  and the panorama index. */
 
 import { dataBase } from '$lib/fetch/data-base';
+import { fetchPanoramaIndex } from '$lib/fetch/panoramas';
 import type { AboutData } from '$lib/about/data-payload';
 import { aboutFigures, type AboutFigures } from '$lib/about/about-figures';
 
@@ -14,9 +16,12 @@ export const load = ({
 	fetch: typeof globalThis.fetch;
 }): { figures: Promise<AboutFigures> } => {
 	const figures = (async () => {
-		const res = await fetch(`${dataBase()}/v1/about-data.json`);
+		const [res, panoramas] = await Promise.all([
+			fetch(`${dataBase()}/v1/about-data.json`),
+			fetchPanoramaIndex(fetch)
+		]);
 		if (!res.ok) throw new Error(`Failed to load about-data.json: ${res.status}`);
-		return aboutFigures((await res.json()) as AboutData);
+		return aboutFigures((await res.json()) as AboutData, panoramas);
 	})();
 	return { figures };
 };

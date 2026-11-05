@@ -677,6 +677,7 @@
 			}
 		}
 	],
+	"panorama_gallery_intro": "Die meisten Panoramen stammen von den Navigationskameras der Rover: Ein Rover kann einen Punkt in der Regel autonom anfahren, wählt seine Ziele aber selten selbst. Wissenschaftler nutzen diese Panoramen, um interessante Orte zu finden, und das Betriebsteam nutzt sie, wenn eine manuelle Steuerung nötig ist.",
 	"panorama_date": "Datum",
 	"panorama_instrument": "Instrument",
 	"panorama_elevation": "Höhe",
