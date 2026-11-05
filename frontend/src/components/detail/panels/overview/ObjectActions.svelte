@@ -5,7 +5,8 @@
   and in the panel they read as places to go.
 
   Only the ones this object has: a trip has to be plannable, a comparison needs
-  something to stand the body beside, panoramas need someone to have stood there.
+  a body the row can draw and something to stand it beside, panoramas need
+  someone to have stood there.
 -->
 <script lang="ts">
 	import { getContext, type Component } from 'svelte';
@@ -17,11 +18,10 @@
 	import { ZoomInIcon, ZoomOutIcon } from '@lucide/svelte';
 	import * as m from '$lib/paraglide/messages.js';
 	import type { AppState } from '$lib/state/app-state.svelte';
-	import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 	import type { PositionedBody } from '$lib/types/objects';
 	import { compareSeed } from '$lib/compare/presets';
 	import { panoramaHref } from '$lib/state/panorama-link';
-	import { travelEntry } from '$lib/travel/travel-entry';
+	import { TripEntry } from '$lib/travel/trip-entry.svelte';
 	import { isModifiedClick } from '$lib/modified-click';
 
 	interface Props {
@@ -53,7 +53,6 @@
 		onShare
 	}: Props = $props();
 
-	const ctx = getContext<ContextManager | undefined>('ctx');
 	const appState = getContext<AppState | undefined>('appState');
 
 	interface Action {
@@ -68,8 +67,26 @@
 		primary?: boolean;
 	}
 
-	let travel = $derived(travelEntry(ctx, appState, body.data, featureId));
-	let comparison = $derived(isFeature ? null : compareSeed(body.data));
+	const trip = new TripEntry(
+		() => body.data,
+		() => featureId
+	);
+	let travel = $derived(trip.entry);
+
+	let comparison = $state<string[] | null>(null);
+	$effect(() => {
+		const data = body.data;
+		const feature = isFeature;
+		comparison = null;
+		if (feature) return;
+		let cancelled = false;
+		void compareSeed(data).then((seed) => {
+			if (!cancelled) comparison = seed;
+		});
+		return () => {
+			cancelled = true;
+		};
+	});
 
 	let actions = $derived.by<Action[]>(() => {
 		const out: Action[] = [];
@@ -93,9 +110,9 @@
 				key: 'compare',
 				label: m.compare_page_title(),
 				Icon: Columns2Icon,
-				// `on` lands the row on this body's own page: banded by size, a set
-				// it joins from below opens pages away from it otherwise.
-				href: `${resolve('/compare')}?m=${comparison.join(',')}&on=${body.data.id}`
+				// Opened on this body: the reader came for it, and closing it lands
+				// the row on the page that holds it.
+				href: `${resolve('/compare')}?m=${comparison.join(',')}&o=${body.data.id}`
 			});
 		}
 		if (hasPanoramas && !isFeature) {

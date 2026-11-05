@@ -2,7 +2,7 @@
 	import { getContext, untrack, type Snippet } from 'svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
-	import { ObjectType } from '$lib/types/objects';
+	import { isDiscless, ObjectType } from '$lib/types/objects';
 	import * as Tabs from '$lib/components/ui/tabs/index.js';
 	import XIcon from '@lucide/svelte/icons/x';
 	import Share2Icon from '@lucide/svelte/icons/share-2';
@@ -114,8 +114,8 @@
 			: focusable.body
 	);
 	let feature = $derived(focusable.kind === 'feature' ? focusable.feature : null);
-	/** The body of the panel's trip button. */
-	let tripTarget = $derived(focusable.kind === 'group' ? null : focusable.body);
+	/** The physical object of the panel, whatever its kind: what its actions act on. */
+	let objectBody = $derived(focusable.kind === 'group' ? null : focusable.body);
 	let isFeatureMode = $derived(focusable.kind === 'feature');
 	let isGroupMode = $derived(focusable.kind === 'group');
 	let groupSlug = $derived.by(() => {
@@ -226,15 +226,16 @@
 
 	// Flip to minimize well before the maximize target distance, so fly-to
 	// overshoot can't strand the camera on the maximize side of an exact threshold.
+	// With no disc to close in on, the camera only ever frames the object's system.
 	let isMinimized = $derived(
-		appState && body ? appState.view.zoom <= minCameraDistance(body) * 20 : false
+		appState && objectBody && !isDiscless(objectBody.data)
+			? appState.view.zoom <= minCameraDistance(objectBody) * 20
+			: false
 	);
-	let showCameraButtons = $derived(
-		!isFeatureMode && !isGroupMode && !!body && !!onMaximize && !!onMinimize
-	);
+	let showCameraButtons = $derived(!isFeatureMode && !!objectBody && !!onMaximize && !!onMinimize);
 	// The action row is the map's: elsewhere the panel heads its overview with
 	// the way back to the map instead, and a collection is not an object to act on.
-	let showActions = $derived(!mapHref && !isGroupMode && !!body);
+	let showActions = $derived(!mapHref && !!objectBody);
 
 	function handleShare() {
 		void shareUrl(displayName);
@@ -541,9 +542,9 @@
 {/snippet}
 
 {#snippet objectActions()}
-	{#if body}
+	{#if objectBody}
 		<ObjectActions
-			{body}
+			body={objectBody}
 			featureId={feature?.featureId ?? null}
 			isFeature={isFeatureMode}
 			hasPanoramas={(data?.global?.panoramas?.length ?? 0) > 0}
@@ -660,8 +661,8 @@
 	     to — except a launch site, which is a place, and one trips leave from
 	     rather than go to, and an Earth-orbit zone, which is where a trip ends
 	     without naming a body. -->
-	{#if tripTarget}
-		<TravelButton target={tripTarget.data} featureId={feature?.featureId ?? null} />
+	{#if objectBody}
+		<TravelButton target={objectBody.data} featureId={feature?.featureId ?? null} />
 	{:else if launchSiteSlug}
 		<LaunchSiteButton slug={launchSiteSlug} />
 	{:else if orbitZoneSlug}

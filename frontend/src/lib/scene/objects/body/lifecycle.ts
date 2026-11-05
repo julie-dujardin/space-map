@@ -6,6 +6,7 @@ import {
 	ObjectType,
 	effectiveRadiusKm,
 	isAsteroid,
+	isDiscless,
 	isNaturalBody,
 	type PositionedBody
 } from '$lib/types/objects';
@@ -78,10 +79,7 @@ export function buildMajorBodies(
 			body.data.orbitalSource === OrbitalSource.SPICE_PROBE;
 		const color = resolveBodyColor(body.data);
 		const radiusKnown = Number.isFinite(body.data.radiusKm) && body.data.radiusKm > 0;
-		// A planet of another star draws no disc, nor does an object of another
-		// star with no known size, so nothing anchors to their size.
-		const discless = t === ObjectType.EXOPLANET || (t === ObjectType.EXTRASOLAR && !radiusKnown);
-		const radius = discless ? 0 : kmToScene(effectiveRadiusKm(body.data));
+		const radius = isDiscless(body.data) ? 0 : kmToScene(effectiveRadiusKm(body.data));
 		const isStar = t === ObjectType.STAR;
 		// No measured size → halo only, no fallback sphere (model-bearing types
 		// use the overlay instead, so an unknown radius there is expected).

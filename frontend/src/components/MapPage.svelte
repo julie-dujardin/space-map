@@ -5,7 +5,7 @@
 	import Scene from './Scene.svelte';
 	import { SpaceMap, type Arrival } from '$lib/scene/space-map.svelte';
 	import { formatJulianDate } from '$lib/format/date';
-	import { ObjectType, type PositionedBody } from '$lib/types/objects';
+	import { isDiscless, ObjectType, type PositionedBody } from '$lib/types/objects';
 	import { minCameraDistance } from '$lib/scene/visibility/camera-limits';
 	import { DEFAULT_VIEW, UrlType } from '$lib/state/view';
 	import {
@@ -235,6 +235,21 @@
 		const framed = framingBody(body);
 		if (framed.data.radiusKm <= 0) return DEFAULT_VIEW.zoom;
 		return minCameraDistance(framed) * 5;
+	}
+
+	/** The view a link to an object of another star lands on: its planetary
+	 *  system where one is drawn, else the star at a distance. */
+	function starSystemView(body: PositionedBody): {
+		distance: number;
+		latitude?: number;
+		longitude?: number;
+	} {
+		return ctx.exoplanets.view(body.data.id) ?? { distance: STAR_VIEW_DISTANCE };
+	}
+
+	function frameStarSystem(body: PositionedBody): void {
+		const view = starSystemView(body);
+		map.focusOnBody(body.data.id, view.distance, view.latitude, view.longitude);
 	}
 
 	// Default camera distance: dive close to model/cuboid bodies, hold back for
@@ -1370,10 +1385,15 @@
 					onClose={() => closeDetail()}
 					onMaximize={() => {
 						if (!selectedBody) return;
-						map.focusOnBody(selectedBody.data.id, framingZoom(selectedBody));
+						if (isDiscless(selectedBody.data)) frameStarSystem(selectedBody);
+						else map.focusOnBody(selectedBody.data.id, framingZoom(selectedBody));
 					}}
 					onMinimize={() => {
 						if (!selectedBody) return;
+						if (isExtrasolarObjectId(selectedBody.data.id)) {
+							frameStarSystem(selectedBody);
+							return;
+						}
 						// Planets and dwarf planets nominally orbit their planetary
 						// barycenter, but are treated as sun-orbiters here so the minimize
 						// framing is the whole solar system, not just the subsystem.

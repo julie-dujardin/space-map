@@ -9,6 +9,8 @@ import type { GlobalGroupData } from '$lib/fetch/groups/details';
 import { getLocale } from '$lib/host';
 import { ObjectType, type BodyData } from '$lib/types/objects';
 import { buildLineup, starGeometryFromMember } from '../../components/detail/charts/lineup';
+import { isStarObjectId } from '$lib/fetch/extrasolar/ids';
+import { resolveObject } from './geometry';
 import { ROCKETS } from './rockets';
 
 export type PresetGroup = 'worlds' | 'stars' | 'craft' | 'probes';
@@ -430,10 +432,16 @@ function fits(preset: ComparePreset, body: BodyData): boolean {
 
 /** The comparison a body's own page offers: the set it already belongs to,
  *  else the set its kind belongs in with the body added to it. Null where the
- *  page has nothing to hold the body up against. */
-export function compareSeed(body: BodyData): string[] | null {
-	const member = COMPARE_PRESETS.find((p) => p.ids.includes(body.id));
-	if (member) return member.ids;
-	const kin = COMPARE_PRESETS.find((p) => fits(p, body));
-	return kin ? [body.id, ...kin.ids] : null;
+ *  page has nothing to hold the body up against, or where the row cannot draw
+ *  the body, since it would drop it from the link. */
+export async function compareSeed(body: BodyData): Promise<string[] | null> {
+	const star = isStarObjectId(body.id) || body.objectType === ObjectType.STAR;
+	const stars = star ? await loadStarsPreset().catch(() => null) : null;
+	const member = [...COMPARE_PRESETS, ...(stars ? [stars] : [])].find((p) =>
+		p.ids.includes(body.id)
+	);
+	const kin = stars ?? COMPARE_PRESETS.find((p) => fits(p, body));
+	const seed = member ? member.ids : kin ? [body.id, ...kin.ids] : null;
+	if (!seed) return null;
+	return (await resolveObject(body.id, { name: '' })) ? seed : null;
 }

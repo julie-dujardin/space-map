@@ -5,16 +5,14 @@
   entry that leads nowhere is worse than none.
 -->
 <script lang="ts">
-	import { getContext } from 'svelte';
-	import { isExtrasolarObjectId } from '$lib/fetch/extrasolar/ids';
 	import NavigationIcon from '@lucide/svelte/icons/navigation';
+	import { getContext } from 'svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as m from '$lib/paraglide/messages.js';
 	import type { BodyData } from '$lib/types/objects';
-	import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import { isModifiedClick } from '$lib/modified-click';
-	import { extrasolarTripTarget, travelEntry } from '$lib/travel/travel-entry';
+	import { TripEntry } from '$lib/travel/trip-entry.svelte';
 
 	interface Props {
 		/** The body of the panel. */
@@ -25,31 +23,12 @@
 	}
 	let { target, featureId = null }: Props = $props();
 
-	const ctx = getContext<ContextManager | undefined>('ctx');
 	const appState = getContext<AppState | undefined>('appState');
-
-	let targetId = $derived(target.id);
-	let away = $derived(isExtrasolarObjectId(targetId));
-	/** The star or planet that the planner resolves an extrasolar target to. */
-	let awayTarget = $state<BodyData | null>(null);
-	$effect(() => {
-		const id = targetId;
-		awayTarget = null;
-		if (!isExtrasolarObjectId(id)) return;
-		let cancelled = false;
-		void extrasolarTripTarget(id).then((body) => {
-			if (!cancelled) awayTarget = body;
-		});
-		return () => {
-			cancelled = true;
-		};
-	});
-
-	let entry = $derived(
-		away
-			? awayTarget && travelEntry(ctx, appState, awayTarget)
-			: travelEntry(ctx, appState, target, featureId)
+	const trip = new TripEntry(
+		() => target,
+		() => featureId
 	);
+	let entry = $derived(trip.entry);
 </script>
 
 {#if entry}
