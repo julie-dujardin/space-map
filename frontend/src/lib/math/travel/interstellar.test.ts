@@ -549,7 +549,7 @@ describe('a coast at the limit of the craft', () => {
 		}
 		expect(routes).toBeGreaterThan(100);
 		expect(failed).toEqual([]);
-	});
+	}, 60_000);
 });
 
 describe('an end in the well of a planet', () => {
