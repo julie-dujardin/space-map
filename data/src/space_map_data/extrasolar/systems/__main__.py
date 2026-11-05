@@ -20,6 +20,7 @@ import pyarrow.parquet as pq
 from space_map_data.extrasolar.exoplanets import catalogues, hosts
 from space_map_data.extrasolar.exoplanets import simbad as exoplanet_simbad
 from space_map_data.extrasolar.registry import Registry
+from space_map_data.extrasolar.sources.distances import cluster_members
 from space_map_data.extrasolar.sources.simbad import SimbadList
 from space_map_data.extrasolar.systems.build import build
 from space_map_data.extrasolar.systems.drawn import draw
@@ -75,6 +76,7 @@ def cli() -> None:
         wds=WdsCatalogue.read(),
         refuted=refuted_pairs(),
         el_badry=read_el_badry(),
+        clusters=cluster_members(),
     )
     inputs.catalogue_orbits, inputs.catalogue_stars = read_orbits()
     read = time.monotonic()

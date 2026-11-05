@@ -2,9 +2,10 @@
 
 `same_distance` is El-Badry's test of a bound pair. `parallaxes_disagree` and
 `disagree` are the veto: two parallaxes that put two points at clearly
-different distances. `unbound` refutes a pair by its projected width or by
-its motion. `wrong_object` tells which way a refuted pair goes: it never
-refutes a pair itself, because real wide pairs can have rough separations.
+different distances. `unbound` refutes a pair by its projected width, by its
+motion, or as neighbours in one star cluster. `wrong_object` tells which way a
+refuted pair goes: it never refutes a pair itself, because real wide pairs can
+have rough separations.
 """
 
 import math
@@ -42,8 +43,14 @@ MAX_EXCESS = 8.0
 EXCESS_SIGMA = 3.0
 # km/s for 1 mas/yr at 1 kpc.
 KMS = 4.74047
+# AU, for two members of one star cluster. G·M/σ² for a pair is 8,000-12,000 AU
+# in M67, Praesepe and the Pleiades, and 84-90% of member pairs at 10,000-18,000
+# AU are chance.
+MAX_CLUSTER_AU = 10_000.0
+MAX_CLUSTER_PARSEC = MAX_CLUSTER_AU / (1000 * PARSEC_SEPARATION)
 WIDE = f"wider than {MAX_PARSEC} pc"
 MOTION = f"moves apart at {MAX_EXCESS} km/s or more"
+IN_CLUSTER = f"wider than {MAX_CLUSTER_AU:,.0f} AU in one cluster"
 # A listed separation from here up is a catalogue overflow, not a measure.
 OVERFLOW = 999.0
 # A measured separation this far above the listed one is another object.
@@ -165,14 +172,37 @@ def excess(first: Fact, second: Fact) -> float:
     return KMS * (apart - orbit - EXCESS_SIGMA * error) * distance / 1000
 
 
-def unbound(first: Fact, second: Fact, moving: bool = True) -> str | None:
+def unbound(
+    first: Fact, second: Fact, moving: bool = True, cluster: bool = False
+) -> str | None:
     """Why two points are no bound pair, else None. `moving` is False where
-    an orbit or a close pair explains their motions."""
-    if projected(first, second) > MAX_PARSEC:
+    an orbit or a close pair explains their motions. `cluster` is True for
+    two members of one star cluster with no orbit: their shared motion shows
+    nothing, as every member has it."""
+    width = projected(first, second)
+    if width > MAX_PARSEC:
         return WIDE
     if moving and excess(first, second) > MAX_EXCESS:
         return MOTION
+    if cluster and width > MAX_CLUSTER_PARSEC:
+        return IN_CLUSTER
     return None
+
+
+def one_cluster(
+    clusters: dict[int, frozenset[str]], first: Fact, second: Fact
+) -> frozenset[str]:
+    """The star clusters that hold both points."""
+    none: frozenset[str] = frozenset()
+    return clusters.get(first.key, none) & clusters.get(second.key, none)
+
+
+def cluster_text(clusters: dict[int, frozenset[str]], first: Fact, second: Fact) -> str:
+    """The width of a pair in AU, in its star clusters."""
+    width = projected(first, second) * 1000 * PARSEC_SEPARATION
+    return (
+        f"{width:,.0f} AU in {', '.join(sorted(one_cluster(clusters, first, second)))}"
+    )
 
 
 def wrong_object(first: Fact, second: Fact, listed: float | None) -> bool:

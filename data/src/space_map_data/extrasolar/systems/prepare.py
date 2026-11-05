@@ -16,11 +16,13 @@
    (`Overlap`): its star takes the component of the MSC and the WDS that lies
    where it lies from its host, and the record and the star link each other.
 3. Each source's trees become groups of points and interiors (`reduce`). El-
-   Badry's pairs become groups of two points, and the parallax veto of the
-   trees applies to them too. A close pair can throw off the astrometry of a
-   point, so the veto skips a point with a Gaia orbit, a SIMBAD close type or
-   an interior. The Gaia orbits become interiors of two stars. A Gaia orbit
-   whose companion is a planet is no interior.
+   Badry's pairs become groups of two points, and the parallax veto and the
+   star-cluster test of the trees apply to them too: shared motion is all
+   that links such a pair, and in a cluster every member has it. A close pair
+   can throw off the astrometry of a point, so the veto skips a point with a
+   Gaia orbit, a SIMBAD close type or an interior. The Gaia orbits become
+   interiors of two stars. A Gaia orbit whose companion is a planet is no
+   interior.
 4. A SIMBAD component inside the light of another point joins that point,
    in every source.
 5. A brown dwarf that no tree places joins the outermost group of its host,
@@ -61,9 +63,17 @@ from space_map_data.extrasolar.systems.nodes import (
     WDS,
     WDS_ID,
 )
-from space_map_data.extrasolar.systems.parallax import disagree, parallaxes_disagree
+from space_map_data.extrasolar.systems.parallax import (
+    IN_CLUSTER,
+    cluster_text,
+    disagree,
+    one_cluster,
+    parallaxes_disagree,
+    unbound,
+)
 from space_map_data.extrasolar.systems.reduce import (
     POINT,
+    UNBOUND,
     Group,
     Interior,
     Member,
@@ -148,6 +158,8 @@ class Inputs:
     orbits: pa.Table | None = None
     # PLANETS_INPUT rows.
     planets: pa.Table | None = None
+    # The members of the star clusters: `source_id`, `cluster`.
+    clusters: pa.Table | None = None
     # For the orbits of the pairs only (`drawn`): the elements of the Gaia
     # orbits (GAIA_ELEMENTS), one row per row of `orbits`, and the orbit
     # sources in their normal form (ORBITS and COMPONENTS).
@@ -460,6 +472,22 @@ def pair_keys(pairs: pa.Table, resolver: Resolver) -> tuple[np.ndarray, np.ndarr
             keys[mask] = found[pc.index_in(value, value_set=unique).to_numpy()]
         out.append(keys)
     return out[0], out[1]
+
+
+def cluster_keys(
+    clusters: pa.Table | None, resolver: Resolver, facts: Facts
+) -> dict[int, frozenset[str]]:
+    """The star clusters of each object of `facts`."""
+    if clusters is None or not clusters.num_rows:
+        return {}
+    ids = clusters["source_id"].combine_chunks().cast(pa.string())
+    keys = resolver.keys(*GAIA_DR3, ids)
+    held = facts.at(keys) >= 0
+    found: dict[int, set[str]] = defaultdict(set)
+    names = clusters["cluster"].filter(pa.array(held)).to_pylist()
+    for key, name in zip(keys[held].tolist(), names):
+        found[key].add(name)
+    return {key: frozenset(names) for key, names in found.items()}
 
 
 def planet_overlaps(planets: pa.Table | None, resolver: Resolver) -> list[Overlap]:
@@ -902,6 +930,9 @@ def prepare(inputs: Inputs, resolver: Resolver) -> Prepared:
     )
     facts = Facts(resolver.facts(every[every != 0]))
     logger.info("systems: facts of %d objects", len(facts))
+    # After every other lookup, so that an object's first id stays its own.
+    clusters = cluster_keys(inputs.clusters, resolver, facts)
+    counts["objects of the systems in a star cluster"] = len(clusters)
 
     for source in (MSC, WDS):
         if source in by_source:
@@ -935,6 +966,7 @@ def prepare(inputs: Inputs, resolver: Resolver) -> Prepared:
             dropped,
             close_points,
             reach[source],
+            clusters,
         ).run()
         block += VALUE_BLOCK
     remap = _absorptions(reduced)
@@ -953,6 +985,11 @@ def prepare(inputs: Inputs, resolver: Resolver) -> Prepared:
     counts[f"{EL_BADRY}: pairs that the parallaxes veto"] = int(vetoed.sum())
     if inputs.el_badry is not None:
         _veto_events(facts, inputs.el_badry, el_keys, vetoed, reduced)
+        refuted = cluster_pairs(facts, inputs.el_badry, el_keys, clusters)
+        refuted &= ~vetoed
+        _cluster_events(facts, inputs.el_badry, el_keys, refuted, clusters, reduced)
+        counts[f"{EL_BADRY}: pairs {IN_CLUSTER}"] = int(refuted.sum())
+        vetoed |= refuted
     join_members(reduced, overlaps, (el_keys[0][~vetoed], el_keys[1][~vetoed]))
     sets, origin = _set_table(reduced, inputs.el_badry, el_keys, vetoed, counts)
     counts.update(reduced.counts)
@@ -1103,6 +1140,41 @@ def _veto_events(
         reduced.events.append(
             ("parallaxes disagree", EL_BADRY, f"{EL_BADRY} {systems[at]}: {text}")
         )
+
+
+def cluster_pairs(
+    facts: Facts,
+    el_badry: pa.Table,
+    el_keys: tuple[np.ndarray, np.ndarray],
+    clusters: dict[int, frozenset[str]],
+) -> np.ndarray:
+    """Whether each El-Badry pair is no system: two neighbours in one star
+    cluster."""
+    first, second = el_keys
+    found = np.zeros(el_badry.num_rows, bool)
+    for at, (one, other) in enumerate(zip(first.tolist(), second.tolist())):
+        if one not in clusters or other not in clusters or one == other:
+            continue
+        a, b = facts.get(one), facts.get(other)
+        if a and b and one_cluster(clusters, a, b):
+            found[at] = unbound(a, b, False, True) == IN_CLUSTER
+    return found
+
+
+def _cluster_events(
+    facts: Facts,
+    el_badry: pa.Table,
+    el_keys: tuple[np.ndarray, np.ndarray],
+    refuted: np.ndarray,
+    clusters: dict[int, frozenset[str]],
+    reduced: Reduced,
+) -> None:
+    systems = el_badry["system"].to_pylist()
+    for at in np.flatnonzero(refuted).tolist():
+        first, second = (facts.get(int(side[at])) for side in el_keys)
+        assert first is not None and second is not None
+        text = f"{EL_BADRY} {systems[at]}: {cluster_text(clusters, first, second)}"
+        reduced.events.append((f"{UNBOUND}: {IN_CLUSTER}", EL_BADRY, text))
 
 
 def _set_table(

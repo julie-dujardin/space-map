@@ -59,6 +59,7 @@ from space_map_data.extrasolar.registry import (
     Registry,
     latest_index,
 )
+from space_map_data.extrasolar.sources.distances import cluster_members
 from space_map_data.extrasolar.sources.gaia import GaiaReader
 from space_map_data.extrasolar.sources.simbad import SIMBAD, SimbadList
 from space_map_data.extrasolar.systems import assemble
@@ -1641,6 +1642,7 @@ def read_inputs(
         el_badry=read_el_badry(),
         orbits=orbit_pairs(orbits),
         planets=run_planets(run, prepared, hub),
+        clusters=cluster_members(),
         orbit_elements=gaia.select(list(GAIA_ELEMENTS)),
         catalogue_orbits=catalogue_orbits,
         catalogue_stars=catalogue_stars,

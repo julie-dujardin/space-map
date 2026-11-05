@@ -4,6 +4,7 @@ import copy
 import dataclasses
 from collections import Counter
 from collections.abc import Callable
+from pathlib import Path
 
 import numpy as np
 import pyarrow as pa
@@ -30,8 +31,10 @@ from space_map_data.extrasolar.systems import ingest as systems_ingest
 from space_map_data.extrasolar.systems.msc import msc_nodes
 from space_map_data.extrasolar.systems.orbits import msc_orbits
 from space_map_data.extrasolar.systems.pairs import el_badry_pairs, orbit_pairs
+from space_map_data.extrasolar.systems.parallax import IN_CLUSTER
 from space_map_data.extrasolar.systems.planets import PLANETS_INPUT
 from space_map_data.extrasolar.systems.prepare import Inputs
+from space_map_data.extrasolar.systems.reduce import UNBOUND
 from space_map_data.extrasolar.systems.registry import SOURCE_LEVEL, SOURCE_PIXEL_SHIFT
 from space_map_data.extrasolar.systems.report import target_keys
 from space_map_data.extrasolar.systems.simbad import SimbadIndex, read_simbad
@@ -149,6 +152,7 @@ def inputs(
     catalogue_orbits: pa.Table | None = None,
     spectral_types: tuple[str | None, str | None] = ("G2V", "K1V"),
     msc_rows: tuple[list[dict], list[dict]] = ([], []),
+    clusters: pa.Table | None = None,
 ) -> tuple[Inputs, SimbadIndex]:
     comp = [
         *msc_rows[0],
@@ -194,6 +198,7 @@ def inputs(
             orbits=orbits,
             planets=planets,
             catalogue_orbits=catalogue_orbits,
+            clusters=clusters,
         ),
         index,
     )
@@ -544,6 +549,92 @@ GAIA_ROWS = {
     "matched": (90.01, 30.0, 11.0, 5.0, 0.1),
 }
 GAIA = {name: source_id(*row[:2], n) for n, (name, row) in enumerate(GAIA_ROWS.items())}
+
+
+# Gaia DR3 rows: the stars of a WDS pair, of an El-Badry pair, and a member that
+# is not minted. Each pair is 150″ apart at 100 pc.
+NEIGHBOURS = {
+    "wds a": (120.0, 40.0, 10.0, 10.0, 0.9),
+    "wds b": (120.0, 40.04167, 11.0, 10.0, 0.9),
+    "pair a": (130.0, 45.0, 10.0, 10.0, 0.9),
+    "pair b": (130.0, 45.04167, 11.0, 10.0, 0.9),
+    "unminted": (130.1, 45.0, 12.0, 10.0, 0.1),
+}
+NEIGHBOUR = {
+    name: source_id(*row[:2], n + 10)
+    for n, (name, row) in enumerate(NEIGHBOURS.items())
+}
+
+
+def neighbours(clusters: pa.Table | None) -> dict:
+    """The ingest's arguments for two pairs that may be in one star cluster."""
+    return {
+        "gaia": {NEIGHBOUR[name]: row for name, row in NEIGHBOURS.items()},
+        "wds_systems": WDS_SYSTEMS
+        | {"08000+4000": [wds_pair("A", "B", 150.0, notes="V", mag1=10.0, mag2=11.0)]},
+        "wds_components": WDS_COMPONENTS
+        | {
+            ("08000+4000", "A"): wds_component(
+                source_id=NEIGHBOUR["wds a"], ra=120.0, dec=40.0
+            ),
+            ("08000+4000", "B"): wds_component(
+                source_id=NEIGHBOUR["wds b"], ra=120.0, dec=40.04167
+            ),
+        },
+        "el_badry": el_badry_pairs(
+            pa.table(
+                {
+                    "source_id1": [NEIGHBOUR["pair a"]],
+                    "source_id2": [NEIGHBOUR["pair b"]],
+                    "ra1": [130.0],
+                    "dec1": [45.0],
+                    "ra2": [130.0],
+                    "dec2": [45.04167],
+                    "parallax1": [10.0],
+                    "parallax2": [10.0],
+                    "phot_g_mean_mag1": [10.0],
+                    "phot_g_mean_mag2": [11.0],
+                    "sep_arcsec": [150.0],
+                    "R_chance_align": [0.01],
+                    "binary_type": ["MSMS"],
+                }
+            )
+        ),
+        "clusters": clusters,
+    }
+
+
+def in_systems(root: Path) -> set[int]:
+    """The IDs of the stars of the neighbours that a system lists."""
+    registry = Registry(root)
+    stars = registry.lookup("gaia", "dr3", [str(i) for i in NEIGHBOUR.values()])
+    system = table(registry, SYSTEM.slug).to_pylist()
+    members = {m["id"] for row in system for m in row["members"]}
+    return members & set(stars.tolist())
+
+
+class TestClusterMembers:
+    """The links of the run give the members of a star cluster their objects."""
+
+    def test_the_pairs_stand_without_a_cluster(self, tmp_path):
+        root = tmp_path / "registry"
+        ingest(root, **neighbours(None))
+        assert len(in_systems(root)) == 4
+
+    def test_neighbours_are_no_system(self, tmp_path):
+        """A member that the commit does not mint and an id that the run does
+        not hold are no object, and the commit takes the rest."""
+        root = tmp_path / "registry"
+        unknown = source_id(10.0, -30.0, 99)
+        members = pa.table(
+            {
+                "source_id": pa.array([*NEIGHBOUR.values(), unknown], pa.int64()),
+                "cluster": ["NGC_2682"] * (len(NEIGHBOUR) + 1),
+            }
+        )
+        _, report = ingest(root, **neighbours(members))
+        assert not in_systems(root)
+        assert f"{UNBOUND}: {IN_CLUSTER}: 2" in report
 
 
 def with_unminted() -> dict:

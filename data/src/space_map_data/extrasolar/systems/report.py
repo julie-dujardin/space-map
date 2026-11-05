@@ -21,7 +21,7 @@ from space_map_data.extrasolar.systems.groups import (
     KINDS,
 )
 from space_map_data.extrasolar.systems.nodes import INTERIOR_SOURCES, SIMBAD_OID
-from space_map_data.extrasolar.systems.parallax import MOTION, WIDE
+from space_map_data.extrasolar.systems.parallax import IN_CLUSTER, MOTION, WIDE
 from space_map_data.extrasolar.systems.prepare import ID_OFF
 from space_map_data.extrasolar.systems.reduce import (
     PLANET_ROW,
@@ -49,6 +49,7 @@ EXAMPLES = 20
 SPLITS = (
     f"{UNBOUND}: {WIDE}",
     f"{UNBOUND}: {MOTION}",
+    f"{UNBOUND}: {IN_CLUSTER}",
     WRONG_OBJECT,
     ID_OFF,
     GROUP_LEAVES,

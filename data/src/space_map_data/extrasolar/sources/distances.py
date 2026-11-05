@@ -48,6 +48,7 @@ matches by position could take it.
 import csv
 import gzip
 import logging
+from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
@@ -127,6 +128,8 @@ MIN_MEMBERSHIP = 0.5
 # Open, globular, too far to classify. Moving groups are not bound, and the
 # rejected ones are not clusters.
 CLUSTER_TYPES = frozenset({"o", "g", "d"})
+# The clusters whose members the star systems test.
+BOUND_TYPES = frozenset({"o", "g"})
 # GCode of the 10 pc sample: G from Gaia DR2 or EDR3, G from the spectral type.
 GAIA_G_CODES = frozenset({2, 3})
 ESTIMATED_G_CODE = 10
@@ -418,6 +421,55 @@ def ultracool_rows(
     return stored_claims(found, stored, ULTRACOOLSHEET.name)
 
 
+def _members(
+    directory: Path, readme: str, names: tuple[str, ...]
+) -> Iterator[dict[str, str]]:
+    """The fields `names` of each member inside the tidal or the Jacobi radius."""
+    fields = {f.label: f for f in byte_by_byte(readme, MEMBERS_FILE)}
+    spans = {
+        name: (fields[name].start, fields[name].end)
+        for name in (*names, "inrj", "inrt")
+    }
+    # A line at a time: the file holds 1.3 M members of 1.2 kB.
+    with gzip.open(directory / MEMBERS_FILE, "rt", encoding="latin-1") as handle:
+        for line in handle:
+            value = {name: line[a:b].strip() for name, (a, b) in spans.items()}
+            if "1" in (value["inrj"], value["inrt"]):
+                yield value
+
+
+def cluster_members(directory: Path = HUNT_REFFERT_DIR) -> pa.Table:
+    """Each star of an open or globular cluster: `source_id` and `cluster`. A
+    star in two clusters has two rows.
+
+    Prob is no cut: it is low for bright stars, whose Gaia motions are poor
+    (0.27 for θ¹ Tauri in the Hyades).
+    """
+    readme = (directory / README).read_text(encoding="latin-1")
+    clusters = read_fixed_width(directory / CLUSTERS_FILE, readme, ["Name", "Type"])
+    kept = {
+        name
+        for name, kind in zip(*(clusters[c].to_pylist() for c in clusters.column_names))
+        if kind in BOUND_TYPES
+    }
+    found = [
+        (value["GaiaDR3"], value["Name"])
+        for value in _members(directory, readme, ("Name", "GaiaDR3"))
+        if value["Name"] in kept
+    ]
+    logger.info(
+        "Hunt & Reffert: %d members of %d open and globular clusters",
+        len(found),
+        len(kept),
+    )
+    return pa.table(
+        {
+            "source_id": pa.array([int(row[0]) for row in found], pa.int64()),
+            "cluster": pa.array([row[1] for row in found], pa.string()),
+        }
+    )
+
+
 def cluster_rows(stored: StoredGaia, directory: Path = HUNT_REFFERT_DIR) -> pa.Table:
     """The member rows that take the distance of their cluster."""
     readme = (directory / README).read_text(encoding="latin-1")
@@ -433,20 +485,13 @@ def cluster_rows(stored: StoredGaia, directory: Path = HUNT_REFFERT_DIR) -> pa.T
         )
         if kind in CLUSTER_TYPES and mid is not None
     }
-    fields = {f.label: f for f in byte_by_byte(readme, MEMBERS_FILE)}
-    names = ("Name", "GaiaDR3", "inrj", "inrt", "Prob", "RAdeg", "DEdeg")
-    spans = {name: (fields[name].start, fields[name].end) for name in names}
+    names = ("Name", "GaiaDR3", "Prob", "RAdeg", "DEdeg")
     picked: dict[str, list] = {name: [] for name in names}
-    # A line at a time: the file holds 1.3 M members of 1.2 kB.
-    with gzip.open(directory / MEMBERS_FILE, "rt", encoding="latin-1") as handle:
-        for line in handle:
-            value = {name: line[a:b].strip() for name, (a, b) in spans.items()}
-            if value["Name"] not in kept or float(value["Prob"]) < MIN_MEMBERSHIP:
-                continue
-            if "1" not in (value["inrj"], value["inrt"]):
-                continue
-            for name in names:
-                picked[name].append(value[name])
+    for value in _members(directory, readme, names):
+        if value["Name"] not in kept or float(value["Prob"]) < MIN_MEMBERSHIP:
+            continue
+        for name in names:
+            picked[name].append(value[name])
     source_id = np.array(picked["GaiaDR3"], np.int64)
     probability = np.array(picked["Prob"], np.float64)
     # One row per star: its most probable cluster, then the first in the file.

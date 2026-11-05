@@ -382,6 +382,64 @@ class TestRows:
         assert rows["distance_method"].to_pylist() == ["cluster"] * 4
 
 
+class TestClusterMembers:
+    """The members of the open and globular clusters, for the star systems."""
+
+    @pytest.fixture
+    def members(self, tmp_path) -> pa.Table:
+        clusters = cds_file(
+            tmp_path,
+            distances.CLUSTERS_FILE,
+            [("Name", "A20"), ("Type", "A1")],
+            [
+                {"Name": "Melotte_22", "Type": "o"},
+                {"Name": "NGC_104", "Type": "g"},
+                {"Name": "beta_Tuc_Group", "Type": "m"},
+                {"Name": "Far_1", "Type": "d"},
+                {"Name": "Rejected_1", "Type": "r"},
+            ],
+        )
+        member = {"Name": "Melotte_22", "inrj": 1, "inrt": 1, "Prob": 0.9}
+        members = cds_file(
+            tmp_path,
+            distances.MEMBERS_FILE,
+            [
+                ("Name", "A20"),
+                ("GaiaDR3", "I19"),
+                ("inrj", "I1"),
+                ("inrt", "I1"),
+                ("Prob", "F20.18"),
+            ],
+            [
+                member | {"GaiaDR3": 1},
+                # Bright stars have low probabilities: θ¹ Tauri has 0.27.
+                member | {"GaiaDR3": 2, "Prob": 0.27},
+                # In the tidal radius only.
+                member | {"GaiaDR3": 3, "inrj": 0},
+                member | {"GaiaDR3": 4, "inrj": 0, "inrt": 0},
+                member | {"GaiaDR3": 5, "Name": "NGC_104"},
+                member | {"GaiaDR3": 6, "Name": "beta_Tuc_Group"},
+                member | {"GaiaDR3": 7, "Name": "Far_1"},
+                member | {"GaiaDR3": 8, "Name": "Rejected_1"},
+                # In two clusters.
+                member | {"GaiaDR3": 9},
+                member | {"GaiaDR3": 9, "Name": "NGC_104"},
+            ],
+        )
+        readme(tmp_path, clusters, members)
+        return distances.cluster_members(tmp_path)
+
+    def test_the_stars_inside_the_radii(self, members):
+        assert members["source_id"].to_pylist() == [1, 2, 3, 5, 9, 9]
+
+    def test_each_row_names_its_cluster(self, members):
+        assert members["cluster"].to_pylist()[-3:] == [
+            "NGC_104",
+            "Melotte_22",
+            "NGC_104",
+        ]
+
+
 class TestStoredGaia:
     """The Gaia DR3 stars that the ingest stores, read chunk by chunk."""
 

@@ -35,8 +35,11 @@ stays stands for it.
   of the member counts for the width, so no chain of pairs reaches past
   MAX_PARSEC from a main star. Only the member's main star counts for the
   motion, as the others move on their own orbits, and the exemptions of the
-  veto apply. A refuted member stays as an entry when its object is not at the
-  catalogue's separation (`wrong_object`): the star is real, its object is not.
+  veto apply. Each point counts as a neighbour in one star cluster, unless an
+  orbit shows the pair: this reads no astrometry that a close pair can throw
+  off. A refuted member stays as an entry when its object is not at the
+  catalogue's separation (`wrong_object`): the star is real, its object is
+  not.
 - A member that the source lists as unverified stays only when it and its
   primary pass El-Badry's test of a bound pair (`same_distance`). It also
   stays when it reaches its primary's point and the source gives their
@@ -77,8 +80,11 @@ from space_map_data.extrasolar.systems.nodes import (
     VISUAL_ORBIT,
 )
 from space_map_data.extrasolar.systems.parallax import (
+    IN_CLUSTER,
+    cluster_text,
     disagree,
     excess,
+    one_cluster,
     projected,
     same_distance,
     unbound,
@@ -278,7 +284,7 @@ class TreeReducer:
     `offset` turns a row of the source into a global value row. `close` are
     the points that a close pair can hold, as a Gaia DR3 orbit or a SIMBAD
     type shows. `reach` gives how many ids of a row reach a key, by (row,
-    key), where more than one.
+    key), where more than one. `clusters` gives the star clusters of a key.
     """
 
     def __init__(
@@ -292,6 +298,7 @@ class TreeReducer:
         dropped: frozenset[int] = frozenset(),
         close: frozenset[int] = frozenset(),
         reach: dict[tuple[int, int], int] | None = None,
+        clusters: dict[int, frozenset[str]] | None = None,
     ) -> None:
         self.source = table["source"][0].as_py() if table.num_rows else ""
         self.rank = rank
@@ -302,6 +309,7 @@ class TreeReducer:
         self.close = close
         self.candidates = candidates
         self.reach = reach or {}
+        self.clusters = clusters or {}
         self.system = table["system"].to_pylist()
         self.label = table["label"].to_pylist()
         self.parent = table["parent"].to_numpy()
@@ -568,29 +576,43 @@ class TreeReducer:
     ) -> bool:
         """Whether a member is not bound to its primary."""
         moving = not self._exempt(primary, part)
+        crowd = not self._orbit(part)
+
+        def why_not(point: Fact, motion: bool) -> str | None:
+            return unbound(first, point, motion, crowd and self._crowd(first, point))
+
         points = [self.facts.get(key) for key in sorted(part.held)]
-        far = next((p for p in points if p and unbound(first, p, moving=False)), second)
-        why = unbound(first, far, moving)
+        far = next((p for p in points if p and why_not(p, False)), second)
+        why = why_not(far, moving)
         if why is None:
             return False
         evidence = self.evidence[part.node] or "physical"
         out.counts[f"{self.source}: {evidence} members {why}"] += 1
         fast = excess(first, far) if moving else math.nan
-        self._event(
-            f"{UNBOUND}: {why}",
+        text = (
             f"{self._name(part.node)}: {far.key} from {first.key}:"
             f" {projected(first, far):.2f} pc, {fast:.1f} km/s, {evidence},"
-            f" {self.known[part.node]}",
-            out,
+            f" {self.known[part.node]}"
         )
+        if why == IN_CLUSTER:
+            text += f", {cluster_text(self.clusters, first, far)}"
+        self._event(f"{UNBOUND}: {why}", text, out)
         return True
+
+    def _crowd(self, first: Fact, second: Fact) -> bool:
+        """Whether one star cluster holds both points."""
+        return bool(one_cluster(self.clusters, first, second))
 
     def _exempt(self, primary: _Part, part: _Part) -> bool:
         """Whether an orbit or a close pair explains how the astrometry of a
         member and its primary differ."""
-        if set(self.known[part.node] or ()) & ORBITS:
+        if self._orbit(part):
             return True
         return self._holds_several(primary) or self._holds_several(part)
+
+    def _orbit(self, part: _Part) -> bool:
+        """Whether the source gives an orbit of a member and its primary."""
+        return bool(set(self.known[part.node] or ()) & ORBITS)
 
     def _holds_several(self, part: _Part) -> bool:
         """Whether a close pair can throw off the astrometry of the part's
@@ -777,7 +799,7 @@ class TreeReducer:
             )
             mine = self.facts.get(own)
             main = self.facts.get(next((p.main for p in parts if p.main), 0))
-            wide = mine and main and unbound(mine, main, moving=False)
+            wide = mine and main and unbound(mine, main, False, self._crowd(mine, main))
             if kind == BACKGROUND or wide:
                 self._event(GROUP_LEAVES, f"{self._name(row)}: {own}; {evidence}", out)
                 return [p for p in merged if p.key != own], 0

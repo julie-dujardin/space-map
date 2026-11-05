@@ -12,6 +12,8 @@ from space_map_data.extrasolar.systems.build import build
 from space_map_data.extrasolar.systems.groups import GROUP_LEAVES
 from space_map_data.extrasolar.systems.msc import msc_nodes
 from space_map_data.extrasolar.systems.nodes import (
+    EL_BADRY,
+    GAIA_DR3,
     MSC,
     MSC_ID,
     NODES,
@@ -23,10 +25,14 @@ from space_map_data.extrasolar.systems.nodes import (
     WDS,
     WDS_ID,
 )
+from space_map_data.extrasolar.systems.pairs import el_badry_pairs
 from space_map_data.extrasolar.systems.parallax import (
+    IN_CLUSTER,
+    MAX_CLUSTER_AU,
     MOTION,
     WIDE,
     excess,
+    one_cluster,
     projected,
     unbound,
     wrong_object,
@@ -34,6 +40,8 @@ from space_map_data.extrasolar.systems.parallax import (
 from space_map_data.extrasolar.systems.prepare import (
     ID_OFF,
     Inputs,
+    cluster_keys,
+    cluster_pairs,
     id_place,
     letter_links,
     place_guard,
@@ -75,6 +83,8 @@ from tests.extrasolar.systems_fakes import (
 A, B, C, D = 101, 102, 103, 104
 # 1 pc at 100 pc, in arcsec.
 PARSEC = 2062.65
+# 10,000 AU at 100 pc, in arcsec.
+CLUSTER_CUT = 100.0
 
 
 def star(
@@ -108,6 +118,7 @@ def reduced(
     close: frozenset[int] = frozenset(),
     dropped: frozenset[int] = frozenset(),
     source: str = WDS,
+    clusters: dict[int, frozenset[str]] | None = None,
 ) -> Reduced:
     """`rows` are (label, parent, separation, known, evidence) of system "1"."""
     base = dict.fromkeys(NODES.names)
@@ -130,7 +141,15 @@ def reduced(
     )
     out = Reduced()
     TreeReducer(
-        table, 0, candidates, facts(*points), 0, out, dropped=dropped, close=close
+        table,
+        0,
+        candidates,
+        facts(*points),
+        0,
+        out,
+        dropped=dropped,
+        close=close,
+        clusters=clusters,
     ).run()
     return out
 
@@ -336,6 +355,389 @@ class TestMainStar:
         assert [group.keys for group in out.groups] == [frozenset({B, C})]
         assert kinds(out) == [f"{UNBOUND}: {WIDE}"]
         assert out.events[0][2].startswith(f"{WDS} 1 BC: {C} from {A}: 3.00 pc")
+
+
+def real(
+    key: int,
+    place: tuple[float, float],
+    mag: float,
+    parallax: tuple[float, float],
+    motion: tuple[float, float] = (math.nan, math.nan),
+    errors: tuple[float, float] = (math.nan, math.nan),
+    astrometry: str = "gaia-dr3",
+    **values,
+) -> dict:
+    """A star with its values in the registry."""
+    return fact(
+        key,
+        *place,
+        mag,
+        astrometry,
+        parallax[0],
+        parallax_error=parallax[1],
+        pmra=motion[0],
+        pmdec=motion[1],
+        pmra_error=errors[0],
+        pmdec_error=errors[1],
+        **values,
+    )
+
+
+# Pleiades, 179.7″ and about 24,500 AU apart, WDS.
+HD_23924 = real(
+    A,
+    (57.4206, 23.34137),
+    8.09433,
+    (7.31591, 0.04082),
+    (18.73308, -45.13350),
+    (0.04072, 0.03817),
+)
+HD_23912 = real(
+    B,
+    (57.38645, 23.3802),
+    9.03487,
+    (7.23128, 0.02089),
+    (20.34647, -44.30134),
+    (0.02362, 0.01580),
+)
+# Hyades, 163″ and about 7,500 AU apart, WDS.
+HG_7_142 = real(
+    A,
+    (64.05523, 18.88436),
+    11.20327,
+    (21.82751, 0.02053),
+    (120.62003, -32.14845),
+    (0.02102, 0.01564),
+)
+HG_7_141 = real(
+    B,
+    (64.01546, 18.85908),
+    12.99346,
+    (20.81803, 0.01893),
+    (112.99088, -28.06928),
+    (0.01837, 0.01336),
+)
+# Hyades, about 16,000 AU apart. κ¹ Tauri holds a close pair.
+KAPPA1_TAU = real(
+    A,
+    (66.34285, 22.29367),
+    4.16724,
+    (20.91185, 0.15706),
+    (104.35453, -44.43582),
+    (0.18281, 0.11904),
+)
+KAPPA2_TAU = real(
+    B,
+    (66.35477, 22.19979),
+    5.22473,
+    (22.01774, 0.12882),
+    (112.37063, -46.63900),
+    (0.17783, 0.10386),
+)
+# The beta_Tuc_Group of Hunt & Reffert, a moving group, about 29,000 AU apart.
+BETA1_TUC = real(
+    A,
+    (7.88694, -62.95846),
+    4.32993,
+    (22.83841, 0.08612),
+    (84.01118, -54.85047),
+    (0.08996, 0.08935),
+)
+BETA3_TUC = real(
+    B,
+    (8.18379, -63.03172),
+    5.05502,
+    (21.67942, 0.0683),
+    (86.54079, -50.11537),
+    (0.06799, 0.06921),
+)
+# In no cluster, about 10,600 AU apart.
+ALPHA_CEN_A = real(
+    A,
+    (219.92041, -60.83515),
+    0.0,
+    (754.81, 4.11),
+    astrometry="hipparcos-2007",
+    distance=1.3459,
+)
+PROXIMA = real(
+    B,
+    (217.39232, -62.67608),
+    8.98475,
+    (768.06659, 0.04987),
+    (-3781.74121, 769.46503),
+    (0.03139, 0.05052),
+    distance=1.30197,
+)
+# No cluster lists Alcyone, whose astrometry is Hipparcos's. 24 Tauri is 182″ off.
+ALCYONE = real(
+    A,
+    (56.871101, 24.105242),
+    2.89613,
+    (8.09, 0.42),
+    astrometry="hipparcos-2007",
+)
+TAU_24 = real(B, (56.83776, 24.116067), 6.29883, (7.1999, 0.05976))
+PLEIADES = frozenset({"Melotte_22"})
+TWO = {A: PLEIADES, B: PLEIADES}
+
+
+def wide_pair(
+    first: dict,
+    second: dict,
+    clusters: dict[int, frozenset[str]],
+    separation: float | None = None,
+    known=None,
+    close: frozenset[int] = frozenset(),
+) -> Reduced:
+    rows = [
+        ("AB", -1, None, None, None),
+        ("A", 0, None, None, None),
+        ("B", 0, separation, known or [VISUAL], None),
+    ]
+    return reduced(
+        rows,
+        [[], [(first["key"], 2)], [(second["key"], 2)]],
+        [first, second],
+        close=close,
+        clusters=clusters,
+    )
+
+
+class TestClusterRule:
+    """Two members of one star cluster over MAX_CLUSTER_AU are neighbours."""
+
+    def test_the_cut(self):
+        first, near = one(star(A, 0.0)), one(star(B, 0.99 * CLUSTER_CUT))
+        far = one(star(B, 1.01 * CLUSTER_CUT))
+        assert unbound(first, near, cluster=True) is None
+        assert unbound(first, far, cluster=True) == IN_CLUSTER
+        assert MAX_CLUSTER_AU == 10_000.0
+
+    def test_width_alone_refutes_nothing(self):
+        first, far = one(star(A, 0.0)), one(star(B, 1.01 * CLUSTER_CUT))
+        assert unbound(first, far) is None
+
+    def test_a_star_in_two_clusters(self):
+        clusters = {
+            A: frozenset({"Stock_2", "NGC_869"}),
+            B: frozenset({"NGC_869"}),
+        }
+        found = one_cluster(clusters, one(star(A, 0.0)), one(star(B, 1.0)))
+        assert found == {"NGC_869"}
+
+    def test_neighbours_leave(self):
+        out = wide_pair(HD_23924, HD_23912, TWO, 179.7)
+        assert not out.groups
+        assert kinds(out) == [f"{UNBOUND}: {IN_CLUSTER}"]
+        assert out.counts[f"{WDS}: physical members {IN_CLUSTER}"] == 1
+        assert "Melotte_22" in out.events[0][2]
+
+    def test_a_pair_under_the_cut_stays(self):
+        out = wide_pair(HG_7_142, HG_7_141, TWO, 163.1)
+        assert [group.keys for group in out.groups] == [frozenset({A, B})]
+        assert not kinds(out)
+
+    def test_an_orbit_pair_stays(self):
+        second = star(B, 1.5 * CLUSTER_CUT)
+        out = wide_pair(star(A, 0.0), second, TWO, 150.0, [VISUAL, VISUAL_ORBIT])
+        assert [group.keys for group in out.groups] == [frozenset({A, B})]
+
+    def test_a_moving_group_stays(self):
+        """`cluster_members` lists no moving group."""
+        out = wide_pair(BETA1_TUC, BETA3_TUC, {}, 240.8)
+        assert [group.keys for group in out.groups] == [frozenset({A, B})]
+
+    def test_a_field_pair_stays(self):
+        out = wide_pair(ALPHA_CEN_A, PROXIMA, {}, 7850.0)
+        assert [group.keys for group in out.groups] == [frozenset({A, B})]
+
+    def test_a_star_that_no_cluster_lists_stays(self):
+        out = wide_pair(ALCYONE, TAU_24, {B: PLEIADES}, 182.0)
+        assert [group.keys for group in out.groups] == [frozenset({A, B})]
+
+    def test_two_clusters_are_no_crowd(self):
+        out = wide_pair(
+            HD_23924, HD_23912, {A: PLEIADES, B: frozenset({"NGC_1"})}, 179.7
+        )
+        assert [group.keys for group in out.groups] == [frozenset({A, B})]
+
+    def test_a_point_that_holds_several_leaves(self):
+        """The rule reads no astrometry that a close pair can throw off."""
+        out = wide_pair(KAPPA1_TAU, KAPPA2_TAU, TWO, 339.4, close=frozenset({A}))
+        assert not out.groups
+        assert kinds(out) == [f"{UNBOUND}: {IN_CLUSTER}"]
+
+    def test_a_point_with_two_members_leaves(self):
+        rows = [
+            ("ABC", -1, None, None, None),
+            ("AB", 0, None, None, None),
+            ("A", 1, None, None, None),
+            ("B", 1, 0.1, [VISUAL], None),
+            ("C", 0, 339.4, [VISUAL], None),
+        ]
+        out = reduced(
+            rows,
+            [[], [], [(A, 2)], [(A, 2)], [(B, 2)]],
+            [KAPPA1_TAU, KAPPA2_TAU],
+            clusters=TWO,
+        )
+        assert not out.groups
+        assert [len(interior.entries) for interior in out.interiors] == [2]
+        assert kinds(out) == [f"{UNBOUND}: {IN_CLUSTER}"]
+
+    def test_a_wrong_object_stays_an_entry(self):
+        out = wide_pair(HD_23924, HD_23912, TWO, 5.0)
+        assert kinds(out) == [f"{UNBOUND}: {IN_CLUSTER}", WRONG_OBJECT]
+        ((group,),) = [[g for g in out.groups if g.keys == frozenset({A})]]
+        assert [member.kind for member in group.members] == ["point", ENTRY]
+
+    def test_a_group_leaves_by_any_of_its_points(self):
+        """B is near A and C is not, and the pair BC keeps its own system."""
+        rows = [
+            ("ABC", -1, None, None, None),
+            ("A", 0, None, None, None),
+            ("BC", 0, 50.0, [VISUAL], None),
+            ("B", 2, None, None, None),
+            ("C", 2, 100.0, [VISUAL], None),
+        ]
+        out = reduced(
+            rows,
+            [[], [(A, 2)], [], [(B, 2)], [(C, 2)]],
+            [star(A, 0.0), star(B, 50.0), star(C, 1.5 * CLUSTER_CUT)],
+            clusters={A: PLEIADES, B: PLEIADES, C: PLEIADES},
+        )
+        assert [group.keys for group in out.groups] == [frozenset({B, C})]
+        assert kinds(out) == [f"{UNBOUND}: {IN_CLUSTER}"]
+
+    def test_a_group_point_leaves(self):
+        out = reduced(
+            PAIR,
+            [[(C, 2)], [(A, 2)], [(B, 2)]],
+            [star(A, 0.0), star(B, 1.0), star(C, 1.5 * CLUSTER_CUT)],
+            clusters={A: PLEIADES, C: PLEIADES},
+        )
+        assert [group.keys for group in out.groups] == [frozenset({A, B})]
+        assert kinds(out) == [GROUP_LEAVES]
+
+
+def el_badry_row(first: dict, second: dict) -> pa.Table:
+    """The El-Badry pair of two stars, whose ids are their keys."""
+    return el_badry_pairs(
+        pa.table(
+            {
+                "source_id1": [first["key"]],
+                "source_id2": [second["key"]],
+                "ra1": [first["ra"]],
+                "dec1": [first["dec"]],
+                "ra2": [second["ra"]],
+                "dec2": [second["dec"]],
+                "parallax1": [first["parallax"]],
+                "parallax2": [second["parallax"]],
+                "phot_g_mean_mag1": [first["mag"]],
+                "phot_g_mean_mag2": [second["mag"]],
+                "sep_arcsec": [179.7],
+                "R_chance_align": [0.03],
+                "binary_type": ["MSMS"],
+            }
+        )
+    )
+
+
+def gaia_resolver(*rows: dict) -> FakeResolver:
+    ids = {(*GAIA_DR3, str(row["key"])): row["key"] for row in rows}
+    return FakeResolver(ids, list(rows))
+
+
+def members_of(*keys: int, cluster: str = "Melotte_22") -> pa.Table:
+    return pa.table(
+        {
+            "source_id": pa.array(keys, pa.int64()),
+            "cluster": [cluster] * len(keys),
+        }
+    )
+
+
+class TestClusterKeys:
+    """The members of the star clusters become objects."""
+
+    def test_only_objects_of_the_systems(self):
+        resolver = gaia_resolver(HD_23924, HD_23912)
+        known = Facts(resolver.facts(pa.array([A]).to_numpy()))
+        assert cluster_keys(members_of(A, B, 7), resolver, known) == {A: PLEIADES}
+
+    def test_a_star_in_two_clusters(self):
+        resolver = gaia_resolver(HD_23924)
+        known = Facts(resolver.facts(pa.array([A]).to_numpy()))
+        two = pa.concat_tables([members_of(A), members_of(A, cluster="NGC_1")])
+        assert cluster_keys(two, resolver, known) == {
+            A: frozenset({"Melotte_22", "NGC_1"})
+        }
+
+    def test_no_table(self):
+        resolver = gaia_resolver(HD_23924)
+        assert cluster_keys(None, resolver, facts(HD_23924)) == {}
+
+
+class TestClusterPairs:
+    """El-Badry's evidence is a shared motion, which every member has."""
+
+    def test_neighbours_are_no_system(self):
+        resolver = gaia_resolver(HD_23924, HD_23912)
+        systems = build(
+            Inputs(
+                el_badry=el_badry_row(HD_23924, HD_23912), clusters=members_of(A, B)
+            ),
+            resolver,
+        )
+        assert not systems.points.num_rows
+        assert systems.counts[f"{EL_BADRY}: pairs {IN_CLUSTER}"] == 1
+        events = systems.events.to_pylist()
+        assert [row["kind"] for row in events] == [f"{UNBOUND}: {IN_CLUSTER}"]
+
+    def test_the_pair_stays_outside_a_cluster(self):
+        resolver = gaia_resolver(HD_23924, HD_23912)
+        systems = build(
+            Inputs(el_badry=el_badry_row(HD_23924, HD_23912), clusters=members_of(A)),
+            resolver,
+        )
+        assert set(systems.points["key"].to_pylist()) == {A, B}
+
+    def test_a_pair_under_the_cut_stays(self):
+        resolver = gaia_resolver(HG_7_142, HG_7_141)
+        systems = build(
+            Inputs(
+                el_badry=el_badry_row(HG_7_142, HG_7_141), clusters=members_of(A, B)
+            ),
+            resolver,
+        )
+        assert set(systems.points["key"].to_pylist()) == {A, B}
+
+    def test_a_tree_and_el_badry_agree(self):
+        """A pair that a tree loses does not come back through El-Badry."""
+        wds = wds_catalogue(
+            {"03495+2320": [wds_pair("A", "B", 179.7, notes="V")]},
+            {
+                ("03495+2320", "A"): wds_component(source_id=A, ra=57.4206, dec=23.34),
+                ("03495+2320", "B"): wds_component(source_id=B, ra=57.3864, dec=23.38),
+            },
+        )
+        resolver = gaia_resolver(HD_23924, HD_23912)
+        systems = build(
+            Inputs(
+                wds=wds,
+                el_badry=el_badry_row(HD_23924, HD_23912),
+                clusters=members_of(A, B),
+            ),
+            resolver,
+        )
+        assert not systems.points.num_rows
+
+    def test_cluster_pairs(self):
+        row = el_badry_row(KAPPA1_TAU, KAPPA2_TAU)
+        keys = (pa.array([A]).to_numpy(), pa.array([B]).to_numpy())
+        known = facts(KAPPA1_TAU, KAPPA2_TAU)
+        assert cluster_pairs(known, row, keys, TWO).tolist() == [True]
 
 
 class TestGroupPoint:
@@ -673,6 +1075,7 @@ class TestReport:
             (f"{UNBOUND}: {WIDE}", WDS, "wide"),
             (f"{UNBOUND}: {WIDE}", WDS, "wide too"),
             (f"{UNBOUND}: {MOTION}", WDS, "moving"),
+            (f"{UNBOUND}: {IN_CLUSTER}", WDS, "neighbours"),
             (ID_OFF, MSC, "off"),
             (GROUP_LEAVES, SIMBAD, "point"),
             (NON_STELLAR, SIMBAD, "cluster"),
@@ -696,10 +1099,11 @@ class TestReport:
         empty = [schema.empty_table() for schema in tables]
         lines = report_lines(assemble.Systems(*empty, events, counts=Counter()))
         at = lines.index("splits:")
-        assert sorted(lines[at + 1 : at + 8]) == sorted(
+        assert sorted(lines[at + 1 : at + 9]) == sorted(
             [
                 f"  {UNBOUND}: {WIDE}: 2",
                 f"  {UNBOUND}: {MOTION}: 1",
+                f"  {UNBOUND}: {IN_CLUSTER}: 1",
                 f"  {WRONG_OBJECT}: 1",
                 f"  {ID_OFF}: 1",
                 f"  {GROUP_LEAVES}: 1",
