@@ -12,7 +12,15 @@ export const SITE_GUTTER = 'px-6';
 
 /** A page the site links to; `current` names the one being rendered, and is
  *  absent on a page the row does not list. */
-export type NavPage = 'map' | 'nav' | 'compare' | 'panoramas' | 'credits' | 'status' | 'data';
+export type NavPage =
+	| 'map'
+	| 'nav'
+	| 'compare'
+	| 'panoramas'
+	| 'about'
+	| 'credits'
+	| 'status'
+	| 'data';
 
 export interface SiteLink {
 	id: NavPage | 'github';
@@ -33,6 +41,7 @@ export const SITE_PAGES: SiteLink[] = [
 /** The pages about the site itself, grouped behind one entry so the row keeps
  *  its width as they multiply. */
 export const ABOUT_LINKS: SiteLink[] = [
+	{ id: 'about', href: '/about', label: m.nav_about },
 	{ id: 'credits', href: '/credits', label: m.credits_page_title },
 	{ id: 'status', href: '/status', label: m.status_page_title },
 	{ id: 'data', href: '/about/data', label: m.about_data_page_title },

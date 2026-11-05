@@ -1,6 +1,6 @@
 # Space Map
 
-Space Map is a real-time, real-scale, fully continuous map of the solar system, mapping 1.6m objects and 16k surface features as of July 2026.
+Space Map is a real-time, real-scale, fully continuous map of the solar system, mapping 1.6m objects and 16k surface features.
 
 [![inner-system](docs/images/inner-system.png)](https://spacemap.co/)
 
@@ -16,15 +16,14 @@ Space Map computes positions at any date, using orbital elements from NASA, ESA,
 
 | Type | Count | Source |
 | --- | --- | --- |
-| Planets | 8 | [NASA SPICE kernels (NAIF)](https://naif.jpl.nasa.gov/naif/) |
-| Dwarf planets | 10 | [NASA JPL Horizons](https://ssd.jpl.nasa.gov/horizons/) |
-| Moons | 466 | [NASA JPL Horizons](https://ssd.jpl.nasa.gov/horizons/) |
-| Asteroid & TNO moons | 526 | [Small-Body Database](https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html), [Natural Satellites Data Base](https://www.sai.msu.ru/neb/nss/) (SAI/IMCCE), [Johnston's Archive](https://www.johnstonsarchive.net/astro/asteroidmoons.html) |
-| Asteroids | 1.5m | [Small-Body Database](https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html) |
-| Comets | 4k | [Small-Body Database](https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html) |
-| Spacecraft | 27k | [CelesTrak](https://celestrak.org/), [Space-Track](https://www.space-track.org/), NASA ([JPL Horizons](https://ssd.jpl.nasa.gov/horizons/), [NAIF](https://naif.jpl.nasa.gov/naif/), [PDS](https://pds.nasa.gov/)), [ESA SPICE Service](https://www.cosmos.esa.int/web/spice), [JAXA DARTS](https://darts.isas.jaxa.jp/) |
-| Satellite debris | 40k | [CelesTrak](https://celestrak.org/), [Space-Track](https://www.space-track.org/) |
-| Surface features | 16k | [Gazetteer of Planetary Nomenclature (IAU/USGS/NASA)](https://planetarynames.wr.usgs.gov/) |
+| [Planets](https://spacemap.co/g/cat-planets/Planets) | 8 | [NASA SPICE kernels (NAIF)](https://naif.jpl.nasa.gov/naif/) |
+| [Dwarf planets](https://spacemap.co/g/cat-dwarf-planets/Dwarf%20Planets) | 10 | [NASA JPL Horizons](https://ssd.jpl.nasa.gov/horizons/) |
+| [Moons](https://spacemap.co/g/cat-moons/Moons) | 987 | [NASA JPL Horizons](https://ssd.jpl.nasa.gov/horizons/), [Small-Body Database](https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html), [Natural Satellites Data Base](https://www.sai.msu.ru/neb/nss/) (SAI/IMCCE), [Johnston's Archive](https://www.johnstonsarchive.net/astro/asteroidmoons.html) |
+| [Asteroids](https://spacemap.co/g/cat-asteroids/Asteroids) | 1.5m | [Small-Body Database](https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html) |
+| [Comets](https://spacemap.co/g/cat-comets/Comets) | 4k | [Small-Body Database](https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html) |
+| [Spacecraft](https://spacemap.co/g/cat-spacecraft/Spacecraft) | 29k | [CelesTrak](https://celestrak.org/), [Space-Track](https://www.space-track.org/), NASA ([JPL Horizons](https://ssd.jpl.nasa.gov/horizons/), [NAIF](https://naif.jpl.nasa.gov/naif/), [PDS](https://pds.nasa.gov/)), [ESA SPICE Service](https://www.cosmos.esa.int/web/spice), [JAXA DARTS](https://darts.isas.jaxa.jp/) |
+| [Satellite debris](https://spacemap.co/g/cat-debris/Space%20Debris) | 42k | [CelesTrak](https://celestrak.org/), [Space-Track](https://www.space-track.org/) |
+| [Surface features](https://spacemap.co/g/cat-surface-features/Surface%20features) | 16k | [Gazetteer of Planetary Nomenclature (IAU/USGS/NASA)](https://planetarynames.wr.usgs.gov/) |
 
 Each of these is displayed at its current position, and shown at its real size (when known). Click any object to focus it.
 
@@ -37,19 +36,19 @@ Each of these is displayed at its current position, and shown at its real size (
 ### Natural bodies
 
 - [Data driven atmospheric rendering](https://spacemap.co/e/25544/International%20Space%20Station?at=2026-07-08T22:35:21.390Z,12.53355,29.96924,1.0570e-8) down to [ground level](https://spacemap.co/p/100265984/Mars%20Science%20Laboratory?at=2026-07-28T14:17:41.132Z,-42.90792,-107.14203,4.6896e-10).
-- Textures for all planets, 25 moons, and 14 minor bodies; 3d models for 11k [asteroids](https://spacemap.co/s/20101955/101955%20Bennu?at=now,-0.99190,142.87246,4.7560e-8), [comets](https://spacemap.co/s/1000012/67P%2FChuryumov%E2%80%93Gerasimenko?at=now,48.95132,65.96561,3.7911e-7), and [moons](https://spacemap.co/b/618/Pan?at=now,20.79260,41.75821,0.0000048744); colors for 2k small bodies from [TrueColorTools](https://github.com/Askaniy/TrueColorTools).
+- Textures for all planets, 28 moons, and 13 minor bodies; 3d models for 10k [asteroids](https://spacemap.co/s/20101955/101955%20Bennu?at=now,-0.99190,142.87246,4.7560e-8), [comets](https://spacemap.co/s/1000012/67P%2FChuryumov%E2%80%93Gerasimenko?at=now,48.95132,65.96561,3.7911e-7), and [moons](https://spacemap.co/b/618/Pan?at=now,20.79260,41.75821,0.0000048744); colors for 138k small bodies from [TrueColorTools](https://github.com/Askaniy/TrueColorTools).
 - System-scale lighting with [sunsets](https://spacemap.co/b/499/f/2757/Ius%20Chasma?at=2026-09-04T13:54:43.410Z,-23.46737,133.08964,0.0000038200), [accurate eclipses](https://spacemap.co/b/399/Earth?at=2027-08-02T10:00:00.000Z,28.17996,30.91585,0.00082651), [self-shadowing](https://spacemap.co/b/301/f/6163/Tycho?at=2026-11-02T01:24:12.715Z,-88.15920,31.68708,0.000012024), [ringshine](https://spacemap.co/b/699/Saturn?at=2020-11-17T22:58:33.684Z,11.90051,-20.83658,0.010587), and [planetshine](https://spacemap.co/b/401/Phobos?at=2026-11-01T21:27:18.499Z,21.10221,-22.17875,0.0000022496).
 - Rich data on planetary ring systems from [NASA PDS](https://pds-rings.seti.org/saturn/saturn_rings_table.html), the atmospheres & interiors of 21 planets and moons from 100+ papers.
 
 ### Probes
 
 - Historical positions for earth satellites & probes from [1959](https://spacemap.co/b/399/Earth?at=1959-06-30T23:46:01.557Z,42.14541,151.20487,0.0023256). Coverage is limited for early & non-US/EU/JA spacecraft.
-- Over 250 spacecraft with 3D models: [ISS](https://spacemap.co/e/25544/International%20Space%20Station?at=now,35.24905,-17.25253,1.3451e-8), [Hubble](https://spacemap.co/e/20580/Hubble%20Space%20Telescope?at=now,19.83363,-95.19624,1.9914e-9), [James Webb](https://spacemap.co/p/115347456/James%20Webb%20Space%20Telescope?at=now,54.61394,115.76731,1.9039e-9), [Juno](https://spacemap.co/p/107159552/Juno?at=2022-08-17T15:29:50.557Z,64.88818,-21.50912,1.0027e-9), [Cassini](https://spacemap.co/p/88592384/Cassini?at=2013-07-09T06:37:40.977Z,63.94176,-121.21263,2.1247e-9), [New Horizons](https://spacemap.co/p/104804352/New%20Horizons?at=2015-07-14T11:30:51.731Z,45.06167,34.07062,8.5505e-10), [Voyager 2](https://spacemap.co/p/49000448/Voyager%202?at=1989-08-25T02:58:36.961Z,76.62626,0.66449,1.4615e-9).
+- Over 290 spacecraft with 3D models: [ISS](https://spacemap.co/e/25544/International%20Space%20Station?at=now,35.24905,-17.25253,1.3451e-8), [Hubble](https://spacemap.co/e/20580/Hubble%20Space%20Telescope?at=now,19.83363,-95.19624,1.9914e-9), [James Webb](https://spacemap.co/p/115347456/James%20Webb%20Space%20Telescope?at=now,54.61394,115.76731,1.9039e-9), [Juno](https://spacemap.co/p/107159552/Juno?at=2022-08-17T15:29:50.557Z,64.88818,-21.50912,1.0027e-9), [Cassini](https://spacemap.co/p/88592384/Cassini?at=2013-07-09T06:37:40.977Z,63.94176,-121.21263,2.1247e-9), [New Horizons](https://spacemap.co/p/104804352/New%20Horizons?at=2015-07-14T11:30:51.731Z,45.06167,34.07062,8.5505e-10), [Voyager 2](https://spacemap.co/p/49000448/Voyager%202?at=1989-08-25T02:58:36.961Z,76.62626,0.66449,1.4615e-9).
 
 ### More
 
 - Deep links: Easily share what you're looking at.
-- Images from Wikimedia Commons for 4k objects, descriptions from Wikipedia for 64k. Metadata from Wikidata and [Jonathan C. McDowell's GCAT](https://planet4589.org/space/gcat/index.html).
+- Images from Wikimedia Commons for 15k objects, descriptions from Wikipedia for 92k. Metadata from Wikidata and [Jonathan C. McDowell's GCAT](https://planet4589.org/space/gcat/index.html).
 - Localization: Full localization in 12 languages, with content from Wikipedia. UI elements were localized by Claude Opus 4.8 & Fable 5.
 - Credits & sources: see full attributions in the [credits page](https://spacemap.co/credits).
 - Performance: Load a solar system faster than your bank can show you your balance.
