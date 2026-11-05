@@ -8,7 +8,7 @@ Space Map is a real-time, real-scale, fully continuous map of the solar system, 
 |:-:|:-:|
 | [![Saturn](docs/images/saturn.png)](https://spacemap.co/b/699/Saturn?at=2020-06-02T14:10:11.542Z,39.08590,-147.48087,0.06) | [![Curiosity](docs/images/curiosity.png)](https://spacemap.co/p/100265984/Mars%20Science%20Laboratory?at=2026-07-28T14:17:41.132Z,-52,-72.77,6.016e-10) |
 
-Click the images to open
+Click the images to open. Everything is clickable, including each asteroid dot in the main asteroid belt.
 
 ## Features
 
