@@ -22,10 +22,16 @@ probe "$MEILI_URL/health" >/dev/null \
 # which half each upload covers. Sequential, so swapping the file is safe.
 cp "$SCRIPT_DIR/_headers" "$EXPORT_DIR/_headers"
 
+# The pinned wrangler from infrastructure/pnpm-lock.yaml, the same on every
+# machine. cd, not --dir: pnpm picks its version from the cwd's packageManager.
+INFRA_DIR="$REPO_ROOT/infrastructure"
+(cd "$INFRA_DIR" && pnpm install --frozen-lockfile)
+wrangler() { (cd "$INFRA_DIR" && pnpm exec wrangler "$@"); }
+
 # Images before static: static's metadata.json emits new ?v= tokens for images
 # the edge caches immutably for a year — ship the bytes before the tokens.
 cp "$SCRIPT_DIR/.assetsignore.images" "$EXPORT_DIR/.assetsignore"
-npx wrangler deploy --config "$SCRIPT_DIR/wrangler.images.jsonc"
+wrangler deploy --config "$SCRIPT_DIR/wrangler.images.jsonc"
 
 # Verify with an image from this export (URL-safe names only, to skip encoding).
 image_path=$(cd "$EXPORT_DIR" && find v1/images -type f | grep -m1 -E '^[A-Za-z0-9._/-]+$' || true)
@@ -37,7 +43,7 @@ else
 fi
 
 cp "$SCRIPT_DIR/.assetsignore.static" "$EXPORT_DIR/.assetsignore"
-npx wrangler deploy --config "$SCRIPT_DIR/wrangler.jsonc"
+wrangler deploy --config "$SCRIPT_DIR/wrangler.jsonc"
 
 # The cache-buster skips the edge cache so we compare against the new deploy,
 # not a stale copy.
