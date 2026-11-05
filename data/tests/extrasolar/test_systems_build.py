@@ -40,6 +40,7 @@ from space_map_data.extrasolar.systems.planets import PLANETS_INPUT, planet_star
 from space_map_data.extrasolar.systems.prepare import (
     APART,
     HOST_LEFT,
+    ID_OFF,
     LEAVES,
     MEMBER,
     Inputs,
@@ -2167,7 +2168,11 @@ class TestCrossedGroupOrder:
                     wds_pair("C", "D", 9999.999, notes="NVW", mag1=7.42, mag2=10.11),
                 ]
             },
-            {(w, x): wds_component(at + 1) for at, x in enumerate("ABC")},
+            {
+                (w, "A"): wds_component(1),
+                (w, "B"): wds_component(2),
+                (w, "C"): wds_component(3, 226.073, 59.535),
+            },
         )
         index = simbad_index(
             [
@@ -2186,11 +2191,11 @@ class TestCrossedGroupOrder:
                 ("simbad", "oid", "12"): b,
             },
             [
-                fact(key, ra, dec, mag, parallax=7.0, pmra=-13.0, pmdec=5.0)
-                for key, ra, dec, mag in (
-                    (a, 224.123, 59.38, 8.1),
-                    (b, 224.123, 59.38 - 2.9 / 3600, 10.1),
-                    (c, 226.073, 59.535, 7.3),
+                fact(key, ra, dec, mag, parallax=parallax, pmra=pmra, pmdec=pmdec)
+                for key, ra, dec, mag, parallax, pmra, pmdec in (
+                    (a, 224.123, 59.38, 8.15, 9.18, -13.06, -1.44),
+                    (b, 224.123, 59.38 - 2.9 / 3600, 10.1, 9.18, -13.06, -1.44),
+                    (c, 226.073, 59.535, 7.38, 9.09, -13.71, -0.12),
                 )
             ],
         )
@@ -2217,9 +2222,9 @@ class TestCrossedGroupOrder:
 
 
 class TestOneWrongId:
-    """One id of an MSC component reaches a wrong star through SIMBAD. The
-    other ids reach the right star through SIMBAD. The star that more of the
-    ids reach wins, for each order of the keys."""
+    """One id of an MSC component reaches a wrong star through SIMBAD. Far
+    from its WDS id it is no candidate. Near it, the star that more of the ids
+    reach wins. Each holds for each order of the keys."""
 
     def systems(
         self, comp: dict, objects: list, ids: dict, rows: list[dict]
@@ -2235,10 +2240,8 @@ class TestOneWrongId:
         )
         return build(inputs, FakeResolver(ids, rows))
 
-    def events(self, systems: Systems) -> list[str]:
-        events = systems.events.filter(
-            pc.equal(systems.events["kind"], "ids reach two objects")
-        )
+    def events(self, systems: Systems, kind: str = ID_OFF) -> list[str]:
+        events = systems.events.filter(pc.equal(systems.events["kind"], kind))
         return events["text"].to_pylist()
 
     def test_59_aur(self):
@@ -2280,7 +2283,46 @@ class TestOneWrongId:
             ]
             systems = self.systems(comp, objects, ids, rows)
             assert shape(systems, right) == ("binary star", 2, [right, "entry"])
-            assert self.events(systems) == [
+            assert self.events(systems) == [f"{w} A: {wrong} is 31517″ off"]
+            assert not self.events(systems, "ids reach two objects")
+
+    def test_a_wrong_star_near_the_id(self):
+        """59 Aur with QX Aur moved 1′ off, too near for the guard."""
+        w = "06530+3852"
+        comp = msc_comp(
+            w, "A", HIP=33041, HD=50018, Id="ADS_5534A. HR_2539, 59_Aur, V*_QX_Aur"
+        )
+        place = (103.256 + 1 / 60, 38.869)
+        objects = [
+            simbad_object(
+                918209,
+                "* 59 Aur",
+                103.256,
+                38.869,
+                v=6.14,
+                hip="33041",
+                hd="50018",
+                identifiers=("HR 2539",),
+            ),
+            simbad_object(
+                397430,
+                "V* QX Aur",
+                *place,
+                otype="Mi*",
+                identifiers=("V* QX Aur",),
+            ),
+        ]
+        for right, wrong in ((18494922, 18557114), (18557114, 18494922)):
+            ids = {
+                ("hip", "2007", "33041"): right,
+                ("hd", "1949", "50018"): right,
+                ("simbad", "oid", "918209"): right,
+                ("simbad", "oid", "397430"): wrong,
+            }
+            rows = [fact(right, 103.256, 38.869, 6.0), fact(wrong, *place, 9.0)]
+            systems = self.systems(comp, objects, ids, rows)
+            assert shape(systems, right) == ("binary star", 2, [right, "entry"])
+            assert self.events(systems, "ids reach two objects") == [
                 f"msc {w} A: {right} (by SIMBAD, 3 ids) over {wrong} (by SIMBAD, 1 id)"
             ]
 
@@ -2320,9 +2362,8 @@ class TestOneWrongId:
             ]
             systems = self.systems(comp, objects, ids, rows)
             assert shape(systems, right) == ("binary star", 2, [right, "entry"])
-            assert self.events(systems) == [
-                f"msc {w} A: {right} (by SIMBAD, 2 ids) over {wrong} (by SIMBAD, 1 id)"
-            ]
+            assert self.events(systems) == [f"{w} A: {wrong} is 14522″ off"]
+            assert not self.events(systems, "ids reach two objects")
 
 
 class TestInnerSystemStays:

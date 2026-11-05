@@ -3,7 +3,9 @@
 A tree is the objects that `h_link.csv` links, from an object with no
 listed parent down. An object with two parents stays under the first by oid.
 The brightest child of a node is its primary: the separations of the other
-children are from it, at J2000.
+children are from it, at J2000. `h_link.csv` also holds the members of a
+cluster or an association, which are not its components. So an object of a
+type that is not stellar is no node, and its children go on without it.
 
 `SimbadIndex` gives the SIMBAD objects that carry a catalogue id. Another
 source reaches a component through it: SIMBAD lists the components of close
@@ -39,6 +41,7 @@ _GCVS = re.compile(r"V\* [A-Za-z0-9]+ [A-Z][a-z]{2}")
 # A component letter at the end of a main identifier: "* alf Cen A", "Aa".
 LETTER = re.compile(r"\s(?P<letter>[A-Z][a-z]?\d?)$")
 EPOCH = 2000.0
+NON_STELLAR = "SIMBAD parent that is no star"
 
 
 def letter(main_id: str) -> str | None:
@@ -74,7 +77,7 @@ class SimbadIndex:
 
     @classmethod
     def empty(cls) -> SimbadIndex:
-        return cls(SimbadList({}, {}, {}, frozenset(), frozenset()), {})
+        return cls(SimbadList({}, {}, {}, frozenset(), frozenset(), frozenset()), {})
 
     def components(self, catalogue: str, release: str, value: str) -> list[int]:
         """The rows with no listed children that carry this id."""
@@ -85,14 +88,29 @@ class SimbadIndex:
         ]
 
 
+def non_stellar_parents(stars: SimbadList) -> list[str]:
+    """Each object that `read_simbad` leaves out, with its children."""
+    found = []
+    for oid, children in sorted(stars.children.items()):
+        if not stars.is_stellar(oid):
+            item = stars.objects[oid]
+            otype = item.row.get("otype")
+            found.append(f"{item.main_id} ({otype}): {len(children)} children")
+    return found
+
+
 def read_simbad(stars: SimbadList) -> pa.Table:
     """The nodes of SIMBAD's trees."""
     parent_of = {}
     several = 0
     for child, parents in stars.parents.items():
-        parent_of[child] = min(parents)
-        several += len(parents) > 1
-    roots = sorted(oid for oid in stars.children if oid not in parent_of)
+        parents = [p for p in parents if stars.is_stellar(p)]
+        if parents:
+            parent_of[child] = min(parents)
+            several += len(parents) > 1
+    roots = sorted(
+        oid for oid in stars.children if oid not in parent_of and stars.is_stellar(oid)
+    )
     out = NodeList(SIMBAD)
     seen: set[int] = set()
 

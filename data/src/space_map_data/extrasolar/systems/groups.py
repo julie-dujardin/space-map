@@ -6,13 +6,14 @@ one of three kinds:
 - PRIMARY: the primary star, or a point that holds the light of each member.
 - BACKGROUND: a member's parallax and the point's clearly disagree
   (`disagree`). That member is not at the distance of the point. The veto
-  removes each member that disagrees with its primary before this test.
+  removes each member that disagrees with its primary before this test. Such
+  a point is not bound to its members, so it leaves its system.
 - COMBINED: the light of its members. Its astrometry is not Gaia's, each
   member is a Gaia point, and its magnitude is the combined magnitude of the
   members within COMBINED_MAG. A Gaia source is one star, so it never holds
   the light of other Gaia sources. The test uses no separation, because a
   Hipparcos 1997 position can be far from the stars.
-The point stays a member of its system for each kind. The kind goes to the
+A point of the other kinds stays a member of its system. Its kind goes to the
 event and to the report.
 """
 
@@ -23,8 +24,9 @@ from space_map_data.extrasolar.systems.parallax import disagree
 from space_map_data.extrasolar.systems.resolve import GAIA_ASTROMETRY, Fact
 
 GROUP_OBJECT = "group object beside its members"
+GROUP_LEAVES = "group object leaves"
 PRIMARY, BACKGROUND, COMBINED = "primary", "background members", "combined light"
-KINDS = (PRIMARY, BACKGROUND, COMBINED)
+KINDS = (PRIMARY, COMBINED)
 # A G estimate from Hipparcos and a variable star can be off by this many
 # magnitudes.
 COMBINED_MAG = 0.75

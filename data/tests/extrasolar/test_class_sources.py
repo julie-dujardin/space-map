@@ -189,6 +189,7 @@ class TestGcvsStars:
             {},
             frozenset(),
             frozenset(),
+            frozenset(),
         )
         resolved = write_resolved(
             tmp_path / "names.csv",

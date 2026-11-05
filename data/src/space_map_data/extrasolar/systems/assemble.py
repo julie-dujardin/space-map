@@ -603,6 +603,14 @@ class Assembler:
                     add_key(int(key), ref)
                 else:
                     members.append((ENTRY, 0, None, ref, None))
+        # Nested groups of one tree with one point set are one node here.
+        for other in node.attesting[1:]:
+            at = int(self.p.origin[other])
+            if at < 0 or self.p.sets.tree[other] != self.p.sets.tree[top]:
+                continue
+            for member in self.groups[at].members:
+                if member.kind == ENTRY and all(m[3] != member.value for m in members):
+                    members.append((ENTRY, 0, None, member.value, member.inner))
         rest = sorted(
             (k for k in node.keys if k not in covered),
             key=lambda k: (self._mag(k), k),

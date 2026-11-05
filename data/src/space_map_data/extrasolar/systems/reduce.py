@@ -12,7 +12,11 @@ and is a group:
   point holds, is inside that point: the builder makes its row an entry.
 - An id of a group that one of its members also reaches is the light of that
   member, not the group's. A group's own point beside its members stays a
-  member, and its event gives its kind (`groups`).
+  member, and its event gives its kind (`groups`). A point that is not bound
+  to the main star leaves: a background point, or one wider than MAX_PARSEC.
+- A leaf whose objects all left the trees is a planet, not a star with no
+  object, so it is no member. The trees of the planet catalogues list only
+  stars, so a row of theirs stays an entry.
 - A member that reaches no object is an entry. It is inside its sibling's
   point when that point cannot split it, else an entry of the group. A
   member with a period and a visual orbit stays an entry of the group beside
@@ -20,12 +24,19 @@ and is a group:
 
 Each member is tested against its primary. A group stands for its main star.
 The main star is the first point down the tree and gives the group its
-position.
+position. A primary with no object tests nothing, so the first point that
+stays stands for it.
 - A member leaves when its parallax and its primary's clearly disagree
   (`parallaxes_disagree`). An orbit pair is exempt, and so is a point that
   holds several stars in its subtree or that a Gaia DR3 orbit or a SIMBAD
   type shows as a close pair, because a close orbit can throw off the
   parallax.
+- A member leaves when it is not bound to its primary (`unbound`). Each point
+  of the member counts for the width, so no chain of pairs reaches past
+  MAX_PARSEC from a main star. Only the member's main star counts for the
+  motion, as the others move on their own orbits, and the exemptions of the
+  veto apply. A refuted member stays as an entry when its object is not at the
+  catalogue's separation (`wrong_object`): the star is real, its object is not.
 - A member that the source lists as unverified stays only when it and its
   primary pass El-Badry's test of a bound pair (`same_distance`). It also
   stays when it reaches its primary's point and the source gives their
@@ -51,15 +62,28 @@ import pyarrow as pa
 
 from space_map_data.extrasolar.sky import separation as sky_separation
 from space_map_data.extrasolar.sources.simbad import MAX_INSIDE_MAG
-from space_map_data.extrasolar.systems.groups import GROUP_OBJECT, group_kind
+from space_map_data.extrasolar.systems.groups import (
+    BACKGROUND,
+    GROUP_LEAVES,
+    GROUP_OBJECT,
+    group_kind,
+)
 from space_map_data.extrasolar.systems.nodes import (
     ASTROMETRIC_ORBIT,
     ECLIPSING,
+    PLANETS,
     SPECTROSCOPIC_ORBIT,
     UNVERIFIED,
     VISUAL_ORBIT,
 )
-from space_map_data.extrasolar.systems.parallax import disagree, same_distance
+from space_map_data.extrasolar.systems.parallax import (
+    disagree,
+    excess,
+    projected,
+    same_distance,
+    unbound,
+    wrong_object,
+)
 from space_map_data.extrasolar.systems.resolve import (
     GAIA_ASTROMETRY,
     HIPPARCOS_ASTROMETRY,
@@ -82,6 +106,9 @@ HIPPARCOS_MAX_CONTRAST = 4.0
 ORBITS = frozenset({VISUAL_ORBIT, SPECTROSCOPIC_ORBIT, ASTROMETRIC_ORBIT, ECLIPSING})
 
 POINT, GROUP, ENTRY = "point", "group", "entry"
+UNBOUND = "unbound"
+WRONG_OBJECT = "wrong object for its separation"
+PLANET_ROW = "component that is a planet"
 
 
 def resolves(
@@ -286,14 +313,28 @@ class TreeReducer:
         g = table["g_mag"].to_pylist()
         self.mag = [b if b is not None else a for a, b in zip(v, g)]
         self.children: list[list[int]] = [[] for _ in range(table.num_rows)]
+        leaf = np.ones(table.num_rows, bool)
+        leaf[self.parent[self.parent >= 0]] = False
         for row, parent in enumerate(self.parent.tolist()):
-            if parent >= 0:
+            if parent < 0:
+                continue
+            if leaf[row] and self._planet(row):
+                self._event(PLANET_ROW, self._name(row), out)
+            else:
                 self.children[parent].append(row)
 
     def run(self) -> None:
         for root in np.flatnonzero(self.parent < 0).tolist():
             part = self.part(root, frozenset(), self.out)
             self._close(part, root, self.out)
+
+    def _planet(self, row: int) -> bool:
+        """Whether a row is a planet: each of its objects left the trees. It
+        is no star of the tree, as a row with no object is."""
+        found = self.candidates[row]
+        if self.source == PLANETS or not found:
+            return False
+        return all(key in self.dropped for key, _ in found)
 
     def _event(self, kind: str, text: str, out: Reduced) -> None:
         out.events.append((kind, self.source, text))
@@ -433,7 +474,6 @@ class TreeReducer:
     def _tested(self, row: int, parts: list[_Part], out: Reduced) -> list[_Part]:
         """The members that stay beside the primary `parts[0]`."""
         primary = parts[0]
-        first = self.facts.get(primary.main)
         kept = [primary]
         for part in parts[1:]:
             evidence = self.evidence[part.node]
@@ -462,10 +502,25 @@ class TreeReducer:
                 primary = _Part(primary.node, primary.key, primary.leaves + part.leaves)
                 kept[0] = primary
                 continue
-            second = self.facts.get(part.main)
+            main = next((p for p in kept if p.main), primary)
+            first, second = self.facts.get(main.main), self.facts.get(part.main)
             pair = None if first is None or second is None else (first, second)
-            if pair and self._vetoed(primary, part, *pair, out):
+            if pair and self._vetoed(main, part, *pair, out):
                 self._leave(part, out)
+                continue
+            if pair and self._unbound(main, part, *pair, out):
+                # The catalogue measures from the primary, not from a stand-in.
+                listed = self.separation[part.node] if main is primary else None
+                if len(part.leaves) == 1 and wrong_object(*pair, listed):
+                    self._event(
+                        WRONG_OBJECT,
+                        f"{self._name(part.node)}: {pair[1].key} is not"
+                        f" {listed}″ from {pair[0].key}",
+                        out,
+                    )
+                    kept.append(_Part(part.node, 0, part.leaves))
+                else:
+                    self._leave(part, out)
                 continue
             if evidence is None:
                 kept.append(part)
@@ -494,11 +549,7 @@ class TreeReducer:
         self, primary: _Part, part: _Part, first: Fact, second: Fact, out: Reduced
     ) -> bool:
         """Whether the parallaxes of a member and its primary disagree."""
-        if set(self.known[part.node] or ()) & ORBITS:
-            return False
-        if self._holds_several(primary) or self._holds_several(part):
-            return False
-        if not disagree(first, second):
+        if self._exempt(primary, part) or not disagree(first, second):
             return False
         evidence = self.evidence[part.node] or "physical"
         out.counts[f"{self.source}: {evidence} members that the parallaxes veto"] += 1
@@ -511,6 +562,35 @@ class TreeReducer:
             out,
         )
         return True
+
+    def _unbound(
+        self, primary: _Part, part: _Part, first: Fact, second: Fact, out: Reduced
+    ) -> bool:
+        """Whether a member is not bound to its primary."""
+        moving = not self._exempt(primary, part)
+        points = [self.facts.get(key) for key in sorted(part.held)]
+        far = next((p for p in points if p and unbound(first, p, moving=False)), second)
+        why = unbound(first, far, moving)
+        if why is None:
+            return False
+        evidence = self.evidence[part.node] or "physical"
+        out.counts[f"{self.source}: {evidence} members {why}"] += 1
+        fast = excess(first, far) if moving else math.nan
+        self._event(
+            f"{UNBOUND}: {why}",
+            f"{self._name(part.node)}: {far.key} from {first.key}:"
+            f" {projected(first, far):.2f} pc, {fast:.1f} km/s, {evidence},"
+            f" {self.known[part.node]}",
+            out,
+        )
+        return True
+
+    def _exempt(self, primary: _Part, part: _Part) -> bool:
+        """Whether an orbit or a close pair explains how the astrometry of a
+        member and its primary differ."""
+        if set(self.known[part.node] or ()) & ORBITS:
+            return True
+        return self._holds_several(primary) or self._holds_several(part)
 
     def _holds_several(self, part: _Part) -> bool:
         """Whether a close pair can throw off the astrometry of the part's
@@ -695,6 +775,12 @@ class TreeReducer:
             kind, evidence = group_kind(
                 self.facts.get(own), [self.facts.get(key) for key in others]
             )
+            mine = self.facts.get(own)
+            main = self.facts.get(next((p.main for p in parts if p.main), 0))
+            wide = mine and main and unbound(mine, main, moving=False)
+            if kind == BACKGROUND or wide:
+                self._event(GROUP_LEAVES, f"{self._name(row)}: {own}; {evidence}", out)
+                return [p for p in merged if p.key != own], 0
             self._event(
                 f"{GROUP_OBJECT}: {kind}",
                 f"{self._name(row)}: {own} is a point of its own beside"

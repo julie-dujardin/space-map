@@ -1,12 +1,15 @@
 """The steps of the builder before the assembly.
 
-1. Each node of a tree source takes its candidate objects (`resolve`). A WDS
-   component with no candidate takes the object of the MSC component of the
-   same WDS id and letter, and the other way round, when their separations
-   agree. Separations that disagree make them two stars (`Reduced.two_stars`).
-   A WDS component that still has none goes to `Resolver.match` by position.
-   It never takes the object of a node above it, or of another node of its
-   WDS system near it.
+1. Each node of a tree source takes its candidate objects (`resolve`). An MSC
+   component with no candidate takes the object of the WDS component of its
+   WDS id at its place, whatever their letters, as MSC and WDS can letter one
+   star differently. A WDS component with no candidate takes the object of
+   the MSC component of the same WDS id and letter, and the other way round,
+   when their separations agree. Separations that disagree make them two
+   stars (`Reduced.two_stars`). A component that still has none goes to
+   `Resolver.match` by position. It never takes the object of a node above
+   it, or of another node of its WDS system near it. A candidate far from
+   the place of its WDS id is a wrong id, and goes (`place_guard`).
 2. A planet record that is also a star of a star catalogue stays a record of
    its host. Under the IAU's line its object leaves every tree, and no other
    record brings it back. A brown dwarf is a member of its system too
@@ -30,6 +33,7 @@
 
 import logging
 import math
+import re
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 
@@ -51,6 +55,7 @@ from space_map_data.extrasolar.systems.nodes import (
     MSC_ID,
     PLANETS,
     PROPER_MOTION,
+    SIMBAD,
     SIMBAD_OID,
     SIMBAD_TYPE,
     WDS,
@@ -77,7 +82,11 @@ from space_map_data.extrasolar.systems.resolve import (
     flatten_ids,
     resolve_ids,
 )
-from space_map_data.extrasolar.systems.simbad import SimbadIndex
+from space_map_data.extrasolar.systems.simbad import (
+    NON_STELLAR,
+    SimbadIndex,
+    non_stellar_parents,
+)
 from space_map_data.extrasolar.systems.wds import WDS_MATCHER, WdsCatalogue
 
 logger = logging.getLogger(__name__)
@@ -109,6 +118,19 @@ MOVING_RATIO = 5.0
 # The same for a pair that the MSC knows only by proper motion. Such a pair
 # shows no orbital motion.
 FIXED_RATIO = 1.5
+# Arcsec within which an MSC and a WDS component of one WDS id are one star, at
+# most half the way to the next object.
+PLACE_ARCSEC = 1.5
+ID_OFF = "id off its WDS id"
+# Arcsec. A candidate is wrong when it is this far from the place of its WDS
+# id, past the widest separation above it, AND from the row's own place. The
+# id alone lost Capella H, whose measure sits on a node above it. The row
+# alone is wrong because WDS places can be rough.
+ID_ARCSEC = 600.0
+OWN_PLACE_ARCSEC = 60.0
+# From J2000 to Gaia's J2016.
+YEARS_TO_GAIA = 16.0
+_WDS_ID = re.compile(r"(\d\d)(\d\d\d)([+-])(\d\d)(\d\d)")
 
 
 @dataclass
@@ -184,6 +206,7 @@ def letter_links(
     wds: pa.Table | None,
     found: dict[str, list[list[tuple[int, int]]]],
     reduced: Reduced,
+    placed: frozenset[int] = frozenset(),
 ) -> dict[tuple[str, str, str], tuple[int, int]]:
     """Links between the MSC and WDS components of one WDS id and letter.
 
@@ -192,7 +215,8 @@ def letter_links(
     the letter alone. Each takes the other's best candidate as a candidate of
     its own, below its own ids. A WDS component lends none when its Gaia id is
     on another letter of its WDS id too. Ids whose separations disagree go in
-    `reduced.two_stars`, also with no candidate to lend.
+    `reduced.two_stars`, also with no candidate to lend. An MSC row of `placed`
+    has its object from `place_links`.
     """
     links: dict[tuple[str, str, str], tuple[int, int]] = {}
     if msc is None or wds is None:
@@ -209,7 +233,7 @@ def letter_links(
     first = wds["first_separation"].to_pylist()
     for row, text in wds_ids.items():
         other = msc_by.get(text)
-        if other is None:
+        if other is None or other in placed:
             continue
         measures = (first[row], last[row])
         agree = separations_agree(msc_separation[other], measures, msc_known[other])
@@ -235,8 +259,120 @@ def letter_links(
     return links
 
 
-def match_rows(table: pa.Table, found: list[list[tuple[int, int]]]) -> pa.Table:
-    """The MATCH rows of the WDS leaves of `table` that have no candidate.
+def place_links(
+    msc: pa.Table,
+    wds: pa.Table,
+    found: dict[str, list[list[tuple[int, int]]]],
+    reduced: Reduced,
+) -> tuple[dict[tuple[str, str, str], tuple[int, int]], frozenset[int]]:
+    """An MSC component with no object takes the object of the WDS component
+    of its WDS id at its place, whatever the letters. Gives the links and the
+    rows of the MSC that they place."""
+    links: dict[tuple[str, str, str], tuple[int, int]] = {}
+    placed = set()
+    msc_ids = _ids_by_row(msc, MSC_ID)
+    by_system: dict[str, list[int]] = defaultdict(list)
+    for row, text in enumerate(wds["system"].to_pylist()):
+        if found[WDS][row]:
+            by_system[text.split(" ")[0]].append(row)
+    ra = wds["ra"].fill_null(np.nan).to_numpy()
+    dec = wds["dec"].fill_null(np.nan).to_numpy()
+    msc_ra = msc["ra"].fill_null(np.nan).to_numpy()
+    msc_dec = msc["dec"].fill_null(np.nan).to_numpy()
+    systems = msc["system"].to_pylist()
+    for row, text in msc_ids.items():
+        if found[MSC][row] or not np.isfinite(msc_ra[row]):
+            continue
+        rows = np.array(by_system.get(systems[row], []), np.int64)
+        rows = rows[np.isfinite(ra[rows])] if rows.size else rows
+        if not rows.size:
+            continue
+        apart = np.atleast_1d(
+            sky_separation(msc_ra[row], msc_dec[row], ra[rows], dec[rows])
+        )
+        order = np.argsort(apart)
+        key = found[WDS][int(rows[order[0]])][0][0]
+        others = [
+            float(apart[at])
+            for at in order[1:]
+            if found[WDS][int(rows[at])][0][0] != key
+        ]
+        limit = min(PLACE_ARCSEC, others[0] / 2) if others else PLACE_ARCSEC
+        if apart[order[0]] > limit:
+            continue
+        links[(*MSC_ID, text)] = (key, LETTER)
+        placed.add(row)
+        reduced.counts[f"{MSC}: members by place"] += 1
+    return links, frozenset(placed)
+
+
+def id_place(text: str) -> tuple[float, float] | None:
+    """The J2000 place in degrees that a WDS id gives."""
+    found = _WDS_ID.match(text)
+    if found is None:
+        return None
+    hours, minutes, sign, degrees, arcmin = found.groups()
+    dec = int(degrees) + int(arcmin) / 60
+    return (int(hours) + int(minutes) / 600) * 15, -dec if sign == "-" else dec
+
+
+def place_guard(
+    table: pa.Table,
+    found: list[list[tuple[int, int]]],
+    facts: Facts,
+    reduced: Reduced,
+) -> None:
+    """Drop the candidates of a source's rows that are far from their WDS id
+    and from the row's own place. The id holds where a row's place is rough."""
+    source = table["source"][0].as_py()
+    separation = table["separation"].fill_null(0).to_numpy()
+    parent = table["parent"].to_numpy()
+    ra = table["ra"].fill_null(np.nan).to_numpy()
+    dec = table["dec"].fill_null(np.nan).to_numpy()
+    systems = table["system"].to_pylist()
+    labels = table["label"].to_pylist()
+    for row, items in enumerate(found):
+        place = id_place(systems[row]) if items else None
+        if place is None:
+            continue
+        # A wide member's measure can sit on a node above it.
+        reach = 0.0
+        at = row
+        while at >= 0:
+            reach = max(reach, float(separation[at]))
+            at = int(parent[at])
+        kept = []
+        for key, rank in items:
+            fact = facts.get(key)
+            if fact is None or not math.isfinite(fact.ra):
+                kept.append((key, rank))
+                continue
+            motion = 0.0
+            if math.isfinite(fact.pmra) and math.isfinite(fact.pmdec):
+                motion = math.hypot(fact.pmra, fact.pmdec) * YEARS_TO_GAIA / 1000
+            apart = float(sky_separation(*place, fact.ra, fact.dec))
+            own = np.inf
+            if np.isfinite(ra[row]):
+                own = float(sky_separation(ra[row], dec[row], fact.ra, fact.dec))
+            if apart - reach - motion > ID_ARCSEC and own - motion > OWN_PLACE_ARCSEC:
+                reduced.counts[f"{source}: {ID_OFF}"] += 1
+                reduced.events.append(
+                    (
+                        ID_OFF,
+                        source,
+                        f"{systems[row]} {labels[row]}: {key} is {apart:.0f}″ off",
+                    )
+                )
+            else:
+                kept.append((key, rank))
+        found[row] = kept
+
+
+def match_rows(
+    table: pa.Table, found: list[list[tuple[int, int]]], kind: tuple[str, str]
+) -> pa.Table:
+    """The MATCH rows of the leaves of `table` that have no candidate. `kind`
+    is the id that links a row back to its node.
 
     A component never takes the object of a node above it, or of another
     node of its WDS system within its match radius. That object is the point
@@ -250,7 +386,7 @@ def match_rows(table: pa.Table, found: list[list[tuple[int, int]]]) -> pa.Table:
     free &= table["epoch"].is_valid().to_numpy(zero_copy_only=False)
     rows = table.filter(pa.array(free))
     exclude = _taken(table, found, np.flatnonzero(free))
-    ids = _ids_by_row(rows, WDS_ID)
+    ids = _ids_by_row(rows, kind)
     floats = {
         name: rows[name].cast(pa.float64()).fill_null(np.nan).to_numpy()
         for name in ("ra", "dec", "pmra", "pmdec", "epoch", "v_mag", "g_mag")
@@ -715,20 +851,31 @@ def prepare(inputs: Inputs, resolver: Resolver) -> Prepared:
     found = dict(zip(by_source, found_lists))
     reach = dict(zip(by_source, reach_lists))
     reduced = Reduced()
+    if inputs.simbad is not None:
+        for text in non_stellar_parents(index.stars):
+            reduced.counts[f"{SIMBAD}: {NON_STELLAR}"] += 1
+            reduced.events.append((NON_STELLAR, SIMBAD, text))
+    placed: frozenset[int] = frozenset()
+    if MSC in by_source and WDS in by_source:
+        links, placed = place_links(by_source[MSC], by_source[WDS], found, reduced)
+        _add_links(trees, found, links)
     _add_links(
         trees,
         found,
-        letter_links(by_source.get(MSC), by_source.get(WDS), found, reduced),
+        letter_links(by_source.get(MSC), by_source.get(WDS), found, reduced, placed),
     )
-    if WDS in by_source:
-        rows = match_rows(by_source[WDS], found[WDS])
-        counts[f"{WDS}: members sent to match by position"] = rows.num_rows
-        matched = resolver.match(rows) if rows.num_rows else np.zeros(0, np.int64)
+    for source, kind in ((WDS, WDS_ID), (MSC, MSC_ID)):
+        if source not in by_source:
+            continue
+        rows = match_rows(by_source[source], found[source], kind)
+        counts[f"{source}: members sent to match by position"] = rows.num_rows
+        matched = resolver.match(rows, kind) if rows.num_rows else np.zeros(0, np.int64)
         positions = {
-            (*WDS_ID, text): (key, POSITION)
+            (*kind, text): (key, POSITION)
             for text, key in zip(rows["catalogue_id"].to_pylist(), matched.tolist())
             if key and text
         }
+        counts[f"{source}: members matched by position"] = len(positions)
         _add_links(trees, found, positions)
 
     el_keys = (np.zeros(0, np.int64), np.zeros(0, np.int64))
@@ -756,6 +903,9 @@ def prepare(inputs: Inputs, resolver: Resolver) -> Prepared:
     facts = Facts(resolver.facts(every[every != 0]))
     logger.info("systems: facts of %d objects", len(facts))
 
+    for source in (MSC, WDS):
+        if source in by_source:
+            place_guard(by_source[source], found[source], facts, reduced)
     dropped = _leaving(overlaps, reduced)
     periods = planet_periods(inputs.planets)
     orbit_kept = np.zeros(orbit_keys.size, bool)
@@ -838,9 +988,8 @@ def _add_links(
         ):
             link = links.get((c, r, v))
             if link and all(key != link[0] for key, _ in found[source][row]):
-                # A stable sort by rank keeps the order in each rank.
                 found[source][row] = sorted(
-                    [*found[source][row], link], key=lambda item: item[1]
+                    [*found[source][row], link], key=lambda item: (item[1], item[0])
                 )
 
 

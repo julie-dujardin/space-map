@@ -3,9 +3,10 @@
 `add_systems` comes after the distance passes and before Wikidata:
 1. It builds the trees (`build`) from the run so far, with `RunResolver`. A
    member's catalogue ids reach their objects through the links of the
-   registry and of the passes. The WDS components with no other id are the
-   rows of the wds-components pass, which never mints and matches by
-   position. The facts of an object are its rows so far, merged by source
+   registry and of the passes. The WDS and MSC components with no other id
+   are the rows of the wds-components and msc-components passes, which never
+   mint and match by position. The facts of an object are its rows so far,
+   merged by source
    order. An object that the commit does not mint is no object for the
    builder, so a star of it is an entry.
 2. The star-systems pass gives a row to each node and to each star of a
@@ -74,6 +75,7 @@ from space_map_data.extrasolar.systems.elements import GAIA_ELEMENTS
 from space_map_data.extrasolar.systems.msc import read_msc, refuted_pairs
 from space_map_data.extrasolar.systems.nodes import (
     GAIA_DR3,
+    MSC_ID,
     OBJECT_CATALOGUES,
     SIMBAD_OID,
     WDS,
@@ -119,7 +121,9 @@ from space_map_data.utils.arrays import find_sorted, map_sorted
 
 logger = logging.getLogger(__name__)
 
-# WDS components that no catalogue id links. Their ids become the stars'.
+# Components that no catalogue id links, one pass per catalogue, as a letter
+# of the MSC can be another star than that letter of the WDS. Their ids become
+# the stars'.
 WDS_COMPONENTS = Source(
     name="wds-components",
     catalogue="wds",
@@ -128,6 +132,15 @@ WDS_COMPONENTS = Source(
     matcher=WDS_MATCHER,
     kind=COMPONENT_KIND,
 )
+MSC_COMPONENTS = Source(
+    name="msc-components",
+    catalogue="msc",
+    release="component",
+    home=1,
+    matcher=WDS_MATCHER,
+    kind=COMPONENT_KIND,
+)
+COMPONENT_PASSES = {WDS_ID: WDS_COMPONENTS, MSC_ID: MSC_COMPONENTS}
 # The nodes and the stars of the systems. The claims link the rows.
 SYSTEMS = Source(
     name=STAR_SYSTEMS,
@@ -191,8 +204,8 @@ class RunResolver:
     """Answers the builder from the run: its links, a pass and its rows.
 
     It reads the links of every region once, at the first lookup. The
-    wds-components pass after it adds no Gaia DR3 link and joins no objects,
-    so the links hold for the whole build. The Gaia DR3 links go to a file
+    components passes after it add no Gaia DR3 link and join no objects, so
+    the links hold for the whole build. The Gaia DR3 links go to a file
     per region, which the lookups map. The resolver keeps one catalogue id of
     each object that the builder holds, which the object's row of the
     star-systems pass claims.
@@ -346,22 +359,25 @@ class RunResolver:
         both = np.load(path, mmap_mode="r")
         return both[0], both[1]
 
-    def match(self, rows: pa.Table) -> np.ndarray:
-        """Run the wds-components pass. A row that made a new object, or
+    def match(self, rows: pa.Table, kind: tuple[str, str]) -> np.ndarray:
+        """Run the components pass of `kind`. A row that made a new object, or
         matched one that is not minted, has 0."""
+        source = COMPONENT_PASSES[kind]
         ids = rows["catalogue_id"].combine_chunks()
         named = ids.is_valid().to_numpy(zero_copy_only=False)
         values = ids.to_numpy(zero_copy_only=False)
         _, first = np.unique(values[named].astype(str), return_index=True)
         unique = np.flatnonzero(named)[np.sort(first)]
         if (~named).any():
-            logger.info("systems: %d WDS rows without an id", int((~named).sum()))
-        self.run.add(WDS_COMPONENTS, [rows.take(pa.array(unique))], self.complete)
-        found = self.run.row_keys(WDS_COMPONENTS.name)
+            logger.info(
+                "systems: %d rows of %s without an id",
+                int((~named).sum()),
+                source.name,
+            )
+        self.run.add(source, [rows.take(pa.array(unique))], self.complete)
+        found = self.run.row_keys(source.name)
         keys = np.where(found["new"].to_numpy(zero_copy_only=False), 0, found["key"])
-        keys = self._drop_unminted(
-            *WDS_ID, found["catalogue_id"].combine_chunks(), keys
-        )
+        keys = self._drop_unminted(*kind, found["catalogue_id"].combine_chunks(), keys)
         by_id = dict(zip(found["catalogue_id"].to_pylist(), keys.tolist()))
         out = np.array(
             [by_id.get(v, 0) if v is not None else 0 for v in ids.to_pylist()],
@@ -369,10 +385,9 @@ class RunResolver:
         )
         hit = keys != 0
         matched = found["catalogue_id"].combine_chunks().filter(pa.array(hit))
-        self._found.append(
-            (WDS_COMPONENTS.catalogue, WDS_COMPONENTS.release, matched, keys[hit])
-        )
-        self.counts["WDS components matched by position"] += int((out != 0).sum())
+        self._found.append((source.catalogue, source.release, matched, keys[hit]))
+        name = f"{kind[0].upper()} components matched by position"
+        self.counts[name] += int((out != 0).sum())
         return out
 
     def facts(self, keys: np.ndarray) -> pa.Table:
@@ -1574,11 +1589,14 @@ def _metadata_patch(nodes: pa.Table, points: pa.Table) -> pa.Table:
 
 def _engine_lines(run: IngestRun, examples: int = EXAMPLES) -> list[str]:
     """The joins and conflicts of the run that the system rows made."""
-    marks = (f"{SYSTEMS.catalogue}/{SYSTEMS.release}/", f"{WDS_COMPONENTS.catalogue}/")
+    marks = (
+        f"{SYSTEMS.catalogue}/{SYSTEMS.release}/",
+        *(f"{source.catalogue}/" for source in COMPONENT_PASSES.values()),
+    )
     lines = []
     for title, texts in (("joins", run.joins), ("conflicts", run.conflicts)):
         mine = [text for text in texts if any(mark in text for mark in marks)]
-        lines.append(f"{title} by system or WDS rows: {len(mine):,}")
+        lines.append(f"{title} by system, WDS or MSC rows: {len(mine):,}")
         lines += [f"  {text}" for text in mine[:examples]]
     return lines
 
@@ -1642,7 +1660,7 @@ def drawn_lines(drawn: Drawn) -> list[str]:
 def add_systems(
     run: IngestRun, inputs: Inputs, index: SimbadIndex | None, complete: bool
 ) -> SystemsExtension:
-    """Build the systems from the run so far, run the wds-components and
+    """Build the systems from the run so far, run the components and
     star-systems passes, and add the extension that links them.
 
     `inputs.planets` are the planet records in order, with run keys as hosts.

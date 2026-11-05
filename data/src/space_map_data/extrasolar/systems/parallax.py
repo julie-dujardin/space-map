@@ -1,8 +1,10 @@
-"""Whether two points are at one distance.
+"""Whether two points are at one distance, and whether they can be bound.
 
 `same_distance` is El-Badry's test of a bound pair. `parallaxes_disagree` and
 `disagree` are the veto: two parallaxes that put two points at clearly
-different distances.
+different distances. `unbound` refutes a pair by its projected width or by
+its motion. `wrong_object` tells which way a refuted pair goes: it never
+refutes a pair itself, because real wide pairs can have rough separations.
 """
 
 import math
@@ -10,7 +12,11 @@ import math
 import numpy as np
 
 from space_map_data.extrasolar.sky import separation as sky_separation
-from space_map_data.extrasolar.systems.resolve import OWN_ASTROMETRY, Fact
+from space_map_data.extrasolar.systems.resolve import (
+    GAIA_ASTROMETRY,
+    OWN_ASTROMETRY,
+    Fact,
+)
 
 # The bound-pair test of El-Badry, Rix & Heintz 2021 (MNRAS 506, 2269),
 # section 2, eqs. 1-6, with raw errors. ϖ is the brighter star's parallax.
@@ -28,6 +34,21 @@ MOTION_SIGMA = 2.0
 # closer, and by more than VETO_SHARE of the larger one.
 VETO_WIDE_SIGMA, VETO_CLOSE_SIGMA = 5.0, 6.0
 VETO_SHARE = 0.1
+# The tidal radius of 2 M☉ is 1.7 pc (Jiang & Tremaine 2010).
+MAX_PARSEC = 2.0
+# km/s beyond an orbit plus EXCESS_SIGMA. Gaia radial velocities agree in 41%
+# of pairs at 6-8 km/s and 26% at 8-12, against 87% in El-Badry's sample.
+MAX_EXCESS = 8.0
+EXCESS_SIGMA = 3.0
+# km/s for 1 mas/yr at 1 kpc.
+KMS = 4.74047
+WIDE = f"wider than {MAX_PARSEC} pc"
+MOTION = f"moves apart at {MAX_EXCESS} km/s or more"
+# A listed separation from here up is a catalogue overflow, not a measure.
+OVERFLOW = 999.0
+# A measured separation this far above the listed one is another object.
+WRONG_RATIO = 5.0
+WRONG_ARCSEC = 60.0
 
 
 def same_distance(first: Fact, second: Fact) -> bool:
@@ -37,19 +58,36 @@ def same_distance(first: Fact, second: Fact) -> bool:
             return False
         if not fact.parallax / fact.parallax_error > MIN_PARALLAX_SNR:
             return False
-    bright = second if second.mag < first.mag else first
-    separation = float(sky_separation(first.ra, first.dec, second.ra, second.dec))
+    bright = _brighter(first, second)
+    separation = _apart(first, second)
     if not 0 < separation <= PARSEC_SEPARATION * bright.parallax:
         return False
     sigma = CLOSE_SIGMA if separation <= CLOSE_SEPARATION else WIDE_SIGMA
     errors = math.hypot(first.parallax_error, second.parallax_error)
     if not abs(first.parallax - second.parallax) < sigma * errors:
         return False
-    ra, dec = first.pmra - second.pmra, first.pmdec - second.pmdec
-    apart = math.hypot(ra, dec)
+    apart, error = _motions_apart(first, second)
     orbit = ORBIT_MOTION * bright.parallax**1.5 / math.sqrt(separation)
     if apart <= orbit:
         return True
+    return apart <= orbit + MOTION_SIGMA * error
+
+
+def _brighter(first: Fact, second: Fact) -> Fact:
+    return second if second.mag < first.mag else first
+
+
+def _apart(first: Fact, second: Fact) -> float:
+    """The separation of two points in arcsec."""
+    return float(sky_separation(first.ra, first.dec, second.ra, second.dec))
+
+
+def _motions_apart(first: Fact, second: Fact) -> tuple[float, float]:
+    """How far apart two proper motions are in mas/yr, and its error."""
+    ra, dec = first.pmra - second.pmra, first.pmdec - second.pmdec
+    apart = math.hypot(ra, dec)
+    if not apart > 0:
+        return apart, math.nan
     error = (
         math.sqrt(
             (first.pmra_error**2 + second.pmra_error**2) * ra**2
@@ -57,7 +95,7 @@ def same_distance(first: Fact, second: Fact) -> bool:
         )
         / apart
     )
-    return apart <= orbit + MOTION_SIGMA * error
+    return apart, error
 
 
 def parallaxes_disagree(
@@ -87,13 +125,60 @@ def disagree(first: Fact, second: Fact) -> bool:
         return False
     if second.astrometry not in OWN_ASTROMETRY:
         return False
-    separation = float(sky_separation(first.ra, first.dec, second.ra, second.dec))
     return bool(
         parallaxes_disagree(
             np.asarray(first.parallax),
             np.asarray(first.parallax_error),
             np.asarray(second.parallax),
             np.asarray(second.parallax_error),
-            np.asarray(separation),
+            np.asarray(_apart(first, second)),
         )
     )
+
+
+def parsecs(first: Fact, second: Fact) -> float:
+    """The distance of a pair: its brighter star's, else either star's."""
+    for fact in (_brighter(first, second), first, second):
+        if math.isfinite(fact.distance) and fact.distance > 0:
+            return fact.distance
+        if fact.parallax > 0 and fact.parallax > MIN_PARALLAX_SNR * fact.parallax_error:
+            return 1000 / fact.parallax
+    return math.nan
+
+
+def projected(first: Fact, second: Fact) -> float:
+    """The projected width of a pair in pc."""
+    return _apart(first, second) * parsecs(first, second) / (1000 * PARSEC_SEPARATION)
+
+
+def excess(first: Fact, second: Fact) -> float:
+    """km/s by which two points move apart beyond an orbit plus 3σ, NaN when
+    unknown. Gaia's motions are not reliable under CLOSE_SEPARATION."""
+    if not {first.astrometry, second.astrometry} <= GAIA_ASTROMETRY:
+        return math.nan
+    distance = parsecs(first, second)
+    separation = _apart(first, second)
+    apart, error = _motions_apart(first, second)
+    if not (math.isfinite(distance) and separation >= CLOSE_SEPARATION and apart > 0):
+        return math.nan
+    orbit = ORBIT_MOTION * (1000 / distance) ** 1.5 / math.sqrt(separation)
+    return KMS * (apart - orbit - EXCESS_SIGMA * error) * distance / 1000
+
+
+def unbound(first: Fact, second: Fact, moving: bool = True) -> str | None:
+    """Why two points are no bound pair, else None. `moving` is False where
+    an orbit or a close pair explains their motions."""
+    if projected(first, second) > MAX_PARSEC:
+        return WIDE
+    if moving and excess(first, second) > MAX_EXCESS:
+        return MOTION
+    return None
+
+
+def wrong_object(first: Fact, second: Fact, listed: float | None) -> bool:
+    """Whether the points are far from the catalogue's separation of the pair,
+    so that one of them is not the star that it lists."""
+    if not listed or listed <= 0 or listed >= OVERFLOW:
+        return False
+    apart = _apart(first, second)
+    return apart > WRONG_RATIO * listed and apart - listed > WRONG_ARCSEC

@@ -7,8 +7,8 @@ import pyarrow as pa
 
 from space_map_data.extrasolar.systems import assemble
 from space_map_data.extrasolar.systems.groups import (
-    BACKGROUND,
     COMBINED,
+    GROUP_LEAVES,
     GROUP_OBJECT,
     PRIMARY,
     group_kind,
@@ -95,33 +95,46 @@ class TestGroupKind:
 
     def test_background_members(self):
         """MSC 03494-4421 A at ϖ 11.1 mas beside two faint stars at 1.3 and 1.8.
-        The veto takes B from its primary A first, so only A is beside the
-        point."""
+        The veto takes B from its primary A first. The point and A are at two
+        distances, so the point leaves."""
         own = fact(OWN, 10.0, 10.0, 8.92, parallax=11.13)
         a = fact(A, 10.0, 10.0 + 162 / 3600, 18.06, parallax=1.29)
         b = fact(B, 10.0, 10.0 + 165 / 3600, 19.37, parallax=1.76)
         out = reduce_group(own, a, b)
-        assert [kind for kind, _, _ in out.events] == [
-            "parallaxes disagree",
-            f"{GROUP_OBJECT}: {BACKGROUND}",
+        assert [(kind, text) for kind, _, text in out.events] == [
+            (
+                "parallaxes disagree",
+                (
+                    f"{SIMBAD} 76600 B: 102 1.760 ± 0.018 mas, primary A 101 1.290"
+                    " ± 0.013 mas, physical"
+                ),
+            ),
+            (
+                GROUP_LEAVES,
+                (
+                    f"{SIMBAD} 76600 AB: {OWN}; parallax 11.13 ± 0.11 mas,"
+                    " 101 1.29 ± 0.01 mas"
+                ),
+            ),
         ]
-        ((_, text),) = group_events(out)
-        assert text == (
-            f"{SIMBAD} 76600 AB: {OWN} is a point of its own beside [{A}];"
-            " parallax 11.13 ± 0.11 mas, 101 1.29 ± 0.01 mas"
-        )
+        assert not out.groups
 
     def test_background_members_that_agree(self):
-        """Two faint stars at one distance stay a pair. Both are beside the
-        point."""
+        """Two faint stars at one distance stay a pair, and the point leaves."""
         own = fact(OWN, 10.0, 10.0, 8.92, parallax=11.13)
         a = fact(A, 10.0, 10.0 + 162 / 3600, 18.06, parallax=1.29)
         b = fact(B, 10.0, 10.0 + 165 / 3600, 19.37, parallax=1.30)
-        ((kind, text),) = group_events(reduce_group(own, a, b))
-        assert kind == BACKGROUND
-        assert text.endswith(
-            "parallax 11.13 ± 0.11 mas, 101 1.29 ± 0.01 mas, 102 1.30 ± 0.01 mas"
-        )
+        out = reduce_group(own, a, b)
+        assert [group.keys for group in out.groups] == [frozenset({A, B})]
+        assert [(kind, text) for kind, _, text in out.events] == [
+            (
+                GROUP_LEAVES,
+                (
+                    f"{SIMBAD} 76600 AB: {OWN}; parallax 11.13 ± 0.11 mas,"
+                    " 101 1.29 ± 0.01 mas, 102 1.30 ± 0.01 mas"
+                ),
+            )
+        ]
 
     def test_a_point_that_holds_each_member(self):
         """A and B are SIMBAD components inside the Gaia point of AB."""
@@ -171,5 +184,5 @@ class TestGroupKind:
         empty = [schema.empty_table() for schema in tables]
         systems = assemble.Systems(*empty, events, counts=Counter())
         lines = report_lines(systems)
-        assert f"{GROUP_OBJECT}: 1 ({PRIMARY} 0, {BACKGROUND} 0, {COMBINED} 1)" in lines
+        assert f"{GROUP_OBJECT}: 1 ({PRIMARY} 0, {COMBINED} 1)" in lines
         assert any(line.startswith(f"  {GROUP_OBJECT}: {COMBINED}: ") for line in lines)

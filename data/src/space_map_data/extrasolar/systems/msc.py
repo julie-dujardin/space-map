@@ -14,9 +14,10 @@ exceptions. An eccentricity of 0 is a circular orbit. One axis of a proper
 motion can be 0 when the other axis is not. A position angle of 0 stays
 unknown, because most pairs with no measure give 0.
 
-The positions mix the epochs J2000 and J1991.25, so a member joins by its HIP
-and HD numbers, its HR number and GCVS name through SIMBAD, and the WDS id,
-never by position.
+A member joins by its HIP and HD numbers, its HR number and GCVS name through
+SIMBAD, and the WDS id. One with no object takes the object of the WDS
+component at its place, then goes to a match by position. The positions mix
+the epochs J2000 and J1991.25, and the match takes each as J2000.
 """
 
 import logging
@@ -49,6 +50,7 @@ from space_map_data.extrasolar.systems.nodes import (
 
 logger = logging.getLogger(__name__)
 
+EPOCH = 2000.0
 # Days per unit of P, and arcsec per unit of Sep.
 PERIOD_UNITS = {"d": 1.0, "y": 365.25, "k": 365.25e3, "M": 365.25e6}
 SEPARATION_UNITS = {'"': 1.0, "'": 60.0, "m": 1e-3}
@@ -241,6 +243,7 @@ def _add_system(
             flat=label == msc.TRAPEZIUM_PARENT,
             ra=comp.get("RAdeg"),
             dec=comp.get("DEdeg"),
+            epoch=EPOCH,
             pmra=pmra,
             pmdec=pmdec,
             parallax=_positive(comp.get("plx")),

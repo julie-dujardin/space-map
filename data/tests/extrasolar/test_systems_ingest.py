@@ -148,8 +148,10 @@ def inputs(
     orbits: pa.Table | None = None,
     catalogue_orbits: pa.Table | None = None,
     spectral_types: tuple[str | None, str | None] = ("G2V", "K1V"),
+    msc_rows: tuple[list[dict], list[dict]] = ([], []),
 ) -> tuple[Inputs, SimbadIndex]:
     comp = [
+        *msc_rows[0],
         msc_comp("14396-6050", "A", HIP=71683),
         msc_comp("14396-6050", "B", HIP=71681),
         msc_comp("14396-6050", "C", HIP=70890),
@@ -157,6 +159,7 @@ def inputs(
         msc_comp("00400+1000", "B", HIP=1002),
     ]
     pairs = [
+        *msc_rows[1],
         msc_pair("14396-6050", "AB", "C", "*", Sep=131.0, Sunit="'"),
         msc_pair("14396-6050", "A", "B", "AB", Sep=17.5, Sunit='"'),
         msc_pair("00400+1000", "A", "B", "*", Sep=5.3, Sunit='"'),
@@ -482,6 +485,32 @@ class TestSystemsIngest:
         assert second.host(0) == pair
         assert second.root(p2) == pair
         assert table_of(pair) == 3
+
+
+class TestMscComponents:
+    """MSC components that no id links match by position in a pass of their
+    own, beside the WDS pass, whose ids can name other stars."""
+
+    def test_they_match_by_position(self, tmp_path):
+        root = tmp_path / "registry"
+        w = "04000+1500"
+        stars = STARS | {
+            "2001": (60.0, 15.0, 9.0, 15.0, 0.2),
+            "2002": (60.01, 15.0, 10.0, 15.0, 0.2),
+        }
+        rows = (
+            [
+                msc_comp(w, "A", RAdeg=60.0, DEdeg=15.0, Vmag=9.3),
+                msc_comp(w, "B", RAdeg=60.01, DEdeg=15.0, Vmag=10.3),
+            ],
+            [msc_pair(w, "A", "B", "*", Sep=34.8, Sunit='"')],
+        )
+        ingest(root, stars, msc_rows=rows)
+        registry = Registry(root)
+        found = registry.lookup("msc", "component", [f"{w} A", f"{w} B"])
+        assert found.tolist() == ids_of(registry, ["2001", "2002"])
+        found = registry.lookup("wds", "component", ["02000+0500 A", "02000+0500 B"])
+        assert found.tolist() == ids_of(registry, ["1003", "1004"])
 
 
 class TestHostInNoTree:

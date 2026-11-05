@@ -477,6 +477,8 @@ class SimbadList:
     # The object types of more than one star, and the candidate types.
     multiple: frozenset[str]
     candidates: frozenset[str]
+    # The object types below `*`.
+    stellar: frozenset[str]
     parents: dict[int, list[int]] = field(init=False)
     # The components inside a Hipparcos point (`hold`), with the row that
     # holds their light. They are not rows.
@@ -516,6 +518,7 @@ class SimbadList:
             dict(children),
             iau,
             *simbad_stars.multiple_and_candidate_types(otypedef),
+            simbad_stars.stellar_types(otypedef),
         )
 
     def __post_init__(self) -> None:
@@ -544,6 +547,9 @@ class SimbadList:
         for parent, children in self.children.items():
             for child in children:
                 self.parents[child].append(parent)
+
+    def is_stellar(self, oid: int) -> bool:
+        return self.objects[oid].row.get("otype") in self.stellar
 
     def gaia_point(self, oid: int, depth: int = 0) -> int | None:
         """The nearest object above `oid` with a Gaia DR3 id."""

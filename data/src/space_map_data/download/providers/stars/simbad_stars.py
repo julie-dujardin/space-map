@@ -183,16 +183,21 @@ def _quoted(values: list[str]) -> str:
     return ",".join("'" + value.replace("'", "''") + "'" for value in values)
 
 
-def star_types(otypedef: str) -> list[str]:
-    """The type codes below `*` in the `otypedef` CSV, except EXCLUDED_TYPES."""
-    found = [
+def stellar_types(otypedef: str) -> frozenset[str]:
+    """The type codes below `*` in the `otypedef` CSV."""
+    found = frozenset(
         row["otype"]
         for row in csv.DictReader(io.StringIO(otypedef))
         if row["path"].strip().split(" > ")[0] == "*"
-    ]
+    )
     if "*" not in found:
         raise DownloadError("SIMBAD type tree has no node `*`")
-    return sorted(set(found) - EXCLUDED_TYPES)
+    return found
+
+
+def star_types(otypedef: str) -> list[str]:
+    """The `stellar_types` except EXCLUDED_TYPES."""
+    return sorted(stellar_types(otypedef) - EXCLUDED_TYPES)
 
 
 def multiple_and_candidate_types(

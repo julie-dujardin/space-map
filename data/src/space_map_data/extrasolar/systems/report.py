@@ -15,10 +15,21 @@ import pyarrow.compute as pc
 
 from space_map_data.extrasolar.exoplanets.catalogues import OEC
 from space_map_data.extrasolar.systems.assemble import ENTRY, Systems
-from space_map_data.extrasolar.systems.groups import GROUP_OBJECT, KINDS
+from space_map_data.extrasolar.systems.groups import (
+    GROUP_LEAVES,
+    GROUP_OBJECT,
+    KINDS,
+)
 from space_map_data.extrasolar.systems.nodes import INTERIOR_SOURCES, SIMBAD_OID
+from space_map_data.extrasolar.systems.parallax import MOTION, WIDE
+from space_map_data.extrasolar.systems.prepare import ID_OFF
+from space_map_data.extrasolar.systems.reduce import (
+    PLANET_ROW,
+    UNBOUND,
+    WRONG_OBJECT,
+)
 from space_map_data.extrasolar.systems.resolve import Resolver
-from space_map_data.extrasolar.systems.simbad import SimbadIndex
+from space_map_data.extrasolar.systems.simbad import NON_STELLAR, SimbadIndex
 
 SIMBAD_IDENTIFIER = ("simbad", "identifier")
 REPORT_TARGETS = (
@@ -34,6 +45,16 @@ REPORT_TARGETS = (
     ("Kepler-16", (OEC, "systems", "Kepler-16 A")),
 )
 EXAMPLES = 20
+# What takes a star out of its system, or a link out of a tree.
+SPLITS = (
+    f"{UNBOUND}: {WIDE}",
+    f"{UNBOUND}: {MOTION}",
+    WRONG_OBJECT,
+    ID_OFF,
+    GROUP_LEAVES,
+    NON_STELLAR,
+    PLANET_ROW,
+)
 
 
 def target_keys(index: SimbadIndex | None, resolver: Resolver) -> list[tuple[str, int]]:
@@ -117,11 +138,13 @@ def report_lines(
         + ", ".join(f"{kind} {count:,}" for kind, count in groups.items())
         + ")"
     )
+    lines += _counted("splits", Counter({kind: kinds[kind] for kind in SPLITS}))
     for kind in (
         "merge",
         "conflict",
         "cross-match error",
         *(f"{GROUP_OBJECT}: {kind}" for kind in KINDS),
+        *SPLITS,
     ):
         picked = events.filter(pc.equal(events["kind"], kind))
         for text in picked["text"].to_pylist()[:examples]:

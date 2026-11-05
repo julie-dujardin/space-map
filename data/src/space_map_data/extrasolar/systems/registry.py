@@ -12,8 +12,8 @@ region at a time:
   kept in memory, since they are few;
 - a position match takes the registry positions of the row's region and its
   neighbours, with WDS_MATCHER and the kind of the rows of the ingest, which
-  runs a pass of the engine instead. It reads no stored `wds/component` link,
-  which the pass keeps.
+  runs a pass of the engine instead. It reads no stored component link, which
+  the pass keeps, so the two kinds of rows match alike.
 """
 
 import logging
@@ -247,7 +247,7 @@ class RegistryResolver:
         meta = meta.filter(pc.is_in(meta["id"], value_set=keys))
         return point_facts(positions.rename_columns({"id": "key"}), point, meta)
 
-    def match(self, rows: pa.Table) -> np.ndarray:
+    def match(self, rows: pa.Table, kind: tuple[str, str]) -> np.ndarray:
         ra, dec = floats(rows, "match_ra"), floats(rows, "match_dec")
         keys = np.zeros(rows.num_rows, np.int64)
         valid = np.isfinite(ra) & np.isfinite(dec)

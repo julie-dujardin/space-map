@@ -115,9 +115,10 @@ class Resolver(Protocol):
         """The key of each id of this catalogue release, 0 where none."""
         ...
 
-    def match(self, rows: pa.Table) -> np.ndarray:
+    def match(self, rows: pa.Table, kind: tuple[str, str]) -> np.ndarray:
         """The key that each MATCH row matches by position, 0 where none and
-        for a key of its `match_exclude`."""
+        for a key of its `match_exclude`. `kind` is the id of the rows, `WDS_ID`
+        or `MSC_ID`."""
         ...
 
     def facts(self, keys: np.ndarray) -> pa.Table:

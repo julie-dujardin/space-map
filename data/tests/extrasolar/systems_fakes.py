@@ -46,7 +46,7 @@ class FakeResolver:
             np.int64,
         )
 
-    def match(self, rows: pa.Table) -> np.ndarray:
+    def match(self, rows: pa.Table, kind: tuple[str, str]) -> np.ndarray:
         texts = rows["catalogue_id"].to_pylist()
         self.matched += texts
         excluded = rows["match_exclude"].to_pylist()
@@ -92,6 +92,10 @@ def fact(
     return row
 
 
+# Types of the objects that `h_link` holds that SIMBAD's type tree has off `*`.
+NOT_STELLAR = frozenset({"GlC", "Cl*", "mul", "err"})
+
+
 def simbad_object(
     oid: int,
     main_id: str,
@@ -135,7 +139,12 @@ def simbad_index(
     for parent, child in links:
         children.setdefault(parent, []).append(child)
     stars = SimbadList(
-        {o.oid: o for o in objects}, children, {}, frozenset({"**"}), frozenset()
+        {o.oid: o for o in objects},
+        children,
+        {},
+        frozenset({"**"}),
+        frozenset(),
+        frozenset(o.row["otype"] for o in objects) - NOT_STELLAR,
     )
     return SimbadIndex.build(stars)
 
