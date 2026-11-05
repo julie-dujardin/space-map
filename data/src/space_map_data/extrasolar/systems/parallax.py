@@ -116,7 +116,7 @@ def _motions_apart(first: Fact, second: Fact) -> tuple[float, float]:
 
 
 def veto_error(error: np.ndarray, ruwe: np.ndarray) -> np.ndarray:
-    """The error that the veto and the motion test read."""
+    """The error that the veto reads."""
     with np.errstate(invalid="ignore"):
         return np.where(ruwe > MAX_RUWE, error * np.minimum(ruwe, MAX_SCALE), error)
 
@@ -182,10 +182,23 @@ def _has_motion(fact: Fact) -> bool:
     return fact.astrometry in GAIA_ASTROMETRY
 
 
+def _across_missions(first: Fact, second: Fact) -> bool:
+    """Whether a Hipparcos motion meets a Gaia motion that does not fit its star.
+    That motion holds an inner orbit, and Hipparcos measured another part of it
+    (Almach). Between two Gaia motions the RUWE saves no one: such pairs agree in
+    RV at the chance level."""
+    hipparcos = first.astrometry in HIPPARCOS_ASTROMETRY
+    if hipparcos == (second.astrometry in HIPPARCOS_ASTROMETRY):
+        return False
+    return first.ruwe > MAX_RUWE or second.ruwe > MAX_RUWE
+
+
 def excess(first: Fact, second: Fact) -> float:
     """km/s by which two points move apart beyond an orbit plus 3σ, NaN when
     unknown. Gaia's motions are not reliable under CLOSE_SEPARATION."""
     if not (_has_motion(first) and _has_motion(second)):
+        return math.nan
+    if _across_missions(first, second):
         return math.nan
     distance = parsecs(first, second)
     separation = _apart(first, second)

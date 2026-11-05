@@ -66,7 +66,7 @@ FACTS = pa.schema(
         # Parsecs where the object renders, by `placement`, else null.
         ("distance", pa.float64()),
         # What places it, in the render tree's order, as a parallax in mas: the
-        # error that weighs it and its rank (PAPER, PARALLAX, OTHER), else null.
+        # error that weighs it and its rank (PAPER to OTHER), else null.
         ("vote", pa.float64()),
         ("vote_error", pa.float64()),
         ("vote_rank", pa.int8()),
@@ -92,9 +92,10 @@ MATCH = pa.schema(
     ]
 )
 # The ranks of a vote for a system's distance, best first. PARALLAX holds a
-# measured parallax, of the star's own or of its distance group. OTHER holds a
-# parallax that fidelity flags and a distance from a prior or a group of stars.
-PAPER, PARALLAX, OTHER = 0, 1, 2
+# measured parallax, of the star's own or of its distance group. SUSPECT holds a
+# 5σ parallax that fidelity flags: poor, but a measure, so it beats a prior.
+# OTHER holds a distance from a prior or a group of stars.
+PAPER, PARALLAX, SUSPECT, OTHER = 0, 1, 2, 3
 GAIA_ASTROMETRY = frozenset({"gaia-dr3", "gaia-dr3-named"})
 HIPPARCOS_ASTROMETRY = frozenset({"hipparcos-2007", "hipparcos-1997"})
 OWN_ASTROMETRY = GAIA_ASTROMETRY | HIPPARCOS_ASTROMETRY
@@ -124,6 +125,11 @@ HOW = {
 class Resolver(Protocol):
     def keys(self, catalogue: str, release: str, ids: pa.Array) -> np.ndarray:
         """The key of each id of this catalogue release, 0 where none."""
+        ...
+
+    def listed_keys(self, ids: pa.Array) -> np.ndarray:
+        """`keys` of Gaia DR3 ids from a list that no tree names. Most of such
+        a list is in no system, so its misses are no lost ids of a system."""
         ...
 
     def match(self, rows: pa.Table, kind: tuple[str, str]) -> np.ndarray:

@@ -5,12 +5,13 @@ are on the sky, though nearly all pairs agree within 3σ. So the points of a
 system of two or more points share a distance.
 
 A point votes with what places it by `placement`, as a parallax. Its rank
-(`vote_rank`) says how far to trust it: a paper, a measured parallax, any
-other distance. A node's own distance comes from the best rank of the points
-below it: the most precise paper, else the inverse-variance mean of their
-votes. A point counts once, however many stars it holds. A Gaia solution that
-does not fit its star weighs less by `parallax.veto_error`, and the rank keeps
-a star that fidelity flags from pulling a good star.
+(`vote_rank`) says how far to trust it: a paper, a measured parallax, a 5σ
+parallax that fidelity flags, any other distance. A node's own distance comes
+from the best rank of the points below it: the most precise paper, else the
+inverse-variance mean of their votes. A point counts once, however many stars
+it holds. A Gaia solution that does not fit its star weighs less by
+`parallax.veto_error`. The rank keeps a star that fidelity flags from pulling a
+good star, and a prior from outweighing a flagged measure.
 
 Membership decides who shares: `reduce` has already refuted a star that lies
 far from its primary. A vote that still disagrees is nearly always a poor
@@ -37,7 +38,13 @@ import pyarrow as pa
 
 from space_map_data.extrasolar import sky
 from space_map_data.extrasolar.systems.parallax import PARSEC_SEPARATION
-from space_map_data.extrasolar.systems.resolve import OTHER, PAPER, PARALLAX, Facts
+from space_map_data.extrasolar.systems.resolve import (
+    OTHER,
+    PAPER,
+    PARALLAX,
+    SUSPECT,
+    Facts,
+)
 
 DISTANCES = pa.schema(
     [
@@ -52,6 +59,7 @@ DISTANCES = pa.schema(
 )
 SYSTEMS_BY_PAPER = "systems whose distance is a paper's"
 SYSTEMS_BY_PARALLAX = "systems whose distance is a mean parallax"
+SYSTEMS_BY_SUSPECT = "systems whose distance is a mean of flagged parallaxes"
 SYSTEMS_BY_OTHER = "systems whose distance comes from no measured parallax"
 SYSTEMS_NO_DISTANCE = "systems of two or more points with no distance"
 SYSTEMS_TWO_PAPERS = "systems with two papers"
@@ -98,15 +106,16 @@ def shared_distances(nodes: pa.Table, points: pa.Table, facts: Facts) -> Shared:
     point_ra, point_dec = facts.column("ra", keys), facts.column("dec", keys)
 
     # Each node's sums of the points below it, by rank.
-    weight = np.zeros((2, numbers.size))
-    total = np.zeros((2, numbers.size))
-    for index, voters_of_rank in enumerate((PARALLAX, OTHER)):
+    ranks = (PARALLAX, SUSPECT, OTHER)
+    weight = np.zeros((len(ranks), numbers.size))
+    total = np.zeros((len(ranks), numbers.size))
+    for index, voters_of_rank in enumerate(ranks):
         take = rank == voters_of_rank
         np.add.at(weight[index], at[take], error[take] ** -2.0)
         np.add.at(total[index], at[take], vote[take] * error[take] ** -2.0)
     for level in range(int(depth.max(initial=0)), 0, -1):
         rows = np.flatnonzero(depth == level)
-        for index in range(2):
+        for index in range(len(ranks)):
             np.add.at(weight[index], ups[rows], weight[index, rows])
             np.add.at(total[index], ups[rows], total[index, rows])
 
@@ -125,13 +134,9 @@ def shared_distances(nodes: pa.Table, points: pa.Table, facts: Facts) -> Shared:
     counts[SYSTEMS_TWO_PAPERS] = int((per_system > 1).sum())
 
     with np.errstate(divide="ignore", invalid="ignore"):
-        cases = [np.isfinite(paper), weight[0] > 0, weight[1] > 0]
-        parallax = np.select(
-            cases, [paper, total[0] / weight[0], total[1] / weight[1]], np.nan
-        )
-        sigma = np.select(
-            cases, [paper_error, weight[0] ** -0.5, weight[1] ** -0.5], np.nan
-        )
+        cases = [np.isfinite(paper), *(weight > 0)]
+        parallax = np.select(cases, [paper, *(total / weight)], np.nan)
+        sigma = np.select(cases, [paper_error, *(weight**-0.5)], np.nan)
         own = 1000.0 / parallax
         own_error = own * sigma / parallax
         low = 1000.0 / (parallax + sigma)
@@ -148,13 +153,14 @@ def shared_distances(nodes: pa.Table, points: pa.Table, facts: Facts) -> Shared:
     for name, case in (
         (SYSTEMS_BY_PAPER, cases[0]),
         (SYSTEMS_BY_PARALLAX, ~cases[0] & cases[1]),
-        (SYSTEMS_BY_OTHER, ~cases[0] & ~cases[1] & cases[2]),
+        (SYSTEMS_BY_SUSPECT, ~cases[0] & ~cases[1] & cases[2]),
+        (SYSTEMS_BY_OTHER, ~cases[0] & ~cases[1] & ~cases[2] & cases[3]),
     ):
         counts[name] = int(case[root_rows].sum())
     counts[SYSTEMS_NO_DISTANCE] = int((~np.isfinite(own[root_rows])).sum())
     counts[POINTS_NO_VOTE] = int((~np.isfinite(rank)).sum())
     measured_root = np.isin(systems, numbers[root_rows[weight[0, root_rows] > 0]])
-    counts[POINTS_OUTRANKED] = int(((rank == OTHER) & measured_root).sum())
+    counts[POINTS_OUTRANKED] = int(((rank > PARALLAX) & measured_root).sum())
 
     # In arcsec: the widest member of each node from its primary.
     radius = np.zeros(numbers.size)

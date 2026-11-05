@@ -46,6 +46,9 @@ class FakeResolver:
             np.int64,
         )
 
+    def listed_keys(self, ids: pa.Array) -> np.ndarray:
+        return self.keys("gaia", "dr3", ids)
+
     def match(self, rows: pa.Table, kind: tuple[str, str]) -> np.ndarray:
         texts = rows["catalogue_id"].to_pylist()
         self.matched += texts

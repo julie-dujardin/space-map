@@ -18,7 +18,8 @@ system, an entry too: a star before a node, then the earlier tree source
 which reads the source's letter.
 
 A pair is a node of two members. Its orbit is that of its second member
-about its first (`elements`). The orbit sources reach a pair so:
+about its first (`elements`), and the row names both by their places among
+the node's members. The orbit sources reach a pair so:
 - msc, orb6: the WDS id and the secondary's letters, which a member holds
   as its WDS or MSC id `<WDS id> <letters>` (an ORB6 orbit with no
   components is of A and B); else a pair whose members have
@@ -160,6 +161,10 @@ JULIAN_YEAR = 365.25
 PAIR_ORBITS = pa.schema(
     [
         ("number", pa.int64()),
+        # The places of the pair's two members among its node's members: a
+        # point of three stars holds a pair of two of them.
+        ("first", pa.int8()),
+        ("second", pa.int8()),
         ("ra", pa.float64()),
         ("dec", pa.float64()),
         ("period", pa.float64()),
@@ -906,8 +911,11 @@ class Drawer:
             self.counts[f"pairs drawn, mass ratio from {' '.join(ratio_from)}"] += 1
             if ratio_from == (MSC, MASSES):
                 self.counts[f"pairs drawn, MSC mass codes {pair.msc_codes}"] += 1
+        start = int(np.searchsorted(self.member_node, number))
         return {
             "number": number,
+            "first": pair.first - start,
+            "second": pair.second - start,
             "ra": float(self.ra[at]),
             "dec": float(self.dec[at]),
             **values,
@@ -1214,6 +1222,8 @@ def scene(row: dict, node: float) -> dict:
     n = 360.0 / row["period"]
     ratio = row["barycentre"]
     return {
+        "first": row["first"],
+        "second": row["second"],
         "a": row["semi_major_axis"],
         "e": row["eccentricity"],
         "i": i,

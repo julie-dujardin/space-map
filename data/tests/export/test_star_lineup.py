@@ -15,6 +15,7 @@ from space_map_data.export.groups.star_lineup import (
     drawable_star_radii,
     measured_radius,
 )
+from space_map_data.extrasolar.tables import STAR_SYSTEMS
 
 
 def row(**values: float | str | None) -> dict:
@@ -67,6 +68,20 @@ class TestSize:
     def test_a_paper_distance_stands_in_for_a_parallax(self) -> None:
         measured = row(
             angular_diameter=10.0, distance=100.0, distance_source="literature"
+        )
+        assert measured_radius(measured) == (
+            pytest.approx(107.5, rel=1e-3),
+            "interferometry",
+        )
+
+    def test_a_system_distance_stands_in_for_a_parallax(self) -> None:
+        """The panel and the scene show the system's distance."""
+        measured = row(
+            angular_diameter=10.0,
+            parallax=5.0,
+            parallax_error=0.1,
+            distance=100.0,
+            distance_source=STAR_SYSTEMS,
         )
         assert measured_radius(measured) == (
             pytest.approx(107.5, rel=1e-3),

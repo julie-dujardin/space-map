@@ -12,8 +12,9 @@ The decisions for the ingest:
   listed once: an entry, of a node or inside a point, that is another point,
   or an entry of a node with the WDS component id of an entry inside a
   point, as the WDS and the MSC can give one star inside the point and
-  beside it, unless their separations make it two stars. A node left with
-  one member is that member;
+  beside it, unless their separations make it two stars, or an entry of a
+  node at the separation of a star of another source inside its primary. A
+  node left with one member is that member;
 - a composite spectral type of a point that holds one star moves to its
   system, and the point takes its own type from the trees, else none;
 - the points of a system of two or more points share a distance (`distance`);
@@ -53,11 +54,13 @@ from space_map_data.extrasolar.systems.nodes import (
     SIMBAD,
     SIMBAD_OID,
     SYSTEM_CATALOGUES,
+    VISUAL_ORBIT,
     WDS,
     WDS_ID,
     id_lists,
 )
 from space_map_data.extrasolar.systems.prepare import (
+    MOVING_RATIO,
     VALUE_BLOCK,
     Inputs,
     Prepared,
@@ -506,7 +509,7 @@ class Assembler:
         for sid, sets in python_systems:
             self._system(sets, listed.of(sid))
         logger.info("systems: trees in %.0f s", time.monotonic() - started)
-        self._lone_pairs(lone_sets)
+        self._lone_pairs(self._with_two_stars(lone_sets))
         self._point_nodes()
         systems = self._finish()
         logger.info("systems: assembled in %.0f s", time.monotonic() - started)
@@ -628,10 +631,11 @@ class Assembler:
         listed: dict[int, set[int]],
     ) -> list[tuple[str, int, _Node | None, int, str | None]]:
         """Leave out the entries that are a star of the system already: a
-        point of the system, or a star inside a point that has the same WDS
+        point of the system, a star inside a point that has the same WDS
         component id ("03257+0551 A" of the WDS and of the MSC), unless that
-        id names two stars. A point that the entry's source lists is another
-        star."""
+        id names two stars, or a star inside the primary at the entry's
+        separation (`_in_primary`). A point that the entry's source lists is
+        another star."""
         top = node
         while top.parent is not None:
             top = top.parent
@@ -646,6 +650,9 @@ class Assembler:
             point = next((inside[text] for text in texts if text in inside), 0)
             if point:
                 self._log_inside(member[3], point)
+                continue
+            if primary and self._in_primary(member[3], primary):
+                self._log_inside(member[3], primary)
                 continue
             source = self.value(member[3], "source")
             if primary and source is not None:
@@ -676,11 +683,43 @@ class Assembler:
                         found.setdefault(text, key)
         return found
 
+    def _row(self, ref: int) -> dict:
+        return self.values(np.array([ref])).to_pylist()[0]
+
+    def _in_primary(self, ref: int, primary: int) -> bool:
+        """Whether the entry `ref` is a star of another source inside the point
+        `primary`, measured from that point. Two sources can place one star
+        two ways: beside the point, and in it. An entry with a period stays,
+        as its orbit hangs on it. So does one with a visual orbit, unless the
+        star inside knows that orbit too."""
+        item = self.chosen.get(primary)
+        if not isinstance(item, Interior):
+            return False
+        entry = self._row(ref)
+        separation = entry["separation"]
+        if entry["source"] == EL_BADRY:
+            # Either star of a pair can be the entry, and only the second holds it.
+            second = self.el_block + ((ref - self.el_block) | 1)
+            separation = self._row(second)["separation"]
+        if entry["period"] is not None or entry["source"] == item.source:
+            return False
+        if separation is None or not separation > 0:
+            return False
+        orbit = VISUAL_ORBIT in (entry["known"] or ())
+        for inside, _ in item.entries:
+            star = self._row(inside)
+            other = star["separation"]
+            if orbit and VISUAL_ORBIT not in (star["known"] or ()):
+                continue
+            if other and other > 0 and _one_star(separation, other, orbit):
+                return True
+        return False
+
     def _log_inside(self, ref: int, point: int) -> None:
         self.counts["entries that a point of the system holds"] += 1
-        text = " ".join(
-            str(self.value(ref, name)) for name in ("source", "system", "label")
-        )
+        row = self._row(ref)
+        system = self.value(ref, "system") or [i["catalogue_id"] for i in row["ids"]]
+        text = f"{row['source']} {system} {row['label']}"
         self.events.append(("entry is in a point", "assemble", f"{text} is in {point}"))
 
     def _is_point(self, ref: int, primary: int, others: list[int]) -> bool:
@@ -910,6 +949,25 @@ class Assembler:
             )
 
     # El-Badry pairs alone in their system
+
+    def _with_two_stars(self, sets: np.ndarray) -> np.ndarray:
+        """The lone pairs but those whose entry is a star inside the other's
+        point (`_in_primary`): such a pair is that point."""
+        pairs = -1 - self.p.origin[sets]
+        first, second = self.p.el_badry_keys
+        keep = np.ones(sets.size, bool)
+        half = (first[pairs] == 0) != (second[pairs] == 0)
+        for at in np.flatnonzero(half).tolist():
+            pair = int(pairs[at])
+            key = int(first[pair] or second[pair])
+            ref = self.el_block + 2 * pair + int(first[pair] != 0)
+            if self._in_primary(ref, key):
+                keep[at] = False
+                self._log_inside(ref, key)
+        self.counts["systems that are one point once entries leave"] += int(
+            (~keep).sum()
+        )
+        return sets[keep]
 
     def _lone_pairs(self, sets: np.ndarray) -> None:
         if not sets.size:
@@ -1291,6 +1349,15 @@ class Assembler:
                 ] += 1
             else:
                 self.counts[f"{item.source}: {item.evidence} pairs left out"] += 1
+
+
+def _one_star(first: float, second: float, moving: bool) -> bool:
+    """Whether two separations from one primary can be one star, as in tier 2
+    of SAME_SEPARATION with no magnitude: the bands of two sources differ."""
+    if moving:
+        return max(first, second) <= MOVING_RATIO * min(first, second)
+    far = max(SAME_SEPARATION, ORBIT_SHARE * max(first, second))
+    return abs(first - second) <= min(ORBIT_SEPARATION, far)
 
 
 def _composite(spectral_type: str) -> bool:

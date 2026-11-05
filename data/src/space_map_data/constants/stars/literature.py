@@ -1,4 +1,4 @@
-"""Star values read from papers, for stars that no catalogue here places.
+"""Star values read from papers, for stars that no catalogue here places well.
 
 An entry is keyed by an id of the star that stays the same between ingests:
 its Gaia DR3 id, else its HIP number, else its HD number. Our own IDs can
@@ -97,6 +97,12 @@ REFERENCES: dict[str, Reference] = {
         "Kuhn et al. 2021",
         "A high pitch angle structure in the Sagittarius Arm (A&A 651, L10)",
         "https://doi.org/10.1051/0004-6361/202141198",
+    ),
+    "maiz_apellaniz_2022": Reference(
+        "Maíz Apellániz et al. 2022",
+        "The Villafranca catalog of Galactic OB groups. II. From Gaia DR2 to EDR3"
+        " and ten new systems with O stars (A&A 657, A131)",
+        "https://doi.org/10.1051/0004-6361/202142364",
     ),
     "menshchikov_2002": Reference(
         "Men'shchikov et al. 2002",
@@ -224,6 +230,13 @@ DISTANCES: dict[StarKey, Distance] = {
     # 1023), repeated in Table 1 with a maximum error of 20%.
     ("hip", "2007", "33532"): Distance(
         539, 431, 647, "photometric", "kaltcheva_makarov_2007"
+    ),
+    # 15 Mon A. Its Hipparcos parallax, 3.55 ± 0.50 mas, is 2.5 times that of
+    # the north core of NGC 2264, which holds it: 701 pc from Gaia EDR3
+    # (Table A.2, Villafranca O-016 N; Fig. 6 shows 15 Mon Aa,Ab and B as
+    # members).
+    ("gaia", "dr3", "3326740865570982400"): Distance(
+        701, 696, 707, "association", "maiz_apellaniz_2022"
     ),
     # HD 33546. A candidate member of Ori OB1a, at 335 ± 13 pc from Hipparcos
     # (Table 1).

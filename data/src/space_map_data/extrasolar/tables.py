@@ -832,8 +832,9 @@ SYSTEM_MEMBER = pa.struct(
 REFERENCE = pa.struct(
     [pa.field("source", pa.string()), pa.field("reference", pa.string())]
 )
-# The orbit of a pair: its second member about its first, ready to draw.
-# The scene's elements are on the ecliptic and equinox of J2000, as for the
+# The orbit of a pair: member `second` about member `first`, by their places
+# in the node's `members`, ready to draw. A point of three stars holds a pair
+# of two of them. The scene's elements are on the ecliptic and equinox of J2000, as for the
 # planets: a in AU, angles in deg, the mean motion n in deg/d, the mean
 # anomaly ma at `epoch` (JD), and `phase`, where ma comes from: periastron,
 # eclipse, osculating or assumed. The sky's elements are on the plane of the
@@ -846,6 +847,7 @@ REFERENCE = pa.struct(
 # rule fills or that other values give, as in the planets table.
 SYSTEM_ORBIT = pa.struct(
     [
+        *_fields(pa.int8(), "first", "second"),
         *_fields(pa.float64(), "a", "e", "i", "om", "w", "ma", "n", "epoch"),
         pa.field("phase", pa.string()),
         *_fields(
@@ -920,9 +922,9 @@ SYSTEM_NODE = pa.struct(
 # `members` and, in the root's row, `tree`, every node of the system.
 # `distance` is the distance of the primary point in pc, else the system
 # distance that it takes. A held star has the values of its node. With `ra`
-# and `dec` it places a row that has no Point source row. A node of two
-# members has the `orbit` of its second member about its first when one can
-# be drawn (`systems.drawn`). A held star has its values in `star`.
+# and `dec` it places a row that has no Point source row. A pair, a node of
+# two members or a point of three stars, has its `orbit` when one can be
+# drawn (`systems.drawn`). A held star has its values in `star`.
 SYSTEM = TableDef(
     number=SYSTEM_TABLE,
     slug="system",

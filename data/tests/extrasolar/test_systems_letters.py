@@ -1,19 +1,30 @@
 """Tests of the links between MSC and WDS components of one letter."""
 
+from unittest.mock import MagicMock
+
+import pyarrow as pa
 import pyarrow.compute as pc
 import pytest
 
 from space_map_data.download.providers.stars import wds
-from space_map_data.extrasolar.systems.assemble import Systems
+from space_map_data.extrasolar.systems.assemble import Assembler, Systems
 from space_map_data.extrasolar.systems.build import build
 from space_map_data.extrasolar.systems.msc import msc_nodes
-from space_map_data.extrasolar.systems.nodes import MSC, MSC_ID, WDS, WDS_ID
+from space_map_data.extrasolar.systems.nodes import (
+    MSC,
+    MSC_ID,
+    WDS,
+    WDS_ID,
+    NodeList,
+)
+from space_map_data.extrasolar.systems.pairs import el_badry_pairs
 from space_map_data.extrasolar.systems.prepare import (
     Inputs,
+    _add_links,
     letter_links,
     separations_agree,
 )
-from space_map_data.extrasolar.systems.reduce import Reduced
+from space_map_data.extrasolar.systems.reduce import Interior, Reduced
 from space_map_data.extrasolar.systems.resolve import LETTER
 from space_map_data.extrasolar.systems.wds import WdsCatalogue
 from tests.download.test_star_system_downloads import COMPONENTS, PAIRS
@@ -165,6 +176,16 @@ class TestLetterLinks:
         assert reduced.counts[NOT_TESTED] == 1
 
 
+class TestAddLinks:
+    def test_a_link_keeps_the_order_of_a_rank(self):
+        """In a rank, the star that more ids reach comes first (59 Aur)."""
+        nodes = NodeList(MSC)
+        nodes.add("1", -1, "A", [(*WDS_ID, "x")])
+        found = {MSC: [[(900, 2), (100, 2)]]}
+        _add_links([nodes.table()], found, {(*WDS_ID, "x"): (500, 3)})
+        assert found[MSC] == [[(900, 2), (100, 2), (500, 3)]]
+
+
 class TestTwoStarsOfOneLetter:
     """The MSC's B lies inside the point of A. The WDS's B has no object either,
     so no candidate asks for the test of their separations."""
@@ -207,6 +228,173 @@ class TestTwoStarsOfOneLetter:
         systems = self.systems(0.3, 1.0)
         assert not systems.two_stars
         assert systems.counts["entries that a point of the system holds"] == 1
+
+
+class TestEntryInAPoint:
+    """An entry beside a point, whose interior from another source holds the
+    same star, is that star. The sources name it by no shared id."""
+
+    def test_a_pair_of_another_letter(self):
+        """HD 144981: the WDS's EF at 0.9″ is the MSC's AB at 0.875″."""
+        w = "16093-1927"
+        resolver = FakeResolver(
+            {("hip", "2007", "1"): 28138137, ("gaia", "dr3", "1"): 28138137},
+            [fact(28138137, 242.337, -19.45731, 8.0251, parallax=6.70625)],
+        )
+        msc = msc_nodes(
+            [msc_comp(w, "A", HIP=1), msc_comp(w, "B", Vmag=14.0)],
+            [
+                msc_pair(
+                    w,
+                    "A",
+                    "B",
+                    "*",
+                    Type="v",
+                    P=830.0,
+                    Punit="y",
+                    Sep=0.875,
+                    Sunit='"',
+                ),
+                msc_pair(w, "Aa", "Ab", "A", Type="v", Sep=0.088, Sunit='"'),
+            ],
+            [],
+        )
+        catalogue = wds_catalogue(
+            {w: [wds_pair("E", "F", 0.9, notes="V")]},
+            {(w, "E"): wds_component(1, 242.337, -19.45719)},
+        )
+        systems = build(Inputs(msc=msc, wds=catalogue), resolver)
+        assert systems.counts["entries that a point of the system holds"] == 1
+        assert systems.points.filter(pc.equal(systems.points["key"], 28138137))[
+            "stars"
+        ].to_pylist() == [3]
+
+    def test_a_pair_on_an_orbit_at_another_separation(self):
+        """FG Aqr: the MSC has Bb at 0.89″, the WDS at 0.4″, under another id."""
+        msc_id, wds_id = "22173-0848", "22173-0847"
+        resolver = FakeResolver(
+            {
+                ("hip", "2007", "1"): 21535932,
+                ("hip", "2007", "2"): 1095277756,
+                ("gaia", "dr3", "1"): 21535932,
+                ("gaia", "dr3", "2"): 1095277756,
+            },
+            [
+                fact(21535932, 334.32697, -8.80470, 12.08639, parallax=90.489288),
+                fact(1095277756, 334.32568, -8.80649, 12.90117, parallax=89.734001),
+            ],
+        )
+        msc = msc_nodes(
+            [msc_comp(msc_id, "A", HIP=1), msc_comp(msc_id, "B", HIP=2)],
+            [
+                msc_pair(msc_id, "A", "B", "*", Sep=7.905, Sunit='"'),
+                msc_pair(
+                    msc_id,
+                    "Ba",
+                    "Bb",
+                    "B",
+                    Type="V",
+                    P=66.0,
+                    Punit="y",
+                    Sep=0.89,
+                    Sunit='"',
+                ),
+            ],
+            [],
+        )
+        catalogue = wds_catalogue(
+            {
+                wds_id: [
+                    wds_pair("A", "B", 7.9, notes="T"),
+                    wds_pair("Ba", "Bb", 0.4, notes="OT"),
+                ]
+            },
+            {
+                (wds_id, "A"): wds_component(1, 334.32900, -8.80342),
+                (wds_id, "Ba"): wds_component(2, 334.32796, -8.80519),
+            },
+        )
+        systems = build(Inputs(msc=msc, wds=catalogue), resolver)
+        roots = systems.nodes.filter(pc.equal(systems.nodes["parent"], 0))
+        assert roots["stars"].to_pylist() == [3]
+        assert systems.counts["entries that a point of the system holds"] == 1
+
+    @pytest.mark.parametrize("swapped", [False, True])
+    def test_a_lone_pair_of_el_badry(self, swapped):
+        """WDS 03112+0710 has B inside A's point at 1.4″. El-Badry names it at
+        1.54″ by a Gaia id with no object, so the pair read as a third star.
+        Only El-Badry's second star holds the separation."""
+        w, first, second = "03112+0710", 7505953565990656, 7505957861693696
+        catalogue = wds_catalogue(
+            {w: [wds_pair("A", "B", 1.4, notes="", mag1=8.3, mag2=13.2)]},
+            {
+                (w, "A"): wds_component(first, 47.792684, 7.173952),
+                (w, "B"): wds_component(second, 47.792279, 7.173801),
+            },
+        )
+        pair = el_badry_pairs(
+            pa.table(
+                {
+                    "source_id1": [second if swapped else first],
+                    "source_id2": [first if swapped else second],
+                    "ra1": [47.79268427],
+                    "dec1": [7.17395164],
+                    "ra2": [47.79227923],
+                    "dec2": [7.1738012],
+                    "parallax1": [6.956691],
+                    "parallax2": [7.269293],
+                    "phot_g_mean_mag1": [7.75809],
+                    "phot_g_mean_mag2": [12.055403],
+                    "sep_arcsec": [1.54477],
+                    "R_chance_align": [5.555e-07],
+                    "binary_type": ["MS??"],
+                }
+            )
+        )
+        resolver = FakeResolver(
+            {("gaia", "dr3", str(first)): 16790869},
+            [fact(16790869, 47.792684, 7.173952, 7.75809, parallax=6.956691)],
+        )
+        systems = build(Inputs(wds=catalogue, el_badry=pair), resolver)
+        assert systems.nodes["stars"].to_pylist() == [2]
+        assert systems.nodes["point"].to_pylist() == [True]
+        assert systems.counts["entries that a point of the system holds"] == 1
+
+    @staticmethod
+    def in_primary(entry: dict, *stars: dict, source: str = MSC) -> bool:
+        rows = {0: entry, **dict(enumerate(stars, 1))}
+        inside = [(at, None) for at in range(1, len(rows))]
+        assembler = MagicMock(chosen={7: Interior(7, source, 0, "1", inside)})
+        assembler._row.side_effect = rows.__getitem__
+        return Assembler._in_primary(assembler, 0, 7)
+
+    @staticmethod
+    def row(separation: float | None, source: str = WDS, **values) -> dict:
+        base = {"source": source, "period": None, "known": None}
+        return base | {"separation": separation} | values
+
+    def test_the_separation_decides(self):
+        star = self.row(0.875, MSC)
+        assert self.in_primary(self.row(0.9), self.row(None, MSC), star)
+        assert not self.in_primary(self.row(5.0), star)
+
+    def test_the_interior_of_its_own_source_is_another_star(self):
+        assert not self.in_primary(self.row(0.9), self.row(0.875), source=WDS)
+
+    def test_an_entry_with_a_period_stays_for_its_orbit(self):
+        """95 Cet: the MSC's B has an orbit, SIMBAD's B inside the point none."""
+        entry = self.row(1.174, MSC, period=142082.25)
+        assert not self.in_primary(entry, self.row(1.215, "simbad"), source="simbad")
+
+    def test_an_orbit_of_the_entry_alone_stays(self):
+        """HD 129260: ORB6 names the WDS row, and SIMBAD's B inside has no orbit."""
+        entry = self.row(0.7, known=["visual", "visual orbit"])
+        star = self.row(0.771, "simbad", known=["catalogue"])
+        assert not self.in_primary(entry, star, source="simbad")
+
+    def test_a_catalogue_gap_is_no_separation(self):
+        assert not self.in_primary(self.row(-1.0), self.row(0.875, MSC))
+        assert not self.in_primary(self.row(0.9), self.row(-1.0, MSC))
 
 
 class TestAlgol:

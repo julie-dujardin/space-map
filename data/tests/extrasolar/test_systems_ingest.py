@@ -1118,6 +1118,14 @@ class TestRunReads:
             with pytest.raises(ValueError, match="no links of gcvs/name"):
                 resolver.keys("gcvs", "name", pa.array(["V1"]))
 
+    def test_a_list_that_no_tree_names_leaves_no_trace(self, tmp_path):
+        """A star cluster's members are mostly in no system."""
+        with IngestRun.start(tmp_path / "registry", tmp_path / "backup") as run:
+            resolver = systems_ingest.RunResolver(run, True)
+            assert resolver.listed_keys(pa.array(["1001"])).tolist() == [0]
+            assert not resolver.counts
+            assert not resolver._found
+
 
 class TestLettersAlone:
     """A held star that a later ingest knows only by its letter."""

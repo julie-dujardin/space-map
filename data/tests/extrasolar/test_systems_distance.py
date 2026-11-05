@@ -21,6 +21,7 @@ from space_map_data.extrasolar.systems.distance import (
     SYSTEMS_BY_OTHER,
     SYSTEMS_BY_PAPER,
     SYSTEMS_BY_PARALLAX,
+    SYSTEMS_BY_SUSPECT,
     SYSTEMS_NO_DISTANCE,
     SYSTEMS_TWO_PAPERS,
     Shared,
@@ -33,6 +34,7 @@ from space_map_data.extrasolar.systems.resolve import (
     OTHER,
     PAPER,
     PARALLAX,
+    SUSPECT,
     Facts,
 )
 from space_map_data.extrasolar.tables import (
@@ -101,7 +103,13 @@ CASTOR_B = Star(555271300, 113.649794, 31.888504, None, None, None)
 YY_GEM = Star(1092142212, 113.654977, 31.869063, 66.311, 0.024)
 HD_284659 = Star(553914580, 70.550801, 22.942293, 8.170, 0.032)
 # Fidelity 0.188.
-GAJA = Star(17043668, 70.561262, 22.956827, 8.231, 1.128, OTHER)
+GAJA = Star(17043668, 70.561262, 22.956827, 8.231, 1.128, SUSPECT)
+# Fidelity flags A, at RUWE 10.7. B's parallax is -0.3 mas, so it has only a prior.
+HD_58763A = Star(27000555, 111.548464, -20.402652, 4.747421, 1.602605, SUSPECT)
+HD_58763B = Star(563871467, 111.548555, -20.402771, 0.21494, 0.122228, OTHER)
+# Each has only a prior: A's Hipparcos parallax and B's are under 5σ.
+HD_56727A = Star(22109363, 109.362129, -18.720472, 0.231341, 0.063228, OTHER)
+HD_56727B = Star(558980275, 109.362257, -18.719691, 0.167285, 0.076832, OTHER)
 HD_139477 = Star(19693541, 233.83505, 60.08627, 51.22219, 0.01711)
 LP_99_392 = Star(19693552, 233.85854, 60.08471, 51.34618, 0.01929)
 # RUWE 18.4 scales 0.477 mas, up to MAX_SCALE.
@@ -329,9 +337,20 @@ class TestRanks:
         assert shared.counts[POINTS_OUTRANKED] == 1
 
     def test_a_system_of_flagged_stars_still_takes_a_distance(self):
-        other = Star(HD_284659.key, HD_284659.ra, HD_284659.dec, 8.170, 0.032, OTHER)
+        other = Star(HD_284659.key, HD_284659.ra, HD_284659.dec, 8.170, 0.032, SUSPECT)
         shared = tree({1: (0, [other, GAJA])})
         assert shared.nodes[0] == pytest.approx(mean(other, GAJA))
+        assert shared.counts[SYSTEMS_BY_SUSPECT] == 1
+
+    def test_a_flagged_parallax_outranks_a_prior(self):
+        """A prior from a parallax of -0.3 mas put HD 58763A at 4,147 pc."""
+        shared = tree({1: (0, [HD_58763A, HD_58763B])})
+        assert shared.nodes[0] == pytest.approx(HD_58763A.parsecs)
+        assert shared.counts[POINTS_OUTRANKED] == 0
+
+    def test_a_system_of_priors_still_takes_a_distance(self):
+        shared = tree({1: (0, [HD_56727A, HD_56727B])})
+        assert shared.nodes[0] == pytest.approx(mean(HD_56727A, HD_56727B))
         assert shared.counts[SYSTEMS_BY_OTHER] == 1
 
     def test_a_system_with_no_place_takes_none(self):
@@ -445,6 +464,7 @@ class TestVotes:
         found = votes([row], orbits).to_pylist()[0]
         assert found["vote"] == pytest.approx(PARALLAX_NSS, rel=1e-5)
         assert found["vote_error"] == pytest.approx(PARALLAX_NSS_ERROR, rel=1e-5)
+        assert found["distance"] == pytest.approx(1000 / PARALLAX_NSS, rel=1e-5)
 
     def test_a_measured_group_that_places_the_star_votes(self):
         """α Cen A: Reylé et al. 2021 beat Hipparcos, as the placement says."""
@@ -463,7 +483,7 @@ class TestVotes:
         assert found["vote_error"] == pytest.approx(1.33, abs=0.01)
         assert found["vote_rank"] == PARALLAX
 
-    def test_a_flagged_parallax_ranks_last(self):
+    def test_a_flagged_parallax_ranks_over_a_prior(self):
         """Gaja, whose fidelity is 0.188. Hipparcos saw it."""
         row = point_row(
             parallax=8.231,
@@ -472,7 +492,7 @@ class TestVotes:
             fidelity_v2=0.188,
             hipparcos_photometry_source="hipparcos-2007",
         )
-        assert votes([row]).to_pylist()[0]["vote_rank"] == OTHER
+        assert votes([row]).to_pylist()[0]["vote_rank"] == SUSPECT
 
     def test_a_prior_ranks_last(self):
         row = point_row(

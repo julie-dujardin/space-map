@@ -105,7 +105,7 @@ def read_simbad(stars: SimbadList) -> pa.Table:
     several = 0
     for child, parents in stars.parents.items():
         parents = [p for p in parents if stars.is_stellar(p)]
-        if parents:
+        if parents and stars.is_stellar(child):
             parent_of[child] = min(parents)
             several += len(parents) > 1
     roots = sorted(

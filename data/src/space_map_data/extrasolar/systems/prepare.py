@@ -502,7 +502,7 @@ def cluster_keys(
     if clusters is None or not clusters.num_rows:
         return {}
     ids = clusters["source_id"].combine_chunks().cast(pa.string())
-    keys = resolver.keys(*GAIA_DR3, ids)
+    keys = resolver.listed_keys(ids)
     held = facts.at(keys) >= 0
     found: dict[int, set[str]] = defaultdict(set)
     names = clusters["cluster"].filter(pa.array(held)).to_pylist()
@@ -943,7 +943,6 @@ def prepare(inputs: Inputs, resolver: Resolver) -> Prepared:
     )
     facts = Facts(resolver.facts(every[every != 0]))
     logger.info("systems: facts of %d objects", len(facts))
-    # After every other lookup, so that an object's first id stays its own.
     clusters = cluster_keys(inputs.clusters, resolver, facts)
     counts["objects of the systems in a star cluster"] = len(clusters)
 
@@ -1059,8 +1058,9 @@ def _add_links(
         ):
             link = links.get((c, r, v))
             if link and all(key != link[0] for key, _ in found[source][row]):
+                # A stable sort by rank keeps the order in each rank.
                 found[source][row] = sorted(
-                    [*found[source][row], link], key=lambda item: (item[1], item[0])
+                    [*found[source][row], link], key=lambda item: item[1]
                 )
 
 
@@ -1186,7 +1186,7 @@ def cluster_pairs(
             continue
         a, b = facts.get(one), facts.get(other)
         if a and b and one_cluster(clusters, a, b):
-            found[at] = unbound(a, b, False, True) == IN_CLUSTER
+            found[at] = unbound(a, b, False, True) is not None
     return found
 
 

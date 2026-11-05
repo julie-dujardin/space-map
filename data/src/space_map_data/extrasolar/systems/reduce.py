@@ -13,7 +13,8 @@ and is a group:
 - An id of a group that one of its members also reaches is the light of that
   member, not the group's. A group's own point beside its members stays a
   member, and its event gives its kind (`groups`). A point that is not bound
-  to the main star leaves: a background point, or one wider than MAX_PARSEC.
+  to the main star leaves: a background point, or one that `unbound` refutes,
+  unless a member has an orbit: the group's id may be the star it orbits.
 - A leaf whose objects all left the trees is a planet, not a star with no
   object, so it is no member. The trees of the planet catalogues list only
   stars, so a row of theirs stays an entry.
@@ -507,10 +508,9 @@ class TreeReducer:
             main = next((p for p in kept if p.main), primary)
             first, second = self.facts.get(main.main), self.facts.get(part.main)
             pair = None if first is None or second is None else (first, second)
-            if pair and self._vetoed(main, part, *pair, out):
-                self._leave(part, out)
-                continue
-            if pair and self._unbound(part, *pair, out):
+            if pair and (
+                self._vetoed(main, part, *pair, out) or self._unbound(part, *pair, out)
+            ):
                 # The catalogue measures from the primary, not from a stand-in.
                 listed = self.separation[part.node] if main is primary else None
                 if len(part.leaves) == 1 and wrong_object(*pair, listed):
@@ -777,8 +777,10 @@ class TreeReducer:
             )
             mine = self.facts.get(own)
             main = self.facts.get(next((p.main for p in parts if p.main), 0))
-            wide = mine and main and unbound(mine, main, False, self._crowd(mine, main))
-            if kind == BACKGROUND or wide:
+            moving = not any(self._orbit(p) for p in parts)
+            why = mine and main and unbound(mine, main, moving, self._crowd(mine, main))
+            if kind == BACKGROUND or why:
+                evidence = why or evidence
                 self._event(GROUP_LEAVES, f"{self._name(row)}: {own}; {evidence}", out)
                 return [p for p in merged if p.key != own], 0
             self._event(

@@ -232,6 +232,7 @@ class TestPairs:
             alpha_cen(), Inputs(catalogue_orbits=alpha_cen_orbits), FakeResolver({}, [])
         )
         (row,) = found.orbits.to_pylist()
+        assert (row["first"], row["second"]) == (0, 1)
         assert row["period_source"] == row["node_source"] == "msc"
         assert row["semi_major_axis"] == pytest.approx(17.66 * ALPHA_CEN_DISTANCE)
         assert row["semi_major_axis_arcsec"] == 17.66
@@ -620,6 +621,37 @@ class TestPointOfThreeStars:
         found = self.draw(triple(("Aa", "Aa", None), (None, 0.29, 121.4)))
         assert found.orbits.num_rows == 1
         assert found.orbits["period"].to_pylist() == [KEPLER_16_GAIA["period"]]
+
+    @pytest.mark.parametrize(
+        ("inner", "period", "second"),
+        [
+            ((None, "Ab", "Ab"), (None, None, 0.34), 1),
+            (("Aa", "Aa", None), (None, 0.29, 121.4), 2),
+        ],
+    )
+    def test_the_row_names_its_two_stars(self, inner, period, second):
+        found = self.draw(triple(inner, period))
+        assert found.orbits.select(["first", "second"]).to_pylist() == [
+            {"first": 0, "second": second}
+        ]
+
+    def test_the_places_count_from_the_node(self):
+        """The member rows of the node above come first."""
+        inner = triple(("Aa", "Aa", None), (None, 0.29, 121.4))
+        (point,) = inner.nodes.to_pylist()
+        nodes = [
+            {"node": 1, "key": 0, "ra": 289.076, "dec": 51.757, "depth": 0},
+            point | {"node": 2, "parent": 1, "root": 1, "depth": 1},
+        ]
+        members = [
+            {"node": 1, "kind": assemble.SYSTEM, "member": 2, "source": "msc"},
+            {"node": 1, "kind": assemble.STAR, "key": 30, "source": "msc"},
+            *(m | {"node": 2} for m in inner.members.to_pylist()),
+        ]
+        found = self.draw(_systems(nodes, members, orbit_keys=(20,)))
+        assert found.orbits.select(["number", "first", "second"]).to_pylist() == [
+            {"number": 2, "first": 0, "second": 2}
+        ]
 
     def test_the_orbit_of_the_inner_pair_stays_off(self):
         found = self.draw(triple((None, "Ab", "Ab"), (None, None, 228.0)), 228.8)

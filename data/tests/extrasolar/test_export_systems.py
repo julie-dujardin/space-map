@@ -94,6 +94,8 @@ SYSTEMS = [
 
 # Doyle et al. 2011, with the node of the Gaia DR3 orbit, as `drawn` gives it.
 KEPLER_PAIR = {
+    "first": 0,
+    "second": 1,
     "ra": 289.0757,
     "dec": 51.7575,
     "period": 41.07922,
@@ -301,6 +303,7 @@ class TestPairOrbitsAndHeldStars:
         types = {c["name"]: c["type"] for c in entry["columns"]}
         assert types["distance"] == "float64"
         assert types["orbit"] == types["star"] == "list"
+        assert types["orbit.first"] == types["orbit.second"] == "int8"
         assert types["orbit.a"] == types["orbit.period"] == "float64"
         assert types["orbit.node_ascending"] == "bool"
         assert types["orbit.phase"] == types["orbit.period_source"] == "dict"
@@ -311,7 +314,7 @@ class TestPairOrbitsAndHeldStars:
         assert types["star.references.reference"] == "string"
         names = [c["name"] for c in entry["columns"]]
         at = names.index("orbit")
-        assert names[at + 1] == "orbit.a"
+        assert names[at + 1 : at + 4] == ["orbit.first", "orbit.second", "orbit.a"]
         assert names.index("orbit.references.url") < names.index("star")
         assert report["systems"]["held stars"] == 2
         assert report["systems"]["nodes"] == 7
@@ -323,6 +326,7 @@ class TestPairOrbitsAndHeldStars:
         row = point.rows["system"]
         assert row == _registry_rows(built.root)[built.nodes[KEPLER]]
         (orbit,) = row["orbit"]
+        assert (orbit["first"], orbit["second"]) == (0, 1)
         assert orbit["period"] == 41.07922 and orbit["node"] == 8.199
         assert orbit["n"] == pytest.approx(360 / 41.07922)
         assert orbit["barycentre"] == 0.227 and orbit["centre"] == "barycentre"

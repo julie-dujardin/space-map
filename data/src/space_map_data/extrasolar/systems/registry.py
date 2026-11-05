@@ -58,6 +58,7 @@ from space_map_data.extrasolar.systems.resolve import (
     OTHER,
     PAPER,
     PARALLAX,
+    SUSPECT,
 )
 from space_map_data.extrasolar.systems.wds import COMPONENT_KIND, WDS_MATCHER
 from space_map_data.extrasolar.tables import BINARY_ORBIT, CROSS_ID, STAR_SYSTEMS
@@ -136,7 +137,8 @@ def _lookup(
 def _without_system_distance(point: pa.Table) -> pa.Table:
     """`point` with no star-systems distance. A dry run reads the committed
     table, where such a row holds the last ingest's result. An ingest reads
-    only its own passes, so it never meets one."""
+    only its own passes, so it never meets one. The group value that the row
+    replaced is gone, so a dry run after an ingest can differ from the ingest."""
     sources = point["distance_source"].to_numpy(zero_copy_only=False)
     distance = point["distance"].combine_chunks()
     return point.set_column(
@@ -147,12 +149,11 @@ def _without_system_distance(point: pa.Table) -> pa.Table:
 
 
 def _votes(
-    point: pa.Table, placed: Placement
+    point: pa.Table, placed: Placement, distance: np.ndarray, orbit: np.ndarray
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """For each row with a place, what gives it: a parallax in mas, the error
     that weighs it, and its rank, -1 for a row with no place. A distance with
     no error counts as ±100%, so any measure outweighs it."""
-    distance, orbit = star_distance(point, placed)
     methods = point["distance_method"].to_numpy(zero_copy_only=False)
     sources = point["distance_source"].to_numpy(zero_copy_only=False)
     astrometry = point["astrometry_source"].to_numpy(zero_copy_only=False)
@@ -179,6 +180,7 @@ def _votes(
     )
     error = np.where(np.isfinite(error) & (error > 0), error, vote)
     rank = np.where(placed.placed, OTHER, -1)
+    rank = np.where(placed.by_suspect, SUSPECT, rank)
     measured = placed.by_group & (methods == MEASURED_PARALLAX)
     rank = np.where(
         placed.by_parallax | (orbit & placed.by_catalogue) | measured, PARALLAX, rank
@@ -201,13 +203,8 @@ def point_facts(
     at_point = find_sorted(point["id"].to_numpy(), ids)
     at_meta = find_sorted(meta["id"].to_numpy(), ids)
     placed = placement(point)
-    vote, vote_error, vote_rank = _votes(point, placed)
-    parallax = floats(point, "parallax")
-    distance = np.full(point.num_rows, np.nan)
-    by_parallax = placed.by_parallax | placed.by_suspect
-    distance[by_parallax] = 1000.0 / parallax[by_parallax]
-    distance[placed.by_group] = floats(point, "distance")[placed.by_group]
-    distance[placed.by_catalogue] = floats(point, "host_distance")[placed.by_catalogue]
+    distance, orbit = star_distance(point, placed)
+    vote, vote_error, vote_rank = _votes(point, placed, distance, orbit)
 
     def pick(table: pa.Table, at: np.ndarray, name: str) -> pa.Array:
         index = pa.array(at, mask=at < 0)
@@ -269,6 +266,12 @@ class RegistryResolver:
         keys[found] = self.registry.live_end(keys[found])
         self.counts[f"keys asked {catalogue}/{release}"] += len(ids)
         self.counts[f"keys found {catalogue}/{release}"] += int(found.sum())
+        return keys
+
+    def listed_keys(self, ids: pa.Array) -> np.ndarray:
+        keys = self._gaia(ids)
+        found = keys > 0
+        keys[found] = self.registry.live_end(keys[found])
         return keys
 
     def _other_ids(self) -> dict[tuple[str, str], dict[str, int]]:

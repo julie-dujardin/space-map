@@ -326,6 +326,10 @@ class RunResolver:
         self.counts[f"keys found {catalogue}/{release}"] += int(hit.sum())
         return keys
 
+    def listed_keys(self, ids: pa.Array) -> np.ndarray:
+        values = ids.cast(pa.int64()).to_numpy()
+        return self.objects(gaia_keys(values, self._gaia_region))
+
     def _links(self) -> dict[tuple[str, str], tuple[pa.Array, np.ndarray]]:
         """The ids of each LINKED catalogue with their objects, oldest first.
 

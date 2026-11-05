@@ -112,6 +112,32 @@ def one(row: dict):
     return found
 
 
+TAU2_AQR = fact(
+    21512719,
+    342.39786,
+    -13.5928,
+    3.350818,
+    "gaia-dr3",
+    10.017146,
+    parallax_error=0.173371,
+    pmra=-13.385986,
+    pmdec=-38.609093,
+    pmra_error=0.670194,
+    pmdec_error=0.244244,
+)
+TAU1_AQR = fact(
+    21501727,
+    341.928345,
+    -14.056468,
+    5.683439,
+    "gaia-dr3",
+    9.132234,
+    parallax_error=0.055684,
+    pmra=30.412941,
+    pmdec=-9.053047,
+    pmra_error=0.058649,
+    pmdec_error=0.048273,
+)
 # Hipparcos 2007, and Gaia DR3 3322963321574168064.
 BETELGEUSE = fact(
     22821649,
@@ -844,6 +870,15 @@ class TestClusterPairs:
         known = facts(KAPPA1_TAU, KAPPA2_TAU)
         assert cluster_pairs(known, row, keys, TWO).tolist() == [True]
 
+    def test_a_cluster_pair_over_the_width_of_a_system(self):
+        """`projected` reads a distance, El-Badry's 1 pc reads the parallax."""
+        far = KAPPA2_TAU | {"dec": KAPPA2_TAU["dec"] + 5}
+        row = el_badry_row(KAPPA1_TAU, far)
+        keys = (pa.array([A]).to_numpy(), pa.array([B]).to_numpy())
+        assert unbound(one(KAPPA1_TAU), one(far)) == WIDE
+        known = facts(KAPPA1_TAU, far)
+        assert cluster_pairs(known, row, keys, TWO).tolist() == [True]
+
 
 class TestGroupPoint:
     """A group's own point that is not bound to its main star."""
@@ -864,6 +899,28 @@ class TestGroupPoint:
             [star(A, 0.0), star(B, 1.0), star(C, 200.0)],
         )
         assert [group.keys for group in out.groups] == [frozenset({A, B, C})]
+        assert GROUP_LEAVES not in kinds(out)
+
+    def test_a_point_that_moves_apart_leaves(self):
+        """SIMBAD's `* tau Aqr`: τ² Aqr and τ¹ Aqr, 39′ and 24 km/s apart."""
+        rows = [("* tau Aqr", -1, None, None, None), ("tau1", 0, None, None, None)]
+        out = reduced(
+            rows,
+            [[(TAU2_AQR["key"], 2)], [(TAU1_AQR["key"], 2)]],
+            [TAU1_AQR, TAU2_AQR],
+            source=SIMBAD,
+        )
+        assert not out.groups
+        assert kinds(out) == [GROUP_LEAVES]
+
+    def test_an_orbit_keeps_a_point_that_moves_apart(self):
+        rows = [("AB", -1, None, None, None), ("B", 0, 200.0, [VISUAL_ORBIT], None)]
+        out = reduced(
+            rows,
+            [[(A, 2)], [(B, 2)]],
+            [star(A, 0.0), star(B, 200.0, pmra=50.0)],
+        )
+        assert [group.keys for group in out.groups] == [frozenset({A, B})]
         assert GROUP_LEAVES not in kinds(out)
 
 

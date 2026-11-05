@@ -19,7 +19,12 @@ from space_map_data.export.extrasolar.render import bp_rp_from_v_i
 from space_map_data.export.notable import NotableObject
 from space_map_data.export.objects.stars import PREFIX
 from space_map_data.extrasolar.sources.literature import LITERATURE, key_of
-from space_map_data.extrasolar.tables import METADATA, POINT_SOURCE, SYSTEM
+from space_map_data.extrasolar.tables import (
+    METADATA,
+    POINT_SOURCE,
+    STAR_SYSTEMS,
+    SYSTEM,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +83,7 @@ class _Size:
 
 
 def _distance_pc(row: dict) -> float | None:
-    if row["distance_source"] == LITERATURE.name:
+    if row["distance_source"] in (LITERATURE.name, STAR_SYSTEMS):
         return row["distance"]
     parallax, error = row["parallax"], row["parallax_error"]
     if parallax and error and parallax >= MIN_PARALLAX_SIGMA * error:
