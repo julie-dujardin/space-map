@@ -307,6 +307,14 @@ export interface SkyboxMetadata {
 	license?: string;
 	attribution?: string;
 	description?: string;
+	/** The same sky without its bright stars, at the size the glow reads it past
+	 *  the solar system: `/v1/textures/{starless.id}/{tier}_{face}.webp`. Absent
+	 *  in an export made before it. */
+	starless?: {
+		id: string;
+		tiers: string[];
+		tier_face_size: Record<string, number>;
+	};
 }
 
 export interface Metadata {

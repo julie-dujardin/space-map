@@ -16,8 +16,10 @@
  *
  * The limit increases with the camera's distance from the barycentre, as an
  * exposure does. Near the Sun the sky stays as light as the skybox it takes
- * over from, and a zoom on another star keeps that star's sky. Zoomed out to
- * the galaxy, the budget sets what draws.
+ * over from, and a zoom on another star keeps that star's sky. Away from the
+ * Sun the dots move onto the glow's exposure (`band.ts`): the glow holds the
+ * catalogue's light, so only the stars bright enough at that exposure draw,
+ * and the walk fetches only the boxes that hold them.
  *
  * Inside the solar system the skybox is the sky and the starfield loads
  * nothing. Past a distance from the barycentre it loads, and past a farther
@@ -67,7 +69,17 @@ import type { StarDust } from '$lib/scene/dust/star-dust';
 import type { NodeSample } from '$lib/scene/dust/node-shift';
 import { makeStarSurfaceMaterial, updateStarTransition } from '../objects/sun';
 import type { GlowSky } from '$lib/scene/glow/glow-sky';
-import { BASE_LIMIT_MAG, PREFETCH_AU, RELEASE_AU, starsTakeSky } from './band';
+import {
+	BASE_LIMIT_MAG,
+	PREFETCH_AU,
+	RELEASE_AU,
+	boxDrawMag,
+	dotLimit,
+	glowExposureShare,
+	glowLimitMag,
+	targetLimitMag,
+	starsTakeSky
+} from './band';
 import { photosphereColour, starColours } from './colour';
 import {
 	FOCUS_FLOOR_MAG,
@@ -97,8 +109,6 @@ const ROOT = 'r';
 const METADATA = 'metadata.json';
 const NO_CREDITS: readonly ExtrasolarCredit[] = [];
 
-/** Zoom distance (pc) past which the limit rises by 5 magnitudes per decade. */
-const EXPOSURE_PC = 1;
 /** A box that can hold a star this bright loads whatever the budget. The
  *  boxes near the camera have magnitudes far below any limit, and a small
  *  budget would leave the brightest stars out. */
@@ -193,7 +203,8 @@ interface StarNode {
 	abort: AbortController | null;
 	data: Loaded | null;
 	points: Points | null;
-	/** Magnitude of the box from the camera at the last selection. */
+	/** The drawn limit over which a star of the box can draw, from the camera
+	 *  at the last selection (`boxDrawMag`). */
 	magnitude: number;
 	wanted: boolean;
 	lastWantedMs: number;
@@ -218,6 +229,12 @@ export interface StarfieldStats {
 	loading: number;
 	limit: number;
 	targetLimit: number;
+	/** The limit the dots draw to (`dotLimit`). */
+	dotLimit: number;
+	/** The dots' share of the glow's exposure (`glowExposureShare`). */
+	glowExposure: number;
+	/** The dots' limit at the glow's exposure (`glowLimitMag`). */
+	glowLimit: number;
 	/** Loading: the camera is past the prefetch distance. */
 	active: boolean;
 	/** The starfield's share of the sky. */
@@ -268,6 +285,11 @@ export class StarfieldSystem {
 	private targetLimit = BASE_LIMIT_MAG;
 	/** The limit that the wanted set allows. It is below the target when the budget is full. */
 	private allowedLimit = BASE_LIMIT_MAG;
+	/** The drawn limit, eased toward the allowed one from the uniform's first value. */
+	private drawnLimit = this.uniforms.uLimit.value;
+	/** The dots' share of the glow's exposure, and their limit at it, this frame. */
+	private glowExposure = 0;
+	private glowLimit = BASE_LIMIT_MAG;
 	/** The camera is far enough from the barycentre for the starfield to load. */
 	private active = false;
 	/** The nodes wanted since loading started have come in. */
@@ -529,8 +551,11 @@ export class StarfieldSystem {
 			cachedNodes,
 			cachedBytes: this.cachedBytes,
 			loading: this.loading,
-			limit: this.uniforms.uLimit.value,
+			limit: this.drawnLimit,
 			targetLimit: this.targetLimit,
+			dotLimit: this.uniforms.uLimit.value,
+			glowExposure: this.glowExposure,
+			glowLimit: this.glowLimit,
 			active: this.active,
 			share: this.sky.share
 		};
@@ -574,7 +599,7 @@ export class StarfieldSystem {
 			return true;
 		if (this.sky.fading || this.exactFade.fading || this.outsideFade.fading) return true;
 		if (this.drawn.size === 0) return false;
-		if (Math.abs(this.uniforms.uLimit.value - this.allowedLimit) > 0.01) return true;
+		if (Math.abs(this.drawnLimit - this.allowedLimit) > 0.01) return true;
 		for (const node of this.drawn) {
 			if (node.fade !== (node.wanted ? 1 : 0)) return true;
 			if (node.wanted && node.data && !node.points) return true;
@@ -628,18 +653,22 @@ export class StarfieldSystem {
 
 		const cam = sceneToTree(wx, wy, wz);
 		const fromSunPc = Math.hypot(wx, wy, wz) / PC_SCENE;
-		const target = BASE_LIMIT_MAG + 5 * Math.log10(Math.max(1, fromSunPc / EXPOSURE_PC));
+		const target = targetLimitMag(fromSunPc);
 		if (target !== this.targetLimit) this.dirty = true;
 		this.targetLimit = target;
+		// With no glow the dots hold all the catalogue's light, so they keep the drawn limit's exposure.
+		const glowGain = this.glow?.dotsGain(cam) ?? null;
+		this.glowExposure = glowGain === null ? 0 : glowExposureShare(fromSunPc);
+		this.glowLimit = glowLimitMag(glowGain ?? 1);
 
 		const due = this.dirty || nowMs - this.lastSelectMs >= SELECT_EVERY_MS;
 		if (this.active && !this.stale && due) {
 			this.select(cam, nowMs);
 		}
 
-		const limit = this.uniforms.uLimit;
 		const ease = dtMs > 0 ? 1 - Math.exp(-dtMs / LIMIT_EASE_MS) : 1;
-		limit.value += (this.allowedLimit - limit.value) * ease;
+		this.drawnLimit += (this.allowedLimit - this.drawnLimit) * ease;
+		this.uniforms.uLimit.value = dotLimit(this.drawnLimit, this.glowExposure, this.glowLimit);
 		this.uniforms.uGain.value = gain * skyShare;
 		this.exactGain.value = gain * this.exactFade.share;
 		for (const exact of this.exact.values()) {
@@ -659,10 +688,11 @@ export class StarfieldSystem {
 			treeToScene: this.matrix,
 			treeScale: PC_SCENE,
 			active: this.active,
-			drawing: this.group.visible,
+			drawing: shown && this.root !== null,
 			share: gain * skyShare,
 			skybox: this.ctx.layers.isVisible('stars') ? gain * this.skyboxShare() : 0,
 			heightPx: viewportHeight,
+			skyboxLayer: this.ctx.layers.isVisible('stars'),
 			nowMs,
 			dtMs
 		});
@@ -919,10 +949,12 @@ export class StarfieldSystem {
 		this.lastSelectMs = nowMs;
 		for (const node of this.nodes.values()) node.wanted = false;
 
-		const magnitude = (node: StarNode) =>
-			node === root
-				? -Infinity
-				: boxMagnitude(boxDistance(cam, node.centre, node.half), node.range, tree.range_limit_mag);
+		const magnitude = (node: StarNode) => {
+			if (node === root) return -Infinity;
+			const near = boxDistance(cam, node.centre, node.half);
+			const brightest = boxMagnitude(near, node.range, tree.range_limit_mag);
+			return boxDrawMag(brightest, this.glowExposure, this.glowLimit);
+		};
 		const heap = new NodeHeap();
 		root.magnitude = magnitude(root);
 		heap.push(root);

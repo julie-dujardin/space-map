@@ -22,14 +22,12 @@ import {
 	OneMinusDstColorFactor,
 	ShaderMaterial,
 	Vector3,
-	Vector4,
-	type Matrix4,
-	type PerspectiveCamera,
 	type Scene,
 	type Texture
 } from 'three';
 import { DUST_COLUMN_GLSL } from '$lib/scene/dust/lookup';
 import type { Vec3 } from '$lib/scene/dust/octahedral';
+import type { ViewRays } from './composite';
 import { lineDepth, type EmissionRegions, type GlowEmission } from './emission';
 import { glslFloat, glslVec3 } from '$lib/scene/dust/glsl';
 
@@ -48,7 +46,6 @@ uniform highp vec3 uCamera;
 uniform highp vec4 uLens;
 uniform highp float uPixel;
 uniform highp float uExposure;
-uniform highp sampler2D uGain;
 uniform highp sampler2DArray uColumns;
 uniform highp vec3 uColumnOrigin;
 attribute highp vec3 region;
@@ -72,11 +69,11 @@ void main() {
 	highp float s = max(sigma / d, uPixel);
 	float column = dustColumn(uColumns, uColumnOrigin, region - uColumnOrigin);
 	vec3 flux = light * ${glslVec3(emission.lines.colour)} * ${glslFloat(AT_TEN_PC)} / (d * d) * exp(-column * ${glslVec3(lineDepth(emission))});
-	float gain = uExposure * exp(texelFetch(uGain, ivec2(0), 0).g);
-	vPeak = flux * (gain * fade / (6.2831853 * s * s * ${glslFloat(INSIDE)}));
+	vPeak = flux * (uExposure * fade / (6.2831853 * s * s * ${glslFloat(INSIDE)}));
 	vAt = position.xy * ${glslFloat(EXTENT_SIGMA)};
-	highp vec2 at = vec2(uLens.x * v.x + uLens.z * v.z, uLens.y * v.y + uLens.w * v.z) / -v.z;
-	gl_Position = vec4(at + position.xy * uLens.xy * (s * ${glslFloat(EXTENT_SIGMA)}), 0.0, 1.0);
+	// The inverse of the lens of the view's rays.
+	highp vec2 at = (v.xy / -v.z) / uLens.xy - uLens.zw;
+	gl_Position = vec4(at + position.xy / uLens.xy * (s * ${glslFloat(EXTENT_SIGMA)}), 0.0, 1.0);
 }
 `;
 
@@ -98,18 +95,15 @@ export interface ColumnMap {
 	origin: Vec3;
 }
 
-const _view = new Matrix3();
-
 export class GlowRegions {
 	private readonly mesh: Mesh<InstancedBufferGeometry, ShaderMaterial>;
-	private readonly toTree = new Matrix3();
 
-	/** `nestAxes` is the rotation from tree axes to nest axes. */
+	/** `rays` are the frame's, as the composite reads them. */
 	constructor(
 		scene: Scene,
 		regions: EmissionRegions,
 		emission: GlowEmission,
-		private readonly nestAxes: Matrix3
+		private readonly rays: ViewRays
 	) {
 		const n = regions.light.length;
 		const at = new Float32Array(n * 3);
@@ -128,10 +122,9 @@ export class GlowRegions {
 			uniforms: {
 				uNestToView: { value: new Matrix3() },
 				uCamera: { value: new Vector3() },
-				uLens: { value: new Vector4() },
+				uLens: { value: rays.lens },
 				uPixel: { value: 0 },
 				uExposure: { value: 0 },
-				uGain: { value: null as Texture | null },
 				uColumns: { value: null as Texture | null },
 				uColumnOrigin: { value: new Vector3() },
 				uShare: { value: 0 }
@@ -160,38 +153,19 @@ export class GlowRegions {
 	}
 
 	/**
-	 * `at` is the camera on nest axes, `exposure` the glow's with the gain by
-	 * place, `gain` the eye's texture, `pixel` the angle of a CSS pixel at the
-	 * view's centre.
+	 * `at` is the camera on nest axes, `exposure` the glow's, `pixel` the angle
+	 * of a CSS pixel at the view's centre. The rays are this frame's.
 	 */
-	show(
-		at: Vec3,
-		columns: ColumnMap,
-		gain: Texture,
-		exposure: number,
-		share: number,
-		camera: PerspectiveCamera,
-		sceneToTree: Matrix4,
-		pixel: number
-	): void {
+	show(at: Vec3, columns: ColumnMap, exposure: number, share: number, pixel: number): void {
 		const { uniforms } = this.mesh.material;
-		const p = camera.projectionMatrix.elements;
-		(uniforms.uLens.value as Vector4).set(p[0], p[5], p[8], p[9]);
 		(uniforms.uCamera.value as Vector3).set(...at);
 		(uniforms.uColumnOrigin.value as Vector3).set(...columns.origin);
 		uniforms.uColumns.value = columns.map;
-		uniforms.uGain.value = gain;
 		uniforms.uExposure.value = exposure;
 		uniforms.uShare.value = share;
 		uniforms.uPixel.value = pixel;
-		// Nest to view: the transpose of view to nest, all rotations.
-		this.toTree.setFromMatrix4(sceneToTree);
-		_view.setFromMatrix4(camera.matrixWorld);
-		(uniforms.uNestToView.value as Matrix3)
-			.copy(this.nestAxes)
-			.multiply(this.toTree)
-			.multiply(_view)
-			.transpose();
+		// Nest to view: the transpose of view to nest, a rotation.
+		(uniforms.uNestToView.value as Matrix3).copy(this.rays.axes).transpose();
 		this.mesh.visible = share > 0;
 	}
 

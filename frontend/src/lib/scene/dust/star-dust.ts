@@ -177,17 +177,6 @@ export class StarDust {
 		return this.load.phase === 'ready' && this.march ? this.gpu : null;
 	}
 
-	/** The reach of the refresh rule at the Sun. */
-	get reachAtSun(): number {
-		return this.sunReach;
-	}
-
-	/** The reach the latest refresh found: that of the map being made, else that
-	 *  of the map in use. */
-	get latestReach(): number {
-		return this.job?.reach ?? this.frontReach;
-	}
-
 	/** The map of the columns from the camera's side, and its origin: the Sun's
 	 *  own near the Sun. Null until the Sun's map is made, and without maps. Light
 	 *  that has no dust of the Sun's in it, as a nebula's, reads the whole column

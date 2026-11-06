@@ -16,6 +16,7 @@ import {
 	type SphereGeometry
 } from 'three';
 import { kmToScene } from '$lib/math/units';
+import { glowLimitMag, targetLimitMag } from './band';
 import { photosphereColour } from './colour';
 import { FOCUS_FLOOR_MAG, NO_FLOOR, makeStarMaterial, starUniforms } from './material';
 import { Container } from '$lib/fetch/extrasolar/container';
@@ -27,6 +28,7 @@ import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import type { StarAnchor } from '$lib/types/objects';
 import { dustBounds } from '$lib/scene/dust/extinction';
 import type { StarDust } from '$lib/scene/dust/star-dust';
+import type { GlowSky } from '$lib/scene/glow/glow-sky';
 import { PC_SCENE, treeToScene, type Vec3 } from './tree';
 
 const TOKEN = '0123456789abcdef';
@@ -210,6 +212,17 @@ function buildTree(ranges: number[], rows = 100): void {
 
 let clock = 1000;
 
+/** A glow that only gives the dots its gain by place: null for none. */
+function fakeGlow(gain: number | null): GlowSky {
+	return {
+		dotsGain: () => gain,
+		update: () => {},
+		busy: () => false,
+		modelInView: false,
+		dispose: () => {}
+	} as unknown as GlowSky;
+}
+
 async function settle(
 	system: InstanceType<typeof StarfieldSystem>,
 	camera: PerspectiveCamera,
@@ -283,6 +296,59 @@ describe('the starfield walk', () => {
 		await settle(system, camera, focus);
 		expect(new Set(fetched)).toEqual(new Set(['r', 'r0']));
 		expect(system.stats().limit).toBeCloseTo(6.5 + 5 * Math.log10((900 * Math.sqrt(3)) / 1000), 2);
+	});
+
+	it('fetches no box whose dots the glow’s exposure hides far from the Sun', async () => {
+		// From 40 kpc child 1 shows at 17.02, child 2 at 12.08, the others at 28
+		// and more. At a gain of 100 the dots draw to 12.5.
+		buildTree([10, 300, 3000, 10, 10, 10, 10, 10]);
+		const camera = new PerspectiveCamera(60, 1, 1e-6, 1e12);
+		camera.position.set(0, 0, 1e-3);
+		camera.updateMatrixWorld();
+		const at = treeToScene(40_000, 0, 0, { x: 0, y: 0, z: 0 });
+		const system = new StarfieldSystem(
+			fakeCtx(),
+			new Scene(),
+			{ points: 1e6, bytes: 1e9, fetches: 8 },
+			() => {},
+			new PickRegistry(),
+			null,
+			fakeGlow(100)
+		);
+		await settle(system, camera, [at.x, at.y, at.z]);
+		expect(new Set(fetched)).toEqual(new Set(['r', 'r2']));
+		const stats = system.stats();
+		expect(stats.targetLimit).toBeCloseTo(targetLimitMag(40_000), 9);
+		expect(stats.glowExposure).toBe(1);
+		expect(stats.dotLimit).toBeCloseTo(glowLimitMag(100), 9);
+	});
+
+	it('keeps the drawn limit’s exposure with no glow, which then holds no light', async () => {
+		buildTree([10, 300, 3000, 10, 10, 10, 10, 10]);
+		const camera = new PerspectiveCamera(60, 1, 1e-6, 1e12);
+		camera.position.set(0, 0, 1e-3);
+		camera.updateMatrixWorld();
+		const at = treeToScene(40_000, 0, 0, { x: 0, y: 0, z: 0 });
+		const system = new StarfieldSystem(
+			fakeCtx(),
+			new Scene(),
+			{ points: 1e6, bytes: 1e9, fetches: 8 },
+			() => {},
+			new PickRegistry(),
+			null,
+			fakeGlow(null)
+		);
+		await settle(system, camera, [at.x, at.y, at.z]);
+		expect(fetched).toHaveLength(9);
+		const stats = system.stats();
+		expect(stats.glowExposure).toBe(0);
+		expect(stats.dotLimit).toBe(stats.limit);
+	});
+
+	it('draws each star to the dots’ limit', () => {
+		const shader = makeStarMaterial(starUniforms()).vertexShader;
+		expect(shader).toContain('max(uLimit - m, uFloor)');
+		expect(shader).not.toContain('uOutShare');
 	});
 
 	it('fetches nothing for a layer switched off at open time', async () => {
@@ -813,7 +879,7 @@ describe('the starfield walk', () => {
 		ctx.layers.setVisible('starfield', false);
 		system.update(camera, focus, 2, 0.25, clock + 200);
 		system.updateLocalStar(point, true);
-		expect(material.uniforms.uLimit.value).toBe(system.stats().limit);
+		expect(material.uniforms.uLimit.value).toBe(system.stats().dotLimit);
 		expect(material.uniforms.uPixelRatio.value).toBe(2);
 		expect(material.uniforms.uFloor.value).toBe(FOCUS_FLOOR_MAG);
 		expect(material.uniforms.uGain.value).toBe(1);

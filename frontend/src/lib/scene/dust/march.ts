@@ -135,14 +135,15 @@ function link(gl: WebGL2RenderingContext, vertex: string, fragment: string): Web
 	return program;
 }
 
-/** A square target of a full-screen pass. */
+/** A target of a full-screen pass. */
 export interface PassTarget {
 	readonly framebuffer: WebGLFramebuffer;
-	readonly size: number;
+	readonly width: number;
+	readonly height: number;
 }
 
 /**
- * A program that draws one triangle over a square target. It leaves depth test
+ * A program that draws one triangle over a target. It leaves depth test
  * and mask on: three keeps them on between renders, or its next clear leaves
  * depth.
  */
@@ -175,22 +176,16 @@ export class FullscreenPass {
 	/**
 	 * Draw into `target`, with `bind` for this draw's textures and uniforms. A
 	 * `weight` under 1 blends the draw in, so the target keeps the mean of its
-	 * passes. `rows` limits it to `count` rows from `from`.
+	 * passes.
 	 */
-	run(
-		target: PassTarget,
-		bind: (gl: WebGL2RenderingContext) => void,
-		weight = 1,
-		rows?: { from: number; count: number }
-	): void {
+	run(target: PassTarget, bind: (gl: WebGL2RenderingContext) => void, weight = 1): void {
 		const { renderer, program, vao } = this;
 		const gl = renderer.getContext() as WebGL2RenderingContext;
 		const { state } = renderer;
 		const vaoBefore = gl.getParameter(gl.VERTEX_ARRAY_BINDING) as WebGLVertexArrayObject | null;
 		state.bindFramebuffer(gl.FRAMEBUFFER, target.framebuffer);
-		state.viewport(rect.set(0, 0, target.size, target.size));
-		if (rows) state.scissor(rect.set(0, rows.from, target.size, rows.count));
-		state.setScissorTest(rows !== undefined);
+		state.viewport(rect.set(0, 0, target.width, target.height));
+		state.setScissorTest(false);
 		state.buffers.depth.setTest(false);
 		state.buffers.depth.setMask(false);
 		state.buffers.stencil.setTest(false);
@@ -232,17 +227,18 @@ export class FullscreenPass {
 }
 
 /**
- * An RGBA16F square that three can sample, with the framebuffer that draws into
+ * An RGBA16F target that three can sample, with the framebuffer that draws into
  * it. With `layers`, it is a 2D array with a draw buffer for each layer.
  */
-export class SkyMap implements PassTarget {
+export class FloatTarget implements PassTarget {
 	readonly texture: WebGLTexture;
 	readonly framebuffer: WebGLFramebuffer;
 	readonly external: ExternalTexture;
 
 	constructor(
 		private readonly renderer: WebGLRenderer,
-		readonly size: number,
+		readonly width: number,
+		readonly height: number,
 		layers = 0
 	) {
 		const gl = renderer.getContext() as WebGL2RenderingContext;
@@ -250,8 +246,8 @@ export class SkyMap implements PassTarget {
 		const target = layers > 0 ? gl.TEXTURE_2D_ARRAY : gl.TEXTURE_2D;
 		this.texture = gl.createTexture();
 		state.bindTexture(target, this.texture);
-		if (layers > 0) gl.texStorage3D(target, 1, gl.RGBA16F, size, size, layers);
-		else gl.texStorage2D(target, 1, gl.RGBA16F, size, size);
+		if (layers > 0) gl.texStorage3D(target, 1, gl.RGBA16F, width, height, layers);
+		else gl.texStorage2D(target, 1, gl.RGBA16F, width, height);
 		gl.texParameteri(target, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
 		gl.texParameteri(target, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
 		gl.texParameteri(target, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
@@ -272,10 +268,10 @@ export class SkyMap implements PassTarget {
 		state.bindFramebuffer(gl.FRAMEBUFFER, null);
 		renderer.setRenderTarget(renderer.getRenderTarget());
 		if (status !== gl.FRAMEBUFFER_COMPLETE) {
-			// The caller has no object to dispose, so the half-made map goes here.
+			// The caller has no object to dispose, so the half-made target goes here.
 			gl.deleteFramebuffer(this.framebuffer);
 			gl.deleteTexture(this.texture);
-			throw new Error(`sky map: framebuffer ${status}`);
+			throw new Error(`float target: framebuffer ${status}`);
 		}
 		this.external = new ExternalTexture(this.texture);
 	}
@@ -285,6 +281,17 @@ export class SkyMap implements PassTarget {
 		gl.deleteFramebuffer(this.framebuffer);
 		gl.deleteTexture(this.texture);
 		this.external.dispose();
+	}
+}
+
+/** A square sky map: an octahedral map of the sphere. */
+export class SkyMap extends FloatTarget {
+	constructor(
+		renderer: WebGLRenderer,
+		readonly size: number,
+		layers = 0
+	) {
+		super(renderer, size, size, layers);
 	}
 }
 

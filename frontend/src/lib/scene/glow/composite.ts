@@ -4,9 +4,11 @@
  * under the bloom threshold, and composes with the stars' screen blending in
  * any order.
  *
- * Far outside, a map about the Galaxy holds the disc at about a screen pixel a
- * texel (`outside.ts`); the octahedral map holds the rest of the sky. Each map
- * has its own frame, so the blend from the last map reads each in its own.
+ * It reads one of three sources. The screen target of the march holds this
+ * frame's rays at a part of the screen's resolution, and the composite scales
+ * it up. The octahedral sky map holds the emission alone from the Sun, and the
+ * composite reads it along each pixel's ray. The skybox's cube, blurred past
+ * the size of its stars, is the sky from the Sun near the join (`glow-sky.ts`).
  */
 
 import {
@@ -25,100 +27,112 @@ import {
 	type Scene,
 	type Texture
 } from 'three';
+import { glslFloat } from '$lib/scene/dust/glsl';
 import { octUvGlsl } from '$lib/scene/dust/octahedral';
-import type { GalaxyFrame } from './outside';
 
-/** The map about the Galaxy fades out over this share of its half width at its
- *  edge, so its edge does not show where the halo is faint in both maps. */
-const EDGE_SHARE = 0.05;
+/** What a composite reads: the screen target, an octahedral map of `size`, or
+ *  the skybox's cube. */
+export type CompositeSource = { kind: 'screen' } | { kind: 'sky'; size: number } | { kind: 'cube' };
 
 const VERTEX = /* glsl */ `
 uniform highp mat3 uRayAxes;
 uniform highp vec4 uLens;
 varying highp vec3 vRay;
+varying highp vec2 vUv;
 
 void main() {
 	gl_Position = vec4(position.xy, 0.0, 1.0);
+	vUv = position.xy * 0.5 + 0.5;
 	vRay = uRayAxes * vec3((position.xy + uLens.zw) * uLens.xy, -1.0);
 }
 `;
 
-const fragment = (size: number): string => /* glsl */ `
-uniform highp sampler2D uMap;
-uniform highp sampler2D uPrevious;
-uniform highp float uBlend;
-uniform highp sampler2D uGain;
+/** Weights of a Gaussian of one texel's sigma, at 0 and 1 texel. */
+const BLUR = [1, Math.exp(-0.5)];
+const BLUR_SUM = (BLUR[0] + 2 * BLUR[1]) ** 2;
+
+/** The screen target, with a Gaussian of one target texel: the march's noise is
+ *  per texel, and this takes most of it out of a single pass. */
+const SCREEN_READ = /* glsl */ `
+highp vec3 readScreen() {
+	highp vec2 texel = 1.0 / vec2(textureSize(uMap, 0));
+	highp vec3 sum = vec3(0.0);
+	for (int j = -1; j <= 1; j++) {
+		for (int i = -1; i <= 1; i++) {
+			highp float w = (i == 0 ? ${glslFloat(BLUR[0])} : ${glslFloat(BLUR[1])}) * (j == 0 ? ${glslFloat(BLUR[0])} : ${glslFloat(BLUR[1])});
+			sum += w * textureLod(uMap, vUv + vec2(float(i), float(j)) * texel, 0.0).rgb;
+		}
+	}
+	return sum * ${glslFloat(1 / BLUR_SUM)};
+}`;
+
+/** The skybox's cube at the place's gain `uExposure`, on the glow's curve: a
+ *  value s of the cube is 1 - exp(-g) at the Sun's exposure. */
+const CUBE_FRAGMENT = /* glsl */ `
+uniform highp samplerCube uMap;
 uniform highp float uExposure;
 uniform highp float uShare;
-uniform highp sampler2D uGalaxy;
-uniform highp sampler2D uGalaxyPrevious;
-uniform highp mat3 uFrame;
-uniform highp mat3 uFramePrevious;
-/** Tangent of the half width and share of each map about the Galaxy: front in
- *  x and y, previous in z and w. A share of 0 means none. */
-uniform highp vec4 uGalaxyShape;
+uniform highp float uLod;
+uniform highp float uIntensity;
 varying highp vec3 vRay;
-${octUvGlsl(size)}
-
-// The sky map's light, or where the map about the Galaxy holds the ray, a mix
-// toward it by its share.
-highp vec3 galaxyMix(highp sampler2D map, highp mat3 frame, highp vec2 shape, highp vec3 ray, highp vec3 sky) {
-	if (shape.y <= 0.0) return sky;
-	highp vec3 c = ray * frame;
-	if (c.z <= 0.0) return sky;
-	highp vec2 q = c.xy / (c.z * shape.x);
-	highp float edge = 1.0 - max(abs(q.x), abs(q.y));
-	if (edge <= 0.0) return sky;
-	highp vec3 galaxy = textureLod(map, q * 0.5 + 0.5, 0.0).rgb;
-	return mix(sky, galaxy, shape.y * min(edge * ${(1 / EDGE_SHARE).toFixed(1)}, 1.0));
-}
 
 void main() {
-	highp vec3 ray = normalize(vRay);
-	highp vec2 uv = dustOctUv(ray);
-	highp vec3 glow = galaxyMix(uGalaxy, uFrame, uGalaxyShape.xy, ray, textureLod(uMap, uv, 0.0).rgb);
-	if (uBlend < 1.0) {
-		highp vec3 previous = textureLod(uPrevious, uv, 0.0).rgb;
-		previous = galaxyMix(uGalaxyPrevious, uFramePrevious, uGalaxyShape.zw, ray, previous);
-		glow = mix(previous, glow, uBlend);
-	}
-	// The eye's gain over the Sun's exposure, in log (eye.ts).
-	glow *= uExposure * exp(texelFetch(uGain, ivec2(0), 0).g);
-	gl_FragColor = vec4((1.0 - exp(-glow)) * uShare, 1.0);
+	highp vec3 s = textureLod(uMap, normalize(vRay), uLod).rgb * uIntensity;
+	highp vec3 shown = 1.0 - pow(max(1.0 - s, vec3(0.0)), vec3(uExposure));
+	gl_FragColor = vec4(shown * uShare, 1.0);
 }
 `;
 
-/** What the composite reads of one map: the sky, and the map about the Galaxy
- *  with its frame where there is one. */
-export interface GlowMapView {
-	sky: Texture;
-	galaxy: Texture | null;
-	frame: GalaxyFrame | null;
+function fragment(source: CompositeSource): string {
+	if (source.kind === 'cube') return CUBE_FRAGMENT;
+	const read =
+		source.kind === 'screen'
+			? 'readScreen()'
+			: 'textureLod(uMap, dustOctUv(normalize(vRay)), 0.0).rgb';
+	return /* glsl */ `
+uniform highp sampler2D uMap;
+uniform highp float uExposure;
+uniform highp float uShare;
+varying highp vec3 vRay;
+varying highp vec2 vUv;
+${source.kind === 'sky' ? octUvGlsl(source.size) : SCREEN_READ}
+
+void main() {
+	highp vec3 glow = ${read} * uExposure;
+	gl_FragColor = vec4((1.0 - exp(-glow)) * uShare, 1.0);
+}
+`;
 }
 
-function setFrame(out: Matrix3, frame: GalaxyFrame | null): void {
-	if (!frame) return;
-	const a = frame.axes;
-	// The axes are columns; Matrix3.set takes rows.
-	out.set(a[0], a[3], a[6], a[1], a[4], a[7], a[2], a[5], a[8]);
+const _camera = new Matrix3();
+
+/** The view's rays on nest axes, as the march and the composite need them. */
+export class ViewRays {
+	/** View to nest axes. */
+	readonly axes = new Matrix3();
+	/** x and y over z of the view at the screen's edge, and the projection's offset. */
+	readonly lens = new Vector4();
+	private readonly toTree = new Matrix3();
+
+	/** `nestAxes` is the rotation from tree axes to nest axes. */
+	constructor(private readonly nestAxes: Matrix3) {}
+
+	set(camera: PerspectiveCamera, sceneToTree: Matrix4): void {
+		const p = camera.projectionMatrix.elements;
+		this.lens.set(1 / p[0], 1 / p[5], p[8], p[9]);
+		this.toTree.setFromMatrix4(sceneToTree);
+		_camera.setFromMatrix4(camera.matrixWorld);
+		this.axes.copy(this.nestAxes).multiply(this.toTree).multiply(_camera);
+	}
 }
 
 /** Before every opaque object. */
 const RENDER_ORDER = -1e6;
 
-const _camera = new Matrix3();
-
 export class GlowComposite {
 	private readonly mesh: Mesh<BufferGeometry, ShaderMaterial>;
-	private readonly axes = new Matrix3();
-	private readonly toTree = new Matrix3();
 
-	/** `nestAxes` is the rotation from tree axes to nest axes. */
-	constructor(
-		scene: Scene,
-		size: number,
-		private readonly nestAxes: Matrix3
-	) {
+	constructor(scene: Scene, source: CompositeSource, rays: Pick<ViewRays, 'axes' | 'lens'>) {
 		const geometry = new BufferGeometry();
 		geometry.setAttribute(
 			'position',
@@ -127,21 +141,15 @@ export class GlowComposite {
 		const material = new ShaderMaterial({
 			uniforms: {
 				uMap: { value: null as Texture | null },
-				uPrevious: { value: null as Texture | null },
-				uBlend: { value: 1 },
-				uGain: { value: null as Texture | null },
 				uExposure: { value: 0 },
 				uShare: { value: 0 },
-				uGalaxy: { value: null as Texture | null },
-				uGalaxyPrevious: { value: null as Texture | null },
-				uFrame: { value: new Matrix3() },
-				uFramePrevious: { value: new Matrix3() },
-				uGalaxyShape: { value: new Vector4() },
-				uRayAxes: { value: this.axes },
-				uLens: { value: new Vector4() }
+				uLod: { value: 0 },
+				uIntensity: { value: 1 },
+				uRayAxes: { value: rays.axes },
+				uLens: { value: rays.lens }
 			},
 			vertexShader: VERTEX,
-			fragmentShader: fragment(size),
+			fragmentShader: fragment(source),
 			blending: CustomBlending,
 			blendEquation: AddEquation,
 			blendSrc: OneMinusDstColorFactor,
@@ -163,39 +171,15 @@ export class GlowComposite {
 		this.mesh.visible = false;
 	}
 
-	show(
-		map: GlowMapView,
-		previous: GlowMapView,
-		blend: number,
-		gain: Texture,
-		exposure: number,
-		share: number,
-		camera: PerspectiveCamera,
-		sceneToTree: Matrix4
-	): void {
+	/** Draw `map` at `exposure`, times `share`. The rays are this frame's. A
+	 *  cube reads its mip `lod` and takes `intensity` before the exposure. */
+	show(map: Texture, exposure: number, share: number, lod = 0, intensity = 1): void {
 		const { uniforms } = this.mesh.material;
-		uniforms.uMap.value = map.sky;
-		uniforms.uPrevious.value = previous.sky;
-		// A sampler must hold a texture even where its share is 0.
-		uniforms.uGalaxy.value = map.galaxy ?? map.sky;
-		uniforms.uGalaxyPrevious.value = previous.galaxy ?? previous.sky;
-		setFrame(uniforms.uFrame.value as Matrix3, map.frame);
-		setFrame(uniforms.uFramePrevious.value as Matrix3, previous.frame);
-		const shape = (f: GalaxyFrame | null, galaxy: Texture | null) =>
-			f && galaxy ? [f.tan, f.share] : [1, 0];
-		(uniforms.uGalaxyShape.value as Vector4).set(
-			...(shape(map.frame, map.galaxy) as [number, number]),
-			...(shape(previous.frame, previous.galaxy) as [number, number])
-		);
-		uniforms.uBlend.value = blend;
-		uniforms.uGain.value = gain;
+		uniforms.uMap.value = map;
 		uniforms.uExposure.value = exposure;
 		uniforms.uShare.value = share;
-		const p = camera.projectionMatrix.elements;
-		(uniforms.uLens.value as Vector4).set(1 / p[0], 1 / p[5], p[8], p[9]);
-		this.toTree.setFromMatrix4(sceneToTree);
-		_camera.setFromMatrix4(camera.matrixWorld);
-		this.axes.copy(this.nestAxes).multiply(this.toTree).multiply(_camera);
+		uniforms.uLod.value = lod;
+		uniforms.uIntensity.value = intensity;
 		this.mesh.visible = true;
 	}
 

@@ -57,6 +57,7 @@ interface SettingValues {
 	showStarfield: boolean;
 	realisticLighting: boolean;
 	overexposeRings: boolean;
+	glowCoarseReads: boolean;
 	showShapeMesh: boolean;
 	showSurfaceTexture: boolean;
 	showDisplacement: boolean;
@@ -106,6 +107,7 @@ const SETTING_SPEC = {
 	realisticLighting: { default: false, persist: true },
 	// The physical picture is the one the map opens on.
 	overexposeRings: { default: false, persist: false },
+	glowCoarseReads: { default: true, persist: false },
 	showShapeMesh: { default: true, persist: true },
 	showSurfaceTexture: { default: true, persist: true },
 	showDisplacement: { default: true, persist: true },
@@ -200,6 +202,7 @@ class SettingsState implements SceneSettings, SettingValues {
 	 *  physical intensity scale — Jupiter/Uranus/Neptune's rings are otherwise
 	 *  (correctly) near-invisible. */
 	overexposeRings = $state<boolean>(SETTING_SPEC.overexposeRings.default);
+	glowCoarseReads = $state<boolean>(SETTING_SPEC.glowCoarseReads.default);
 	/** Debug body-layer toggles: peel back the focused body's render stack to
 	 *  isolate a layer (e.g. shape mesh off → textured triaxial sphere). */
 	showShapeMesh = $state<boolean>(SETTING_SPEC.showShapeMesh.default);
@@ -337,6 +340,10 @@ class SettingsState implements SceneSettings, SettingValues {
 
 	setOverexposeRings(v: boolean) {
 		this.set('overexposeRings', v);
+	}
+
+	setGlowCoarseReads(v: boolean) {
+		this.set('glowCoarseReads', v);
 	}
 
 	setShowShapeMesh(v: boolean) {

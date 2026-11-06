@@ -100,12 +100,7 @@ export class GpuLoad<M, D> {
 		}
 	}
 
-	/**
-	 * One frame of the upload, then the build. A build that throws on a lost
-	 * context is no fault of the device: what it made goes, and the restore
-	 * builds again. Any other throw would repeat on every frame, so `failed`
-	 * gives the phase the session goes on in.
-	 */
+	/** One frame of the upload, then the build. A throw of the build goes to `fail`. */
 	upload(upload: Upload, build: () => void, failed: (err: unknown) => LoadPhase): void {
 		if (!upload.uploaded) {
 			upload.step();
@@ -115,10 +110,20 @@ export class GpuLoad<M, D> {
 			build();
 			this.phase = 'ready';
 		} catch (err) {
-			const lost = this.lost;
-			this.steps.release(!lost);
-			this.phase = lost ? 'idle' : failed(err);
+			this.fail(err, failed);
 		}
+	}
+
+	/**
+	 * Something the owner makes on the GPU threw. On a lost context it is no
+	 * fault of the device: what was made goes, and the restore builds again. Any
+	 * other throw would repeat on every frame, so `failed` gives the phase the
+	 * session goes on in.
+	 */
+	fail(err: unknown, failed: (err: unknown) => LoadPhase): void {
+		const lost = this.lost;
+		this.steps.release(!lost);
+		this.phase = lost ? 'idle' : failed(err);
 	}
 
 	/**

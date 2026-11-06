@@ -7,6 +7,7 @@
  */
 import {
 	CubeTexture,
+	LinearFilter,
 	Quaternion,
 	SRGBColorSpace,
 	Vector3,
@@ -137,6 +138,8 @@ function releaseTierBitmaps(id: string, tier: string, bitmaps: ImageBitmap[]): v
 function makeCube(bitmaps: ImageBitmap[]): CubeTexture {
 	const cube = new CubeTexture(bitmaps);
 	cube.colorSpace = SRGBColorSpace;
+	// The faces are freed after upload; the glow reads the cube's mips by this.
+	cube.userData.faceTexels = bitmaps[0]?.width ?? 0;
 	cube.needsUpdate = true;
 	return cube;
 }
@@ -299,4 +302,20 @@ export async function loadSkybox(
 	} catch (err) {
 		console.warn('Failed to load skybox:', err);
 	}
+}
+
+/**
+ * The sky without its bright stars, as the glow reads it past the solar system,
+ * or null where the export has none. Its faces are small, so they stay with the
+ * cube and three uploads them again after a context restore.
+ */
+export async function loadStarlessSky(): Promise<CubeTexture | null> {
+	const starless = (await fetchMetadata()).skybox?.starless;
+	const tier = starless?.tiers[0];
+	if (!starless || !tier) return null;
+	const cube = makeCube(await loadTierBitmaps(starless.id, tier));
+	// The glow reads its first level, which is the size it needs.
+	cube.generateMipmaps = false;
+	cube.minFilter = LinearFilter;
+	return cube;
 }

@@ -120,6 +120,17 @@ describe('the glow textures', () => {
 		});
 	});
 
+	it('come with coarse copies where the tier has room for them', async () => {
+		const meta = { ...META, tiers: { ...META.tiers, low: { ...META.tiers.low, size: 6 } } };
+		fetchFile.mockResolvedValue({ kind: KIND_VOLUME, uint16: () => new Uint16Array(288) });
+		const { coarse } = await fetchGlowVolume(meta, 'low');
+		const { width, height, levels } = coarse!.layout;
+		expect(levels.map((l) => l.inner)).toEqual([2]);
+		expect(coarse!.a).toHaveLength(width * height * 2 * 4);
+		fetchFile.mockResolvedValue({ kind: KIND_VOLUME, uint16: () => new Uint16Array(32) });
+		expect((await fetchGlowVolume(META, 'low')).coarse).toBeNull();
+	});
+
 	it('are refused when a file is not a volume', async () => {
 		fetchFile.mockResolvedValue({ kind: 3, uint16: () => new Uint16Array(32) });
 		await expect(fetchGlowVolume(META, 'high')).rejects.toThrow(NestFormatError);

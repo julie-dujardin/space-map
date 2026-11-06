@@ -1,56 +1,59 @@
 /**
- * The life of `GlowSky`: when it loads, when it marches, when it rests, and what
- * it frees on a tier change, a change of the map's shape, a context lost before
- * or during the build and a dust nest that changes under it. The GL classes are
- * fakes that count what they hold, so a leak shows as a number.
+ * The life of `GlowSky`: when it loads, when it marches, when it rests, when it
+ * steps down on a slow device, and what it frees on a tier change, a change of
+ * the plan's shape, a context lost before or during the build, a target that
+ * fails and a dust nest that changes under it. The GL classes are fakes that
+ * count what they hold, so a leak shows as a number.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
-import { PerspectiveCamera, Scene, type WebGLRenderer } from 'three';
+import {
+	CubeTexture,
+	Euler,
+	PerspectiveCamera,
+	Scene,
+	type Vector2,
+	type WebGLRenderer
+} from 'three';
 import type { StarDust } from '$lib/scene/dust/star-dust';
 import type { Vec3 } from '$lib/scene/dust/octahedral';
-import { ADAPT_REST_MS } from './exposure';
-import { GLOW_CUT_MAG, GlowSky, type GlowFrame, type GlowPlan } from './glow-sky';
+import { GLOW_CUT_MAG } from '$lib/scene/starfield/band';
+import { SUN_EXPOSURE, joinShare, placeGain } from './exposure';
+import { GlowSky, stepDown, type GlowFrame, type GlowPlan, type SkyboxSource } from './glow-sky';
+import { StarlessSky } from './starless';
 
 const gl = vi.hoisted(() => ({
 	live: new Set<object>(),
 	runs: [] as {
 		origin: Vec3;
-		from: number;
-		rows: number;
 		cut: number;
+		jitter: number;
 		weight: number;
-		galaxy: boolean;
-		alone: boolean;
+		/** The screen target, or the map of the emission alone. */
+		screen: boolean;
+		size: [number, number];
+		/** Where in its texel the ray goes. */
+		offset: number[] | null;
 	}[],
-	shown: 0,
 	uploadFrames: 2,
-	measured: [] as boolean[],
-	/** Steps of the eye: true for one that takes its target at once. */
-	steps: [] as boolean[],
-	/** Questions to the eye, and what the GPU answers: null while it has no answer. */
-	asks: 0,
-	close: null as boolean | null,
-	/** Questions on the model's share, and the answer. */
-	shareAsks: [] as number[],
-	modelShare: null as boolean | null,
-	/** A question on the share is out. */
-	sharePending: false,
-	/** The edge of the map about the Galaxy that each march was built for. */
-	galaxyEdges: [] as number[],
-	/** The blend of each frame shown. */
-	blends: [] as number[],
-	/** The share each composite showed, by the order they were made in. */
-	composites: [] as number[][],
+	/** What each composite showed, by the order they were made in. */
+	composites: [] as { share: number; exposure: number; map: unknown; lod: number }[][],
 	/** The share the far regions showed, and the parts each march was built for. */
 	regions: [] as number[],
 	parts: [] as unknown[],
+	/** The steps each march was built for. */
+	steps: [] as unknown[],
 	marches: 0,
 	failMarch: false,
 	/** Volumes made, and the one whose constructor throws, counted from 1. */
 	volumes: 0,
 	failVolumeAt: 0,
-	lost: false
+	/** A screen target fails to be made. */
+	failTarget: false,
+	lost: false,
+	/** The view in CSS pixels, and the pixel ratio. */
+	size: [1600, 900] as [number, number],
+	pixelRatio: 1
 }));
 
 const net = vi.hoisted(() => ({
@@ -61,60 +64,79 @@ const net = vi.hoisted(() => ({
 	extra: {} as Record<string, unknown>
 }));
 
-vi.mock('$lib/scene/dust/march', () => ({
-	VolumeTextures: class {
-		steps = 0;
-		readonly volume = true;
-		constructor() {
-			if (++gl.volumes === gl.failVolumeAt) throw new Error('glow: out of memory');
-			gl.live.add(this);
-		}
-		get uploaded() {
-			return this.steps >= gl.uploadFrames;
-		}
-		step() {
-			this.steps++;
-		}
-		dispose() {
-			gl.live.delete(this);
-		}
-	},
-	SkyMap: class {
+vi.mock('$lib/scene/dust/march', () => {
+	class FloatTarget {
 		external = {};
-		constructor() {
+		constructor(
+			_renderer: unknown,
+			readonly width: number,
+			readonly height: number
+		) {
+			if (gl.failTarget) throw new Error('float target: framebuffer 36054');
 			gl.live.add(this);
 		}
 		dispose() {
 			gl.live.delete(this);
 		}
 	}
-}));
+	return {
+		VolumeTextures: class {
+			steps = 0;
+			readonly volume = true;
+			constructor() {
+				if (++gl.volumes === gl.failVolumeAt) throw new Error('glow: out of memory');
+				gl.live.add(this);
+			}
+			get uploaded() {
+				return this.steps >= gl.uploadFrames;
+			}
+			step() {
+				this.steps++;
+			}
+			dispose() {
+				gl.live.delete(this);
+			}
+		},
+		FloatTarget,
+		SkyMap: class extends FloatTarget {
+			constructor(renderer: unknown, size: number) {
+				super(renderer, size, size);
+			}
+		}
+	};
+});
 
-vi.mock('./march', () => ({
+vi.mock('./march', async (importActual) => ({
+	...(await importActual<typeof import('./march')>()),
 	GlowMarch: class {
 		constructor(...args: unknown[]) {
 			// On a lost context the march does not link.
 			if (gl.failMarch) throw new Error('dust march: link failed');
 			gl.marches++;
-			gl.galaxyEdges.push((args[7] as GlowPlan).galaxy);
-			const emission = args[9] as { parts: { halpha: boolean; scatter: boolean } } | null;
+			gl.steps.push(args[7]);
+			const emission = args[10] as { parts: { halpha: boolean; scatter: boolean } } | null;
 			gl.parts.push(emission?.parts ?? null);
 			this.emissionAlone = !!emission && (emission.parts.halpha || emission.parts.scatter);
 			gl.live.add(this);
 		}
 		emissionAlone = false;
 		run(
-			_map: unknown,
+			target: { width: number; height: number },
 			origin: Vec3,
 			cut: number,
-			_jitter: number,
+			jitter: number,
 			weight: number,
-			from: number,
-			rows: number,
-			frame: unknown,
-			alone = false
+			view: { offset: readonly number[] } | null
 		) {
-			gl.runs.push({ origin, from, rows, cut, weight, galaxy: frame !== null, alone });
+			gl.runs.push({
+				origin: [...origin] as Vec3,
+				cut,
+				jitter,
+				weight,
+				screen: view !== null,
+				size: [target.width, target.height],
+				offset: view ? [...view.offset] : null
+			});
 		}
 		dispose() {
 			gl.live.delete(this);
@@ -122,57 +144,16 @@ vi.mock('./march', () => ({
 	}
 }));
 
-vi.mock('./eye', () => ({
-	GlowEye: class {
-		texture = {};
-		constructor() {
-			gl.live.add(this);
-		}
-		measure(_map: unknown, reference: boolean) {
-			gl.measured.push(reference);
-		}
-		step(_dtMs: number, atOnce: boolean) {
-			gl.steps.push(atOnce);
-		}
-		ask() {
-			gl.asks++;
-		}
-		answer() {
-			return gl.asks > 0 ? gl.close : null;
-		}
-		askShare(share: number) {
-			gl.shareAsks.push(share);
-		}
-		shareAnswer() {
-			return gl.shareAsks.length > 0 ? gl.modelShare : null;
-		}
-		get sharePending() {
-			return gl.sharePending;
-		}
-		dispose() {
-			gl.live.delete(this);
-		}
-	}
-}));
-
-vi.mock('./composite', () => ({
+vi.mock('./composite', async (importActual) => ({
+	...(await importActual<typeof import('./composite')>()),
 	GlowComposite: class {
-		private readonly shares: number[] = [];
+		private readonly shown: { share: number; exposure: number; map: unknown; lod: number }[] = [];
 		constructor() {
 			gl.live.add(this);
-			gl.composites.push(this.shares);
+			gl.composites.push(this.shown);
 		}
-		show(
-			_map: unknown,
-			_previous: unknown,
-			blend: number,
-			_gain: unknown,
-			_exposure: number,
-			share: number
-		) {
-			gl.shown++;
-			gl.blends.push(blend);
-			this.shares.push(share);
+		show(map: unknown, exposure: number, share: number, lod = 0) {
+			this.shown.push({ share, exposure, map, lod });
 		}
 		hide() {}
 		dispose() {
@@ -203,7 +184,7 @@ vi.mock('./regions', () => ({
 			gl.live.add(this);
 		}
 		show(...args: unknown[]) {
-			gl.regions.push(args[4] as number);
+			gl.regions.push(args[3] as number);
 		}
 		hide() {}
 		dispose() {
@@ -238,34 +219,61 @@ const META = {
 	distribution: 'open',
 	tiers: { high: {}, low: {} }
 };
-const PLAN: GlowPlan = { grid: 'high', size: 64, steps: 8, passes: 2, galaxy: 0 };
+const PLAN: GlowPlan = { grid: 'high', divisor: 2, steps: 32, passes: 4, sunSize: 64 };
+/** The finest cell of the fake nest is 2 pc. */
+const nest = () => ({ levels: [{ half: [250, 250, 250], size: [250, 250, 250] }] });
+const CENTRE: Vec3 = [8_277, 0, -21];
+/** Past the join, where the stars draw. */
+const OUT: Vec3 = [100, 0, 10];
 
 let clock = 0;
 let canvas: EventTarget;
 let warn: MockInstance;
-/** The dust's refresh found the same reach everywhere: 0.05 pc. */
 let dust: {
 	marchNest: object | null;
-	reachAtSun: number;
-	latestReach: number;
 	frame: unknown;
 	token: string | null;
 	columns: unknown;
 };
 
-function make(plan: GlowPlan | null = PLAN): GlowSky {
+/** A skybox the glow reads past the join. */
+const SKYBOX = (): SkyboxSource => ({
+	texture: new CubeTexture(),
+	rotation: new Euler(),
+	faceTexels: 4096
+});
+
+function make(
+	plan: GlowPlan | null = PLAN,
+	skybox?: () => SkyboxSource | null,
+	starless?: StarlessSky
+): GlowSky {
 	canvas = new EventTarget();
-	const renderer = { domElement: canvas, getContext: () => ({ isContextLost: () => gl.lost }) };
+	const renderer = {
+		domElement: canvas,
+		getContext: () => ({ isContextLost: () => gl.lost }),
+		getSize: (v: Vector2) => v.set(...gl.size),
+		getDrawingBufferSize: (v: Vector2) =>
+			v.set(gl.size[0] * gl.pixelRatio, gl.size[1] * gl.pixelRatio)
+	};
 	return new GlowSky(
 		renderer as unknown as WebGLRenderer,
 		new Scene(),
 		plan,
 		dust as unknown as StarDust,
-		() => {}
+		() => {},
+		skybox,
+		starless
 	);
 }
 
-const camera = new PerspectiveCamera();
+const camera = new PerspectiveCamera(60, 16 / 9, 0.1, 10);
+
+/** Turn the camera by `yaw` radians: a new pose with the same place. */
+function turn(yaw: number): void {
+	camera.rotation.set(0, yaw, 0);
+	camera.updateMatrixWorld();
+}
 
 function frame(at: Vec3, extra: Partial<GlowFrame> = {}): GlowFrame {
 	clock += 16;
@@ -280,6 +288,7 @@ function frame(at: Vec3, extra: Partial<GlowFrame> = {}): GlowFrame {
 		share: 1,
 		skybox: 0,
 		heightPx: 900,
+		skyboxLayer: false,
 		nowMs: clock,
 		dtMs: 16,
 		...extra
@@ -288,7 +297,7 @@ function frame(at: Vec3, extra: Partial<GlowFrame> = {}): GlowFrame {
 
 async function ready(glow: GlowSky, at: Vec3 = [0, 0, 0]) {
 	for (let i = 0; i < 20 && glow.stats().phase !== 'ready'; i++) {
-		glow.update(frame(at));
+		glow.update(frame(at, { drawing: false, share: 0 }));
 		await vi.advanceTimersByTimeAsync(0);
 	}
 	expect(glow.stats().phase).toBe('ready');
@@ -302,37 +311,32 @@ function settle(glow: GlowSky, at: Vec3, extra: Partial<GlowFrame> = {}): void {
 	expect(glow.busy()).toBe(false);
 }
 
+const screenRuns = () => gl.runs.filter((run) => run.screen);
+
 beforeEach(() => {
 	vi.useFakeTimers();
 	clock = 0;
+	turn(0);
 	gl.live.clear();
 	gl.runs = [];
-	gl.shown = 0;
-	gl.measured = [];
-	gl.steps = [];
-	gl.asks = 0;
-	gl.close = null;
-	gl.shareAsks = [];
-	gl.modelShare = null;
-	gl.sharePending = false;
-	gl.galaxyEdges = [];
-	gl.blends = [];
 	gl.composites = [];
 	gl.regions = [];
 	gl.parts = [];
+	gl.steps = [];
 	gl.marches = 0;
 	gl.failMarch = false;
 	gl.volumes = 0;
 	gl.failVolumeAt = 0;
+	gl.failTarget = false;
 	gl.lost = false;
+	gl.size = [1600, 900];
+	gl.pixelRatio = 1;
 	net.metadata = async () => META;
 	net.volumes = 0;
 	net.emission = false;
 	net.extra = {};
 	dust = {
-		marchNest: {},
-		reachAtSun: 0.05,
-		latestReach: 0.05,
+		marchNest: nest(),
 		frame: {
 			rotation_to_icrs: [
 				[1, 0, 0],
@@ -352,16 +356,19 @@ afterEach(() => {
 });
 
 describe('loading', () => {
-	it('waits for the dust’s GPU nest, then builds a march, three maps, a meter and the composite', async () => {
+	it('waits for the dust’s GPU nest, then builds a march and the composite', async () => {
 		dust.marchNest = null;
 		const glow = make();
 		for (let i = 0; i < 5; i++) glow.update(frame([0, 0, 0]));
 		await vi.advanceTimersByTimeAsync(0);
 		expect(glow.stats().phase).toBe('idle');
-		dust.marchNest = {};
+		dust.marchNest = nest();
 		await ready(glow);
-		expect(gl.live.size).toBe(7);
+		// The grid, the march and the composites of the march and the skybox; the
+		// screen target comes with the first pose.
+		expect(gl.live.size).toBe(4);
 		expect(net.volumes).toBe(1);
+		expect(gl.steps).toEqual([{ screen: PLAN.steps, sky: 48 }]);
 	});
 
 	it('loads nothing before the prefetch distance', async () => {
@@ -410,227 +417,293 @@ describe('a load whose textures fail', () => {
 	});
 });
 
-describe('maps', () => {
-	it('makes the first map at the Sun in the solar system, then rests', async () => {
+describe('the march from the camera', () => {
+	it('marches the screen from the camera in the frame that shows it, into a part of the buffer', async () => {
 		const glow = make();
 		await ready(glow);
-		settle(glow, [0, 0, 0], { drawing: false });
-		const rows = gl.runs.reduce((sum, run) => sum + run.rows, 0);
-		expect(rows).toBe(PLAN.size * PLAN.passes);
-		expect(gl.runs[0].weight).toBe(1);
-		expect(glow.stats().refreshes).toBe(1);
-		const before = gl.runs.length;
-		settle(glow, [0, 0, 0]);
-		expect(gl.runs.length).toBe(before);
-		expect(gl.shown).toBeGreaterThan(0);
+		glow.update(frame(OUT));
+		expect(screenRuns()).toHaveLength(1);
+		const [run] = screenRuns();
+		expect(run.origin).toEqual(OUT);
+		expect(run.weight).toBe(1);
+		expect(run.size).toEqual([800, 450]);
+		expect(gl.composites[0].at(-1)?.share).toBeGreaterThan(0);
 	});
 
-	it('makes a new map only when the camera leaves the reach', async () => {
+	it('marches pass 0 alone in each frame of a flight, from that frame’s place', async () => {
 		const glow = make();
 		await ready(glow);
-		settle(glow, [0, 0, 0]);
-		settle(glow, [0.04, 0, 0]);
-		expect(glow.stats().refreshes).toBe(1);
-		settle(glow, [0.2, 0, 0]);
-		expect(glow.stats().refreshes).toBe(2);
+		const path: Vec3[] = Array.from({ length: 20 }, (_, i) => [100 + i, 0, 10]);
+		for (const at of path) glow.update(frame(at));
+		const runs = screenRuns();
+		expect(runs.map((run) => run.origin)).toEqual(path);
+		expect(runs.every((run) => run.weight === 1 && run.jitter === runs[0].jitter)).toBe(true);
 	});
 
-	it('cuts every map at the skybox’s limit, from any place', async () => {
+	it('marches again when the view turns, with no change of place', async () => {
 		const glow = make();
 		await ready(glow);
-		settle(glow, [0, 0, 0]);
+		settle(glow, OUT);
+		const before = screenRuns().length;
+		turn(0.1);
+		glow.update(frame(OUT));
+		expect(screenRuns()).toHaveLength(before + 1);
+		expect(screenRuns().at(-1)?.weight).toBe(1);
+	});
+
+	it('blends in the rest of the passes at rest, one a frame, and then does no work', async () => {
+		const glow = make();
+		await ready(glow);
+		settle(glow, OUT);
+		const runs = screenRuns();
+		expect(runs.map((run) => run.weight)).toEqual([1, 1 / 2, 1 / 3, 1 / 4]);
+		expect(new Set(runs.map((run) => run.jitter)).size).toBe(PLAN.passes);
+		for (let i = 0; i < 10; i++) glow.update(frame(OUT));
+		expect(screenRuns()).toHaveLength(PLAN.passes);
+		expect(glow.busy()).toBe(false);
+	});
+
+	it('gives a pose the same passes, whatever the path to it', async () => {
+		const glow = make();
+		await ready(glow);
+		settle(glow, OUT);
+		const first = screenRuns();
+		gl.runs = [];
 		settle(glow, [5000, 0, 0]);
-		expect(glow.stats().refreshes).toBe(2);
+		turn(1);
+		settle(glow, [-300, 20, 0]);
+		turn(0);
+		gl.runs = [];
+		settle(glow, OUT);
+		expect(screenRuns()).toEqual(first);
+	});
+
+	it('cuts every pass at the skybox’s limit, from any place', async () => {
+		const glow = make();
+		await ready(glow);
+		settle(glow, OUT);
+		settle(glow, [5000, 0, 0]);
 		expect(gl.runs.every((run) => run.cut === GLOW_CUT_MAG)).toBe(true);
 		expect(GLOW_CUT_MAG).toBe(7.5);
 	});
 
-	it('makes the map at the Sun first and does not show it, when the camera starts far away', async () => {
-		const glow = make();
-		await ready(glow, [50, 0, 0]);
-		settle(glow, [50, 0, 0]);
-		const sun = gl.runs.filter((run) => run.origin.every((x) => x === 0));
-		expect(sun.reduce((sum, run) => sum + run.rows, 0)).toBe(PLAN.size * PLAN.passes);
-		expect(gl.runs[0].origin).toEqual([0, 0, 0]);
-		expect(glow.stats().refreshes).toBe(1);
-		expect(glow.stats().origin).toEqual([50, 0, 0]);
-	});
-
-	it('blends a new map in over a few frames, and rests after', async () => {
+	it('makes a new target for a new size of the view, and marches the pose again', async () => {
 		const glow = make();
 		await ready(glow);
-		settle(glow, [0, 0, 0]);
-		let swapped = false;
-		for (let i = 0; i < 200 && !swapped; i++) {
-			glow.update(frame([0.2, 0, 0]));
-			swapped = glow.stats().refreshes === 2;
+		settle(glow, OUT);
+		const targets = () =>
+			[...gl.live].filter((o) => 'width' in o && (o as { width: number }).width !== 64);
+		expect(targets()).toHaveLength(1);
+		gl.size = [1000, 501];
+		gl.runs = [];
+		settle(glow, OUT);
+		expect(targets()).toHaveLength(1);
+		expect(screenRuns()[0].size).toEqual([500, 251]);
+		expect(screenRuns()).toHaveLength(PLAN.passes);
+	});
+
+	it('does not march while the stars do not draw, nor while the glow is off', async () => {
+		const glow = make();
+		await ready(glow);
+		settle(glow, [0, 0, 0], { drawing: false, share: 0 });
+		expect(screenRuns()).toHaveLength(0);
+		glow.setEnabled(false);
+		settle(glow, OUT);
+		expect(screenRuns()).toHaveLength(0);
+		glow.setEnabled(true);
+		settle(glow, OUT);
+		expect(screenRuns()).toHaveLength(PLAN.passes);
+	});
+
+	it('marches the pose again after a stop, so a target never shows a pose it was not marched for', async () => {
+		const glow = make();
+		await ready(glow);
+		settle(glow, OUT);
+		settle(glow, [0, 0, 0], { drawing: false, share: 0 });
+		gl.runs = [];
+		glow.update(frame([200, 0, 0]));
+		expect(screenRuns()[0].origin).toEqual([200, 0, 0]);
+	});
+
+	it('takes a move far under the finest dust cell as the same pose, and marches it from where it began', async () => {
+		const glow = make();
+		await ready(glow);
+		// A body's orbit carries the camera on: 2e-6 pc a frame is 4e-5 pc in all.
+		for (let i = 0; i < 20; i++) glow.update(frame([100 + 2e-6 * i, 0, 10]));
+		const runs = screenRuns();
+		expect(runs.map((run) => run.weight)).toEqual([1, 1 / 2, 1 / 3, 1 / 4]);
+		expect(runs.every((run) => run.origin[0] === 100)).toBe(true);
+		expect(glow.stats().poseShift).toBeCloseTo(2e-4, 12);
+		// A move past it is a new pose.
+		glow.update(frame([100 + 3e-4, 0, 10]));
+		expect(screenRuns().at(-1)).toMatchObject({ weight: 1, origin: [100 + 3e-4, 0, 10] });
+	});
+
+	it('sizes the target from CSS pixels, so a pixel ratio of 2 marches as many rays as 1', async () => {
+		gl.pixelRatio = 2;
+		const glow = make();
+		await ready(glow);
+		glow.update(frame(OUT));
+		expect(screenRuns()[0].size).toEqual([800, 450]);
+	});
+
+	it('puts pass 0’s rays at the texel centres, and all passes’ about them', async () => {
+		const glow = make();
+		await ready(glow);
+		settle(glow, OUT);
+		const offsets = screenRuns().map((run) => run.offset!);
+		expect(offsets[0]).toEqual([0, 0]);
+		expect(new Set(offsets.map((o) => o.join())).size).toBe(PLAN.passes);
+		for (const k of [0, 1]) {
+			expect(Math.abs(offsets.reduce((sum, o) => sum + o[k], 0))).toBeLessThan(1e-12);
+			// The spread of a box one texel wide.
+			expect(offsets.reduce((sum, o) => sum + o[k] ** 2, 0) / PLAN.passes).toBeCloseTo(1 / 12, 12);
+			expect(offsets.every((o) => Math.abs(o[k]) < 0.5)).toBe(true);
 		}
-		expect(swapped).toBe(true);
-		expect(glow.busy()).toBe(true);
-		settle(glow, [0.2, 0, 0]);
 	});
 
-	it('holds a finished map until the blend before it ends, so no map drops at once', async () => {
+	it('stops after pass 0 for the gates, and goes on when let', async () => {
 		const glow = make();
 		await ready(glow);
-		settle(glow, [0, 0, 0]);
-		gl.blends = [];
-		// The camera leaves each map's reach in every frame.
-		for (let i = 1; i <= 200; i++) glow.update(frame([0.2 * i, 0, 0]));
-		const restarts = gl.blends.filter((blend, i) => i > 0 && blend < gl.blends[i - 1]);
-		expect(restarts.length).toBeGreaterThan(5);
-		gl.blends.forEach((blend, i) => {
-			if (i > 0 && blend < gl.blends[i - 1]) expect(gl.blends[i - 1]).toBe(1);
-		});
-	});
-
-	it('takes the reach the dust found for its own refresh', async () => {
-		const glow = make();
-		await ready(glow);
-		settle(glow, [0, 0, 0]);
-		expect(glow.stats().reach).toBe(0.05);
-		dust.latestReach = 1;
-		settle(glow, [0.2, 0, 0]);
-		expect(glow.stats().refreshes).toBe(2);
-		expect(glow.stats().reach).toBe(1);
-		settle(glow, [0.9, 0, 0]);
-		expect(glow.stats().refreshes).toBe(2);
-		settle(glow, [1.5, 0, 0]);
-		expect(glow.stats().refreshes).toBe(3);
-	});
-
-	it('does not march while the stars do not draw, once a map is made', async () => {
-		const glow = make();
-		await ready(glow);
-		settle(glow, [0, 0, 0]);
-		const before = gl.runs.length;
-		settle(glow, [5, 0, 0], { drawing: false });
-		expect(gl.runs.length).toBe(before);
-	});
-
-	it('makes maps less often while frames are slow, as the dust does', async () => {
-		/** Maps made while the camera leaves each map's reach in every frame. */
-		const maps = async (dtMs: number) => {
-			const glow = make();
-			await ready(glow);
-			settle(glow, [0, 0, 0]);
-			for (let i = 1; i <= 300; i++) glow.update(frame([0.2 * i, 0, 0], { dtMs }));
-			return glow.stats().refreshes;
-		};
-		const fast = await maps(16);
-		const slow = await maps(60);
-		expect(slow).toBeGreaterThan(1);
-		expect(slow * 3).toBeLessThan(fast);
+		glow.limitPasses(1);
+		settle(glow, OUT);
+		expect(screenRuns()).toHaveLength(1);
+		glow.limitPasses(Infinity);
+		gl.runs = [];
+		settle(glow, OUT);
+		expect(screenRuns().map((run) => run.weight)).toEqual([1, 1 / 2, 1 / 3, 1 / 4]);
 	});
 });
 
-describe('turned off', () => {
-	it('drops the map at the Sun it was making, rests, and makes it again when on', async () => {
+describe('a screen target that fails', () => {
+	it('leaves the session with no glow, frees what it made, and lets the frame draw', async () => {
 		const glow = make();
-		await ready(glow, [50, 0, 0]);
-		glow.update(frame([50, 0, 0]));
-		expect(gl.runs.length).toBeGreaterThan(0);
-		glow.setEnabled(false);
-		glow.update(frame([50, 0, 0]));
+		await ready(glow);
+		gl.failTarget = true;
+		expect(() => glow.update(frame(OUT))).not.toThrow();
+		expect(glow.stats().phase).toBe('none');
+		expect(gl.live.size).toBe(0);
+		expect(warn).toHaveBeenCalledWith('[glow] no glow on this device:', expect.any(Error));
+		gl.failTarget = false;
+		glow.update(frame(OUT));
+		expect(screenRuns()).toHaveLength(0);
 		expect(glow.busy()).toBe(false);
-		const before = gl.runs.length;
-		settle(glow, [50, 0, 0]);
-		expect(gl.runs.length).toBe(before);
-		glow.setEnabled(true);
-		settle(glow, [50, 0, 0]);
-		const again = gl.runs.slice(before);
-		const sun = again.filter((run) => run.origin.every((x) => x === 0));
-		expect(again[0]).toMatchObject({ origin: [0, 0, 0], from: 0, weight: 1 });
-		expect(sun.reduce((sum, run) => sum + run.rows, 0)).toBe(PLAN.size * PLAN.passes);
-		expect(gl.measured).toEqual([true, false]);
-		expect(gl.shown).toBeGreaterThan(0);
 	});
 
-	it('rests between the map at the Sun and the first map of the camera', async () => {
+	it('is no failure of the device on a lost context: the restore builds the glow', async () => {
 		const glow = make();
-		await ready(glow, [50, 0, 0]);
-		for (let i = 0; i < 100 && gl.measured.length === 0; i++) glow.update(frame([50, 0, 0]));
-		expect(gl.measured).toEqual([true]);
-		glow.setEnabled(false);
-		glow.update(frame([50, 0, 0]));
-		expect(glow.busy()).toBe(false);
-		glow.setEnabled(true);
-		settle(glow, [50, 0, 0]);
-		expect(gl.measured).toEqual([true, false]);
-		expect(gl.shown).toBeGreaterThan(0);
+		await ready(glow);
+		gl.failTarget = true;
+		gl.lost = true;
+		glow.update(frame(OUT));
+		expect(glow.stats().phase).toBe('idle');
+		gl.failTarget = false;
+		gl.lost = false;
+		canvas.dispatchEvent(new Event('webglcontextrestored'));
+		await ready(glow);
+		settle(glow, OUT);
+		expect(screenRuns()).toHaveLength(PLAN.passes);
+		expect(warn).not.toHaveBeenCalled();
+	});
+});
+
+describe('a slow device', () => {
+	/** Frames of a flight, each `ms` long, from a place `start` on. */
+	const fly = (glow: GlowSky, frames: number, ms: number, start: number) => {
+		for (let i = 0; i < frames; i++) glow.update(frame([100 + start + i, 0, 10], { dtMs: ms }));
+	};
+
+	it('steps down to a coarser target, then fewer steps, and no further', async () => {
+		const glow = make();
+		await ready(glow);
+		fly(glow, 31, 40, 0);
+		expect(glow.stats().rung).toBe(1);
+		expect(screenRuns().at(-1)?.size).toEqual([400, 225]);
+		expect(gl.marches).toBe(1);
+		fly(glow, 31, 40, 100);
+		expect(glow.stats().rung).toBe(2);
+		expect(gl.steps.at(-1)).toEqual({ screen: PLAN.steps / 2, sky: 48 });
+		fly(glow, 100, 40, 200);
+		expect(glow.stats()).toMatchObject({ rung: 2, judging: false });
+		expect(stepDown(PLAN, 2)).toMatchObject({ divisor: 4, steps: 16, passes: PLAN.passes });
+	});
+
+	it('keeps its plan for the session once moving frames are fast, whatever comes after', async () => {
+		const glow = make();
+		await ready(glow);
+		fly(glow, 31, 16, 0);
+		expect(glow.stats()).toMatchObject({ rung: 0, judging: false });
+		fly(glow, 100, 60, 100);
+		expect(glow.stats().rung).toBe(0);
+		expect(screenRuns().at(-1)?.size).toEqual([800, 450]);
+	});
+
+	it('judges moving frames alone: frames at rest are not its cost', async () => {
+		const glow = make();
+		await ready(glow);
+		for (let i = 0; i < 100; i++) glow.update(frame(OUT, { dtMs: 60 }));
+		expect(glow.stats()).toMatchObject({ rung: 0, judging: true });
+	});
+
+	it('keeps its steps down on a change of tier', async () => {
+		const glow = make();
+		await ready(glow);
+		fly(glow, 31, 40, 0);
+		glow.setPlan({ ...PLAN, grid: 'low', divisor: 4 });
+		await ready(glow);
+		glow.update(frame(OUT));
+		expect(screenRuns().at(-1)?.size).toEqual([200, 113]);
 	});
 });
 
 describe('exposure', () => {
-	it('measures the map at the Sun as the reference and as the first map, and shows nothing before', async () => {
+	it('is the Sun’s times the gain by place, and nothing else', async () => {
+		net.metadata = async () => ({ ...META, model: { centre_pc: CENTRE } });
 		const glow = make();
 		await ready(glow);
-		for (let i = 0; i < 50 && gl.measured.length === 0; i++) {
-			glow.update(frame([0, 0, 0]));
-			if (gl.measured.length === 0) expect(gl.shown).toBe(0);
+		for (const at of [OUT, [0, 0, 8000], [8_277, 30_000, -21]] as Vec3[]) {
+			settle(glow, at);
+			const shown = gl.composites[0].at(-1)!;
+			expect(shown.exposure).toBeCloseTo(SUN_EXPOSURE * placeGain(at, CENTRE), 12);
 		}
-		expect(gl.measured).toEqual([true, false]);
-		settle(glow, [0, 0, 0]);
-		expect(gl.shown).toBeGreaterThan(0);
-		// The first mean is taken at once.
-		expect(gl.steps[0]).toBe(true);
 	});
 
-	it('measures each map that takes over', async () => {
+	it('gives the dots the gain it draws with, and none where no glow can draw', async () => {
+		net.metadata = async () => ({ ...META, model: { centre_pc: CENTRE } });
 		const glow = make();
-		await ready(glow, [50, 0, 0]);
-		settle(glow, [50, 0, 0]);
-		expect(gl.measured).toEqual([true, false]);
-		settle(glow, [50.5, 0, 0]);
-		expect(gl.measured).toEqual([true, false, false]);
-	});
-
-	/** Frames from the camera's move to the end of the eye's work, and its steps. */
-	async function adaptAfterMove(): Promise<boolean[]> {
-		const glow = make();
+		expect(glow.dotsGain(OUT)).toBe(1);
 		await ready(glow);
-		settle(glow, [0, 0, 0]);
-		gl.steps = [];
-		gl.asks = 0;
-		for (let frames = 0; frames < 2000; frames++) {
-			glow.update(frame([0.2, 0, 0]));
-			if (glow.stats().refreshes === 2 && !glow.busy()) break;
+		for (const at of [OUT, [0, 0, 8000], [8_277, 30_000, -21]] as Vec3[]) {
+			settle(glow, at);
+			expect(glow.dotsGain(at)).toBe(glow.stats().placeGain);
 		}
-		expect(glow.busy()).toBe(false);
-		const steps = gl.steps.slice();
-		settle(glow, [0.2, 0, 0]);
-		expect(gl.steps.length).toBe(steps.length);
-		return steps;
-	}
-
-	it('eases to a new mean while the glow shows, then takes its target at the end of the time of rest', async () => {
-		const steps = await adaptAfterMove();
-		expect(steps.slice(0, -1).every((atOnce) => !atOnce)).toBe(true);
-		expect(steps.at(-1)).toBe(true);
-		expect(steps.length * 16).toBeGreaterThanOrEqual(ADAPT_REST_MS - 32);
-		expect(steps.length * 16).toBeLessThanOrEqual(ADAPT_REST_MS + 32);
-		expect(gl.asks).toBeGreaterThan(0);
+		expect(make(null).dotsGain(OUT)).toBeNull();
+		net.metadata = async () => null;
+		const none = make();
+		none.update(frame([0, 0, 0]));
+		await vi.advanceTimersByTimeAsync(0);
+		expect(none.dotsGain(OUT)).toBeNull();
 	});
+});
 
-	it('stops and takes its target as soon as the GPU finds it close', async () => {
-		gl.close = true;
-		const steps = await adaptAfterMove();
-		expect(steps).toEqual([false, true]);
-	});
-
-	it('goes on easing while the GPU finds it far', async () => {
-		gl.close = false;
-		const steps = await adaptAfterMove();
-		expect(steps.length * 16).toBeGreaterThanOrEqual(ADAPT_REST_MS - 32);
-	});
-
-	it('takes a new mean at once while the glow does not show', async () => {
+describe('the label', () => {
+	it('says the view is model while the glow of a model shows', async () => {
+		net.metadata = async () => ({ ...META, model: { centre_pc: CENTRE } });
 		const glow = make();
 		await ready(glow);
-		settle(glow, [0, 0, 0]);
-		gl.steps = [];
-		settle(glow, [0.2, 0, 0], { share: 0 });
-		expect(gl.steps).toEqual([true]);
+		settle(glow, [0, 0, 0], { drawing: false, share: 0 });
+		expect(glow.modelInView).toBe(false);
+		settle(glow, OUT);
+		expect(glow.modelInView).toBe(true);
+		settle(glow, [0, 0, 0], { drawing: false, share: 0 });
+		expect(glow.modelInView).toBe(false);
+	});
+
+	it('never says so on a host with no model', async () => {
+		const glow = make();
+		await ready(glow);
+		settle(glow, OUT);
+		expect(glow.modelInView).toBe(false);
 	});
 });
 
@@ -638,68 +711,82 @@ describe('plan changes', () => {
 	it('frees the old objects on a tier change, and builds the new plan', async () => {
 		const glow = make();
 		await ready(glow);
-		glow.setPlan({ ...PLAN, grid: 'low', size: 32 });
+		settle(glow, OUT);
+		glow.setPlan({ ...PLAN, grid: 'low', divisor: 4 });
 		expect(gl.live.size).toBe(0);
 		await ready(glow);
-		expect(gl.live.size).toBe(7);
+		settle(glow, OUT);
+		expect(gl.live.size).toBe(5);
+		expect(screenRuns().at(-1)?.size).toEqual([400, 225]);
 		glow.setPlan(null);
 		expect(gl.live.size).toBe(0);
-		glow.update(frame([0, 0, 0]));
+		glow.update(frame(OUT));
 		expect(glow.busy()).toBe(false);
 	});
 
-	it('keeps the grid on a change of size, steps or passes, and builds the rest again', async () => {
+	it('keeps the grid on a change of divisor, steps or passes, and builds the rest again', async () => {
 		const glow = make();
 		await ready(glow);
-		settle(glow, [0, 0, 0]);
+		settle(glow, OUT);
 		const before = new Set(gl.live);
 		gl.runs = [];
-		const plan = { ...PLAN, size: 32, steps: 16, passes: 4 };
+		const plan = { ...PLAN, divisor: 4, steps: 16, passes: 2 };
 		glow.setPlan(plan);
 		expect(glow.stats().phase).toBe('uploading');
 		await ready(glow);
-		expect(gl.live.size).toBe(7);
+		settle(glow, OUT);
+		expect(gl.live.size).toBe(5);
 		expect([...gl.live].filter((object) => before.has(object))).toHaveLength(1);
 		expect(net.volumes).toBe(1);
 		expect(gl.marches).toBe(2);
-		settle(glow, [0, 0, 0]);
-		expect(gl.runs.reduce((sum, run) => sum + run.rows, 0)).toBe(plan.size * plan.passes);
-		expect(gl.measured.filter((reference) => reference)).toHaveLength(2);
+		expect(screenRuns()).toHaveLength(2);
 	});
 
 	it('loads again on a change of shape while the context is lost', async () => {
 		const glow = make();
 		await ready(glow);
 		gl.lost = true;
-		glow.setPlan({ ...PLAN, size: 32 });
+		glow.setPlan({ ...PLAN, steps: 16 });
 		expect(glow.stats().phase).toBe('idle');
+	});
+
+	it('takes a new divisor with no new march: the next frame makes the target', async () => {
+		const glow = make();
+		await ready(glow);
+		settle(glow, OUT);
+		glow.setPlan({ ...PLAN, divisor: 4 });
+		expect(glow.stats().phase).toBe('ready');
+		gl.runs = [];
+		settle(glow, OUT);
+		expect(gl.marches).toBe(1);
+		expect(screenRuns()[0].size).toEqual([400, 225]);
+		expect(screenRuns()).toHaveLength(PLAN.passes);
 	});
 
 	it('keeps the grid when the dust’s nest changes under it, and builds the rest again', async () => {
 		const glow = make();
 		await ready(glow);
-		settle(glow, [0, 0, 0]);
+		settle(glow, OUT);
 		const before = new Set(gl.live);
-		dust.marchNest = {};
-		glow.update(frame([0, 0, 0]));
+		dust.marchNest = nest();
+		glow.update(frame(OUT));
 		await ready(glow);
-		expect(gl.live.size).toBe(7);
+		settle(glow, OUT);
+		expect(gl.live.size).toBe(5);
 		// Only the grid is from before, and it was not asked for again.
 		expect([...gl.live].filter((object) => before.has(object))).toHaveLength(1);
 		expect(net.volumes).toBe(1);
 		expect(gl.marches).toBe(2);
-		settle(glow, [0, 0, 0]);
-		expect(gl.measured.filter((reference) => reference)).toHaveLength(2);
 	});
 
 	it('waits with the grid while the dust has no nest on the GPU', async () => {
 		const glow = make();
 		await ready(glow);
 		dust.marchNest = null;
-		glow.update(frame([0, 0, 0]));
+		glow.update(frame(OUT));
 		expect(gl.live.size).toBe(1);
 		expect(glow.busy()).toBe(false);
-		dust.marchNest = {};
+		dust.marchNest = nest();
 		await ready(glow);
 		expect(net.volumes).toBe(1);
 	});
@@ -707,6 +794,7 @@ describe('plan changes', () => {
 	it('loads again after a lost context, with nothing of the old one to free', async () => {
 		const glow = make();
 		await ready(glow);
+		settle(glow, OUT);
 		// The lost context took these; a fake keeps them.
 		const lost = new Set(gl.live);
 		canvas.dispatchEvent(new Event('webglcontextrestored'));
@@ -714,7 +802,7 @@ describe('plan changes', () => {
 		await ready(glow);
 		glow.dispose();
 		expect([...gl.live].every((object) => lost.has(object))).toBe(true);
-		expect(gl.live.size).toBe(6);
+		expect(gl.live.size).toBe(3);
 	});
 
 	it('is no failure of the device during the build: the restore builds the glow', async () => {
@@ -754,84 +842,12 @@ describe('the inputs of the grid', () => {
 		dust.token = 'another-nest';
 		const glow = make();
 		await ready(glow);
-		settle(glow, [0, 0, 0]);
-		expect(gl.shown).toBeGreaterThan(0);
+		settle(glow, OUT);
+		expect(gl.composites[0].length).toBeGreaterThan(0);
 		expect(stale()).toBe(1);
-		glow.setPlan({ ...PLAN, grid: 'low', size: 32 });
+		glow.setPlan({ ...PLAN, grid: 'low' });
 		await ready(glow);
 		expect(stale()).toBe(1);
-	});
-});
-
-describe('outside the Galaxy', () => {
-	const CENTRE: Vec3 = [8_277, 0, -21];
-	const withModel = () => {
-		net.metadata = async () => ({ ...META, model: { centre_pc: CENTRE } });
-	};
-	const OUTSIDE: Vec3 = [8_277, 30_000, -21];
-
-	it('marches no map about the Galaxy inside it, nor on a host with no model', async () => {
-		withModel();
-		const glow = make({ ...PLAN, galaxy: 32 });
-		await ready(glow);
-		settle(glow, [0, 0, 0]);
-		expect(gl.runs.some((run) => run.galaxy)).toBe(false);
-		net.metadata = async () => META;
-		const bare = make({ ...PLAN, galaxy: 32 });
-		await ready(bare, OUTSIDE);
-		settle(bare, OUTSIDE);
-		expect(gl.runs.some((run) => run.galaxy)).toBe(false);
-	});
-
-	it('makes the maps about the Galaxy and their march only with a model', async () => {
-		withModel();
-		await ready(make({ ...PLAN, galaxy: 32 }));
-		// The grid, the march, three sky maps, three maps about the Galaxy, the eye and the composite.
-		expect(gl.live.size).toBe(10);
-		net.metadata = async () => META;
-		const before = gl.live.size;
-		await ready(make({ ...PLAN, galaxy: 32 }));
-		expect(gl.live.size - before).toBe(7);
-		expect(gl.galaxyEdges).toEqual([32, 0]);
-	});
-
-	it('marches the sky map and the map about the Galaxy in each pass, far outside', async () => {
-		withModel();
-		const glow = make({ ...PLAN, galaxy: 32 });
-		await ready(glow, OUTSIDE);
-		settle(glow, OUTSIDE);
-		const far = gl.runs.filter((run) => run.origin[1] > 0);
-		const sky = far.filter((run) => !run.galaxy).reduce((sum, run) => sum + run.rows, 0);
-		const galaxy = far.filter((run) => run.galaxy).reduce((sum, run) => sum + run.rows, 0);
-		expect(sky).toBe(PLAN.size * PLAN.passes);
-		expect(galaxy).toBe(32 * PLAN.passes);
-		expect(glow.stats().galaxy?.share).toBe(1);
-		expect(glow.busy()).toBe(false);
-	});
-
-	it('says the view is model once the GPU finds the model holds a share of a map, with two thresholds', async () => {
-		const glow = make();
-		await ready(glow);
-		settle(glow, [0, 0, 0]);
-		expect(glow.modelInView).toBe(false);
-		expect(gl.shareAsks.at(-1)).toBeGreaterThan(0);
-		gl.modelShare = true;
-		settle(glow, [0, 0, 0]);
-		expect(glow.modelInView).toBe(true);
-		glow.update(frame([0, 0, 0], { drawing: false, share: 0 }));
-		expect(glow.modelInView).toBe(false);
-	});
-
-	it('stays awake while the question on the model’s share is out', async () => {
-		const glow = make();
-		await ready(glow);
-		settle(glow, [0, 0, 0]);
-		gl.sharePending = true;
-		glow.update(frame([0, 0, 0]));
-		expect(glow.busy()).toBe(true);
-		gl.sharePending = false;
-		glow.update(frame([0, 0, 0]));
-		expect(glow.busy()).toBe(false);
 	});
 });
 
@@ -842,19 +858,18 @@ describe('light that is not starlight', () => {
 	};
 	const NEAR_SUN: Vec3 = [0.005, 0, 0];
 
-	it('makes the map of the emission alone at the Sun with the first map, and no other', async () => {
+	it('makes the map of the emission alone at the Sun once, a pass a frame, and no other', async () => {
 		withEmission();
 		const glow = make();
 		await ready(glow);
-		settle(glow, [0, 0, 0]);
-		const alone = gl.runs.filter((run) => run.alone);
-		expect(alone.length).toBeGreaterThan(0);
+		settle(glow, NEAR_SUN, { drawing: false, share: 0 });
+		const alone = gl.runs.filter((run) => !run.screen);
+		expect(alone.map((run) => run.weight)).toEqual([1, 1 / 2, 1 / 3, 1 / 4]);
 		expect(alone.every((run) => run.origin.every((x) => x === 0))).toBe(true);
-		// Each pass marches the sky map, then the emission alone: 2 passes of 64 rows.
-		expect(alone.reduce((n, run) => n + run.rows, 0)).toBe(2 * 64);
+		expect(alone[0].size).toEqual([PLAN.sunSize, PLAN.sunSize]);
 		const before = gl.runs.length;
-		settle(glow, [5, 0, 0]);
-		expect(gl.runs.slice(before).some((run) => run.alone)).toBe(false);
+		settle(glow, OUT);
+		expect(gl.runs.slice(before).some((run) => !run.screen)).toBe(false);
 		expect(glow.stats().emission?.sunMap).toBe(true);
 	});
 
@@ -863,13 +878,102 @@ describe('light that is not starlight', () => {
 		const glow = make();
 		await ready(glow);
 		settle(glow, NEAR_SUN, { drawing: false, share: 0, skybox: 0.8 });
-		const [outside, inside] = gl.composites;
+		const [outside, , inside] = gl.composites;
 		expect(outside.length).toBe(0);
-		expect(inside.at(-1)).toBeCloseTo(0.8, 6);
+		expect(inside.at(-1)?.share).toBeCloseTo(0.8, 6);
 		expect(gl.regions.at(-1)).toBeCloseTo(0.8, 6);
-		settle(glow, NEAR_SUN, { skybox: 0 });
-		expect(outside.at(-1)).toBe(1);
+		settle(glow, OUT, { skybox: 0 });
+		expect(outside.at(-1)?.share).toBe(1);
 		expect(gl.regions.at(-1)).toBe(1);
+	});
+
+	it('shares the sky past the join between the march and the sky from the Sun', async () => {
+		withEmission();
+		const glow = make(PLAN, SKYBOX);
+		await ready(glow);
+		const [outside, cube, inside] = gl.composites;
+		for (const [at, join] of [
+			[[1, 0, 0], joinShare(1)],
+			[[3, 0, 0], joinShare(3)],
+			[OUT, 1]
+		] as [Vec3, number][]) {
+			settle(glow, at, { skybox: 0, skyboxLayer: true });
+			expect(join).toBeGreaterThan(0);
+			expect(outside.at(-1)?.share).toBeCloseTo(join, 9);
+			if (join < 1) {
+				expect(cube.at(-1)?.share).toBeCloseTo(1 - join, 9);
+				expect(inside.at(-1)?.share).toBeCloseTo(1 - join, 9);
+				// The sky from the Sun takes the place's gain as the march does.
+				expect(cube.at(-1)?.exposure).toBe(glow.stats().placeGain);
+			}
+			expect(gl.regions.at(-1)).toBe(1);
+		}
+		const shown = cube.length;
+		settle(glow, [1, 0, 0], { skybox: 0, skyboxLayer: false });
+		expect(cube.length).toBe(shown);
+	});
+
+	it('follows the stars’ share of the sky alone as they take it, so the skybox and it sum to one', async () => {
+		withEmission();
+		const glow = make(PLAN, SKYBOX);
+		await ready(glow);
+		const cube = gl.composites[1];
+		const at: Vec3 = [0.0105, 0, 0];
+		settle(glow, at, { share: 0, skybox: 1, skyboxLayer: true });
+		for (const share of [0.25, 0.5, 1]) {
+			glow.update(frame(at, { share, skybox: 1 - share, skyboxLayer: true }));
+			expect(cube.at(-1)?.share).toBeCloseTo(share * (1 - joinShare(0.0105)), 9);
+		}
+	});
+
+	it('is not busy inside the solar system after a flight that left the passes unfinished', async () => {
+		const glow = make();
+		await ready(glow);
+		settle(glow, OUT);
+		turn(0.3);
+		glow.update(frame(OUT));
+		expect(glow.stats().pass).toBeLessThan(PLAN.passes);
+		glow.update(frame([0.001, 0, 0], { share: 0, skybox: 1 }));
+		expect(glow.busy()).toBe(false);
+	});
+
+	it('reads the sky without its bright stars past the join, loaded at the first crossing', async () => {
+		withEmission();
+		const skybox = SKYBOX();
+		const starless = new CubeTexture();
+		starless.userData.faceTexels = 256;
+		let resolve: (cube: CubeTexture | null) => void = () => {};
+		const load = vi.fn(() => new Promise<CubeTexture | null>((r) => (resolve = r)));
+		const glow = make(PLAN, () => skybox, new StarlessSky(load, () => {}));
+		await ready(glow);
+		settle(glow, NEAR_SUN, { drawing: false, share: 0, skybox: 1, skyboxLayer: true });
+		expect(load).not.toHaveBeenCalled();
+		const cube = gl.composites[1];
+		for (let i = 0; i < 100 && load.mock.calls.length === 0; i++)
+			glow.update(frame([1, 0, 0], { skybox: 0, skyboxLayer: true }));
+		expect(load).toHaveBeenCalledTimes(1);
+		// Until it loads, the skybox at the mip of the glow's size.
+		expect(cube.at(-1)).toMatchObject({ map: skybox.texture, lod: 4 });
+		expect(glow.busy()).toBe(true);
+		resolve(starless);
+		await vi.advanceTimersByTimeAsync(0);
+		settle(glow, [1, 0, 0], { skybox: 0, skyboxLayer: true });
+		expect(cube.at(-1)).toMatchObject({ map: starless, lod: 0 });
+		expect(load).toHaveBeenCalledTimes(1);
+	});
+
+	it('keeps the skybox past the join where the export has no starless sky', async () => {
+		withEmission();
+		const skybox = SKYBOX();
+		const load = vi.fn(async () => null);
+		const glow = make(PLAN, () => skybox, new StarlessSky(load, () => {}));
+		await ready(glow);
+		for (let i = 0; i < 100 && load.mock.calls.length === 0; i++)
+			glow.update(frame([1, 0, 0], { skybox: 0, skyboxLayer: true }));
+		await vi.advanceTimersByTimeAsync(0);
+		settle(glow, [1, 0, 0], { skybox: 0, skyboxLayer: true });
+		expect(gl.composites[1].at(-1)).toMatchObject({ map: skybox.texture, lod: 4 });
+		expect(load).toHaveBeenCalledTimes(1);
 	});
 
 	it('draws nothing of it with the glow off, once the fade ends', async () => {
@@ -888,29 +992,32 @@ describe('light that is not starlight', () => {
 		expect(gl.regions.length).toBe(regions);
 	});
 
-	it('turns off for the gates: the maps are made again as on a host with none', async () => {
+	it('turns off for the gates: the march is built again as on a host with none', async () => {
 		withEmission();
 		const glow = make();
 		await ready(glow);
-		settle(glow, [0, 0, 0]);
+		settle(glow, OUT);
 		glow.setEmission({ halpha: false, scatter: false, regions: false });
 		gl.runs = [];
-		settle(glow, NEAR_SUN, { skybox: 0 });
+		await ready(glow);
+		settle(glow, OUT, { skybox: 0 });
 		expect(gl.parts.at(-1)).toEqual({ halpha: false, scatter: false, regions: false });
-		expect(gl.runs.some((run) => run.alone)).toBe(false);
-		// The march, three maps, the eye, the composite, no map of the emission alone
-		// and no regions; the grid and the emission's textures stay.
-		expect(gl.live.size).toBe(8);
+		expect(gl.runs.some((run) => !run.screen)).toBe(false);
+		// The grid, the emission's textures, the march, the composites of the
+		// march and the skybox and the target; no map of the emission alone, no
+		// composite for it, no regions.
+		expect(gl.live.size).toBe(6);
 		glow.setEmission({ halpha: true, scatter: true, regions: true });
-		settle(glow, NEAR_SUN, { skybox: 0 });
-		expect(gl.live.size).toBe(11);
+		await ready(glow);
+		settle(glow, OUT, { skybox: 0 });
+		expect(gl.live.size).toBe(9);
 	});
 
-	it('loads none of it, and draws as before, on a host with none', async () => {
+	it('loads none of it, and draws the rest, on a host with none', async () => {
 		const glow = make();
 		await ready(glow);
 		settle(glow, NEAR_SUN, { drawing: false, share: 0, skybox: 1 });
-		expect(gl.composites.length).toBe(1);
+		expect(gl.composites.length).toBe(2);
 		expect(gl.regions.length).toBe(0);
 		expect(glow.stats().emission).toBeNull();
 	});

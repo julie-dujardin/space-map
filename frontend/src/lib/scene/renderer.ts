@@ -2,6 +2,7 @@ import {
 	AmbientLight,
 	ArrowHelper,
 	CanvasTexture,
+	CubeTexture,
 	DirectionalLight as DirectionalLightClass,
 	type DirectionalLight,
 	Group,
@@ -69,7 +70,8 @@ import {
 } from './render-tier';
 import { ConstellationSystem } from './constellations/constellations';
 import { StarDust } from './dust/star-dust';
-import { GlowSky } from './glow/glow-sky';
+import { GlowSky, type SkyboxSource } from './glow/glow-sky';
+import { StarlessSky } from './glow/starless';
 import { StarfieldSystem } from './starfield/starfield';
 import { extrasolarObjectId } from '$lib/fetch/extrasolar/ids';
 import { ExoplanetSystems } from '$lib/scene/exoplanets/systems';
@@ -128,7 +130,7 @@ import {
 import { buildTrails } from './objects/body/bulk';
 import { makeCircleTexture } from './objects/pointcloud';
 import { SystemDataLoader } from './system-data/loader';
-import { loadSkybox } from './objects/sky/skybox';
+import { loadSkybox, loadStarlessSky } from './objects/sky/skybox';
 import { SkyboxAdjuster } from './debug/skybox-adjust';
 import { SkyDebugMarkers } from './debug/sky-markers';
 import { HaloDebugOverlay } from './debug/halo-overlay';
@@ -646,7 +648,15 @@ export class SceneRenderer {
 			this.invalidate,
 			this.pointClouds.pickRegistry,
 			dust,
-			new GlowSky(this.renderer, this.scene, glowPlan(), dust, this.invalidate)
+			new GlowSky(
+				this.renderer,
+				this.scene,
+				glowPlan(),
+				dust,
+				this.invalidate,
+				() => this.skyboxSource(),
+				new StarlessSky(loadStarlessSky, this.invalidate)
+			)
 		);
 		this.constellations = new ConstellationSystem(
 			ctx,
@@ -3411,6 +3421,17 @@ export class SceneRenderer {
 		this.skyDebugMarkers.setVisible(visible);
 	}
 
+	/** The skybox's cube for the glow past the join, drawn or kept aside. */
+	private skyboxSource(): SkyboxSource | null {
+		const sky = this.scene.background ?? this.stashedSky;
+		if (!(sky instanceof CubeTexture) || !(sky.userData.faceTexels > 0)) return null;
+		return {
+			texture: sky,
+			rotation: this.scene.backgroundRotation,
+			faceTexels: sky.userData.faceTexels
+		};
+	}
+
 	/**
 	 * The skybox, which is the sky only inside the solar system.
 	 * `skyboxIntensity` holds the extinction of the air above the camera and
@@ -3423,7 +3444,8 @@ export class SceneRenderer {
 	private updateSky(skyboxIntensity: number): void {
 		const share = this.starfield.skyboxShare();
 		const drawn = this.ctx.layers.isVisible('stars') && share > SKY_GONE_SHARE;
-		this.ctx.credits.skyboxDrawn = drawn;
+		// Past the join the glow draws the sky from the Sun, from the same maps.
+		this.ctx.credits.skyboxDrawn = drawn || !!this.starfield.glow?.skyFromSun;
 		if (drawn) {
 			if (this.stashedSky) {
 				this.scene.background = this.stashedSky;
@@ -3459,6 +3481,10 @@ export class SceneRenderer {
 	/** Toggle the virtual-halo debug overlay (label-anchor silhouette discs). */
 	setHaloDebugVisible(visible: boolean): void {
 		this.haloDebug.setVisible(visible);
+	}
+
+	setGlowCoarseReads(on: boolean): void {
+		this.starfield.glow?.setCoarseReads(on);
 	}
 
 	/** Drop a "you are here" pin at lat/lon on Earth; re-pins if already set. */

@@ -5,6 +5,8 @@
  * brightens over the first magnitude above it, so a node that loads at the
  * limit does not pop in. Dust (`scene/dust`) changes the magnitude and colour
  * before the limit test, so a star that dust hides also leaves the pick pass.
+ * The limit is the dots' (`dotLimit` in `band.ts`): away from the Sun it is
+ * set by the glow's exposure.
  */
 
 import {
@@ -26,7 +28,7 @@ import { PC_SCENE } from './tree';
 
 /** Uniforms every node shares; a node adds its own fade. */
 export interface StarUniforms {
-	/** Limit magnitude. A star this faint draws nothing. */
+	/** Limit magnitude of the dots (`dotLimit`). A star this faint draws nothing. */
 	uLimit: IUniform<number>;
 	/** Device pixels per CSS pixel. */
 	uPixelRatio: IUniform<number>;

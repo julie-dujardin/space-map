@@ -7,8 +7,10 @@ import { AnyPixelFormat } from 'three';
 import { Color } from 'three';
 import { ColorSpace } from 'three';
 import type { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+import { CubeTexture } from 'three';
 import { DataArrayTexture } from 'three';
 import { DataTexture } from 'three';
+import { Euler } from 'three';
 import { Group } from 'three';
 import { InstancedMesh } from 'three';
 import { IUniform } from 'three';
@@ -1263,6 +1265,7 @@ export interface SceneSettings {
 	atmosphereQuality: AtmosphereQualityTier;
 	clearSky?: boolean;
 	constellationCulture?: string;
+	glowCoarseReads?: boolean;
 	// (undocumented)
 	highAmbient: boolean;
 	// (undocumented)

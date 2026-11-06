@@ -48,6 +48,9 @@ export interface SceneSettings {
 	highAmbient: boolean;
 	realisticLighting: boolean;
 	overexposeRings: boolean;
+	/** The glow reads the grid's coarse copies where a sample is wider than a
+	 *  cell. Debug only. */
+	glowCoarseReads?: boolean;
 	showShapeMesh: boolean;
 	showSurfaceTexture: boolean;
 	showDisplacement: boolean;
@@ -122,6 +125,7 @@ export function defaultSceneSettings(): SceneSettings {
 		highAmbient: false,
 		realisticLighting: false,
 		overexposeRings: false,
+		glowCoarseReads: true,
 		showShapeMesh: true,
 		showSurfaceTexture: true,
 		showDisplacement: true,

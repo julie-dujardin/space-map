@@ -9,7 +9,9 @@ import { fetchExtrasolarFile } from '$lib/fetch/extrasolar/files';
 import { NestFormatError, fetchStoredMetadata } from '$lib/scene/dust/nest';
 import { checkEmission, fetchEmission, type EmissionVolume, type GlowEmission } from './emission';
 import { fetchFarDust, type FarDust } from './far-dust';
+import { cloudBoxes, type CloudBox } from './clouds';
 import { checkModel, fetchModelVolume, type GlowModel, type ModelVolume } from './model';
+import { prefilterGrid, type CoarseGrid } from './prefilter';
 
 export const GLOW_FORMAT = 1;
 
@@ -55,7 +57,12 @@ export interface GlowVolume {
 	entry: GlowTierEntry;
 	a: Uint16Array;
 	b: Uint16Array;
+	/** Coarse copies of `a` and `b`, read where a sample is wider than a cell. */
+	coarse: CoarseGrid | null;
 	model: ModelVolume | null;
+	/** Boxes of the Magellanic Clouds in the model, where the march takes steps
+	 *  of its own. */
+	clouds: CloudBox[];
 	/** The dust past the nest's box, read where the model widens the first span. */
 	far: FarDust | null;
 	emission: EmissionVolume | null;
@@ -112,7 +119,23 @@ export async function fetchGlowVolume(meta: GlowMetadata, tier: GlowGridTier): P
 		meta.model ? fetchFarDust(tier) : null,
 		meta.emission ? fetchEmission(meta.token, meta.emission, tier) : null
 	]);
-	return { entry, a, b, model, far, emission };
+	const clouds = meta.model && model ? cloudBoxes(meta.model, model) : [];
+	const coarse = await prefilterGrid(entry.size, entry.shells, a, b, meta.neutral_tint, pacer());
+	return { entry, a, b, coarse, model, clouds, far, emission };
+}
+
+/** Work (ms) between two pauses of the prefilter: half a frame at 60 Hz. */
+const SLICE_MS = 8;
+
+/** A pause after each slice of work, so the page draws. Each pause waits a few
+ *  ms, so there is one a slice. */
+function pacer(): () => Promise<void> {
+	let start = performance.now();
+	return async () => {
+		if (performance.now() - start < SLICE_MS) return;
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		start = performance.now();
+	};
 }
 
 /** The cut table for the march: `place_soft` and the colour, one vec4 an entry. */

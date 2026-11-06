@@ -330,6 +330,7 @@ const SETTING_SINKS: ReadonlyArray<(r: SceneRenderer, s: SceneSettings) => void>
 	(r, s) => r.setReducedMotion(s.resolvedReducedMotion),
 	(r, s) => r.setImmersive(s.viewMode === 'immersive'),
 	(r, s) => r.setHaloDebugVisible(s.showHaloDebug),
+	(r, s) => r.setGlowCoarseReads(s.glowCoarseReads ?? true),
 	(r, s) => {
 		void s.showConstellations;
 		void s.constellationCulture;

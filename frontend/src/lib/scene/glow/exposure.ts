@@ -1,25 +1,20 @@
 /**
- * The glow's exposure. A map holds surface brightness, in flux of M = 0 at
+ * The glow's exposure. A target holds surface brightness, in flux of M = 0 at
  * 10 pc per sr. A screen value is that times the exposure.
  *
- * The exposure follows the mean brightness of the map, as an eye does: slowly,
- * and only part of the way, so a galaxy seen small from far away stays dimmer
- * than the band from inside. A map covers the whole sphere, so its mean changes
- * when the camera moves, never when it turns. Nothing that loads changes it.
+ * The exposure is a function of the camera's place alone, never of the sky it
+ * sees, so a pose always draws the same and nothing that loads changes it.
  *
- * At the Sun the map's mean is the reference, so the exposure there is the
- * stars' at the skybox's limit, and the band sits at the level of the sky it
- * takes over from. The reference pixel is fixed: the sky has one brightness at
- * any window height, while a dot takes more of a small window.
+ * At the Sun it is the stars' at the skybox's limit, so the band sits at the
+ * level of the sky it takes over from. The reference pixel is fixed: the sky has
+ * one brightness at any window height, while a dot takes more of a small window.
  *
- * Inside the disc the mean hardly changes, but the dots grow brighter as more
- * stars draw. A gain set by the camera's place keeps the band readable among
- * them there. It reads nothing that loads, so it holds still while nodes do.
- * Far outside the Galaxy the dots draw some 9 mag past the skybox's limit, and
- * the same gain grows by a bounded share of that, so the model's Galaxy holds
- * the view and the dots of the catalogue sit on it.
- *
- * `eye.ts` runs the eye's law on the GPU.
+ * Inside the disc the dots grow brighter as more stars draw. A gain by place
+ * keeps the band readable among them there. With a model, the gain also
+ * follows the distance to the Galactic centre, as the sky's mean brightness
+ * falls with it, and grows far outside the Galaxy. So the model's Galaxy holds
+ * the view. Away from the Sun the dots take this exposure too (`band.ts`), so
+ * a dot draws the light the glow would give its star.
  */
 
 import { AU_KM, KM_PER_PC } from '$lib/math/units';
@@ -32,67 +27,86 @@ export const LIGHT_AT_LIMIT = 0.0585;
 export const REFERENCE_PIXEL_SR = ((2 * Math.tan(Math.PI / 6)) / 900) ** 2;
 /** Screen value of a surface brightness of one, at the Sun. */
 export const SUN_EXPOSURE = LIGHT_AT_LIMIT * REFERENCE_PIXEL_SR * 10 ** (0.4 * BASE_LIMIT_MAG);
-/** Share of a change in mean brightness, in log, that the exposure takes back. */
-export const ADAPT_POWER = 0.5;
-/** Most and least gain over the exposure at the Sun. */
-export const MAX_GAIN = 40;
-export const MIN_GAIN = 0.25;
-/** Time (ms) of each of the eye's two stages. */
-export const ADAPT_MS = 500;
-/** Time (ms) after a new mean in which the eye covers all but 0.05% of the change. */
-export const ADAPT_REST_MS = 10 * ADAPT_MS;
-/** The eye stops and takes its target once both stages are this share from it:
- *  a last step this small does not show, and the frame loop can rest. */
-export const ADAPT_CLOSE = 0.005;
-
 /** Gain (mag) by place, deep in the disc. There the dots grow brighter as more
  *  stars draw, and this gain keeps the band readable among them. */
 export const PLACE_GAIN_MAG = 1.6;
-/** Distance (pc) past the join at which the gain by place is half its rise. */
-export const PLACE_RISE_PC = 8;
-/** Height (pc) above the plane at which the gain by place is half, in mag: from
- *  above the disc the eye brightens the glow, and more would wash out the stars. */
+/** Height (pc) above the plane at which the gain in the disc is half, in mag:
+ *  from above the disc more would wash out the stars. */
 export const PLACE_HEIGHT_PC = 4_000;
-/** Gain (mag) by place far outside the Galaxy. */
+/** Gain (mag) by place far outside the Galaxy, which rises over `FAR_FROM_PC`
+ *  to `FAR_FULL_PC` from the Galactic centre. The disc ends near the first. */
 export const OUTSIDE_GAIN_MAG = 1.5;
-/** Distances (pc) from the Galactic centre over which that gain rises: 1 inside
- *  the first, so no view from within the disc changes. */
-export const OUTSIDE_FROM_PC = 16_000;
-export const OUTSIDE_FULL_PC = 30_000;
+/** Distances (pc) from the Galactic centre over which the gain far outside
+ *  rises. Past the second it holds, so the Galaxy keeps its brightness as it
+ *  gets smaller. */
+export const FAR_FROM_PC = 16_000;
+export const FAR_FULL_PC = 30_000;
 
 /** Where the stars take the sky from the skybox (pc). */
 const JOIN_PC = (STARS_IN_AU * AU_KM) / KM_PER_PC;
+/**
+ * Distance (pc) from the Sun at which the march has the whole glow. Nearer, the
+ * sky from the Sun shares it (`joinShare`). Within it the march's own view
+ * from the camera moves from the view at the Sun by under 1% in the mean
+ * toward the centre, the anticentre, Carina and the LMC, and by 4% toward the
+ * north pole.
+ */
+export const JOIN_FULL_PC = 10;
+
+/**
+ * The march's share of the glow, by the camera's distance `fromSunPc` from the
+ * Sun: 0 at the join and 1 at `JOIN_FULL_PC`, smooth on the log of distance.
+ * The rest is the sky from the Sun: its skybox blurred and its emission map.
+ * So the sky past the join starts as the one inside it and turns into the
+ * march's as the view moves.
+ */
+export function joinShare(fromSunPc: number): number {
+	const t = Math.log(Math.max(fromSunPc, JOIN_PC) / JOIN_PC) / Math.log(JOIN_FULL_PC / JOIN_PC);
+	const c = Math.min(t, 1);
+	return c * c * (3 - 2 * c);
+}
 
 /** Share of the gain far outside, by distance from the Galactic centre `centre`. */
 function outsideShare(at: Vec3, centre: Vec3): number {
 	const d = Math.hypot(at[0] - centre[0], at[1] - centre[1], at[2] - centre[2]);
-	const t = Math.min(Math.max((d - OUTSIDE_FROM_PC) / (OUTSIDE_FULL_PC - OUTSIDE_FROM_PC), 0), 1);
+	const t = Math.min(Math.max((d - FAR_FROM_PC) / (FAR_FULL_PC - FAR_FROM_PC), 0), 1);
 	return t * t * (3 - 2 * t);
 }
 
+/** Powers of the distance from the Galactic centre in the gain by place,
+ *  farther from the centre than the Sun and nearer to it. Away from the
+ *  centre the sky's mean brightness falls about as that distance; toward it,
+ *  it rises more slowly. Past `FAR_FULL_PC` the gain holds, so the Galaxy keeps its surface
+ *  brightness as it gets smaller. */
+export const CENTRE_FAR_POWER = 1;
+export const CENTRE_NEAR_POWER = 0.5;
+/** Least gain from the distance to the centre, in the bulge. */
+export const CENTRE_LEAST_GAIN = 0.25;
+
 /**
- * Gain over the eye's from the camera's place `at` (pc from the Sun, on nest
- * axes, so z is height above the plane). It is 1 at the join and inside it, so
- * the join does not move, and rises with no step or kink past it. The part far
- * outside the Galaxy is for a glow with model light: `centre` is the model's
- * Galactic centre. Without a model it is null, and the catalogue's glow, a ball
- * about the Sun, draws as it did.
+ * Gain over the Sun's exposure from the camera's place `at` (pc from the Sun, on
+ * nest axes, so z is height above the plane). It is 1 at the join and inside
+ * it, so the join does not move, and it has no step past it.
+ *
+ * It rises with the march's share (`joinShare`). Toward the inner Galaxy the
+ * march holds less light than the sky from the Sun (0.41 of it toward the
+ * centre), so a gain that rose later would let the sky dim and then brighten
+ * on a zoom out. Rising together, the frame only brightens.
+ *
+ * With a model, `centre` is its Galactic centre, and two more parts act: the
+ * distance to the centre, so the gain falls toward the centre and rises away
+ * from it, and a part far outside the Galaxy. Without a model it is null, and
+ * the catalogue's glow, a ball about the Sun, takes the gain in the disc only.
  */
 export function placeGain(at: Vec3, centre: Vec3 | null): number {
-	const out = Math.max(Math.hypot(at[0], at[1], at[2]) - JOIN_PC, 0) / PLACE_RISE_PC;
-	const rise = (out * out) / (1 + out * out);
+	const rise = joinShare(Math.hypot(at[0], at[1], at[2]));
 	const up = at[2] / PLACE_HEIGHT_PC;
-	const outside = centre ? outsideShare(at, centre) : 0;
-	return 10 ** (0.4 * ((PLACE_GAIN_MAG * rise) / (1 + up * up) + OUTSIDE_GAIN_MAG * outside));
-}
-
-/** The gain over the Sun's exposure that a map of mean brightness `mean` asks for. */
-export function adaptedGain(mean: number, sunMean: number): number {
-	if (!(mean > 0) || !(sunMean > 0)) return 1;
-	return Math.min(Math.max((sunMean / mean) ** ADAPT_POWER, MIN_GAIN), MAX_GAIN);
-}
-
-/** Share of the eye's distance to its target that a frame of `dtMs` keeps. */
-export function eyeKeep(dtMs: number): number {
-	return Math.exp(-Math.max(dtMs, 0) / ADAPT_MS);
+	const disc = 10 ** (0.4 * ((PLACE_GAIN_MAG * rise) / (1 + up * up)));
+	if (!centre) return disc;
+	const outside = 10 ** (0.4 * OUTSIDE_GAIN_MAG * outsideShare(at, centre));
+	const fromCentre = Math.hypot(at[0] - centre[0], at[1] - centre[1], at[2] - centre[2]);
+	const ratio = Math.min(fromCentre, FAR_FULL_PC) / Math.hypot(centre[0], centre[1], centre[2]);
+	const power = ratio >= 1 ? CENTRE_FAR_POWER : CENTRE_NEAR_POWER;
+	const byCentre = Math.max(ratio ** power, CENTRE_LEAST_GAIN) ** rise;
+	return disc * outside * byCentre;
 }

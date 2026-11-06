@@ -10,6 +10,7 @@ import {
 	type ShaderMaterial
 } from 'three';
 import type { EmissionRegions, GlowEmission } from './emission';
+import { ViewRays } from './composite';
 import { GlowRegions } from './regions';
 import { glslFloat } from '$lib/scene/dust/glsl';
 
@@ -27,9 +28,10 @@ const ROWS: EmissionRegions = {
 
 function make() {
 	const scene = new Scene();
-	const regions = new GlowRegions(scene, ROWS, EMISSION, new Matrix3());
+	const rays = new ViewRays(new Matrix3());
+	const regions = new GlowRegions(scene, ROWS, EMISSION, rays);
 	const mesh = scene.getObjectByName('glow-regions') as Mesh<never, ShaderMaterial>;
-	return { scene, regions, mesh };
+	return { scene, regions, mesh, rays };
 }
 
 describe('the far H II regions', () => {
@@ -43,12 +45,13 @@ describe('the far H II regions', () => {
 	});
 
 	it('turn nest axes into the view’s, so a region the camera looks at is ahead of it', () => {
-		const { regions, mesh } = make();
+		const { regions, mesh, rays } = make();
 		const camera = new PerspectiveCamera(60, 16 / 9, 0.1, 10);
 		camera.lookAt(1, 0, 0);
 		camera.updateMatrixWorld();
+		rays.set(camera, new Matrix4());
 		const columns = { map: new Texture(), origin: [0, 0, 0] as [number, number, number] };
-		regions.show([0, 0, 0], columns, new Texture(), 1, 1, camera, new Matrix4(), 1e-3);
+		regions.show([0, 0, 0], columns, 1, 1, 1e-3);
 		const toView = mesh.material.uniforms.uNestToView.value as Matrix3;
 		const ahead = new Vector3(3000, 0, 0).applyMatrix3(toView);
 		expect(ahead.z).toBeCloseTo(-3000, 6);
@@ -56,35 +59,37 @@ describe('the far H II regions', () => {
 		expect(mesh.visible).toBe(true);
 	});
 
+	it('put a region where the camera’s projection puts it, through the rays’ lens', () => {
+		const { regions, mesh, rays } = make();
+		const camera = new PerspectiveCamera(50, 16 / 9, 0.1, 1e5);
+		camera.setViewOffset(1600, 900, 120, -40, 1600, 900);
+		camera.position.set(0, 0, 0);
+		camera.lookAt(1, 0.2, -0.1);
+		camera.updateMatrixWorld();
+		rays.set(camera, new Matrix4());
+		regions.show([0, 0, 0], { map: new Texture(), origin: [0, 0, 0] }, 1, 1, 1e-3);
+		const u = mesh.material.uniforms;
+		const region = new Vector3(3000, 400, -200);
+		const v = region.clone().applyMatrix3(u.uNestToView.value as Matrix3);
+		const lens = u.uLens.value as { x: number; y: number; z: number; w: number };
+		// As the vertex shader: (v.xy / -v.z) / uLens.xy - uLens.zw.
+		const at = [v.x / -v.z / lens.x - lens.z, v.y / -v.z / lens.y - lens.w];
+		const seen = region.clone().project(camera);
+		expect(at[0]).toBeCloseTo(seen.x, 9);
+		expect(at[1]).toBeCloseTo(seen.y, 9);
+		expect(mesh.material.vertexShader).toContain('(v.xy / -v.z) / uLens.xy - uLens.zw');
+	});
+
 	it('take the dust’s column map and its origin, and hide with no share', () => {
 		const { regions, mesh } = make();
-		const camera = new PerspectiveCamera();
 		const map = new Texture();
-		regions.show(
-			[1, 2, 3],
-			{ map, origin: [4, 5, 6] },
-			new Texture(),
-			2,
-			0.5,
-			camera,
-			new Matrix4(),
-			1e-3
-		);
+		regions.show([1, 2, 3], { map, origin: [4, 5, 6] }, 2, 0.5, 1e-3);
 		const u = mesh.material.uniforms;
 		expect(u.uColumns.value).toBe(map);
 		expect((u.uColumnOrigin.value as Vector3).toArray()).toEqual([4, 5, 6]);
 		expect((u.uCamera.value as Vector3).toArray()).toEqual([1, 2, 3]);
 		expect(u.uShare.value).toBe(0.5);
-		regions.show(
-			[1, 2, 3],
-			{ map, origin: [4, 5, 6] },
-			new Texture(),
-			2,
-			0,
-			camera,
-			new Matrix4(),
-			1e-3
-		);
+		regions.show([1, 2, 3], { map, origin: [4, 5, 6] }, 2, 0, 1e-3);
 		expect(mesh.visible).toBe(false);
 	});
 

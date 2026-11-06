@@ -214,6 +214,12 @@
 			hint: '(full stored dynamic range)',
 			get: () => settings.overexposeRings,
 			set: (v) => settings.setOverexposeRings(v)
+		},
+		{
+			label: 'Glow coarse reads',
+			hint: "(grid read at the sample's width)",
+			get: () => settings.glowCoarseReads,
+			set: (v) => settings.setGlowCoarseReads(v)
 		}
 	];
 
