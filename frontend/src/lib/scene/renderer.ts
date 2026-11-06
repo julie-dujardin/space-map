@@ -74,7 +74,13 @@ import { SwitchFade } from './visibility/switch-fade';
 import { PointerInteraction } from './interaction/pointer';
 import { GpuPickPass } from './interaction/gpu-pick';
 import { CameraUpController } from './camera/up-controller';
-import { buildMajorBodies } from './objects/body/lifecycle';
+import {
+	buildMajorBodies,
+	downgradeBodyMesh,
+	isMeshUpgradable,
+	upgradeBodyMesh
+} from './objects/body/lifecycle';
+import { NearbyModels } from './objects/body/nearby-models';
 import { applyStarTint } from './objects/sun';
 import { getAtmosphereParams } from '$lib/fetch/atmospheres';
 import { applyAtmosphereParams, type AtmosphereParams } from './objects/surface/atmosphere';
@@ -296,6 +302,8 @@ export class SceneRenderer {
 	private cameraHold: CameraPose | null = null;
 	private holdingCamera = false;
 	private readonly _tmpV3 = new Vector3();
+	private readonly _tmpFeet = new Vector3();
+	private nearbyModels!: NearbyModels;
 
 	/** Where the reader may take the camera. Null is unrestricted, which is what
 	 *  the app runs on. */
@@ -686,6 +694,20 @@ export class SceneRenderer {
 			focusBody,
 			this.hoveredBodyIds,
 			this.renderer
+		);
+
+		this.nearbyModels = new NearbyModels(
+			(bo) => {
+				if (isMeshUpgradable(bo.body)) {
+					upgradeBodyMesh(bo, this.scene, this.clickables, this.meshToBody);
+				}
+				return bo.mesh ? loadBodyModel(bo, this.modelScene, this.ctx) : Promise.resolve();
+			},
+			(bo) => {
+				if (bo.focusUpgraded) downgradeBodyMesh(bo, this.scene, this.clickables, this.meshToBody);
+				else unloadBodyModel(bo);
+			},
+			(id) => this.focusController.holdsModel(id)
 		);
 
 		this.exoplanetSystems = new ExoplanetSystems(
@@ -1413,6 +1435,7 @@ export class SceneRenderer {
 			!controlsSettled,
 			this.tightFar
 		);
+		this.nearbyModels.update(this.bodyObjects, this.pxPerRad());
 		this.impressionNotice.update(this.ctx.visibility.impressionInView);
 		this.pointClouds.updateVisibility(renderedDtMs);
 
@@ -2049,8 +2072,14 @@ export class SceneRenderer {
 			const ofitScale = (m.userData as { fitScale?: number }).fitScale ?? 1;
 			m.scale.setScalar(ofitScale * s);
 			m.position.subVectors(other.root.position, bo.root.position).divideScalar(unit);
-			const ofit = m.userData as { centerOffset?: Vector3 };
-			if (ofit.centerOffset) m.position.addScaledVector(ofit.centerOffset, -s);
+			const ofit = m.userData as { centerOffset?: Vector3; feetOffset?: Vector3 };
+			// A landed craft stands on its feet, as the primary does.
+			if (other.isLanded && ofit.feetOffset) {
+				m.position.addScaledVector(
+					this._tmpFeet.copy(ofit.feetOffset).applyQuaternion(m.quaternion),
+					-s
+				);
+			} else if (ofit.centerOffset) m.position.addScaledVector(ofit.centerOffset, -s);
 			const reach = m.position.length() + s;
 			if (reach > extraReach) extraReach = reach;
 		}
@@ -2085,8 +2114,9 @@ export class SceneRenderer {
 			}
 		}
 
-		// The sunlight that the occluders leave at the centre of the focused body, with the light that their air bends in.
-		this._tmpV3.set(0, 0, 0);
+		// The sunlight that the occluders leave where the model stands, with the
+		// light their air bends in: a nearby rover is in its own planet's night.
+		this._tmpV3.copy(bo.root.position);
 		const inView = evaluateEclipseFactor(this._tmpV3, this._tmpV3);
 		const leak = evaluateEclipseLeak(this._tmpV3, this._tmpV3, this._tmpLeak);
 		this.modelLight.color.setRGB(inView + leak.x, inView + leak.y, inView + leak.z);
@@ -2931,9 +2961,11 @@ export class SceneRenderer {
 		const own = withModel(bo);
 		if (own) return own;
 		if (focusBody.data.orbitalSource === OrbitalSource.SPICE_PROBE && !bo?.isLanded) {
-			return withModel(this.bodyObjects.get(focusBody.data.parentId));
+			const parent = withModel(this.bodyObjects.get(focusBody.data.parentId));
+			if (parent) return parent;
 		}
-		return null;
+		// A craft near enough to show, while the focus has no model of its own.
+		return this.nearbyModels.nearest();
 	}
 
 	snapToBodyFacing(id: string, towardId: string, elevationDeg: number, distance: number): boolean {

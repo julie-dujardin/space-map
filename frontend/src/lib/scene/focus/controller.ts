@@ -149,6 +149,15 @@ export class FocusController {
 		];
 	}
 
+	/** Whether the focus holds `id`'s mesh and model: the focused body, the
+	 *  host a feature defers to, or another body the focus upgraded. */
+	holdsModel(id: string): boolean {
+		const focused = this.focusedBody;
+		const own =
+			focused && (isSurfaceFeature(focused) ? focused.featureAnchor!.hostId : focused.data.id);
+		return id === own || this.upgradeTargetIds.has(id);
+	}
+
 	/**
 	 * Single owner of focus-driven mesh upgrades. Computes the bodies the
 	 * current focus needs upgraded ({@link upgradeTargets}: the focus itself, a
