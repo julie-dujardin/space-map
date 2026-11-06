@@ -184,7 +184,8 @@ def from_layers(
     refs: dict[str, InteriorReference] = INTERIOR_SOURCES,
 ) -> dict:
     """The block of a layer model: its layers, and their roll-up into one
-    composition where every layer has a mass."""
+    composition where every layer has a mass. The Interior table of the
+    extrasolar export ships the same block for its curated stars."""
     _validate(object_id, facts, refs)
 
     block: dict = {"structure": facts.structure}

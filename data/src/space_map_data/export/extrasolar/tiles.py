@@ -27,14 +27,17 @@ from pathlib import Path
 import numpy as np
 import pyarrow as pa
 import pyarrow.compute as pc
+import pyarrow.parquet as pq
 
 from space_map_data.constants.stars.families import FAMILIES, ROOT_FAMILY
 from space_map_data.export.extrasolar import citations, container, render
 from space_map_data.export.extrasolar.container import Column, Written
 from space_map_data.extrasolar import families
 from space_map_data.extrasolar.ids import CELL_LEVEL, CELL_MASK, table_of
+from space_map_data.extrasolar.interiors.schema import INTERIOR
 from space_map_data.extrasolar.registry import ALIAS, LIVE, RETIRED, Registry
 from space_map_data.extrasolar.sky import REGION_LEVEL, REGION_SHIFT, region_of
+from space_map_data.extrasolar.store import region_file
 from space_map_data.extrasolar.systems.assemble import NODE_CLASSES
 from space_map_data.extrasolar.tables import (
     METADATA,
@@ -53,16 +56,17 @@ logger = logging.getLogger(__name__)
 ROOTS = 12
 # A table's tile splits while it holds more rows than this. After gzip a
 # Point source row takes about 260 B, a Metadata row about 22 B, a Binary
-# orbit row about 300 B and a System row about 82 B. So the median tiles are
-# about 92 kB, 73 kB, 34 kB and 51 kB. The Binary orbit and System rows are
-# sparse on the sky, and at these counts their largest tiles, 111 kB and
-# 124 kB, stay under the largest Point source tile. Every table needs an
-# entry: the export leaves out no table.
+# orbit row about 300 B, a System row about 82 B and an Interior row about
+# 40 B. So the median tiles are about 92 kB, 73 kB, 34 kB, 51 kB and, at most,
+# 60 kB. The Binary orbit and System rows are sparse on the sky, and at these
+# counts their largest tiles, 111 kB and 124 kB, stay under the largest Point
+# source tile. Every table needs an entry: the export leaves out no table.
 MAX_ROWS = {
     METADATA.slug: 7_500,
     "point-source": 900,
     "binary-orbit": 300,
     "system": 1_500,
+    INTERIOR.slug: 1_500,
 }
 # String columns with few distinct values, besides the group source columns.
 DICTIONARY = frozenset(
@@ -85,6 +89,10 @@ DICTIONARY = frozenset(
         "classlabel_espels",
         "classlabel_espels_flag",
         "evidence",
+        "stage",
+        "feh_source",
+        "teff_source",
+        "luminosity_source",
         "sources.item",
         "members.kind",
         "members.letter",
@@ -128,8 +136,13 @@ EXAMPLES = 10
 NAME_COLUMNS = ["id", "name", "class"]
 
 
+# The tables that the export writes from its own scratch files, not from the
+# registry.
+EXPORT_TABLES = (INTERIOR,)
+
+
 def table_def(slug: str) -> TableDef:
-    return {table.slug: table for table in (METADATA, *TABLES)}[slug]
+    return {table.slug: table for table in (METADATA, *TABLES, *EXPORT_TABLES)}[slug]
 
 
 def dictionary_columns(table: TableDef) -> frozenset[str]:
@@ -347,6 +360,8 @@ class UnitJob:
     check: Callable[[pa.Table], Problems] | None = None
     # Metadata only: the sorted IDs whose NAME_COLUMNS the unit returns.
     names: np.ndarray | None = None
+    # The scratch files of an export table, None for a registry table.
+    rows_dir: Path | None = None
 
 
 @dataclass
@@ -531,7 +546,10 @@ def build_unit(job: UnitJob) -> UnitResult:
     """Write the tiles of one unit and run the checks on its rows."""
     registry = job.registry
     table = table_def(job.slug)
-    parts = [registry.read_table(job.slug, region) for region in job.unit.regions]
+    parts = [
+        _read_part(registry, job.slug, region, job.rows_dir)
+        for region in job.unit.regions
+    ]
     tables = [part for part in parts if part is not None]
     rows = pa.concat_tables(tables) if tables else table.schema.empty_table()
     del parts, tables
@@ -697,9 +715,25 @@ def brightest(
     return out
 
 
-def region_counts(registry: Registry, slug: str, region: int) -> np.ndarray:
+def _read_part(
+    registry: Registry,
+    slug: str,
+    region: int,
+    rows_dir: Path | None,
+    columns: list[str] | None = None,
+) -> pa.Table | None:
+    """The rows of `slug` in `region`, from `rows_dir` when it is given."""
+    if rows_dir is None:
+        return registry.read_table(slug, region, columns)
+    path = region_file(rows_dir, region)
+    return pq.read_table(path, columns=columns) if path.exists() else None
+
+
+def region_counts(
+    registry: Registry, slug: str, region: int, rows_dir: Path | None = None
+) -> np.ndarray:
     """The rows of `slug` in each cell of `region`."""
-    rows = registry.read_table(slug, region, ["id"])
+    rows = _read_part(registry, slug, region, rows_dir, ["id"])
     size = 1 << REGION_SHIFT
     if rows is None:
         return np.zeros(size, np.int64)

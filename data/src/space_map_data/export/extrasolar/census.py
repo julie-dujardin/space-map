@@ -20,6 +20,7 @@ import pyarrow.compute as pc
 
 from space_map_data.extrasolar.exoplanets.table import GROUPS as PLANET_GROUPS
 from space_map_data.extrasolar.ids import table_of
+from space_map_data.extrasolar.interiors.schema import SLUG as INTERIOR_SLUG
 from space_map_data.extrasolar.registry import Registry
 from space_map_data.extrasolar.sky import REGION_COUNT
 from space_map_data.extrasolar.sources.wikidata import WIKIDATA
@@ -35,8 +36,9 @@ from space_map_data.extrasolar.tables import (
 STAR, STAR_SYSTEM, PLANET = "star", "star_system", "planet"
 
 KIND_OF_HOME = {POINT_SOURCE.number: STAR, SYSTEM.number: STAR_SYSTEM}
-# The tables of the drawn points. Metadata and System hold both kinds by row.
-_STAR_TABLES = (POINT_SOURCE.slug, BINARY_ORBIT.slug)
+# The tables of the drawn points and of the stars' interiors. Metadata and
+# System hold both kinds by row.
+_STAR_TABLES = (POINT_SOURCE.slug, BINARY_ORBIT.slug, INTERIOR_SLUG)
 _SHARED_TABLES = (METADATA.slug, SYSTEM.slug)
 # Another pass of a catalogue counts as that catalogue.
 _CATALOGUE_OF_PASS = {
@@ -217,7 +219,8 @@ def with_bytes(
     index_bytes: int,
 ) -> dict[str, dict]:
     """The census with `size_bytes`, the bytes of each kind's files. The
-    render tree draws the stars. The Metadata and System tiles go to the stars
+    render tree draws the stars, and the Interior tiles are theirs. The
+    Metadata and System tiles go to the stars
     and the star systems by their rows, and the systems index to the star
     systems. The sky cultures are not objects."""
     size: Counter[str] = Counter(

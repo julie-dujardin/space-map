@@ -1,0 +1,413 @@
+{
+	"description": "Point source rows of one star each, and what the star's panel shows for them: the kind and metallicity of frontend/src/components/detail/sections/star/metallicity.ts, the colourBpRp and absoluteG of frontend/src/lib/scene/starfield/record.ts. data/src/space_map_data/extrasolar/interiors/metallicity.py and inputs.py port these rules. tests/extrasolar/test_interiors.py and metallicity.test.ts both check this file. A string value is a string column, a boolean a bool column, a number a float32 column. A kind of null means no colour or no absolute G.",
+	"stars": [
+		{
+			"name": "an FGK dwarf takes PASTEL first",
+			"row": {
+				"parallax": 100.0,
+				"parallax_error": 0.1,
+				"astrometry_source": "gaia-dr3",
+				"fidelity_v2": 1.0,
+				"phot_g_mean_mag": 5.0,
+				"phot_bp_mean_mag": 5.4,
+				"phot_rp_mean_mag": 4.6,
+				"feh_pastel": -0.1,
+				"feh_pastel_min": -0.2,
+				"feh_pastel_max": 0.05,
+				"feh_apogee": -0.12,
+				"feh_apogee_error": 0.01
+			},
+			"expected": {
+				"kind": "fgkDwarf",
+				"source": "pastel-2020",
+				"value": -0.1,
+				"colour": 0.8,
+				"absolute_g": 5.0
+			}
+		},
+		{
+			"name": "an FGK dwarf takes APOGEE [Fe/H] before XHIP",
+			"row": {
+				"parallax": 100.0,
+				"parallax_error": 0.1,
+				"astrometry_source": "gaia-dr3",
+				"fidelity_v2": 1.0,
+				"phot_g_mean_mag": 5.0,
+				"phot_bp_mean_mag": 5.4,
+				"phot_rp_mean_mag": 4.6,
+				"feh_apogee": -0.12,
+				"feh_apogee_error": 0.01,
+				"mh_apogee": -0.1,
+				"mh_apogee_error": 0.01,
+				"feh_xhip": -0.3,
+				"feh_xhip_error": 0.05,
+				"feh_xhip_quality": "A"
+			},
+			"expected": {
+				"kind": "fgkDwarf",
+				"source": "apogee-dr17",
+				"value": -0.12,
+				"colour": 0.8,
+				"absolute_g": 5.0
+			}
+		},
+		{
+			"name": "XHIP quality C does not hold; GSP-Spec [Fe/H] does",
+			"row": {
+				"parallax": 100.0,
+				"parallax_error": 0.1,
+				"astrometry_source": "gaia-dr3",
+				"fidelity_v2": 1.0,
+				"phot_g_mean_mag": 5.0,
+				"phot_bp_mean_mag": 5.4,
+				"phot_rp_mean_mag": 4.6,
+				"feh_xhip": -0.3,
+				"feh_xhip_error": 0.05,
+				"feh_xhip_quality": "C",
+				"mh_gspspec": -0.2,
+				"mh_gspspec_lower": -0.25,
+				"mh_gspspec_upper": -0.15,
+				"mh_gspspec_calibrated": -0.15,
+				"fem_gspspec": 0.05,
+				"fem_gspspec_lower": 0.0,
+				"fem_gspspec_upper": 0.1,
+				"feh_gspspec_calibrated": -0.18,
+				"flags_gspspec": "00000000000000000000000000000000000000000"
+			},
+			"expected": {
+				"kind": "fgkDwarf",
+				"source": "gaia-dr3-gspspec",
+				"value": -0.18,
+				"colour": 0.8,
+				"absolute_g": 5.0
+			}
+		},
+		{
+			"name": "GSP-Spec fails the medium cut; XP holds",
+			"row": {
+				"parallax": 100.0,
+				"parallax_error": 0.1,
+				"astrometry_source": "gaia-dr3",
+				"fidelity_v2": 1.0,
+				"phot_g_mean_mag": 5.0,
+				"phot_bp_mean_mag": 5.4,
+				"phot_rp_mean_mag": 4.6,
+				"mh_gspspec": -0.2,
+				"mh_gspspec_calibrated": -0.15,
+				"flags_gspspec": "00000000000010000000000000000000000000000",
+				"mh_xgboost": -0.05,
+				"in_oba_golden_sample": false
+			},
+			"expected": {
+				"kind": "fgkDwarf",
+				"source": "andrae-2023",
+				"value": -0.05,
+				"colour": 0.8,
+				"absolute_g": 5.0
+			}
+		},
+		{
+			"name": "XP needs a golden-sample flag of false",
+			"row": {
+				"parallax": 100.0,
+				"parallax_error": 0.1,
+				"astrometry_source": "gaia-dr3",
+				"fidelity_v2": 1.0,
+				"phot_g_mean_mag": 5.0,
+				"phot_bp_mean_mag": 5.4,
+				"phot_rp_mean_mag": 4.6,
+				"mh_xgboost": -0.05,
+				"mh_gspphot": -0.4,
+				"mh_gspphot_lower": -0.5,
+				"mh_gspphot_upper": -0.3
+			},
+			"expected": {
+				"kind": "fgkDwarf",
+				"source": "gaia-dr3-gspphot",
+				"value": -0.4,
+				"colour": 0.8,
+				"absolute_g": 5.0
+			}
+		},
+		{
+			"name": "a giant takes GSP-Spec [M/H] before XHIP",
+			"row": {
+				"parallax": 100.0,
+				"parallax_error": 0.1,
+				"astrometry_source": "gaia-dr3",
+				"fidelity_v2": 1.0,
+				"phot_g_mean_mag": 0.5,
+				"phot_bp_mean_mag": 1.1,
+				"phot_rp_mean_mag": -0.09999999999999998,
+				"mh_gspspec": 0.1,
+				"mh_gspspec_lower": 0.05,
+				"mh_gspspec_upper": 0.15,
+				"mh_gspspec_calibrated": 0.12,
+				"flags_gspspec": "00000000000000000000000000000000000000000",
+				"feh_xhip": 0.0,
+				"feh_xhip_error": 0.1,
+				"feh_xhip_quality": "A"
+			},
+			"expected": {
+				"kind": "giant",
+				"source": "gaia-dr3-gspspec",
+				"value": 0.12,
+				"colour": 1.2,
+				"absolute_g": 0.5
+			}
+		},
+		{
+			"name": "a vetted red giant takes XP outside its colour range",
+			"row": {
+				"parallax": 100.0,
+				"parallax_error": 0.1,
+				"astrometry_source": "gaia-dr3",
+				"fidelity_v2": 1.0,
+				"phot_g_mean_mag": 0.5,
+				"phot_bp_mean_mag": 1.85,
+				"phot_rp_mean_mag": -0.8500000000000001,
+				"in_vetted_rgb_sample": true,
+				"in_oba_golden_sample": false,
+				"mh_xgboost": -0.3
+			},
+			"expected": {
+				"kind": "giant",
+				"source": "andrae-2023",
+				"value": -0.3,
+				"colour": 2.7,
+				"absolute_g": 0.5
+			}
+		},
+		{
+			"name": "an M dwarf takes no PASTEL, and APOGEE [M/H] first",
+			"row": {
+				"parallax": 100.0,
+				"parallax_error": 0.1,
+				"astrometry_source": "gaia-dr3",
+				"fidelity_v2": 1.0,
+				"phot_g_mean_mag": 9.0,
+				"phot_bp_mean_mag": 10.1,
+				"phot_rp_mean_mag": 7.9,
+				"feh_pastel": 0.2,
+				"mh_apogee": -0.25,
+				"mh_apogee_error": 0.02,
+				"feh_apogee": -0.3,
+				"feh_apogee_error": 0.02
+			},
+			"expected": {
+				"kind": "mDwarf",
+				"source": "apogee-dr17",
+				"value": -0.25,
+				"colour": 2.2,
+				"absolute_g": 9.0
+			}
+		},
+		{
+			"name": "an active LAMOST M dwarf takes XP",
+			"row": {
+				"parallax": 100.0,
+				"parallax_error": 0.1,
+				"astrometry_source": "gaia-dr3",
+				"fidelity_v2": 1.0,
+				"phot_g_mean_mag": 9.0,
+				"phot_bp_mean_mag": 10.1,
+				"phot_rp_mean_mag": 7.9,
+				"mh_lamost": -0.2,
+				"mh_lamost_error": 0.1,
+				"activity_lamost": true,
+				"mh_xgboost": -0.1,
+				"in_oba_golden_sample": false
+			},
+			"expected": {
+				"kind": "mDwarf",
+				"source": "andrae-2023",
+				"value": -0.1,
+				"colour": 2.2,
+				"absolute_g": 9.0
+			}
+		},
+		{
+			"name": "a quiet LAMOST M dwarf takes LAMOST",
+			"row": {
+				"parallax": 100.0,
+				"parallax_error": 0.1,
+				"astrometry_source": "gaia-dr3",
+				"fidelity_v2": 1.0,
+				"phot_g_mean_mag": 9.0,
+				"phot_bp_mean_mag": 10.1,
+				"phot_rp_mean_mag": 7.9,
+				"mh_lamost": -0.2,
+				"mh_lamost_error": 0.1,
+				"activity_lamost": false,
+				"mh_xgboost": -0.1,
+				"in_oba_golden_sample": false
+			},
+			"expected": {
+				"kind": "mDwarf",
+				"source": "lamost-dr10",
+				"value": -0.2,
+				"colour": 2.2,
+				"absolute_g": 9.0
+			}
+		},
+		{
+			"name": "an M dwarf too red for XP takes GSP-Phot",
+			"row": {
+				"parallax": 100.0,
+				"parallax_error": 0.1,
+				"astrometry_source": "gaia-dr3",
+				"fidelity_v2": 1.0,
+				"phot_g_mean_mag": 10.0,
+				"phot_bp_mean_mag": 11.4,
+				"phot_rp_mean_mag": 8.6,
+				"mh_xgboost": -0.1,
+				"in_oba_golden_sample": false,
+				"mh_gspphot": 0.1,
+				"mh_gspphot_lower": 0.0,
+				"mh_gspphot_upper": 0.2
+			},
+			"expected": {
+				"kind": "mDwarf",
+				"source": "gaia-dr3-gspphot",
+				"value": 0.1,
+				"colour": 2.8,
+				"absolute_g": 10.0
+			}
+		},
+		{
+			"name": "an OBA star takes XHIP, not XP",
+			"row": {
+				"parallax": 100.0,
+				"parallax_error": 0.1,
+				"astrometry_source": "gaia-dr3",
+				"fidelity_v2": 1.0,
+				"phot_g_mean_mag": 1.0,
+				"phot_bp_mean_mag": 1.05,
+				"phot_rp_mean_mag": 0.95,
+				"mh_xgboost": 0.1,
+				"in_oba_golden_sample": false,
+				"feh_xhip": 0.05,
+				"feh_xhip_error": 0.1,
+				"feh_xhip_quality": "B"
+			},
+			"expected": {
+				"kind": "oba",
+				"source": "xhip",
+				"value": 0.05,
+				"colour": 0.1,
+				"absolute_g": 1.0
+			}
+		},
+		{
+			"name": "an OBA star takes no GSP-Phot",
+			"row": {
+				"parallax": 100.0,
+				"parallax_error": 0.1,
+				"astrometry_source": "gaia-dr3",
+				"fidelity_v2": 1.0,
+				"phot_g_mean_mag": 1.0,
+				"phot_bp_mean_mag": 1.05,
+				"phot_rp_mean_mag": 0.95,
+				"mh_gspphot": -0.2,
+				"mh_gspphot_lower": -0.3,
+				"mh_gspphot_upper": -0.1
+			},
+			"expected": {
+				"kind": "oba",
+				"source": null,
+				"value": null,
+				"colour": 0.1,
+				"absolute_g": 1.0
+			}
+		},
+		{
+			"name": "a Hipparcos star takes its colour from V − I",
+			"row": {
+				"parallax": 50.0,
+				"parallax_error": 0.5,
+				"astrometry_source": "hipparcos-2007",
+				"hipparcos_photometry_source": "hipparcos-2007",
+				"v_mag": 5.0,
+				"b_v": 0.65,
+				"v_i": 0.7,
+				"feh_pastel": 0.05,
+				"feh_pastel_min": 0.0,
+				"feh_pastel_max": 0.1
+			},
+			"expected": {
+				"kind": "fgkDwarf",
+				"source": "pastel-2020",
+				"value": 0.05,
+				"colour": 0.8358,
+				"absolute_g": 3.3525
+			}
+		},
+		{
+			"name": "a star with no distance has no kind and takes the FGK order",
+			"row": {
+				"parallax": null,
+				"parallax_error": null,
+				"astrometry_source": "gaia-dr3",
+				"fidelity_v2": 1.0,
+				"phot_g_mean_mag": 5.0,
+				"phot_bp_mean_mag": 5.4,
+				"phot_rp_mean_mag": 4.6,
+				"feh_xhip": 0.1,
+				"feh_xhip_error": 0.05,
+				"feh_xhip_quality": "A"
+			},
+			"expected": {
+				"kind": null,
+				"source": "xhip",
+				"value": 0.1,
+				"colour": 0.8,
+				"absolute_g": null
+			}
+		},
+		{
+			"name": "a star with no BP and RP takes the colour of its Teff",
+			"row": {
+				"parallax": 100.0,
+				"parallax_error": 0.1,
+				"astrometry_source": "gaia-dr3",
+				"fidelity_v2": 1.0,
+				"phot_g_mean_mag": 5.0,
+				"teff_gspphot": 5800.0,
+				"feh_pastel": 0.0,
+				"feh_pastel_min": -0.05,
+				"feh_pastel_max": 0.05
+			},
+			"expected": {
+				"kind": "fgkDwarf",
+				"source": "pastel-2020",
+				"value": 0.0,
+				"colour": 0.8163,
+				"absolute_g": 5.0
+			}
+		},
+		{
+			"name": "a giant past the XP G limit takes GSP-Phot",
+			"row": {
+				"parallax": 0.1,
+				"parallax_error": 0.01,
+				"astrometry_source": "gaia-dr3",
+				"fidelity_v2": 1.0,
+				"phot_g_mean_mag": 18.0,
+				"phot_bp_mean_mag": 18.6,
+				"phot_rp_mean_mag": 17.4,
+				"mh_xgboost": -0.5,
+				"in_oba_golden_sample": false,
+				"mh_gspphot": -0.6,
+				"mh_gspphot_lower": -0.7,
+				"mh_gspphot_upper": -0.5
+			},
+			"expected": {
+				"kind": "giant",
+				"source": "gaia-dr3-gspphot",
+				"value": -0.6,
+				"colour": 1.2,
+				"absolute_g": 3.0
+			}
+		}
+	]
+}

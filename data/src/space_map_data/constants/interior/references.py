@@ -537,6 +537,38 @@ INTERIOR_SOURCES: dict[str, InteriorReference] = {
         "β Canis Majoris: radius and core hydrogen from its oscillations",
         "β CMa layers",
     ),
+    # The grid that the extrasolar export fits every other star to.
+    "dotter_2026": InteriorReference(
+        "Dotter et al. 2026 (Astrophys. J. Suppl. 283)",
+        "https://doi.org/10.3847/1538-4365/ae48f3",
+        "MIST v2.5 stellar tracks: the interiors fitted to other stars",
+        "stellar tracks",
+    ),
+    "choi_2016": InteriorReference(
+        "Choi et al. 2016 (Astrophys. J. 823)",
+        "https://doi.org/10.3847/0004-637X/823/2/102",
+        "MIST stellar tracks: the models and their physics",
+        "stellar tracks",
+    ),
+    # The Teff and luminosity of the stars that Gaia saturates on.
+    "casagrande_2010": InteriorReference(
+        "Casagrande et al. 2010 (Astron. Astrophys. 512)",
+        "https://doi.org/10.1051/0004-6361/200913204",
+        "Teff of FGK dwarfs from B − V, for the fitted interiors",
+        "Teff from colour",
+    ),
+    "flower_1996": InteriorReference(
+        "Flower 1996 (Astrophys. J. 469)",
+        "https://doi.org/10.1086/177785",
+        "Teff from B − V and bolometric corrections, for the fitted interiors",
+        "Teff and BC",
+    ),
+    "torres_2010": InteriorReference(
+        "Torres 2010 (Astron. J. 140)",
+        "https://doi.org/10.1088/0004-6256/140/5/1158",
+        "The corrected coefficients of Flower's relations",
+        "Teff and BC",
+    ),
     # --- taxonomy → meteorite analogue ------------------------------------
     "demeo_2009": InteriorReference(
         "DeMeo et al. 2009 (Icarus 202)",

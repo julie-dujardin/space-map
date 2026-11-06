@@ -207,7 +207,9 @@ def _render_ids(reader: ExportReader) -> set[int]:
 
 class TestSystemTiles:
     def test_every_table_has_tiles(self):
-        assert set(tiles.MAX_ROWS) == {table.slug for table in (METADATA, *TABLES)}
+        assert set(tiles.MAX_ROWS) == {
+            table.slug for table in (METADATA, *TABLES, *tiles.EXPORT_TABLES)
+        }
 
     def test_each_node_is_found_with_its_row(self, tmp_path, out):
         built = _registry(tmp_path / "reg")

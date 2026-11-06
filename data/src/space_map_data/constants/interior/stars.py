@@ -1,8 +1,9 @@
 """Interior models of stars other than the Sun, read from papers.
 
 An entry is keyed like `constants/stars/literature.py`: an id of the star that
-stays the same between ingests (here the HIP number), never our own ID. An
-entry has the shape that `naif-10` takes.
+stays the same between ingests (here the HIP number), never our own ID. The
+extrasolar export finds the star's ID in the registry and ships the entry in
+the star's `interior` row as tier 0, in the shape that `naif-10` takes.
 
 Each number is read in the cited paper. A radius in km is the paper's r/R
 times its R, so those layers are `derived`. A layer carries a composition

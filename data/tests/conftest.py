@@ -127,6 +127,29 @@ def _isolated_panorama_digests(tmp_path, monkeypatch):
     )
 
 
+@pytest.fixture(scope="session")
+def _empty_stellar_grid(tmp_path_factory):
+    """Grid tables that hold no model point, so that no star fits."""
+    import numpy as np
+
+    from space_map_data.extrasolar.interiors import grid
+
+    out = tmp_path_factory.mktemp("empty-grid")
+    grid.save(
+        grid.Tables(np.array([-1.0, 1.0]), np.zeros((2, 2, 2, grid.CHANNELS))), out
+    )
+    return out
+
+
+@pytest.fixture(autouse=True)
+def _no_stellar_tracks(_empty_stellar_grid, monkeypatch):
+    """Keep the export's Interior table off the real MIST tracks and tables,
+    which take minutes to build. A test that needs a grid gives its own."""
+    from space_map_data.extrasolar.interiors import grid
+
+    monkeypatch.setattr(grid, "ready", lambda tracks_dir, root: _empty_stellar_grid)
+
+
 @pytest.fixture
 def engine() -> Iterator[Engine]:
     """Fresh in-memory SQLite with the full schema, scoped to one test.

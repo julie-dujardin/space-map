@@ -22,13 +22,14 @@ from space_map_data.constants.interior.taxonomy import (
     TAXONOMY_COMPOSITION,
     resolve_class,
 )
+from space_map_data.extrasolar.interiors.table import GRID_WORKS, ROUTE_WORKS
 
 BODY_IDS = sorted(INTERIOR_FACTS)
 CLASSES = sorted(TAXONOMY_COMPOSITION)
 
 
 def _source_keys() -> set[str]:
-    keys: set[str] = set()
+    keys: set[str] = {*GRID_WORKS, *(k for keys in ROUTE_WORKS.values() for k in keys)}
     for body in (*INTERIOR_FACTS.values(), *STAR_INTERIORS.values()):
         if body.structure_source:
             keys.add(body.structure_source)

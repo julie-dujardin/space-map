@@ -12,6 +12,7 @@ export as it was. The checks:
   export stands for the live site until the serving is decided;
 - the matched sky cultures come from the registry ingest that the export
   reads;
+- the Interior table holds only live IDs, as the registry's tables do;
 - the star systems hold together, with their Metadata links (`systems`);
 - every planet host and system is live with its rows, and every planet that
   the previous export serves is still served, or its number is retired or an
@@ -23,7 +24,8 @@ registry object that the export read under the lock, so all jobs read the
 table versions that metadata.json names.
 
 Render scratch goes in `.build/` beside `v1/`. The planets read the render
-rows of their hosts from it, and then it is removed.
+rows of their hosts from it, and then it is removed. The Interior rows go
+there too, one file for each sky region, before the tiles.
 """
 
 import fcntl
@@ -69,6 +71,8 @@ from space_map_data.export.extrasolar.tiles import (
 from space_map_data.export.objects.stars import planet_host_pages
 from space_map_data.export.systems import TextureLayers
 from space_map_data.export.wikidata import WikidataEntityCache
+from space_map_data.extrasolar.interiors import schema as interior_schema
+from space_map_data.extrasolar.interiors import table as interiors
 from space_map_data.extrasolar.registry import Registry, RegistryError
 from space_map_data.extrasolar.sky import REGION_COUNT, REGION_SHIFT
 from space_map_data.extrasolar.store import fsync_dir
@@ -103,6 +107,12 @@ def families_file(root: Path) -> Path:
 DISTRIBUTION = skycultures.combined(
     NON_COMMERCIAL, wds.DISTRIBUTION, msc.DISTRIBUTION, el_badry.DISTRIBUTION
 )
+# Each table's tier, where it is stricter than DISTRIBUTION.
+TABLE_DISTRIBUTION = {
+    interior_schema.SLUG: skycultures.combined(
+        DISTRIBUTION, interior_schema.DISTRIBUTION
+    )
+}
 FRAME = "ICRS equatorial axes, origin at the solar system barycentre, epoch J2016.0"
 LITERATURE_URL = (
     "https://github.com/julie-dujardin/space-map/blob/main/data/src/space_map_data"
@@ -471,7 +481,7 @@ def _previous_paths(split: Split, regions: tuple[int, ...]) -> tuple[str, ...]:
     )
 
 
-def _count_job(job: tuple[Registry, str, int]) -> np.ndarray:
+def _count_job(job: tuple[Registry, str, int, Path | None]) -> np.ndarray:
     return tiles.region_counts(*job)
 
 
@@ -491,16 +501,19 @@ def _build_tables(
     problems: Problems,
     refs: systems.Refs,
     named: np.ndarray,
+    rows_dirs: dict[str, Path],
 ) -> tuple[list[TableResult], tiles.FamilyStars, pa.Table]:
     """The record tiles of every table, the stars of each family, and the
     names of the IDs `named`. `refs` are the IDs of the system trees, which
-    the Metadata tiles check."""
+    the Metadata tiles check. `rows_dirs` holds the scratch files of each
+    export table."""
     results = []
     family_stars = tiles.FamilyStars(np.zeros((2, len(FAMILIES)), np.int64), {})
     names = [METADATA.schema.empty_table().select(tiles.NAME_COLUMNS)]
-    for table in (METADATA, *TABLES):
+    for table in (METADATA, *TABLES, *tiles.EXPORT_TABLES):
         slug = table.slug
-        jobs = [(registry, slug, region) for region in range(REGION_COUNT)]
+        rows_dir = rows_dirs.get(slug)
+        jobs = [(registry, slug, region, rows_dir) for region in range(REGION_COUNT)]
         counts = _run(workers, _count_job, jobs, f"{slug}: cell counts")
         split = Split.build(np.concatenate(counts), MAX_ROWS[slug])
         logger.info(
@@ -531,6 +544,7 @@ def _build_tables(
                 else Previous(layout.live, _previous_paths(previous, unit.regions)),
                 None if found is None else partial(systems.check_metadata, found),
                 ids,
+                rows_dir,
             )
             for unit, found, ids in zip(units, unit_refs, unit_names, strict=True)
         ]
@@ -659,6 +673,7 @@ def _metadata(
     counted: census.Census,
     index_entry: dict,
     index_bytes: int,
+    interior_credits: list[dict],
 ) -> dict:
     tables_out = {}
     for result in tables_built:
@@ -674,7 +689,7 @@ def _metadata(
             "columns": [
                 {"name": name, "type": kind} for name, kind in tiles.column_types(table)
             ],
-            "distribution": DISTRIBUTION,
+            "distribution": TABLE_DISTRIBUTION.get(result.slug, DISTRIBUTION),
         }
     nodes = tree.nodes
     metadata = {
@@ -724,7 +739,7 @@ def _metadata(
             0 if planet_files is None else sum(f.size for f in planet_files.files),
             index_bytes,
         ),
-        "credits": list(CREDITS),
+        "credits": [*CREDITS, *interior_credits],
     }
     if cultures is not None:
         metadata[skycultures.TABLE] = {**cultures.entry, "frame": FRAME}
@@ -820,9 +835,22 @@ def _export(
         )
         listed = system_index.listed(trees, planet_keys)
         del trees
+        interior_dir = layout.scratch / interior_schema.SLUG
+        interior_counts = interiors.write_rows(
+            registry,
+            interior_dir,
+            lambda task, jobs, label: _run(workers, task, jobs, label),
+        )
         problems = Problems()
         built, family_stars, names = _build_tables(
-            registry, layout, workers, previous, problems, refs, listed.ids
+            registry,
+            layout,
+            workers,
+            previous,
+            problems,
+            refs,
+            listed.ids,
+            {interior_schema.SLUG: interior_dir},
         )
         del refs
         _refuse(problems)
@@ -877,6 +905,7 @@ def _export(
             counted,
             index_entry,
             index_file.size,
+            interiors.credits(interior_counts),
         )
         (layout.staging / METADATA_FILE).write_text(
             json.dumps(metadata, indent=1) + "\n"

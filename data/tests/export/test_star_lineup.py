@@ -13,8 +13,8 @@ from space_map_data.export.groups.star_lineup import (
     _bp_rp,
     _size,
     drawable_star_radii,
-    measured_radius,
 )
+from space_map_data.extrasolar.measured_radius import measured_radius
 from space_map_data.extrasolar.tables import STAR_SYSTEMS
 
 

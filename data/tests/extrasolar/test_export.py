@@ -25,6 +25,7 @@ from space_map_data.export.extrasolar.build import (
 from space_map_data.export.extrasolar.container import Column
 from space_map_data.export.extrasolar.reader import ExportReader, NodeInfo
 from space_map_data.extrasolar import families, ids, placement
+from space_map_data.extrasolar.interiors import inputs
 from space_map_data.extrasolar.registry import Registry, RegistryBusy
 from space_map_data.extrasolar.sources.hipparcos import g_estimate, propagate
 from space_map_data.extrasolar.tables import (
@@ -233,6 +234,7 @@ class TestExport:
             "point-source",
             "binary-orbit",
             "system",
+            "interior",
         }
         assert meta["tables"]["point-source"]["number"] == 1
         assert meta["tables"]["metadata"]["number"] is None
@@ -474,6 +476,8 @@ class TestExport:
             ("system", tiles.HELD_COLUMNS),
             ("system", systems.READ_COLUMNS),
             ("system", census.HELD_COLUMNS),
+            ("point-source", inputs.COLUMNS),
+            ("system", inputs.SYSTEM_COLUMNS),
             *(
                 (table.slug, census.read_columns(table))
                 for table in (METADATA, POINT_SOURCE, BINARY_ORBIT, SYSTEM)

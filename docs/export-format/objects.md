@@ -114,8 +114,9 @@ interface GlobalObjectData {
       share: number;                  // normalized over the materials listed
     }>;
     layers?: Array<{                  // outermost first; layer-model route only, for the Structure tab's cross-section
-      role: string;                   // "crust" | "oceanic_crust" | "ice_shell" | "ocean" | "sea" | "mantle" | "ice_mantle" | "magma" | "envelope" | "metallic_hydrogen" | "radiative_zone" | "convective_zone" | "core" | "outer_core" | "inner_core" | "bulk"
+      role: string;                   // "crust" | "oceanic_crust" | "ice_shell" | "ocean" | "sea" | "mantle" | "ice_mantle" | "magma" | "envelope" | "metallic_hydrogen" | "radiative_zone" | "convective_zone" | "convective_core" | "core" | "outer_core" | "inner_core" | "bulk"
                                       // a role can repeat within one body: the Moon's mantle ships twice, solid over partly molten
+                                      // "convective_core" is the mixed core of a star over ~1.1 M☉ (Interior table, extrasolar.md); "core" is the Sun's region below 0.2 R☉
                                       // "ocean" is liquid water at any depth — Earth's is on the surface, everyone else's is under an ice shell. "sea" is standing liquid that is not water, i.e. Titan's maria, which sit 100 km above Titan's own "ocean"
       outer_radius_km: number;        // the source's own R, which is not the body's exported mean radius — normalize the disc to the outermost layer
       area_fraction?: number;         // share of the globe the layer covers, on the layers that are patches rather than shells. Earth's ocean 0.709, continental crust 0.412, oceanic crust 0.588; Titan's seas 0.011. Layers carrying one are still ordered by radius, but they overlap in depth — Earth's two crusts meet at a coastline, not at a boundary

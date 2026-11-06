@@ -46,16 +46,13 @@ from space_map_data.export.groups.family_pages import (
     served_metadata,
     sitelink_rank,
 )
-from space_map_data.export.groups.star_lineup import (
-    MEASURED_COLUMNS,
-    add_lineup_fields,
-    measured_radius,
-)
+from space_map_data.export.groups.star_lineup import add_lineup_fields
 from space_map_data.export.groups.stats import GroupExtraStats
 from space_map_data.export.names import Names, ObjectNames
 from space_map_data.export.notable import NotableObject
 from space_map_data.export.objects.stars import PREFIX, TYPE, StarObject
 from space_map_data.extrasolar.families import of_spectral_type
+from space_map_data.extrasolar.measured_radius import MEASURED_COLUMNS, measured_radius
 from space_map_data.extrasolar.tables import METADATA, POINT_SOURCE
 from space_map_data.utils.content_stamp import content_stamp
 from space_map_data.utils.paths import EXTRASOLAR_DIR

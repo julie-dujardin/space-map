@@ -18,8 +18,9 @@ renders only when Hipparcos, SIMBAD or an exoplanet catalogue saw it, or by
 step 1. Its parallax is suspect, so it comes last, also when Hipparcos or
 SIMBAD saw the row. Other rows have no place.
 
-`star_distance` turns a placement into parsecs. A 5σ orbit parallax stands for
-the parallax of steps 3 and 6, and for the catalogue distance of step 5.
+`star_distance` turns a placement into parsecs, and `distance_error` gives
+the error of that distance. A 5σ orbit parallax stands for the parallax of
+steps 3 and 6, and for the catalogue distance of step 5.
 """
 
 from typing import NamedTuple
@@ -62,6 +63,8 @@ COLUMNS = (
     "distance_method",
     "host_distance",
 )
+# The Point source columns that `distance_error` reads besides COLUMNS.
+ERROR_COLUMNS = ("host_distance_error",)
 # The binary orbit columns of the orbit parallax.
 ORBIT_PARALLAX_COLUMNS = (
     "id",
@@ -179,11 +182,15 @@ def distance_parallax(table: pa.Table) -> tuple[np.ndarray, np.ndarray]:
     return np.where(used, orbit, _floats(table, "parallax")), used
 
 
+def _from_parallax(where: Placement, orbit: np.ndarray) -> np.ndarray:
+    return where.by_parallax | where.by_suspect | (where.by_catalogue & orbit)
+
+
 def star_distance(table: pa.Table, where: Placement) -> tuple[np.ndarray, np.ndarray]:
     """The distance (pc) of each row that `where` places, NaN for the others,
     and whether an orbit parallax gives it."""
     parallax, orbit = distance_parallax(table)
-    from_parallax = where.by_parallax | where.by_suspect | (where.by_catalogue & orbit)
+    from_parallax = _from_parallax(where, orbit)
     with np.errstate(divide="ignore", invalid="ignore"):
         distance = np.select(
             [from_parallax, where.by_group, where.by_catalogue],
@@ -195,3 +202,23 @@ def star_distance(table: pa.Table, where: Placement) -> tuple[np.ndarray, np.nda
             np.nan,
         )
     return distance, orbit & from_parallax
+
+
+def distance_error(table: pa.Table, where: Placement) -> np.ndarray:
+    """The relative error of the distance that `star_distance` gives each row,
+    NaN where it is unknown. A distance group's error is half its bounds."""
+    parallax, orbit = distance_parallax(table)
+    parallax_error = np.where(
+        orbit, _floats(table, "orbit_parallax_error"), _floats(table, "parallax_error")
+    )
+    spread = _floats(table, "distance_upper") - _floats(table, "distance_lower")
+    with np.errstate(divide="ignore", invalid="ignore"):
+        return np.select(
+            [_from_parallax(where, orbit), where.by_group, where.by_catalogue],
+            [
+                parallax_error / parallax,
+                spread / (2 * _floats(table, "distance")),
+                _floats(table, "host_distance_error") / _floats(table, "host_distance"),
+            ],
+            np.nan,
+        )
