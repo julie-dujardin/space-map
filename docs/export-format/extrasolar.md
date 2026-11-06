@@ -39,7 +39,7 @@ All numbers are little-endian. The payload starts with a header of 32 bytes:
 |--------|----------|-------|
 | 0      | char[4]  | Magic `SMXS` |
 | 4      | uint16   | Format version (1) |
-| 6      | uint8    | Kind: `1` record tile, `2` split table, `3` render node, `4` render IDs, `5` volume of the dust nest ([dust.md](dust.md)) or the light grid ([glow.md](glow.md)) |
+| 6      | uint8    | Kind: `1` record tile, `2` split table, `3` render node, `4` render IDs, `5` volume of the dust nest ([dust.md](dust.md)) or the light grid ([glow.md](glow.md)), `6` table of the light grid's H II regions ([glow.md](glow.md)) |
 | 7      | uint8    | 0 |
 | 8      | char[16] | Token of the table or tree, 16 ASCII hex digits |
 | 24     | uint32   | Row count `n` |
@@ -96,6 +96,7 @@ The bytes are deterministic: gzip with mtime 0 and level 9. The first 32 bytes o
 | 2 split table | none | `split` (`bits`), one row per pixel of the tile tree |
 | 3 render node | 80 bytes, below | `x`, `y`, `z`, `range`, `mag`, `colour` (`float32`), `class` (`uint8`) |
 | 4 render IDs | none | `id` (`id`), the rows of its node in the same order |
+| 6 table | none | the columns that its section names, one row an item: the H II regions of [glow.md](glow.md) |
 
 Info block of a render node:
 

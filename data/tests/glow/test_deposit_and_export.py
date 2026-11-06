@@ -175,7 +175,12 @@ def _small_build(directory, token_shift: int = 0) -> None:
         np.save(directory / build.values_name(tier), values)
 
 
-def _root(path, tree_token: str = "tree", nest_token: str = "nest"):
+def _root(
+    path,
+    tree_token: str = "tree",
+    nest_token: str = "nest",
+    tier: str = "non-commercial",
+):
     """An export root with the metadata of a served tree and nest."""
     (path / "v1" / "x").mkdir(parents=True)
     (path / "v1" / "dust").mkdir(parents=True)
@@ -184,9 +189,7 @@ def _root(path, tree_token: str = "tree", nest_token: str = "nest"):
             {
                 "credits": [{"name": "stars"}],
                 "registry": {"ingest": 4},
-                "trees": {
-                    "mw": {"distribution": "non-commercial", "token": tree_token}
-                },
+                "trees": {"mw": {"distribution": tier, "token": tree_token}},
             }
         )
     )
@@ -194,7 +197,7 @@ def _root(path, tree_token: str = "tree", nest_token: str = "nest"):
         json.dumps(
             {
                 "credits": [{"name": "dust"}],
-                "distribution": "non-commercial",
+                "distribution": tier,
                 "token": nest_token,
             }
         )
@@ -209,11 +212,12 @@ def small(tmp_path, monkeypatch):
         "low": SkyGrid(4, 6, 20.0, 400_000.0),
     }
     monkeypatch.setattr(build, "GRIDS", grids)
-    # No model build: the grid goes alone, and the real model build stays unread.
+    # No model or emission build: the grid goes alone, and the real builds stay
+    # unread.
     monkeypatch.setattr(
         glow_export.export_glow,
         "__defaults__",
-        (build.BUILD_DIR, tmp_path / "no-model"),
+        (build.BUILD_DIR, tmp_path / "no-model", tmp_path / "no-emission"),
     )
     directory = tmp_path / "build"
     directory.mkdir()
@@ -560,6 +564,8 @@ class TestExportCommand:
             _root(tmp_path / "out"),
             "--model-build",
             str(tmp_path / "no-model"),
+            "--emission-build",
+            str(tmp_path / "no-emission"),
         )
         assert (tmp_path / "out" / "v1" / "glow" / "metadata.json").exists()
 
@@ -581,3 +587,162 @@ class TestExportCommand:
                 monkeypatch, small, _root(tmp_path / "out"), "--model-build", str(model)
             )
         assert not (tmp_path / "out" / "v1" / "glow").exists()
+
+
+def _emission_build(directory, glow_dir, model_dir, monkeypatch) -> None:
+    """A small emission build by the real writer, on the grid in `glow_dir` and the
+    model in `model_dir`: H-alpha of 4^3 voxels, J of 4 x 4 x 2, three regions."""
+    from space_map_data.dust.sources import file_digest
+    from space_map_data.emission import build as emission_build
+    from space_map_data.emission import encode, sources
+    from space_map_data.extrasolar.store import write_json
+
+    directory.mkdir()
+    for name, attribute in (
+        ("wise.csv", "WISE_FILE"),
+        ("fink.fits", "FINKBEINER_FILE"),
+    ):
+        (directory / name).write_text(name)
+        monkeypatch.setattr(sources, attribute, directory / name)
+    monkeypatch.setattr(encode, "GAIN_POINTS", 4096)
+    rng = np.random.default_rng(8)
+    for tier, n in (("high", 4), ("low", 2)):
+        cube = rng.uniform(1e-6, 1e-3, (n, n, n)).astype(np.float32)
+        np.save(directory / emission_build.scaled_name(tier), cube)
+        j = rng.uniform(1.0, 2.0, (n, n, n // 2, 3)).astype(np.float32)
+        np.save(directory / emission_build.j_name(tier), j)
+    write_json(
+        directory / emission_build.REGIONS_FILE,
+        {
+            "used": 3,
+            "by_source": {"radio": 1, "infrared": 1, "size": 1},
+            "wise": file_digest(sources.WISE_FILE),
+        },
+    )
+    found = {
+        "position": rng.normal(0.0, 3000.0, (3, 3)),
+        "sigma_pc": np.array([5.0, 10.0, 20.0]),
+        "display": np.array([1.0, 2.0, 3.0]),
+        "source": np.array([0, 1, 2]),
+    }
+    scale = {
+        "smooth_deg": 2.0,
+        "limit": 4.0,
+        "scattered_share": 0.19,
+        "factor_by_light": {"p50": 1.0},
+        "finkbeiner": file_digest(sources.FINKBEINER_FILE),
+    }
+    light = {"nest": "nest", "light": emission_build.light_inputs(glow_dir, model_dir)}
+    shield = tuple(np.linspace(1.0, 0.6, 11))
+    emission_build.write_encoding(
+        directory, scale, light, found, np.ones((4, 4, 2)), shield
+    )
+
+
+class TestExportWithEmission:
+    """The emission goes in `v1/glow/` with the grid and the model."""
+
+    @pytest.fixture
+    def emission(self, small, tmp_path, monkeypatch):
+        model = tmp_path / "model"
+        _model_build(model, small)
+        directory = tmp_path / "emission"
+        _emission_build(directory, small, model, monkeypatch)
+        return model, directory
+
+    def _export(self, small, emission, root):
+        model, directory = emission
+        return glow_export.export_glow(root, small, model, directory)
+
+    def test_the_files_hold_the_build_in_upload_order(self, small, emission, tmp_path):
+        from space_map_data.emission import build as emission_build
+
+        root = _root(tmp_path / "out")
+        metadata = self._export(small, emission, root)
+        block, live = metadata["emission"], root / "v1" / "glow"
+        directory = emission[1]
+        for tier, n in (("high", 4), ("low", 2)):
+            entry = block["halpha"]["tiers"][tier]
+            assert entry["size"] == [n, n, n]
+            read = container.read(live / entry["path"])
+            assert (read.kind, read.token) == (container.KIND_VOLUME, metadata["token"])
+            info = container.VOLUME_INFO.unpack(read.info)
+            assert info == (n, n, n, 4, container.TIER_CODES[tier])
+            codes = np.load(directory / emission_build.halpha_name(tier))
+            assert np.array_equal(
+                read.numpy("codes"), codes.transpose(2, 1, 0).reshape(-1)
+            )
+            assert entry["bytes"] == (live / entry["path"]).stat().st_size
+            entry = block["scatter"]["tiers"][tier]
+            assert entry["size"] == [n, n, n // 2]
+            read = container.read(live / entry["path"])
+            assert container.VOLUME_INFO.unpack(read.info)[3] == 5
+            bits = np.load(directory / emission_build.j_bits_name(tier))
+            assert np.array_equal(
+                read.numpy("texels"), bits.transpose(2, 1, 0).reshape(-1)
+            )
+            assert entry["bytes"] == (live / entry["path"]).stat().st_size
+        assert set(block["halpha"]["tiers"]) == set(block["scatter"]["tiers"])
+        assert set(block["halpha"]["tiers"]) == {"high", "low"}
+
+    def test_the_regions_are_one_table_for_both_tiers(self, small, emission, tmp_path):
+        root = _root(tmp_path / "out")
+        block = self._export(small, emission, root)["emission"]["regions"]
+        assert block["path"] == glow_export.REGIONS_PATH
+        read = container.read(root / "v1" / "glow" / block["path"])
+        assert (read.kind, read.rows, block["rows"]) == (container.KIND_TABLE, 3, 3)
+        assert read.numpy("source").tolist() == [0, 1, 2]
+        assert read.numpy("light").tolist() == [1.0, 2.0, 3.0]
+        assert block["bytes"] == (root / "v1" / "glow" / block["path"]).stat().st_size
+        assert block["sources"] == ["radio", "infrared", "size"]
+
+    def test_the_metadata_comes_from_the_build_and_not_the_code(
+        self, small, emission, tmp_path, monkeypatch
+    ):
+        from space_map_data.emission import lines, local, scatter
+        from space_map_data.galaxy import volumes
+
+        first = self._export(small, emission, _root(tmp_path / "one"))["emission"]
+        monkeypatch.setattr(lines, "COLOUR", np.ones(3))
+        monkeypatch.setattr(lines, "K_EMISSION", np.ones(3))
+        monkeypatch.setattr(local, "HALF_PC", 1.0)
+        monkeypatch.setattr(scatter, "ALBEDO", np.ones(3))
+        monkeypatch.setattr(scatter, "TAU_PER_MAG", 1.0)
+        monkeypatch.setattr(scatter, "J_BOX", volumes.Box((1.0, 1.0, 1.0), (1, 1, 1)))
+        monkeypatch.setattr(volumes, "CENTRE", (0.0, 0.0, 0.0))
+        second = self._export(small, emission, _root(tmp_path / "two"))["emission"]
+        assert second == first
+        assert first["halpha"]["half_extent_pc"] == [1250.0] * 3
+        assert first["scatter"]["z_map"] == "asinh"
+        assert first["scatter"]["form"]["shield"]["factor"][-1] == pytest.approx(0.6)
+
+    def test_its_sources_bound_the_tier(self, small, emission, tmp_path):
+        root = _root(tmp_path / "out", tier="open")
+        metadata = self._export(small, emission, root)
+        assert metadata["distribution"] == "non-commercial"
+        keys = [c["key"] for c in metadata["credits"]]
+        assert "wise-hii-v3" in keys and keys[: len(PAPERS)] == list(PAPERS)
+        model, _ = emission
+        alone = glow_export.export_glow(
+            _root(tmp_path / "alone", tier="open"), small, model, tmp_path / "none"
+        )
+        assert alone["distribution"] == "open"
+
+    def test_without_a_model_the_grid_goes_alone(
+        self, small, emission, tmp_path, caplog
+    ):
+        root = _root(tmp_path / "out")
+        with caplog.at_level(logging.WARNING):
+            metadata = glow_export.export_glow(
+                root, small, tmp_path / "no-model", emission[1]
+            )
+        assert "emission" not in metadata and "model" not in metadata
+        assert "no model" in caplog.text
+
+    def test_a_changed_catalogue_is_refused(self, small, emission, tmp_path):
+        from space_map_data.emission import build as emission_build
+        from space_map_data.emission import sources
+
+        sources.WISE_FILE.write_text("V3.1")
+        with pytest.raises(emission_build.StaleEmission, match="wise"):
+            self._export(small, emission, _root(tmp_path / "out"))

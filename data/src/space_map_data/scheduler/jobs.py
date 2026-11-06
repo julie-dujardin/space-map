@@ -273,6 +273,16 @@ JOBS: list[Job] = [
         ),
         schedule=Every(timedelta(days=7)),
     ),
+    # Ionised gas for the 3D Milky Way, 4.4 GB, filled from the CLI like the dust.
+    Job(
+        name="emission_maps",
+        sources=(
+            PROVIDERS.MCCALLUM_HALPHA,
+            PROVIDERS.FINKBEINER_HALPHA,
+            PROVIDERS.WISE_HII,
+        ),
+        schedule=Every(timedelta(days=7)),
+    ),
 ]
 
 

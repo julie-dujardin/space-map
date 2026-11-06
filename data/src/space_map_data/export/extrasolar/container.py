@@ -59,6 +59,8 @@ KIND_SPLIT = 2
 KIND_NODE = 3
 KIND_IDS = 4
 KIND_VOLUME = 5
+# A table of rows with no info block, such as the far H II regions of the glow.
+KIND_TABLE = 6
 # The info block of a volume: uint16 width, height and depth, then uint8 index (the
 # level of a nest volume, the texture of a glow volume) and uint8 tier.
 VOLUME_INFO = struct.Struct("<HHHBB")

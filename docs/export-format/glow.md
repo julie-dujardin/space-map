@@ -13,9 +13,13 @@ v1/glow/
   high/model-inner.bin.gz the model's inner box, tier high
   high/model-outer.bin.gz the model's outer box, tier high
   low/model-inner.bin.gz, model-outer.bin.gz the same for tier low
+  high/halpha.bin.gz     H-alpha near the Sun, tier high
+  high/scatter.bin.gz    J, the light that dust scatters, tier high
+  low/halpha.bin.gz, scatter.bin.gz the same for tier low
+  regions.bin.gz         the far H II regions, both tiers
 ```
 
-A build with no model writes the grid alone and no `model` key; a client then draws the catalogue only.
+A build with no model writes the grid alone and no `model` key; a client then draws the catalogue only. A build with no emission writes no `emission` key and none of its files; the emission goes only with a model, since its scattered light takes the model's light.
 
 ## Volume files
 
@@ -93,7 +97,7 @@ j    = L · rgb / (r + g + b of rgb) / texture_scale
 
 - `format`: the container version. `token`: the token of all texture files, computed as for a table of the star tree.
 - `inputs`: the tokens of the tree and the nest that the grid holds. There is no time in this file, so a rerun on the same inputs writes the same bytes.
-- `distribution`: the stricter tier of the tree and the nest, with the meaning that it has on a texture ([textures.md](textures.md)). An `undecided` tier is never served: the export refuses it at the served root.
+- `distribution`: the strictest tier of the tree, the nest and the emission's sources, with the meaning that it has on a texture ([textures.md](textures.md)). An `undecided` tier is never served: the export refuses it at the served root.
 - `quantity`, `frame`: as above. `texture_scale`: the factor in the textures, a power of two.
 - `edges`: the M of each `L`, `null` for `L(all)`. `tint_edge`, `neutral_tint`: as above.
 - `extinction`: `k_g`, `k_rgb`, `bluest_bp_rp`, `reddening`, `brightest_m0`.
@@ -101,7 +105,8 @@ j    = L · rgb / (r + g + b of rgb) / texture_scale
 - `tiers`: for each tier `size`, `shells`, `scale_pc`, `reach_pc`, `mebibytes`, and `files` with `path` and `bytes`.
 - `stars`: `rows`, `light` and `observed` per channel, `past_the_cap_rows`, `past_the_cap_light` and `no_colour_rows`.
 - `model`: the model light, below. Absent when the export holds none.
-- `credits`: the papers and datasets of the model, with the fields of a dust source; empty when the export holds no model. The tree and the nest credit the grid's sources in their own metadata. The nest also lists the papers of the rest layer's shape, which the model reads too.
+- `emission`: H-alpha and scattered starlight, below. Absent when the export holds none.
+- `credits`: the papers and datasets of the model and of the emission, with the fields of a dust source; empty when the export holds neither. The tree and the nest credit the grid's sources in their own metadata. The nest also lists the papers of the rest layer's shape, which the model reads too.
 
 ## Which stars
 
@@ -132,3 +137,24 @@ w = 0.5 + 0.5 d.z / half.z                                      (outer)
 The colour comes from `model.colour`: `rgb` rows sum to 1. Rows `0 .. radii·heights - 1` are a grid in cylindrical radius from the centre (`radius_step_pc`, `radii` nodes from 0) and height from the plane (`height_step_pc`, `heights` nodes from 0), read bilinearly with both clamped, row `j·radii + i`. Past `reach_pc` from the centre (spherical) a row per shell holds instead: `radii·heights + k`, with `k` the number of `shells_pc` edges below the radius. The light times that row is `j` per channel.
 
 `model.far_side_arms` is the contrast of the young arms past the Galactic centre in this build: 1 draws the published geometry, 0 their mean over azimuth. `catalogue_fade_pc` is `null`, or the distances from the Sun over which a client fades the grid's light to 0, as the residual was built. `components` gives each component's G flux and BP - RP. `boxes` and `tiers` give the sizes and paths.
+
+## Emission (`emission`)
+
+Light that is not starlight, in the unit of the model: R + G + B display flux density per pc³, in flux of M = 0 at 10 pc, with no dust. Every part is a model or an estimate scaled to an observed total, and is labelled `model`. One token covers it with the grid and the model, because the scattered light is defined against both and against the nest. An export refuses an emission build made on another nest, grid or model, or from a WISE catalogue or Finkbeiner map that has changed since, and leaves the emission out when it serves no model. Every value of this block comes from the emission build's `encoding.json`, so it describes the files as they were encoded.
+
+**Lines.** H-alpha with [N II] 6584 at 0.25 of it and 6548 at a third of that, and H-beta at 1/2.87 (case B). Its colour is `emission.lines.colour` (rows sum to 1); the red channel holds the 656 nm lines and the green and blue channels H-beta, so each channel dims at its own line: transmission `10^(-0.4 · k_rgb[c] · A0)` with `emission.lines.k_rgb`, not the stars' `k_rgb`.
+
+**H-alpha near the Sun (`halpha`).** McCallum et al. 2025's cube, scaled per sightline so that, seen from the Sun through the nest, it meets Finkbeiner 2003 less the far regions and a scattered share. A cube about the Sun of half extent `half_extent_pc` (1,250 pc), the box of the nest's level 2: `high` 256³ (16 MiB), `low` 128³ (2 MiB). Kind `5`, info block uint16 width, height, depth, uint8 texture `4`, uint8 tier; one column `codes`, `uint8`, x fastest. Upload as `R8`, `RED`, `UNSIGNED_BYTE`, `UNPACK_ALIGNMENT` 1, `LINEAR`, `CLAMP_TO_EDGE`, and decode after the fetch: `floor · (exp(texel · log(1 + top / floor)) - 1)`, with `floor` and `top` of the tier. Codes are compensated for `LINEAR`, as the nest's are. Texture coordinates: `(p + half) / (2 half)`, read only where the box holds `p`.
+
+**Scattered light (`scatter`).** The isotropic single-scattering source is, per channel,
+
+```
+j_scat = albedo[c] · k_rgb[c] · density / 1.0857 · J · colour[c] · shield(density)
+```
+
+with `density` the nest's A0 per pc at the step, `k_rgb` the stars' (`extinction.k_rgb`), `albedo` of `scatter.albedo`, and `J` the mean intensity of the glow's light with no cut, stored as R + G + B, in flux of M = 0 at 10 pc per pc² (so `j_scat` is in the glow's unit). It takes the stars' transmission. The box is the model's inner box (`centre_pc`, `half_extent_pc`, asinh height with `z_scale_pc`), so the model's texture coordinates serve: `high` 128 x 128 x 16, `low` 64 x 64 x 8. Kind `5`, texture `5`, one column `texels` of half-float bits times `form.texture_scale`; upload as `R16F`, `RED`, `HALF_FLOAT`, `LINEAR`, `CLAMP_TO_EDGE`; 0 outside the box.
+
+- `form.colour`: a table of `distances` x `radii` RGB rows (each sums to 1), `rgb[k][i]`. `i` is even in cylindrical radius from the Galactic centre, 0 to `r_max_pc`; `k` is even in `log(1 + d / d_scale_pc)` with `d` the distance from the Sun, 0 to `d_max_pc`; read bilinearly with both clamped, as an `RGBA16F` 2D texture of `radii` x `distances` would be.
+- `form.shield`: J inside dust over the grid's J, at `log10_density_nodes` (A0 mag/pc); linear between nodes, held past the ends. The grid's J is a voxel mean; dense dust shields itself from it.
+
+**Far H II regions (`regions`).** The WISE Catalog of Galactic H II Regions V3.0, the rows with a distance outside 1,250 pc. Kind `6` (table), no info block, one row a region, columns `x`, `y`, `z` (pc, nest axes), `sigma_pc`, `light` (`float32`) and `source` (`uint8`: 0 radio, 1 infrared, 2 the mean rate at the region's size, an estimate). Each is a Gaussian ball of `sigma_pc` with `light` of R + G + B display flux at 10 pc, intrinsic: the client dims it by the column from the camera, per channel at `lines.k_rgb`.

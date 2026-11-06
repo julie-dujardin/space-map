@@ -42,6 +42,7 @@ space-map-extrasolar = "space_map_data.extrasolar.__main__:cli"
 space-map-dust = "space_map_data.dust.__main__:cli"
 space-map-glow = "space_map_data.glow.__main__:cli"
 space-map-galaxy = "space_map_data.galaxy.__main__:cli"
+space-map-emission = "space_map_data.emission.__main__:cli"
 
 [build-system]
 requires = ["hatchling"]

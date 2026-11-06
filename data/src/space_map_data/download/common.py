@@ -39,6 +39,11 @@ from space_map_data.download.providers.dust.maps import (
     GaiaExtinctionMapDownloader,
     PlanckDustDownloader,
 )
+from space_map_data.download.providers.emission.maps import (
+    FinkbeinerHalphaDownloader,
+    McCallumHalphaDownloader,
+    WiseHiiDownloader,
+)
 from space_map_data.download.providers.exoplanets.exoplanet_eu import (
     ExoplanetEUDownloader,
 )
@@ -272,6 +277,9 @@ PROVIDERS_CLASSES = [
     GaiaExtinctionMapDownloader,
     ExploreDustDownloader,
     DharmawardenaDustDownloader,
+    McCallumHalphaDownloader,
+    FinkbeinerHalphaDownloader,
+    WiseHiiDownloader,
 ]
 SOURCES: dict[str, type[Downloader]] = {cls.name: cls for cls in PROVIDERS_CLASSES}
 

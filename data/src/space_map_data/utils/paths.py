@@ -49,6 +49,8 @@ SOURCES_EXOPLANETS_DIR = SOURCES_DIR / "exoplanets"
 SOURCES_SKYCULTURES_DIR = SOURCES_DIR / "skycultures"
 # 3D and 2D maps of interstellar dust, one tree for each map.
 SOURCES_DUST_MAPS_DIR = SOURCES_DIR / "dust-maps"
+# Maps and catalogues of ionised gas (H-alpha, H II regions), one tree for each.
+SOURCES_EMISSION_DIR = SOURCES_DIR / "emission"
 
 # Hand-authored supplemental overlays the automated providers can't discover
 # (mirrors sources/models/spacecraft/manual + Commons manual-extra.json). See

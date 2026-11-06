@@ -19,6 +19,8 @@ export const KIND_SPLIT = 2;
 export const KIND_NODE = 3;
 export const KIND_IDS = 4;
 export const KIND_VOLUME = 5;
+/** A table of rows with no info block, such as the far H II regions of the glow. */
+export const KIND_TABLE = 6;
 
 const HEADER_SIZE = 32;
 const TOKEN_AT = 8;

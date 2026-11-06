@@ -100,6 +100,12 @@ def cli():
         default=None,
         help="glow: the model build that goes with the grid (default: model-build)",
     )
+    parser.add_argument(
+        "--emission-build",
+        type=Path,
+        default=None,
+        help="glow: the emission build that goes with the model (default: emission-build)",
+    )
     args = parser.parse_args()
 
     with open(DATA_DIR / "logging.toml", "rb") as f:
@@ -124,6 +130,7 @@ def cli():
         # It reads the builds and the tokens of the tree and the nest, and no DB.
         if args.only == "glow":
             # Late, because the nest build pulls in h5py, scipy and astropy.
+            from space_map_data.emission.build import BUILD_DIR as EMISSION_BUILD_DIR
             from space_map_data.export.glow import export_glow_only
             from space_map_data.galaxy.build import BUILD_DIR as MODEL_BUILD_DIR
             from space_map_data.glow.build import BUILD_DIR as GLOW_BUILD_DIR
@@ -132,6 +139,7 @@ def cli():
                 args.extrasolar_root,
                 args.glow_build or GLOW_BUILD_DIR,
                 args.model_build or MODEL_BUILD_DIR,
+                args.emission_build or EMISSION_BUILD_DIR,
             )
             return
     except ExportRefused as error:
