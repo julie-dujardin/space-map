@@ -3,6 +3,7 @@
 
 import type { Snippet } from 'svelte';
 import { DRAWER_TABS, type DrawerTab } from '$lib/state/view';
+import type { GlobalObjectData, InteriorBlock } from '$lib/fetch/objects/object-data';
 
 /** One entry of the drawer's ordered tab table — the single source for the
  *  bar's triggers, the gallery shelf links, the panel bodies and a promoted
@@ -61,4 +62,19 @@ export function promoteTabs(
 		inBar--;
 	}
 	return promoted;
+}
+
+/** Whether the object has a Structure tab: a layer model or a named
+ *  atmosphere stack in its bundle, or a star's interior. A group and a feature
+ *  have none of their own. */
+export function structureTabPresent(input: {
+	global: GlobalObjectData | null | undefined;
+	starInterior: InteriorBlock | null | undefined;
+	isGroupMode: boolean;
+	isFeatureMode: boolean;
+}): boolean {
+	if (input.isGroupMode || input.isFeatureMode) return false;
+	const bundle = !!input.global?.interior?.layers?.length || !!input.global?.atmosphere?.structure;
+	const star = !!input.starInterior?.layers?.length;
+	return bundle || star;
 }

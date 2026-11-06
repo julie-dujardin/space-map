@@ -89,9 +89,17 @@ export function isPaperCredit(credit: ExtrasolarCredit): boolean {
 	return /\b\d{4}$/.test(credit.organisation) || credit.source.includes(LITERATURE_PAGE);
 }
 
+/** The page of the stellar models that the Interior table is fitted to. */
+export const MIST_PAGE = '//mist.science/';
+
+/** The scene draws no interior, so the credit of the models is not its own. */
+export function isInteriorCredit(credit: ExtrasolarCredit): boolean {
+	return credit.source.includes(MIST_PAGE);
+}
+
 /** The bar and popover: papers would crowd out the credits we owe. */
 export function inSceneCredits(credit: ExtrasolarCredit): boolean {
-	return !isPaperCredit(credit) && !isWikidataCredit(credit);
+	return !isPaperCredit(credit) && !isWikidataCredit(credit) && !isInteriorCredit(credit);
 }
 
 /** The planet files: the index and one file per planetary system. */

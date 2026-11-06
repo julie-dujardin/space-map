@@ -1,7 +1,9 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { astrometricOrbit, homeRow, type TableRow } from '$lib/fetch/extrasolar/lookup';
 import { pointSourceRecord } from '$lib/fetch/extrasolar/__fixtures__/record';
 import type { ColumnSpec } from '$lib/fetch/extrasolar/__fixtures__/writer';
+import { absoluteG, colourBpRp } from '$lib/scene/starfield/record';
 import { chooseMetallicity, starKind } from './metallicity';
 
 /** The text without its bidi isolates and with plain spaces. */
@@ -172,5 +174,58 @@ describe('the metallicity of each kind', () => {
 	it('uses the FGK dwarf order without a kind, and nothing without a value', () => {
 		expect(chosen({ parallax: null, ...DWARF, ...pastel, ...xp })?.source).toBe('pastel-2020');
 		expect(chosen({ ...DWARF })).toBe(null);
+	});
+});
+
+/** The stars that the export's port of these rules is tested on too. */
+interface PanelStar {
+	name: string;
+	row: Record<string, Value>;
+	expected: {
+		kind: string | null;
+		source: string | null;
+		value: number | null;
+		colour: number | null;
+		absolute_g: number | null;
+	};
+}
+const PANEL_STARS: PanelStar[] = JSON.parse(
+	readFileSync(
+		new URL('../../../../../../data/tests/fixtures/star_metallicity.json', import.meta.url),
+		'utf8'
+	)
+).stars;
+
+/** A row of the fixture: a string is a string column, a boolean a bool column. */
+function fixtureRow(values: Record<string, Value>): TableRow {
+	const specs = Object.entries(values).map(
+		([name, value]): ColumnSpec => ({
+			name,
+			type: typeof value === 'string' ? 'string' : typeof value === 'boolean' ? 'bool' : 'float32',
+			values: [value]
+		})
+	);
+	return pointSourceRecord(specs).rows.get('point-source')!;
+}
+
+/** The leading number of a value as the panel writes it. */
+const leadingNumber = (text: string) =>
+	Number(/[-+]?\d+(\.\d+)?/.exec(plain(text).replace('\u2212', '-'))![0]);
+
+describe('the stars of the shared fixture', () => {
+	it.each(PANEL_STARS.map((star) => [star.name, star] as const))('%s', (_, star) => {
+		const ps = fixtureRow(star.row);
+		const { expected } = star;
+		expect(starKind(ps, null)).toBe(expected.kind);
+		const found = chooseMetallicity(ps, null, 'dex');
+		expect(found?.source ?? null).toBe(expected.source);
+		expect(found && leadingNumber(found.value)).toBe(expected.value);
+		for (const [value, wanted] of [
+			[colourBpRp(ps), expected.colour],
+			[absoluteG(ps, null), expected.absolute_g]
+		]) {
+			if (wanted === null) expect(value).toBe(null);
+			else expect(value).toBeCloseTo(wanted, 4);
+		}
 	});
 });

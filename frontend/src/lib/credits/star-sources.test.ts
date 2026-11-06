@@ -1,5 +1,12 @@
-import { describe, expect, it } from 'vitest';
-import { inSceneCredits, type ExtrasolarCredit } from '$lib/fetch/extrasolar/files';
+import { afterEach, describe, expect, it } from 'vitest';
+import {
+	inSceneCredits,
+	isInteriorCredit,
+	type ExtrasolarCredit,
+	type ExtrasolarMetadata
+} from '$lib/fetch/extrasolar/files';
+import { configureHost } from '$lib/host';
+import type { StarInterior } from '$lib/fetch/extrasolar/interior';
 import { ExtrasolarLookup, type ExtrasolarRecord } from '$lib/fetch/extrasolar/lookup';
 import {
 	HAS_EXPORT,
@@ -16,7 +23,9 @@ import {
 	citationCredits,
 	localizedStarCredit,
 	planetCredits,
+	shownStarCredits,
 	starCredits,
+	starInteriorCredits,
 	starSourceName
 } from './star-sources';
 import { referenceCount } from './star-sources';
@@ -232,12 +241,27 @@ describe.skipIf(!HAS_EXPORT)('star credits from the real export', () => {
 	};
 
 	it('finds a credit in the export for each catalogue', () => {
-		const sources = exportMetadata().credits.map((c) => c.source);
+		const meta = exportMetadata();
+		const sources = meta.credits.map((c) => c.source);
+		// The export lists a work of the fitted interiors only where a row used it.
+		const interior: string[] = [
+			CREDIT_PAGES.mist,
+			CREDIT_PAGES.casagrande,
+			CREDIT_PAGES.flower,
+			CREDIT_PAGES.torres
+		];
 		for (const page of Object.values(CREDIT_PAGES)) {
+			const found = sources.filter((s) => s.includes(page));
+			if (interior.includes(page)) {
+				expect(found.length).toBeLessThanOrEqual(meta.tables.interior ? 1 : 0);
+				continue;
+			}
 			// ORB6's page is under the WDS's.
-			const pages = page === CREDIT_PAGES.wds ? 2 : 1;
-			expect(sources.filter((s) => s.includes(page))).toHaveLength(pages);
+			expect(found).toHaveLength(page === CREDIT_PAGES.wds ? 2 : 1);
 		}
+		const works = interior.filter((page) => sources.some((s) => s.includes(page)));
+		// The relations come with the models.
+		if (works.length) expect(works[0]).toBe(CREDIT_PAGES.mist);
 	});
 
 	it('credits the catalogues behind each star', async () => {
@@ -411,5 +435,204 @@ describe('referenceCount', () => {
 			credit('ESA', 'https://example.org/catalogue', 'ESA 1997')
 		];
 		expect(referenceCount(credits, stars)).toBe(3);
+	});
+});
+
+describe('the credits of a star interior', () => {
+	// As the export writes them: the models, then the works of the colour routes.
+	const credits: ExtrasolarCredit[] = [
+		{
+			name: 'Gaia Data Release 3',
+			organisation: 'ESA/Gaia/DPAC',
+			source: 'https://www.cosmos.esa.int/web/gaia/dr3'
+		},
+		{
+			name: 'JMDC',
+			organisation: 'Chelli et al. 2016',
+			source: 'https://cdsarc.cds.unistra.fr/viz-bin/cat/II/345'
+		},
+		{
+			name: 'SIMBAD',
+			organisation: 'CDS',
+			source: 'https://simbad.cds.unistra.fr/'
+		},
+		{
+			name: 'Hipparcos 2007',
+			organisation: 'van Leeuwen 2007',
+			source: 'https://cdsarc.cds.unistra.fr/viz-bin/cat/I/311'
+		},
+		{
+			name: 'Hipparcos 1997',
+			organisation: 'ESA 1997',
+			source: 'https://cdsarc.cds.unistra.fr/viz-bin/cat/I/239'
+		},
+		{
+			name: 'NASA Exoplanet Archive',
+			organisation: 'NExScI',
+			source: 'https://exoplanetarchive.ipac.caltech.edu/'
+		},
+		{
+			name: 'MIST v2.5 stellar evolution tracks',
+			organisation: 'MESA Isochrones and Stellar Tracks',
+			source: 'https://mist.science/',
+			citation: 'Dotter et al. 2026, ApJS 283, 64; Choi et al. 2016, ApJ 823, 102'
+		},
+		{
+			name: 'Teff scale',
+			organisation: 'Casagrande et al. 2010',
+			source: 'https://doi.org/10.1051/0004-6361/200913204'
+		},
+		{
+			name: 'Transformations',
+			organisation: 'Flower 1996',
+			source: 'https://doi.org/10.1086/177785'
+		},
+		{
+			name: 'Bolometric corrections',
+			organisation: 'Torres 2010',
+			source: 'https://doi.org/10.1088/0004-6256/140/5/1158'
+		}
+	];
+	const fit = (over: Partial<StarInterior>): StarInterior => ({
+		id: 1,
+		tier: 2,
+		curated: null,
+		stage: 'main_sequence',
+		feh: 0,
+		fehSource: 'assumed-solar',
+		teffSource: 'gaia-dr3-gspphot',
+		luminositySource: 'gaia-dr3-flame',
+		mass: { value: 1, range: null },
+		radius: { value: 1, range: null },
+		envelopeBaseRadius: { value: 0.7, range: null },
+		envelopeBaseMass: { value: 0.98, range: null },
+		convectiveCoreMass: null,
+		heliumCoreMass: null,
+		centreTemperature: { value: null, range: null },
+		centreDensity: { value: null, range: null },
+		centreX: null,
+		centreY: null,
+		...over
+	});
+
+	// A Hipparcos star at 10 pc, with no Gaia values.
+	const HIPPARCOS = {
+		parallax: 100,
+		parallax_error: 0.5,
+		astrometry_source: 'hipparcos-2007',
+		hipparcos_photometry_source: 'hipparcos-2007',
+		v_mag: 4.4,
+		b_v: 0.65
+	};
+	const star = (values: Record<string, number | string> = {}) =>
+		pointSourceRecord(valueColumns(values), credits);
+	const paper = { short: 'Boyajian et al. 2012', title: 'Radii', url: 'https://doi.org/10.1/r' };
+	const labels = (
+		over: Partial<StarInterior>,
+		values: Record<string, number | string> = HIPPARCOS,
+		references = {}
+	) => starInteriorCredits(fit(over), star(values), references).map((c) => c.label);
+
+	it('credits the models first, then the catalogues of the inputs', () => {
+		expect(labels({}, {})).toEqual(['MIST v2.5 stellar evolution tracks', 'Gaia Data Release 3']);
+	});
+
+	it('credits the relations and the photometry that a Teff from B − V came from', () => {
+		expect(labels({ teffSource: 'casagrande-2010' })).toEqual([
+			'MIST v2.5 stellar evolution tracks',
+			'Gaia Data Release 3',
+			'Hipparcos 1997',
+			'Teff scale'
+		]);
+		const simbad = { ...HIPPARCOS, b_v: Number.NaN, simbad_b_mag: 5, simbad_v_mag: 4.4 };
+		expect(labels({ teffSource: 'flower-1996' }, simbad)).toContain('SIMBAD');
+	});
+
+	it('credits the V and the distance of a luminosity from a bolometric correction', () => {
+		expect(
+			labels({ teffSource: 'flower-1996', luminositySource: 'bolometric-correction' })
+		).toEqual([
+			'MIST v2.5 stellar evolution tracks',
+			'Hipparcos 2007',
+			'Hipparcos 1997',
+			'Transformations',
+			'Bolometric corrections'
+		]);
+	});
+
+	it('credits the source of the radius that a luminosity came from', () => {
+		const radius = { teffSource: 'host-star', luminositySource: 'radius' };
+		const host = { ...HIPPARCOS, host_star_source: 'nasa-exoplanet-archive' };
+		expect(labels(radius, { ...host, radius_literature: 1.1 }, { paper_radius: [paper] })).toEqual([
+			'MIST v2.5 stellar evolution tracks',
+			'NASA Exoplanet Archive',
+			'Radii'
+		]);
+		expect(labels(radius, { ...host, angular_diameter: 1.5 })).toEqual([
+			'MIST v2.5 stellar evolution tracks',
+			'JMDC',
+			'Hipparcos 2007',
+			'NASA Exoplanet Archive'
+		]);
+	});
+
+	it('cites the papers of a curated interior, from its block', () => {
+		const curated = {
+			structure: 'fluid',
+			layers: [],
+			sources: [{ title: 'Paper 2002 (A&A 1)', url: 'https://doi.org/10.1/x', note: 'layers' }]
+		};
+		expect(starInteriorCredits(fit({ tier: 0, curated }), star())).toEqual([
+			{
+				key: 'https://doi.org/10.1/x',
+				label: 'Paper 2002 (A&A 1)',
+				url: 'https://doi.org/10.1/x',
+				note: 'layers'
+			}
+		]);
+	});
+
+	it('keeps the models out of the scene credits, which draw no interior', () => {
+		expect(credits.filter(inSceneCredits).map((c) => c.name)).toEqual([
+			'Gaia Data Release 3',
+			'SIMBAD',
+			'NASA Exoplanet Archive'
+		]);
+		expect(credits.filter(isInteriorCredit).map((c) => c.name)).toEqual([
+			'MIST v2.5 stellar evolution tracks'
+		]);
+	});
+
+	it('names the inputs of a fit', () => {
+		expect(starSourceName('gaia-dr3-flame')).toBe('Gaia DR3 FLAME');
+		expect(starSourceName('flower-1996')).toBe('B − V, Flower 1996');
+		expect(starSourceName('radius')).toBe('Measured radius');
+		expect(starSourceName('host-star')).toBe('Planet catalogues');
+	});
+});
+
+describe('the star credits that /credits lists', () => {
+	afterEach(() => configureHost({}));
+	const credit = (name: string, source: string) =>
+		({ name, source, organisation: 'X', license: null }) as never as ExtrasolarCredit;
+	const meta = {
+		tables: {
+			'point-source': { distribution: 'non-commercial' },
+			interior: { distribution: 'site-only' }
+		},
+		credits: [
+			credit('Gaia', 'https://www.cosmos.esa.int/web/gaia/dr3'),
+			credit('MIST', 'https://mist.science/'),
+			credit('Flower', 'https://doi.org/10.1086/177785')
+		]
+	} as never as ExtrasolarMetadata;
+
+	it('lists the works of the Interior table only where the host may show it', () => {
+		configureHost({ textures: 'non-commercial' });
+		expect(shownStarCredits(meta).map((c) => c.name)).toEqual(['Gaia']);
+		configureHost({ textures: 'site-only' });
+		expect(shownStarCredits(meta).map((c) => c.name)).toEqual(['Gaia', 'MIST', 'Flower']);
+		configureHost({ textures: 'open' });
+		expect(shownStarCredits(meta)).toEqual([]);
 	});
 });

@@ -491,6 +491,20 @@ export class ExtrasolarLookup {
 		};
 	}
 
+	/**
+	 * The row of `id` in a table that no mask bit names, such as Interior.
+	 * Null where the export has no such table, the host may not show it, or
+	 * the table has no row for the ID.
+	 */
+	async row(slug: string, id: number): Promise<TableRow | null> {
+		const meta = await this.source.metadata();
+		const table = meta?.tables[slug];
+		if (!table || !this.source.allowed(table)) return null;
+		const tile = await this.tile(slug, table, cellOf(id));
+		const row = findId(tile.ids('id'), id);
+		return row < 0 ? null : new TableRow(slug, table, tile, row);
+	}
+
 	private split(slug: string, table: ExtrasolarTable): Promise<SplitTree> {
 		const key = `${slug}?v=${table.token}`;
 		const held = this.splits.get(key);

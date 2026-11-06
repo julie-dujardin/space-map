@@ -13,6 +13,7 @@
 		evidenceName,
 		layerName,
 		phaseName,
+		thicknessText,
 		rockName,
 		standingName,
 		stateName
@@ -26,7 +27,7 @@
 		ucfirst,
 		type Parts
 	} from '$lib/format/quantities';
-	import { formatKm, formatKmRange } from '$lib/format/distance';
+	import { formatKmRange } from '$lib/format/distance';
 	import { formatKelvinRange } from '$lib/format/temperature';
 	import { ltrIsolate } from '$lib/format/bidi';
 	import CompositionBar from '../sections/kit/CompositionBar.svelte';
@@ -80,13 +81,20 @@
 			bits.push(`${stateName(layer.state)} ${materialName(material.material)}`);
 		} else if (material) {
 			bits.push(materialName(material.material));
+		} else if (layer.state) {
+			bits.push(stateName(layer.state));
 		}
-		bits.push(ltrIsolate(formatKmRange(band.depthFromKm, band.depthToKm)));
+		// Depths only where both edges are single values; the thickness gives a range.
+		if (band.depthFromKm !== null && band.depthToKm !== null && !band.thicknessRangeKm) {
+			bits.push(ltrIsolate(formatKmRange(band.depthFromKm, band.depthToKm)));
+		}
 		// Sentence case: the state and material vocabularies are lowercase so they
 		// can be composed ("solid rock"), and this is where the phrase starts a
 		// line of its own.
 		return ucfirst(bits.join(' · '));
 	});
+
+	let thickness = $derived(thicknessText(band));
 
 	let reading = $derived(
 		temperature ? formatKelvinRange(temperature.lowK, temperature.highK) : null
@@ -103,15 +111,23 @@
 		return percentParts(fraction, 6);
 	}
 
-	/** Share of the body, with its published range where the source gives one
-	 *  — a lone 39% would read as a precise measurement when it's really
-	 *  24–57%. A range narrower than the panel's rounding is dropped rather
-	 *  than shown as a bracket that says only that a range existed. */
+	/** The share of the body's mass, with the source's range where it gives
+	 *  one. A lone 39% reads as precise where the source gives 24–57%. A range
+	 *  narrower than the rounding is dropped. A fit can give the range alone. */
 	let mass = $derived.by(() => {
-		if (layer.mass_fraction === undefined) return null;
+		const range = layer.mass_fraction_range;
+		if (layer.mass_fraction === undefined) {
+			if (!range) return null;
+			const [low, high] = range.map(massPercent);
+			if (low.value === high.value) return m.structure_layer_mass({ value: joinParts(low) });
+			if (range[0] === 0)
+				return m.structure_layer_mass({
+					value: m.structure_span_up_to({ value: joinParts(high) })
+				});
+			return m.structure_layer_mass_span(spanFields(low, high));
+		}
 		const parts = massPercent(layer.mass_fraction);
 		const value = joinParts(parts);
-		const range = layer.mass_fraction_range;
 		if (!range) return m.structure_layer_mass({ value });
 		const [low, high] = range.map(massPercent);
 		if (low.value === parts.value && high.value === parts.value)
@@ -159,11 +175,11 @@
 	     fit across 41% of it. -->
 	<div class="flex flex-wrap items-baseline gap-x-2">
 		<span class="flex-1 text-sm font-medium">{layerName(layer.role, layer.note)}</span>
-		<span class="text-muted-foreground shrink-0 text-[11px] tabular-nums">
-			{m.structure_layer_thick({
-				value: ltrIsolate(formatKm(band.thicknessKm))
-			})}
-		</span>
+		{#if thickness}
+			<span class="text-muted-foreground shrink-0 text-[11px] tabular-nums">
+				{m.structure_layer_thick({ value: thickness })}
+			</span>
+		{/if}
 	</div>
 
 	<div class="text-muted-foreground flex items-baseline gap-2 text-[11px] leading-snug">

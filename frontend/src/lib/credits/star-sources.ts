@@ -13,8 +13,11 @@ import {
 	isPaperCredit,
 	isWikidataCredit,
 	LITERATURE_PAGE,
-	type ExtrasolarCredit
+	MIST_PAGE,
+	type ExtrasolarCredit,
+	type ExtrasolarMetadata
 } from '$lib/fetch/extrasolar/files';
+import { CURATED_TIER, INTERIOR_SLUG, type StarInterior } from '$lib/fetch/extrasolar/interior';
 import {
 	LITERATURE,
 	SYSTEM_SLUG,
@@ -22,11 +25,12 @@ import {
 	homeRow,
 	starDistance,
 	type ExtrasolarRecord,
-	type StarDistance
+	type StarDistance,
+	type TableRow
 } from '$lib/fetch/extrasolar/lookup';
 import type { Planet } from '$lib/fetch/extrasolar/planets';
 import type { SystemCitation, SystemNode } from '$lib/fetch/extrasolar/systems';
-import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
+import type { GlobalObjectData, ValueReference } from '$lib/fetch/objects/object-data';
 import {
 	REFERENCE_SECTIONS,
 	type Credits,
@@ -74,7 +78,16 @@ const SOURCE_NAMES: Record<string, () => string> = {
 	'nasa-exoplanet-archive': m.source_nasa_exoplanet_archive_name,
 	'exoplanet-eu': m.source_exoplanet_eu_name,
 	'open-exoplanet-catalogue': m.source_open_exoplanet_catalogue_name,
-	'iau-nameexoworlds': m.source_nameexoworlds_name
+	'iau-nameexoworlds': m.source_nameexoworlds_name,
+	// The inputs of an interior fit.
+	'gaia-dr3-flame': m.source_gaia_dr3_flame_name,
+	'gaia-dr3-flame-spec': m.source_gaia_dr3_flame_spec_name,
+	'gaia-dr3-esphs': m.source_gaia_dr3_esphs_name,
+	'host-star': m.source_planet_catalogues_name,
+	'casagrande-2010': m.source_casagrande_2010_name,
+	'flower-1996': m.source_flower_1996_name,
+	radius: m.source_measured_radius_name,
+	'bolometric-correction': m.source_bolometric_correction_name
 };
 
 /** The catalogue a `*_source` column or a panel row names, as a reader knows it. */
@@ -117,7 +130,11 @@ export const CREDIT_PAGES = {
 	sbx: '/sbx/',
 	elBadry: '/zenodo.4435257',
 	literature: LITERATURE_PAGE,
-	starNames: '/star-names/'
+	starNames: '/star-names/',
+	mist: MIST_PAGE,
+	casagrande: '/10.1051/0004-6361/200913204',
+	flower: '/10.1086/177785',
+	torres: '/10.1088/0004-6256/140/5/1158'
 } as const;
 
 type CreditPage = keyof typeof CREDIT_PAGES;
@@ -257,16 +274,126 @@ export function starCredits(
 		if (oneStar && row.text('xhip_metallicity_source')) pages.add('xhip');
 	}
 	if (measured?.measuredBy === 'angular diameter') pages.add('jmdc');
-	const out = creditsOf(pages, record.credits);
-	const papers = [
-		...(distance?.source === LITERATURE ? (references?.distance ?? []) : []),
-		...(references?.paper_radius ?? []),
-		...(measured?.radiusPapers ?? [])
+	return [
+		...creditsOf(pages, record.credits),
+		...paperCredits([
+			...(distance?.source === LITERATURE ? (references?.distance ?? []) : []),
+			...(references?.paper_radius ?? []),
+			...(measured?.radiusPapers ?? [])
+		])
 	];
-	for (const paper of papers) {
-		out.push({ key: paper.url, label: paper.title, url: paper.url, note: paper.short });
+}
+
+function paperCredits(papers: readonly ValueReference[]): StarCredit[] {
+	return papers.map((paper) => ({
+		key: paper.url,
+		label: paper.title,
+		url: paper.url,
+		note: paper.short
+	}));
+}
+
+/** The credits of the inputs of an interior fit, by their source in the row. */
+const FIT_INPUT_PAGES: Partial<Record<string, CreditPage[]>> = {
+	'gaia-dr3-gspphot': ['gaia'],
+	'gaia-dr3-gspspec': ['gaia'],
+	'gaia-dr3-esphs': ['gaia'],
+	'gaia-dr3-flame': ['gaia'],
+	'gaia-dr3-flame-spec': ['gaia'],
+	'apogee-dr17': ['apogee'],
+	'lamost-dr10': ['lamost', 'lamostMStars'],
+	'andrae-2023': ['xpMetallicity'],
+	'pastel-2020': ['pastel', 'simbad'],
+	xhip: ['xhip'],
+	'casagrande-2010': ['casagrande'],
+	// Torres 2010 corrects the coefficients of Flower's relations.
+	'flower-1996': ['flower', 'torres'],
+	'bolometric-correction': ['flower', 'torres']
+};
+
+/** The export takes no extinction for the B − V and V routes within this
+ *  distance (pc) or up to this V, and GSP-Phot's A0 beyond. */
+const SMALL_EXTINCTION_PC = 100;
+const SMALL_EXTINCTION_V = 6;
+
+/** B − V and V are Hipparcos's, else SIMBAD's. */
+function photometryPage(row: TableRow, hipparcos: string): CreditPage {
+	return row.number(hipparcos) !== null ? 'hipparcosPhotometry' : 'simbad';
+}
+
+/** What gave a fit's distance: a catalogue, a paper, or the parallax of the
+ *  star's astrometry or of its orbit solution. */
+function addDistance(
+	row: TableRow,
+	distance: StarDistance | null,
+	pages: Set<CreditPage | undefined>,
+	papers: ValueReference[],
+	references: GlobalObjectData['references']
+): void {
+	if (distance?.source === LITERATURE) papers.push(...(references?.distance ?? []));
+	else if (distance?.parallax?.fromOrbit) pages.add('gaia').add('orbits');
+	else if (distance?.parallax) pages.add(SOURCE_PAGES[row.text('astrometry_source') ?? '']);
+	else pages.add(distancePage(distance));
+}
+
+/** The credits of a star's interior: the papers of a curated block, or the
+ *  stellar models of a fit, then the catalogues, relations and papers of its
+ *  inputs. A Teff from B − V and a luminosity from V or from a measured
+ *  radius rest on the photometry, distance and radius of the record. */
+export function starInteriorCredits(
+	interior: StarInterior,
+	record: ExtrasolarRecord,
+	references?: GlobalObjectData['references']
+): StarCredit[] {
+	if (interior.tier === CURATED_TIER) {
+		return (interior.curated?.sources ?? []).map((work) => ({
+			key: work.url,
+			label: work.title,
+			url: work.url,
+			note: work.note
+		}));
 	}
-	return out;
+	const { teffSource, luminositySource } = interior;
+	const pages = new Set<CreditPage | undefined>();
+	const papers: ValueReference[] = [];
+	for (const source of [teffSource, luminositySource, interior.fehSource]) {
+		for (const page of FIT_INPUT_PAGES[source ?? ''] ?? []) pages.add(page);
+	}
+	const home = homeRow(record);
+	if (home) {
+		const distance = starDistance(home, astrometricOrbit(record));
+		const fromColour = teffSource === 'casagrande-2010' || teffSource === 'flower-1996';
+		const fromV = luminositySource === 'bolometric-correction';
+		if (teffSource === 'host-star') pages.add(SOURCE_PAGES[home.text('host_star_source') ?? '']);
+		if (fromColour) pages.add(photometryPage(home, 'b_v'));
+		if (fromV) {
+			pages.add(photometryPage(home, 'v_mag'));
+			addDistance(home, distance, pages, papers, references);
+		}
+		const v = home.number('v_mag') ?? home.number('simbad_v_mag');
+		const reddened =
+			distance !== null &&
+			distance.pc > SMALL_EXTINCTION_PC &&
+			(v === null || v > SMALL_EXTINCTION_V) &&
+			home.number('azero_gspphot') !== null;
+		if ((fromColour || fromV) && reddened) pages.add('gaia');
+		if (luminositySource === 'radius') {
+			if ((home.number('radius_literature') ?? 0) > 0) {
+				papers.push(...(references?.paper_radius ?? []));
+			} else {
+				// The diameter's distance: a paper's, else the star's own parallax.
+				pages.add('jmdc');
+				if (home.text('distance_source') === LITERATURE) {
+					papers.push(...(references?.distance ?? []));
+				} else pages.add(SOURCE_PAGES[home.text('astrometry_source') ?? '']);
+			}
+		}
+	}
+	return [
+		...creditsOf(new Set(['mist']), record.credits),
+		...creditsOf(pages, record.credits),
+		...paperCredits(papers)
+	];
 }
 
 /** The credits of the catalogues that gave a planet its name and values. A
@@ -359,6 +486,14 @@ export function referenceCount(credits: Credits, stars: readonly ExtrasolarCredi
 	return new Set(rows.map((ref) => ref.url)).size;
 }
 
+/** The works that only the Interior table rests on. */
+const INTERIOR_PAGES: readonly string[] = [
+	CREDIT_PAGES.mist,
+	CREDIT_PAGES.casagrande,
+	CREDIT_PAGES.flower,
+	CREDIT_PAGES.torres
+];
+
 /** The credits of the star catalogues for /credits; none where the host
  *  serves no extrasolar export, or may show none of it. */
 export async function fetchStarCatalogueCredits(): Promise<ExtrasolarCredit[]> {
@@ -366,6 +501,17 @@ export async function fetchStarCatalogueCredits(): Promise<ExtrasolarCredit[]> {
 		console.warn('[credits] extrasolar metadata did not load:', e);
 		return null;
 	});
-	const shown = meta && Object.values(meta.tables).some((table) => extrasolarAllowed(table));
-	return shown ? meta.credits.filter((c) => !isWikidataCredit(c)).map(localizedStarCredit) : [];
+	return shownStarCredits(meta);
+}
+
+/** The credits of `meta` that the host may show. The works of the Interior
+ *  table count only where the host may show that table. */
+export function shownStarCredits(meta: ExtrasolarMetadata | null): ExtrasolarCredit[] {
+	if (!meta || !Object.values(meta.tables).some((table) => extrasolarAllowed(table))) return [];
+	const interior = meta.tables[INTERIOR_SLUG];
+	const interiorShown = interior !== undefined && extrasolarAllowed(interior);
+	return meta.credits
+		.filter((c) => !isWikidataCredit(c))
+		.filter((c) => interiorShown || !INTERIOR_PAGES.some((page) => c.source.includes(page)))
+		.map(localizedStarCredit);
 }

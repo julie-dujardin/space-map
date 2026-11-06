@@ -61,12 +61,13 @@
 	import MemberList from './members/MemberList.svelte';
 	import TopicSummary from './sections/kit/TopicSummary.svelte';
 	import SourcesFooter from './sections/SourcesFooter.svelte';
-	import { promoteTabs, tabList, type TabTable } from './tab-visibility';
+	import { promoteTabs, structureTabPresent, tabList, type TabTable } from './tab-visibility';
 	import * as m from '$lib/paraglide/messages.js';
 	import { categoryConfig } from '$lib/state/category-config';
 	import { LineupHero } from './charts/lineup-hero.svelte';
 	import { PlanetarySystemState } from './charts/planetary-system.svelte';
 	import { StarSystemLoad } from './state/star-system.svelte';
+	import { StarInteriorLoad } from './state/star-interior.svelte';
 	import { MembersState } from './state/members-state.svelte';
 	import { buildLineup, geometryFromMember } from './charts/lineup';
 	import { starClassLabel } from './sections/star/star-rows';
@@ -198,6 +199,11 @@
 	});
 
 	const starSystem = new StarSystemLoad(() => star);
+	// A star has no bundle block. Its Structure tab reads its Interior row.
+	const starInterior = new StarInteriorLoad(
+		() => star,
+		() => data?.global?.references
+	);
 
 	let crumb = $derived(
 		parentCrumb(
@@ -306,13 +312,16 @@
 	});
 	let activeGallery = $derived(gallery.activeGallery);
 
-	// The body cut open. Needs a layer model or a named atmosphere stack — the
-	// ~30 bodies a mission actually constrained, not the 150,000 asteroids whose
-	// interior is an estimate from a spectrum.
+	// The body cut open, from a layer model or a named atmosphere stack (about 30
+	// bodies) or a star's Interior row. An asteroid interior estimated from a
+	// spectrum does not open the tab.
 	let showStructureTab = $derived(
-		!isGroupMode &&
-			!isFeatureMode &&
-			(!!data?.global?.interior?.layers?.length || !!data?.global?.atmosphere?.structure)
+		structureTabPresent({
+			global: data?.global,
+			starInterior: starInterior.structure?.block,
+			isGroupMode,
+			isFeatureMode
+		})
 	);
 
 	// Named rings, gaps and ringlets — the eight ringed bodies only.
@@ -457,7 +466,8 @@
 	// while showMembersTab is still false.
 	$effect(() => {
 		const settled = viewFocusKey === focusableId;
-		if (settled && !loading && !traverse.loading && appState.view.tab && activeTab === 'overview') {
+		const fetching = [loading, traverse.loading, starInterior.loading].some(Boolean);
+		if (settled && !fetching && appState.view.tab && activeTab === 'overview') {
 			untrack(() => appState.setTab('overview'));
 		}
 	});
@@ -601,7 +611,7 @@
 {/snippet}
 
 {#snippet structurePanel()}
-	<StructurePanel {data} isBody={focusable.kind === 'body'} />
+	<StructurePanel {data} isBody={focusable.kind === 'body'} star={starInterior.structure} />
 {/snippet}
 
 {#snippet ringsPanel()}

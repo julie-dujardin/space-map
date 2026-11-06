@@ -19,7 +19,7 @@
 	} from '$lib/scene/objects/body/model';
 	import { lineupDrawsShapeModel } from '$lib/scene/objects/body/shape-model-policy';
 	import { isStarObjectId } from '$lib/fetch/extrasolar/ids';
-	import { isPaperCredit, type ExtrasolarCredit } from '$lib/fetch/extrasolar/files';
+	import { inSceneCredits, type ExtrasolarCredit } from '$lib/fetch/extrasolar/files';
 	import type { LineupBody } from '../detail/charts/BodyLineup.svelte';
 	import AttributionBar, { type AttributionChip } from '../attribution/AttributionBar.svelte';
 	import type { CreditRow, CreditSection } from '../attribution/AttributionPopover.svelte';
@@ -44,7 +44,7 @@
 	onMount(() => {
 		loadLayerCredits('textures').then((c) => (textures = c));
 		loadLayerCredits('displacement').then((c) => (relief = c));
-		fetchStarCatalogueCredits().then((c) => (catalogues = c.filter((x) => !isPaperCredit(x))));
+		fetchStarCatalogueCredits().then((c) => (catalogues = c.filter(inSceneCredits)));
 	});
 
 	// Same tier choice as the row, so the credit names the catalogue whose mesh

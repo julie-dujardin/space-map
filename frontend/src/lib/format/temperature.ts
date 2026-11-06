@@ -89,14 +89,14 @@ export function formatTemperature(
 }
 
 /**
- * A temperature, or the bracket a model gives instead of one, in the space a
- * chart label has: the unit said once at the end, and the numbers compacted
- * together once either end runs long.
+ * A temperature, or the bracket that a model gives, for a chart label: the
+ * unit once at the end. Where both ends are a million or more, both are
+ * compact. Where one end is less, each end takes its own notation, as in
+ * `formatTemperatureSpan`: "2,627 – 5.27M °C", never "2.63K".
  *
- * `formatRange` rather than two numbers with a dash between them, because a
- * locale that spells its magnitude out only spells it once — Russian gives
- * "15,5–15,7 млн", not "15,5 млн–15,7 млн" — and because the separator itself
- * is a locale's own (an ideographic "～" in Japanese).
+ * `formatRange` joins two ends of one notation: a locale that spells its
+ * magnitude spells it once (Russian "15,5–15,7 млн"), and the separator is
+ * the locale's own (Japanese "～").
  */
 export function formatTemperatureRange(
 	low: { value: number; unit: string },
@@ -108,6 +108,12 @@ export function formatTemperatureRange(
 	const peak = Math.max(Math.abs(a.value), Math.abs(b.value));
 	const compact = peak >= COMPACT_ABOVE;
 	const unit = formatUnit(a.unit, true);
+	if (compact && Math.min(Math.abs(a.value), Math.abs(b.value)) < COMPACT_ABOVE) {
+		return joinParts({
+			value: `${oneNumber(a.value)}${SPAN_SEPARATOR}${oneNumber(b.value)}`,
+			unit
+		});
+	}
 	if (a.value === b.value) {
 		return joinParts({
 			value: compact ? formatCompactNumber(a.value) : formatNumber(a.value),

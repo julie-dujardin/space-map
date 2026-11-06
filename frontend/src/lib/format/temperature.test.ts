@@ -57,6 +57,11 @@ describe('formatTemperatureRange', () => {
 	it('leaves thousands written out', () => {
 		expect(formatTemperatureRange(kelvin(15_000), kelvin(36_000))).toBe('14,730–35,730 °C');
 	});
+
+	// A red dwarf's convective zone runs from its surface to its centre.
+	it('writes out an end below a million beside a compacted one', () => {
+		expect(formatTemperatureRange(kelvin(2_900), kelvin(5_270_000))).toBe('2,627 – 5.27M °C');
+	});
 });
 
 describe('formatTemperatureSpan', () => {

@@ -1,26 +1,40 @@
 <script lang="ts">
 	/**
-	 * The Structure tab: air first, then the body cut open under it, top-down
-	 * like the body stacks. Two charts because the scales can't share — Earth's
-	 * mantle is 2,900 km against 85 km of atmosphere. Giants and the Sun get
-	 * only the first: their outer layer already *is* their atmosphere.
+	 * The Structure tab: the atmosphere first, then the interior under it, top
+	 * down. The two charts have their own scales, because Earth's mantle is
+	 * 2,900 km thick and its drawn atmosphere 85 km. The interior chart of a
+	 * giant or the Sun has no atmosphere strip, because its outer layer is its
+	 * atmosphere.
 	 *
-	 * The atmosphere section also carries the Overview's composition bar,
-	 * shown even where the vertical stack has nothing to draw.
+	 * The atmosphere section also holds the composition bar of the Overview. The
+	 * bar shows where the stack has nothing to draw.
 	 *
-	 * Temperature attaches per layer, not as one "core temperature" row:
-	 * geotherms are published at boundaries (Moho, core-mantle, centre), never
-	 * averaged over a shell, and most boundaries have no published number.
+	 * A temperature belongs to a layer. There is no core temperature row:
+	 * geotherms are published at boundaries, and most boundaries have none.
 	 *
-	 * Each section reads numbers first, then the drawing they describe — the
-	 * layer cards follow the cutaway as its legend.
+	 * Each section gives its values first, then the drawing. The layer cards
+	 * follow the cutaway as its legend.
+	 *
+	 * A star other than the Sun has no bundle block. Its panel passes the block
+	 * built from its Interior row, its effective temperature and its own rows.
 	 */
+	import type { Snippet } from 'svelte';
 	import * as m from '$lib/paraglide/messages.js';
-	import type { GlobalObjectData, LocalizedObjectData } from '$lib/fetch/objects/object-data';
+	import type {
+		GlobalObjectData,
+		InteriorBlock,
+		LocalizedObjectData
+	} from '$lib/fetch/objects/object-data';
 	import { crossSection, layerRows, type InteriorBand } from '$lib/charts/interior-cross-section';
 	import { atmosphereProfile, drawableTopKm } from '$lib/charts/atmosphere-cross-section';
 	import { atmosphereNoteBesideChart, atmosphereTypeName } from '$lib/charts/atmosphere-layers';
-	import { bandColor, coreBracket, layerSpans, skyRgb } from '$lib/charts/layer-appearance';
+	import {
+		bandColor,
+		coreBracket,
+		layerSpans,
+		skyRgb,
+		type PlasmaRange
+	} from '$lib/charts/layer-appearance';
 	import { ucfirst } from '$lib/format/quantities';
 	import Section from './kit/Section.svelte';
 	import Surface from './Surface.svelte';
@@ -36,17 +50,34 @@
 	interface Props {
 		global: GlobalObjectData | null;
 		localized: LocalizedObjectData | null;
+		/** In place of the bundle's block: a star's, from its Interior row. */
+		interior?: InteriorBlock;
+		/** In place of the bundle's readings: a star's effective temperature, K. */
+		surfaceK?: number | null;
+		/** Shading anchors where the star has no reading for one end. For the
+		 *  picture only, as the ramp is. */
+		nominalPlasma?: PlasmaRange;
+		/** In place of the mass and activity rows above the cutaway. */
+		rows?: Snippet;
 	}
 
-	let { global, localized }: Props = $props();
+	let {
+		global,
+		localized,
+		interior: interiorOverride,
+		surfaceK: surfaceOverride,
+		nominalPlasma,
+		rows: interiorRows
+	}: Props = $props();
 
-	let layers = $derived(global?.interior?.layers ?? []);
+	let interior = $derived(interiorOverride ?? global?.interior);
+	let layers = $derived(interior?.layers ?? []);
 	let structure = $derived(global?.atmosphere?.structure);
 	let active = $state<number | null>(null);
 
 	// "fluid" is the giants and the Sun — no solid surface, so no boundary
 	// between the body and its air, so nothing to draw a separate strip against.
-	let hasOwnAtmosphere = $derived(global?.interior?.structure === 'fluid');
+	let hasOwnAtmosphere = $derived(interior?.structure === 'fluid');
 	let atmosphereKm = $derived(structure ? (drawableTopKm(structure) ?? undefined) : undefined);
 	let section = $derived(crossSection(layers, { atmosphereKm, hasOwnAtmosphere }));
 
@@ -77,6 +108,7 @@
 	/** What the outside of the body is at. The Sun quotes its photosphere where
 	 *  everything else quotes a surface. */
 	let surfaceK = $derived.by(() => {
+		if (surfaceOverride !== undefined) return surfaceOverride;
 		const value =
 			readings.find((r) => r.part === 'surface' && r.kind === 'mean') ??
 			readings.find((r) => r.part === 'photosphere' && r.kind === 'mean');
@@ -86,7 +118,6 @@
 	/** The centre, where a body publishes one — the Sun and the giants, whose
 	 *  dilute cores have no radius to hang a boundary on. */
 	let centre = $derived.by(() => {
-		const interior = global?.interior;
 		if (interior?.centre_temperature_range_k) {
 			const [lowK, highK] = interior.centre_temperature_range_k;
 			return { lowK, highK };
@@ -101,8 +132,11 @@
 	// their own; the two ends anchor a ramp used for shading and nothing else.
 	let plasmaRange = $derived.by(() => {
 		if (!layers.some((l) => l.state === 'plasma')) return undefined;
-		if (!core || surfaceK === null) return undefined;
-		return { innerK: (core.lowK + core.highK) / 2, outerK: surfaceK };
+		const inner = core ?? centre;
+		const innerK = inner ? (inner.lowK + inner.highK) / 2 : nominalPlasma?.innerK;
+		const outerK = surfaceK ?? nominalPlasma?.outerK;
+		if (innerK === undefined || outerK === undefined) return undefined;
+		return { innerK, outerK };
 	});
 
 	// What the sky would look like, read off what the air is made of — the same
@@ -169,9 +203,13 @@
 		<!-- Above the cutaway, on the section's own `dl`: these are numbers about
 		     the whole body, and the drawing is the thing they are about. The layer
 		     cards stay directly under it as its legend. -->
-		<MassDensityRows {global} />
-		{#if activity}
-			<Activity {activity} />
+		{#if interiorRows}
+			{@render interiorRows()}
+		{:else}
+			<MassDensityRows {global} />
+			{#if activity}
+				<Activity {activity} />
+			{/if}
 		{/if}
 		{#snippet footer()}
 			<InteriorCrossSection

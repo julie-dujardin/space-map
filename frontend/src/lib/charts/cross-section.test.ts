@@ -301,3 +301,39 @@ describe('atmosphere cross-section', () => {
 		expect(profile.bands.at(-1)!.top).toBeCloseTo(1, 10);
 	});
 });
+
+// μ Arae as its paper gives it. Its radiative zone has no top.
+const MU_ARA: InteriorLayer[] = [
+	{ role: 'convective_zone', outer_radius_km: 946_152, state: 'plasma', composition: [] },
+	{ role: 'radiative_zone', state: 'plasma', composition: [] },
+	{ role: 'convective_core', outer_radius_km: 47_308, state: 'plasma', composition: [] }
+];
+
+describe('crossSection with an edge the source does not give', () => {
+	const [envelope, radiative, core] = crossSection(MU_ARA)!.bands;
+
+	it('runs the layer up to the edge above, unbounded, with no thickness', () => {
+		expect(radiative.unbounded).toBe(true);
+		expect(radiative.outer).toBe(1);
+		expect(radiative.inner).toBeCloseTo(0.05, 6);
+		expect(radiative.thicknessKm).toBeNull();
+		expect(radiative.depthFromKm).toBeNull();
+	});
+
+	it('leaves the layer above with its top and no floor', () => {
+		expect(envelope.unbounded).toBeUndefined();
+		expect(envelope.depthFromKm).toBe(0);
+		expect(envelope.depthToKm).toBeNull();
+		expect(envelope.thicknessKm).toBeNull();
+		expect(envelope.inner).toBeCloseTo(0.05, 6);
+	});
+
+	it('keeps the layers whose edges are given as they are', () => {
+		expect(core.thicknessKm).toBe(47_308);
+		expect(core.depthFromKm).toBe(946_152 - 47_308);
+	});
+
+	it('has no section where the outermost layer has no top', () => {
+		expect(crossSection(MU_ARA.slice(1))).toBeNull();
+	});
+});

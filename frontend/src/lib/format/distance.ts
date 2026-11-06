@@ -53,9 +53,15 @@ export function formatCompactKm(value: number): string {
 	return joinParts({ value: formatCompactNumber(value), unit: formatUnit('kilometre', true) });
 }
 
-/** Two ends of a range with one unit, said once. */
-function rangeIn(from: number, to: number, widest: number, unit: string): string {
-	const format = new Intl.NumberFormat(getLocale(), precisionOptions(widest));
+/** Two ends of a range with one unit, said once, in `options` (by default
+ *  the precision of `formatNumber` at the wider end). */
+function rangeIn(
+	from: number,
+	to: number,
+	unit: string,
+	options: Intl.NumberFormatOptions = precisionOptions(Math.max(Math.abs(from), Math.abs(to)))
+): string {
+	const format = new Intl.NumberFormat(getLocale(), options);
 	const start = format.format(from);
 	if (start === format.format(to)) return joinParts({ value: start, unit });
 	return joinParts({ value: format.formatRange(from, to), unit });
@@ -72,24 +78,20 @@ export function formatKmRange(fromKm: number, toKm: number): string {
 	const widest = Math.max(Math.abs(fromKm), Math.abs(toKm));
 	const metres = widest !== 0 && widest < 1;
 	const [from, to] = metres ? [fromKm * 1000, toKm * 1000] : [fromKm, toKm];
-	return rangeIn(
-		from,
-		to,
-		metres ? widest * 1000 : widest,
-		formatUnit(metres ? 'metre' : 'kilometre', true)
-	);
+	return rangeIn(from, to, formatUnit(metres ? 'metre' : 'kilometre', true));
+}
+
+/** A range that a fit gives, at the three significant digits it holds:
+ *  "219,000–261,000 km". */
+export function formatKmRangeRounded(fromKm: number, toKm: number): string {
+	return rangeIn(fromKm, toKm, formatUnit('kilometre', true), { maximumSignificantDigits: 3 });
 }
 
 /** A range of heights above a body, in the unit of its wider end. */
 export function formatHeightRange(fromKm: number, toKm: number): string {
 	const widest = Math.max(Math.abs(fromKm), Math.abs(toKm));
 	if (widest < HEIGHT_AU_FROM_KM) return formatKmRange(fromKm, toKm);
-	return rangeIn(
-		fromKm / AU_KM,
-		toKm / AU_KM,
-		widest / AU_KM,
-		formatUnit('astronomical_unit', true)
-	);
+	return rangeIn(fromKm / AU_KM, toKm / AU_KM, formatUnit('astronomical_unit', true));
 }
 
 /** A length under a metre, in µm below 1 mm and in mm above, to `digits`

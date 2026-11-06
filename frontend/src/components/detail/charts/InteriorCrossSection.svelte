@@ -19,7 +19,7 @@
 		type PlasmaRange,
 		type TemperatureBracket
 	} from '$lib/charts/layer-appearance';
-	import { layerName } from '$lib/charts/interior-layers';
+	import { layerName, thicknessText } from '$lib/charts/interior-layers';
 	import type { AtmosphereStructure } from '$lib/fetch/objects/object-data';
 	import {
 		FRAME_W as W,
@@ -84,8 +84,18 @@
 	// a 1.3% hairline, and drawing it thicker would break the to-scale claim.
 	let bodyR = $derived(R / (1 + (section.atmosphere?.height ?? 0)));
 
+	// An unbounded band takes the colour of its floor, because its top is not known.
 	function fill(band: InteriorBand, i: number): string {
-		return bandColor(band, temperatures[i], plasmaRange);
+		const at = band.unbounded ? { ...band, outer: band.inner } : band;
+		return bandColor(at, temperatures[i], plasmaRange);
+	}
+
+	/** Where a band fades out, as fractions of the radius: a diffuse layer over
+	 *  its outer half, a layer with no known top over its whole extent. */
+	function fade(band: InteriorBand, i: number): { from: number; to: number } | null {
+		if (band.unbounded) return { from: band.inner, to: band.outer };
+		if (band.layer.diffuse && i > 0) return { from: (band.inner + band.outer) / 2, to: band.outer };
+		return null;
 	}
 
 	/** Rides on the name line, the way the atmosphere chart's boundary readings
@@ -95,11 +105,10 @@
 		return value ? formatKelvinRange(value.lowK, value.highK) : null;
 	}
 
-	/** The layer's thickness — the same second line the atmosphere chart runs,
-	 *  so the two cross-sections read alike. Where a layer sits stays visible
-	 *  in the drawing itself. */
+	/** The thickness, on the second line as in the atmosphere chart. An
+	 *  unknown thickness is left to the card. */
 	function layerWidth(band: InteriorBand): string {
-		return ltrIsolate(formatKm(band.depthToKm - band.depthFromKm));
+		return thicknessText(band) ?? '';
 	}
 
 	/** Each band anchors its label at its own midpoint on the radius axis —
@@ -110,7 +119,9 @@
 			section.bands.map((band, i) => ({
 				band,
 				index: i,
-				anchorY: CY - ((band.outer + band.inner) / 2) * bodyR
+				// A band with no known top anchors low, in the part sure to be the band.
+				anchorY:
+					CY - (band.inner + (band.outer - band.inner) * (band.unbounded ? 0.25 : 0.5)) * bodyR
 			}));
 		if (section.atmosphere) {
 			entries.unshift({ band: null, index: -1, anchorY: CY - (bodyR + R) / 2 });
@@ -121,10 +132,14 @@
 	});
 
 	// Where a name and its temperature cannot share the line, the temperature
-	// drops to the line below and right-aligns beside the depth range.
+	// drops to the line below and right-aligns beside the depth range. Where it
+	// does not fit beside the thickness either, the thickness is hidden. The
+	// card under the chart gives it.
 	let nameEls = $state<(SVGTextElement | undefined)[]>([]);
 	let readingEls = $state<(SVGTextElement | undefined)[]>([]);
+	let widthEls = $state<(SVGTextElement | undefined)[]>([]);
 	let stacked = $state<boolean[]>([]);
+	let crowded = $state<boolean[]>([]);
 	let svgEl = $state<SVGSVGElement>();
 
 	// An effect, not a derived, so the text exists in the DOM before it's
@@ -133,7 +148,11 @@
 	$effect(() =>
 		remeasure(svgEl, () => {
 			const next = stackedRows(rows, nameEls, readingEls, W - 2 - GUTTER);
-			if (svgEl?.getClientRects().length) stacked = next;
+			const tight = stackedRows(rows, widthEls, readingEls, W - 2 - GUTTER);
+			if (svgEl?.getClientRects().length) {
+				stacked = next;
+				crowded = tight;
+			}
 		})
 	);
 </script>
@@ -153,19 +172,28 @@
 		aria-label={m.structure_interior_chart({ count: section.bands.length })}
 	>
 		<defs>
-			<!-- Diffuse layers fade rather than cut sharply, since they have no
-			     real boundary — only where something else sits above to fade
-			     into (not on an outermost diffuse layer, e.g. Uranus). The
-			     gradient spans the outer half; anchoring it to a fixed radius
-			     fraction instead left thick layers solid-coloured everywhere. -->
+			<!-- A layer with no sharp top fades into the one above. A diffuse
+			     layer fades over its outer half, and only where something sits
+			     above it (not Uranus). A layer whose top the source does not give
+			     fades over all of the room it can take. -->
 			{#each section.bands as band, i (band.layer.role + i)}
-				{#if band.layer.diffuse && i > 0}
+				{@const stops = fade(band, i)}
+				{#if stops}
 					<radialGradient id="diffuse-{i}" gradientUnits="userSpaceOnUse" cx={CX} cy={CY} r={bodyR}>
-						<stop offset={(band.inner + band.outer) / 2} stop-color={fill(band, i)} />
-						<stop offset={band.outer} stop-color={fill(band, i)} stop-opacity="0" />
+						<stop offset={stops.from} stop-color={fill(band, i)} />
+						<stop offset={stops.to} stop-color={fill(band, i)} stop-opacity="0" />
 					</radialGradient>
 				{/if}
 			{/each}
+			<pattern
+				id="interior-spread"
+				patternUnits="userSpaceOnUse"
+				width="3"
+				height="3"
+				patternTransform="rotate(45)"
+			>
+				<line x1="0" y1="0" x2="0" y2="3" stroke="rgb(0 0 0 / 0.3)" stroke-width="1" />
+			</pattern>
 		</defs>
 
 		<!-- Mirrored about the vertical edge, so the quarter opens away from the
@@ -183,11 +211,11 @@
 			{/if}
 
 			{#each section.bands as band, i (band.layer.role + i)}
-				<!-- A band under a diffuse one runs to the centre — stopping at its
-				     nominal boundary would let the fade dissolve into the card,
-				     drawing exactly the crisp edge the gradient exists to avoid. -->
-				{@const over = section.bands[i + 1]?.layer.diffuse === true}
-				{@const fades = band.layer.diffuse && i > 0}
+				<!-- A band under a fading one runs to the centre. If it stopped at
+				     its boundary, the fade would show a sharp edge there. -->
+				{@const next = section.bands[i + 1]}
+				{@const over = next ? fade(next, i + 1) !== null : false}
+				{@const fades = fade(band, i) !== null}
 				<path
 					d={bandPath(over ? { ...band, inner: 0 } : band, CX, CY, bodyR)}
 					fill={fades ? `url(#diffuse-${i})` : fill(band, i)}
@@ -200,6 +228,23 @@
 					onmouseenter={() => (active = i)}
 					onmouseleave={() => (active = null)}
 				/>
+			{/each}
+
+			<!-- Where a fit gives a boundary as a range, the range is hatched. The
+			     line is the fit's value. The boundary can lie anywhere in the hatch. -->
+			{#each section.bands as band, i (band.layer.role + i)}
+				{#if band.outerRange}
+					<path
+						d={bandPath(
+							{ ...band, outer: band.outerRange[1], inner: band.outerRange[0] },
+							CX,
+							CY,
+							bodyR
+						)}
+						fill="url(#interior-spread)"
+						pointer-events="none"
+					/>
+				{/if}
 			{/each}
 		</g>
 
@@ -248,7 +293,14 @@
 						</text>
 					{/if}
 				{/if}
-				<text x={GUTTER} y={row.labelY + SECOND_LINE_DY} class="fill-muted-foreground text-[9px]">
+				<!-- Hidden, so that the next pass measures it the same way. -->
+				<text
+					bind:this={widthEls[i]}
+					x={GUTTER}
+					y={row.labelY + SECOND_LINE_DY}
+					visibility={stacked[i] && crowded[i] ? 'hidden' : undefined}
+					class="fill-muted-foreground text-[9px]"
+				>
 					{row.band ? layerWidth(row.band) : ltrIsolate(formatKm(section.atmosphere?.km ?? 0))}
 				</text>
 			</g>

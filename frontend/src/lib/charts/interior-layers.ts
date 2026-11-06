@@ -9,6 +9,8 @@
 import * as m from '$lib/paraglide/messages.js';
 import { ltrIsolate } from '$lib/format/bidi';
 import { named } from '$lib/charts/vocabulary';
+import { formatKm, formatKmRangeRounded } from '$lib/format/distance';
+import type { InteriorBand } from '$lib/charts/interior-cross-section';
 
 const LAYER_NAME: Record<string, () => string> = {
 	crust: m.interior_layer_crust,
@@ -23,6 +25,7 @@ const LAYER_NAME: Record<string, () => string> = {
 	metallic_hydrogen: m.interior_layer_metallic_hydrogen,
 	radiative_zone: m.interior_layer_radiative_zone,
 	convective_zone: m.interior_layer_convective_zone,
+	convective_core: m.interior_layer_convective_core,
 	core: m.interior_layer_core,
 	outer_core: m.interior_layer_outer_core,
 	inner_core: m.interior_layer_inner_core,
@@ -121,4 +124,17 @@ export function evidenceName(evidence: string): string | null {
 
 export function standingName(standing: string): string | null {
 	return named(STANDING_NAME, standing, 'interior standing name', null);
+}
+
+/** How thick a band is: a range where an edge is a range, null where an edge
+ *  is not known. The chart and the card write it alike. A range from 0 reads
+ *  "up to", since "0–7,490 km" sounds like a layer known to reach the surface. */
+export function thicknessText(band: InteriorBand): string | null {
+	const range = band.thicknessRangeKm;
+	if (range?.[0] === 0) {
+		const top = ltrIsolate(formatKm(Number(range[1].toPrecision(3))));
+		return m.structure_span_up_to({ value: top });
+	}
+	if (range) return ltrIsolate(formatKmRangeRounded(range[0], range[1]));
+	return band.thicknessKm === null ? null : ltrIsolate(formatKm(band.thicknessKm));
 }

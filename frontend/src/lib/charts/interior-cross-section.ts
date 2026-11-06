@@ -21,11 +21,21 @@ export interface InteriorBand {
 	 *  takes its share of the surface — see `arcSpan`. */
 	from: number;
 	to: number;
+	/** Where the outer edge can lie, as fractions, where the source gives a
+	 *  range for it. */
+	outerRange?: [number, number];
+	/** The source gives no outer edge. The band runs up to the edge above it
+	 *  and fades out. */
+	unbounded?: true;
 	/** Below the surface, in km — how anyone actually places a layer. The core
-	 *  runs to the centre, so its far end is the body's radius. */
-	depthFromKm: number;
-	depthToKm: number;
-	thicknessKm: number;
+	 *  runs to the centre, so its far end is the body's radius. Null where the
+	 *  source gives no such edge. */
+	depthFromKm: number | null;
+	depthToKm: number | null;
+	/** Null where an edge is not known. */
+	thicknessKm: number | null;
+	/** Where an edge is a range. */
+	thicknessRangeKm?: [number, number];
 }
 
 export interface AtmosphereStrip {
@@ -58,23 +68,46 @@ export function crossSection(
 ): InteriorCrossSection | null {
 	if (!layers.length) return null;
 	const radiusKm = layers[0].outer_radius_km;
-	if (!(radiusKm > 0)) return null;
+	if (radiusKm === undefined || !(radiusKm > 0)) return null;
+	const edges = layers.map(edgeOf);
+	// The nearest edge the source gives, from layer `i` down; the centre below all.
+	const knownBelow = (i: number): Edge => {
+		for (let j = i; j < layers.length; j++) {
+			const edge = edges[j];
+			if (edge) return edge;
+		}
+		return CENTRE;
+	};
 
 	const bands = layers.map((layer, i) => {
 		// A shell ends where the next one begins; a patch carries its own floor,
 		// because what is under it is not the next thing in the list. Earth's
 		// ocean is followed by the continental crust and floored by the sea bed.
-		const innerKm =
-			layer.base_radius_km ?? (i + 1 < layers.length ? layers[i + 1].outer_radius_km : 0);
-		return {
+		const bottom: Edge | null =
+			layer.base_radius_km !== undefined
+				? exact(layer.base_radius_km)
+				: i + 1 < layers.length
+					? edges[i + 1]
+					: CENTRE;
+		const innerKm = (bottom ?? knownBelow(i + 1)).at;
+		const top = edges[i];
+		// An unknown top lies somewhere between the floor and the edge above.
+		const topKm = top?.at ?? edges.slice(0, i).findLast((e): e is Edge => e !== null)!.at;
+		const band: InteriorBand = {
 			layer,
-			outer: layer.outer_radius_km / radiusKm,
+			outer: topKm / radiusKm,
 			inner: innerKm / radiusKm,
 			...arcSpan(layer),
-			depthFromKm: radiusKm - layer.outer_radius_km,
-			depthToKm: radiusKm - innerKm,
-			thicknessKm: layer.outer_radius_km - innerKm
+			depthFromKm: top ? radiusKm - top.at : null,
+			depthToKm: bottom ? radiusKm - bottom.at : null,
+			thicknessKm: top && bottom ? top.at - bottom.at : null
 		};
+		if (!top) band.unbounded = true;
+		if (top && top.low !== top.high) band.outerRange = [top.low / radiusKm, top.high / radiusKm];
+		if (top && bottom && (top.low !== top.high || bottom.low !== bottom.high)) {
+			band.thicknessRangeKm = [Math.max(top.low - bottom.high, 0), top.high - bottom.low];
+		}
+		return band;
 	});
 
 	// The giants and the Sun have no separate envelope to draw: their outermost
@@ -86,6 +119,27 @@ export function crossSection(
 			: null;
 
 	return { bands, radiusKm, atmosphere };
+}
+
+/** A boundary in km: its value and the range it can lie in. */
+interface Edge {
+	at: number;
+	low: number;
+	high: number;
+}
+
+const CENTRE: Edge = { at: 0, low: 0, high: 0 };
+
+function exact(km: number): Edge {
+	return { at: km, low: km, high: km };
+}
+
+/** The top of a layer, or null where the source gives none. */
+function edgeOf(layer: InteriorLayer): Edge | null {
+	const km = layer.outer_radius_km;
+	if (km === undefined) return null;
+	const range = layer.outer_radius_range_km;
+	return range ? { at: km, low: range[0], high: range[1] } : exact(km);
 }
 
 /**
