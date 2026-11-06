@@ -1,8 +1,8 @@
-# Manifest for the manually downloaded NASA SVS "Deep Star Maps 2020"
-# celestial-sphere star map (svs.gsfc.nasa.gov/4851). Equirectangular,
-# centered at 0h RA with RA increasing leftward; compiled from Hipparcos-2,
-# Tycho-2, and Gaia DR2. The .exr source is too large to fetch through the
-# auto-downloader and isn't tied to a NAIF body, so it lives here.
+# Manifest for the NASA SVS "Deep Star Maps 2020" celestial-sphere maps
+# (svs.gsfc.nasa.gov/4851). Equirectangular, centered at 0h RA with RA
+# increasing leftward; compiled from Hipparcos-2, Tycho-2, and Gaia DR2. They
+# are not tied to a NAIF body, so they live here. The star map is staged by
+# hand: its .exr is too large for the auto-downloader.
 bodies:
 - body: stars
   body_name: stars
@@ -12,3 +12,19 @@ bodies:
   attribution: "NASA's Goddard Space Flight Center Scientific Visualization Studio — Deep Star Maps 2020, Ernie Wright (USRA). Source catalogs: Hipparcos-2, Tycho-2, Gaia DR2 (ESA/Gaia/DPAC)."
   file: starmap_2020_64k.exr
   type: cubemap_skybox
+# The same map without the Hipparcos and Tycho stars. The glow reads it past
+# the solar system, where the stars draw as points. The 16k map, because the
+# tonemap must see the sky at the star map's working scale (64k / 4) to give
+# the same background; each size of these maps is drawn on its own scale.
+# Its values are twice the star map's where neither has a bright star, so
+# `source_scale` brings it to the star map's.
+- body: stars_starless
+  body_name: stars
+  source: https://svs.gsfc.nasa.gov/4851/
+  organisation: NASA
+  license: Public domain
+  attribution: "NASA's Goddard Space Flight Center Scientific Visualization Studio — Deep Star Maps 2020, Ernie Wright (USRA). Source catalogs: Hipparcos-2, Tycho-2, Gaia DR2 (ESA/Gaia/DPAC)."
+  file: milkyway_2020_16k.exr
+  download_url: https://svs.gsfc.nasa.gov/vis/a000000/a004800/a004851/milkyway_2020_16k.exr
+  type: cubemap_starless
+  source_scale: 0.5

@@ -55,6 +55,8 @@ v1/
   textures/{id}_specular/metadata.json            specular source + exports
   textures/stars/{tier}_{face}.webp               cubemap-skybox faces (type = cubemap_skybox), face ∈ px|nx|py|ny|pz|nz
   textures/stars/metadata.json                    skybox source + per-face exports
+  textures/stars_starless/{tier}_{face}.webp      the skybox without its bright stars (type = cubemap_starless), for the glow
+  textures/stars_starless/metadata.json           its source + per-face exports
   tiles/{id}/metadata.json                        tile-pyramid descriptor; the tiles are published apart from the export, see tiles.md
   x/…                                             extrasolar record tiles, render tree, sky cultures and planets, published apart from the export, see extrasolar.md
   dust/…                                          the 3D dust nest, published beside x/, see dust.md

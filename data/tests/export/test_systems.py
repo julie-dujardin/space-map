@@ -13,9 +13,11 @@ from space_map_data.export.systems import (
     clouds_block,
     displacement_block,
     load_orientation,
+    load_skybox_metadata,
     load_texture_metadata,
     night_block,
     patch_object_bundles,
+    skybox_block,
     specular_block,
     texture_attribution,
     tiles_block,
@@ -604,6 +606,55 @@ class TestTextureLayers:
         assert "artist_impression" not in texture_attribution(meta)
         flagged = texture_attribution(meta | {"artist_impression": None})
         assert "artist_impression" not in flagged
+
+
+class TestSkyboxBlock:
+    """The skybox block names the starless cube once that bundle is ingested."""
+
+    _SKYBOX: ClassVar[dict] = {
+        "id": "stars",
+        "type": "cubemap_skybox",
+        "encoding": "webp",
+        "frame": "j2000",
+        "faces": ["px", "nx", "py", "ny", "pz", "nz"],
+        "tiers": ["low", "high"],
+        "tier_face_size": {"low": 2048, "high": 4096},
+        "source": "https://svs.gsfc.nasa.gov/4851/",
+        "organisation": "NASA",
+    }
+    _STARLESS: ClassVar[dict] = {
+        **_SKYBOX,
+        "id": "stars_starless",
+        "type": "cubemap_starless",
+        "tiers": ["glow"],
+        "tier_face_size": {"glow": 256},
+    }
+
+    def _seed(self, out_dir, name: str, meta: dict) -> None:
+        body = out_dir / "textures" / name
+        body.mkdir(parents=True)
+        (body / "metadata.json").write_text(json.dumps(meta))
+
+    def test_names_the_starless_cube(self, tmp_path):
+        self._seed(tmp_path, "stars", self._SKYBOX)
+        self._seed(tmp_path, "stars_starless", self._STARLESS)
+        meta = load_skybox_metadata(tmp_path)
+        assert meta is not None
+        assert skybox_block(meta)["starless"] == {
+            "id": "stars_starless",
+            "tiers": ["glow"],
+            "tier_face_size": {"glow": 256},
+        }
+
+    def test_without_the_starless_bundle(self, tmp_path):
+        self._seed(tmp_path, "stars", self._SKYBOX)
+        meta = load_skybox_metadata(tmp_path)
+        assert meta is not None
+        assert "starless" not in skybox_block(meta)
+
+    def test_no_skybox(self, tmp_path):
+        self._seed(tmp_path, "stars_starless", self._STARLESS)
+        assert load_skybox_metadata(tmp_path) is None
 
 
 class TestLoadOrientation:

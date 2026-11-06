@@ -83,6 +83,15 @@ PY360_TO_FACE = {"R": "px", "L": "nx", "U": "py", "D": "ny", "F": "pz", "B": "nz
 # Per-face edge length for each tier. UASTC 4K/face would be the eventual
 # target; for WebP we keep the same dims and rely on the size cap.
 SKYBOX_TIER_SIZES = {"low": 2048, "high": 4096}
+# The map without the bright stars, as the glow reads it past the solar
+# system: 0.35 degrees a texel, wider than the parallax of the bright stars
+# there. One tier, the size the glow reads, so the client fetches no more.
+STARLESS_TIER_SIZES = {"glow": 256}
+# Tier sizes of each cube type.
+CUBEMAP_TIER_SIZES = {
+    "cubemap_skybox": SKYBOX_TIER_SIZES,
+    "cubemap_starless": STARLESS_TIER_SIZES,
+}
 # Exposure pre-multiplier applied before Reinhard tonemap. The SVS Deep Star
 # Maps EXR has bright stars sitting well above 1.0; bumping exposure brings
 # the Milky Way out of the toe before the tonemap squashes the dynamic range.

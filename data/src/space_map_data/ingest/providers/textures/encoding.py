@@ -16,6 +16,11 @@ def linear_to_srgb(x: np.ndarray) -> np.ndarray:
     return np.where(x <= 0.0031308, 12.92 * x, 1.055 * np.power(x, 1 / 2.4) - 0.055)
 
 
+def srgb_to_linear(x: np.ndarray) -> np.ndarray:
+    """Inverse of ``linear_to_srgb``."""
+    return np.where(x <= 0.04045, x / 12.92, np.power((x + 0.055) / 1.055, 2.4))
+
+
 def webp_kwargs(lossless: bool) -> dict:
     return {"lossless": True, "method": 6} if lossless else {"quality": 80}
 

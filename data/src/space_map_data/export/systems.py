@@ -42,6 +42,9 @@ _TOP_LEVEL_NAIF_IDS = {0, 10}  # SSB and Sun
 # `textures/stars/`: the cubemap skybox bundle behind the whole scene, not tied
 # to any NAIF body.
 _SKYBOX_DIR = "stars"
+# The same sky without its bright stars, which the glow reads past the solar
+# system, where the stars draw as points.
+_STARLESS_DIR = "stars_starless"
 
 # Object types that belong in planetary systems
 _SYSTEM_TYPES = frozenset(
@@ -549,17 +552,23 @@ class TextureLayers:
 
 
 def load_skybox_metadata(out_dir: Path) -> dict | None:
-    """The cubemap-skybox metadata dict, or None if no bundle is ingested."""
+    """The cubemap-skybox metadata dict, or None if no bundle is ingested. The
+    starless bundle's metadata is under ``starless`` when it is ingested."""
     meta_file = mirror_path(out_dir / "textures" / _SKYBOX_DIR / "metadata.json")
     if not meta_file.exists():
         return None
-    return orjson.loads(meta_file.read_bytes())
+    meta = orjson.loads(meta_file.read_bytes())
+    starless_file = mirror_path(out_dir / "textures" / _STARLESS_DIR / "metadata.json")
+    if starless_file.exists():
+        meta["starless"] = orjson.loads(starless_file.read_bytes())
+    return meta
 
 
 def skybox_block(meta: dict) -> dict:
     """Top-level ``skybox`` block for v1/metadata.json.
 
-    URLs: ``/v1/textures/{skybox.id}/{tier}_{face}.webp``.
+    URLs: ``/v1/textures/{skybox.id}/{tier}_{face}.webp``, and the same for
+    ``skybox.starless``.
     """
     block: dict = {
         "id": meta["id"],
@@ -578,6 +587,13 @@ def skybox_block(meta: dict) -> dict:
         block["attribution"] = meta["attribution"]
     if meta.get("description") is not None:
         block["description"] = meta["description"]
+    if meta.get("starless") is not None:
+        starless = meta["starless"]
+        block["starless"] = {
+            "id": starless["id"],
+            "tiers": list(starless["tiers"]),
+            "tier_face_size": dict(starless["tier_face_size"]),
+        }
     return block
 
 

@@ -101,7 +101,12 @@ segment):
     "tier_face_size": { "low": 2048, "high": 4096 },
     "source": "https://svs.gsfc.nasa.gov/4851/",
     "organisation": "NASA",
-    "attribution": "..."
+    "attribution": "...",
+    "starless": {
+      "id": "stars_starless",
+      "tiers": ["glow"],
+      "tier_face_size": { "glow": 256 }
+    }
   }
 }
 ```
@@ -110,6 +115,12 @@ The `skybox` block is omitted when no cubemap-skybox bundle is present in
 the export. The frontend loads face URLs as
 `/v1/textures/{skybox.id}/{tier}_{face}.webp` and picks the largest tier
 whose `tier_face_size[tier]` fits the device's max texture dimension.
+
+`starless` is the same sky without the Hipparcos and Tycho stars (type
+`cubemap_starless`), in the same frame and tonemap, at the one size the glow
+reads it: `/v1/textures/{starless.id}/{tier}_{face}.webp`. The glow draws it
+past the solar system, where the stars draw as points. It is omitted when
+that bundle is not ingested.
 
 ## Caching & versioning
 

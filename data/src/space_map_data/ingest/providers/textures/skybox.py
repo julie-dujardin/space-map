@@ -7,8 +7,7 @@ import Imath
 import numpy as np
 import OpenEXR  # ty: ignore[unresolved-import]  # C extension, no stubs
 
-from . import config
-from .encoding import linear_to_srgb
+from .encoding import linear_to_srgb, srgb_to_linear
 
 log = logging.getLogger(__name__)
 
@@ -36,15 +35,15 @@ def mem_available_bytes() -> int | None:
     return None
 
 
-def load_and_tonemap_streaming(src: Path) -> np.ndarray:
+def load_and_tonemap_streaming(src: Path, ds: int, exposure: float) -> np.ndarray:
     """Stream-read an HDR equirect EXR and tonemap to a downsampled uint8 equirect.
 
-    Returns (H/ds, W/ds, 3) uint8 in sRGB-encoded values, where ``ds`` is
-    ``config.SKYBOX_DOWNSAMPLE``. Reads source scanlines in chunks via
-    OpenEXR's ``InputFile.channel`` so peak working memory stays well under
-    the full uncompressed pixel size (12+ GiB for 64K×32K half-float).
+    Returns (H/ds, W/ds, 3) uint8 in sRGB-encoded values. Reads source
+    scanlines in chunks via OpenEXR's ``InputFile.channel`` so peak working
+    memory stays well under the full uncompressed pixel size (12+ GiB for
+    64K×32K half-float).
 
-    The Reinhard tonemap with exposure pre-multiplier (``SKYBOX_EXPOSURE``)
+    The Reinhard tonemap with exposure pre-multiplier ``exposure``
     lifts faint Milky Way structure above the toe before compression to
     [0, 1). sRGB encoding follows so the resulting WebP samples correctly
     under Three.js' default sRGB texture path.
@@ -54,7 +53,6 @@ def load_and_tonemap_streaming(src: Path) -> np.ndarray:
     dw = hdr["dataWindow"]
     src_w = dw.max.x - dw.min.x + 1
     src_h = dw.max.y - dw.min.y + 1
-    ds = config.SKYBOX_DOWNSAMPLE
     if src_w % ds or src_h % ds:
         raise ValueError(
             f"{src.name}: dims {src_w}x{src_h} not divisible by downsample {ds}"
@@ -94,7 +92,7 @@ def load_and_tonemap_streaming(src: Path) -> np.ndarray:
         )
         del rgb_src
 
-        np.multiply(band, config.SKYBOX_EXPOSURE, out=band)
+        np.multiply(band, exposure, out=band)
         np.clip(band, 0.0, None, out=band)
         denom = band + 1.0
         np.divide(band, denom, out=band)
@@ -108,3 +106,12 @@ def load_and_tonemap_streaming(src: Path) -> np.ndarray:
 
     inp.close()
     return out
+
+
+def mean_down(face: np.ndarray, factor: int) -> np.ndarray:
+    """Average a uint8 sRGB face over ``factor``² blocks in linear light, as a
+    GPU makes the mips of an sRGB texture."""
+    size = face.shape[0] // factor
+    linear = srgb_to_linear(face.astype(np.float32) / 255.0)
+    mean = linear.reshape(size, factor, size, factor, 3).mean(axis=(1, 3))
+    return (np.clip(linear_to_srgb(mean), 0.0, 1.0) * 255.0 + 0.5).astype(np.uint8)

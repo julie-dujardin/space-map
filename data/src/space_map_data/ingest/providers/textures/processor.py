@@ -42,6 +42,7 @@ from .metadata import (
     CLOUD_OUTPUT_RE,
     any_export_over_cap,
     cloud_frame_id,
+    cube_exposure,
     expand_entry_files,
     refresh_metadata_from_yaml,
     scraped_attribution,
@@ -381,7 +382,7 @@ class TextureProcessor:
             if entry.get("type") == "cylindrical_displacement":
                 self._process_displacement(entry, force=force)
                 continue
-            if entry.get("type") == "cubemap_skybox":
+            if entry.get("type") in config.CUBEMAP_TIER_SIZES:
                 self._process_skybox(entry, force=force)
                 continue
             src = entry["_source_dir"] / entry["file"]
@@ -1217,14 +1218,19 @@ class TextureProcessor:
         return out_dir
 
     def _process_skybox(self, entry: dict, force: bool = False) -> Path:
-        """Process a ``cubemap_skybox`` entry from an HDR equirectangular EXR.
+        """Process a cube entry (``config.CUBEMAP_TIER_SIZES``) from an HDR
+        equirectangular EXR.
 
         Loads the source EXR linear-light, applies an exposure-bumped Reinhard
         tonemap, projects to six cubemap faces (px, nx, py, ny, pz, nz) at
-        each tier size, and writes one lossy WebP per face per tier:
+        each tier size, and writes one WebP per face per tier:
         ``{tier}_{face}.webp`` under ``PROCESSED_DIR/<body>/``. A single
         metadata.json records the face list, tier sizes, and per-file size
         records (nested ``{tier: {face: rec}}``).
+
+        The starless map is read at the size the glow reads it, so its faces
+        are averaged down in linear light, as the GPU's mips average the
+        skybox's, and kept lossless.
 
         Skip semantics mirror the other processors: ``_try_skip`` short-
         circuits when metadata exists, the entry shape is unchanged, and no
@@ -1237,6 +1243,10 @@ class TextureProcessor:
 
         object_id = entry["body"]
         out_dir = config.PROCESSED_DIR / object_id
+        tier_sizes = config.CUBEMAP_TIER_SIZES[entry["type"]]
+        starless = entry["type"] == "cubemap_starless"
+        downsample = 1 if starless else config.SKYBOX_DOWNSAMPLE
+        exposure = cube_exposure(entry)
 
         if not force and self._try_skip(
             out_dir, entry, attribution_file=src.name, label=f"{object_id} skybox"
@@ -1261,33 +1271,42 @@ class TextureProcessor:
         out_dir.mkdir(parents=True, exist_ok=True)
 
         log.info("loading + tonemapping skybox EXR %s (streaming)…", src.name)
-        ldr_equirect = skybox.load_and_tonemap_streaming(src)
+        ldr_equirect = skybox.load_and_tonemap_streaming(src, downsample, exposure)
         h, w, _ = ldr_equirect.shape
         # Source dims for metadata are the *original* EXR dimensions, not the
         # downsampled working buffer — record both via the explicit factor.
-        src_w = w * config.SKYBOX_DOWNSAMPLE
-        src_h = h * config.SKYBOX_DOWNSAMPLE
+        src_w = w * downsample
+        src_h = h * downsample
         gc.collect()
 
         exports: dict[str, dict[str, dict]] = {}
-        high_size = config.SKYBOX_TIER_SIZES["high"]
-        log.info("extracting cubemap faces at %dpx (high tier)…", high_size)
-        # Single e2c pass at high tier; downsample for lower tiers below.
+        # A face at the equirect's own sampling: a quarter of its width.
+        work_size = w // 4 if starless else max(tier_sizes.values())
+        log.info("extracting cubemap faces at %dpx…", work_size)
+        # Single e2c pass; the tiers are made from it below.
         raw_faces = py360convert.e2c(
-            ldr_equirect, face_w=high_size, mode="bilinear", cube_format="dict"
+            ldr_equirect, face_w=work_size, mode="bilinear", cube_format="dict"
         )
         # Remap py360convert's F/R/B/L/U/D keys to WebGL axis labels.
-        high_faces = {config.PY360_TO_FACE[k]: v for k, v in raw_faces.items()}
+        work_faces = {config.PY360_TO_FACE[k]: v for k, v in raw_faces.items()}
         del ldr_equirect, raw_faces
         gc.collect()
 
-        for tier, face_size in config.SKYBOX_TIER_SIZES.items():
+        for tier, face_size in tier_sizes.items():
             tier_exports: dict[str, dict] = {}
             for face in config.SKYBOX_FACES:
-                img = Image.fromarray(high_faces[face], mode="RGB")
-                if face_size != high_size:
-                    img = img.resize((face_size, face_size), Image.Resampling.LANCZOS)
-                rec = save_webp(img, out_dir / f"{tier}_{face}.webp", lossless=False)
+                if starless:
+                    img = Image.fromarray(
+                        skybox.mean_down(work_faces[face], work_size // face_size),
+                        mode="RGB",
+                    )
+                else:
+                    img = Image.fromarray(work_faces[face], mode="RGB")
+                    if face_size != work_size:
+                        img = img.resize(
+                            (face_size, face_size), Image.Resampling.LANCZOS
+                        )
+                rec = save_webp(img, out_dir / f"{tier}_{face}.webp", lossless=starless)
                 tier_exports[face] = rec
 
                 target = size_target(face_size)
@@ -1301,7 +1320,7 @@ class TextureProcessor:
                         target // 1024,
                     )
             exports[tier] = tier_exports
-        del high_faces
+        del work_faces
         gc.collect()
 
         self._write_metadata(
@@ -1315,11 +1334,11 @@ class TextureProcessor:
                 "encoding": "webp",
                 "frame": "j2000",
                 "faces": list(config.SKYBOX_FACES),
-                "tiers": list(config.SKYBOX_TIER_SIZES),
-                "tier_face_size": dict(config.SKYBOX_TIER_SIZES),
-                "exposure": config.SKYBOX_EXPOSURE,
+                "tiers": list(tier_sizes),
+                "tier_face_size": dict(tier_sizes),
+                "exposure": exposure,
                 "working_equirect_size": [w, h],
-                "downsample_from_source": config.SKYBOX_DOWNSAMPLE,
+                "downsample_from_source": downsample,
             },
         )
         log.info(
@@ -1327,7 +1346,7 @@ class TextureProcessor:
             src.name,
             object_id,
             len(config.SKYBOX_FACES),
-            len(config.SKYBOX_TIER_SIZES),
+            len(tier_sizes),
         )
         return out_dir
 

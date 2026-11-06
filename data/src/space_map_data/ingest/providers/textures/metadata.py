@@ -129,13 +129,20 @@ def stale_metadata_reason(existing: dict, entry: dict) -> str | None:
         or existing.get("source_file") != entry["file"]
     ):
         return "yaml entry shape changed"
-    if type_ == "cubemap_skybox" and (
+    if type_ in config.CUBEMAP_TIER_SIZES and (
         existing.get("type") != type_
+        or existing.get("source_file") != entry["file"]
         or tuple(existing.get("faces") or ()) != config.SKYBOX_FACES
-        or existing.get("tier_face_size") != config.SKYBOX_TIER_SIZES
+        or existing.get("tier_face_size") != config.CUBEMAP_TIER_SIZES[type_]
+        or existing.get("exposure") != cube_exposure(entry)
     ):
         return "skybox entry shape changed"
     return None
+
+
+def cube_exposure(entry: dict) -> float:
+    """The tonemap's exposure of a cube entry, in the star map's units."""
+    return config.SKYBOX_EXPOSURE * entry.get("source_scale", 1.0)
 
 
 def any_export_over_cap(out_dir: Path) -> bool:
