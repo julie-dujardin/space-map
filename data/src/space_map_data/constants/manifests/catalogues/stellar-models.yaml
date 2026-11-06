@@ -1,0 +1,30 @@
+# Stellar evolution models. The extrasolar export fits the interiors of the
+# stars to them. `constants/manifests/catalogues.py` describes the fields.
+catalogues:
+- key: mist-v2-5
+  title: MIST v2.5 EEP tracks, [α/Fe] = 0, v/vcrit = 0.4
+  reference: Dotter et al. 2026, ApJS 283, 64; Choi et al. 2016, ApJ 823, 102
+  license: >-
+    None stated. The site carries only its template footer, "© MIST. All
+    rights reserved", and asks: "Please cite the following papers in a
+    publication that makes use of the MIST models".
+  terms_url: https://mist.science/references.html
+  distribution: site-only
+  urls:
+  - https://mist.science/data/tarballs_v2.5/eeps/MIST_v2.5_feh_m400_afe_p0_vvcrit0.4_EEPS.txz
+  - https://mist.science/data/tarballs_v2.5/eeps/MIST_v2.5_feh_m350_afe_p0_vvcrit0.4_EEPS.txz
+  - https://mist.science/data/tarballs_v2.5/eeps/MIST_v2.5_feh_m300_afe_p0_vvcrit0.4_EEPS.txz
+  - https://mist.science/data/tarballs_v2.5/eeps/MIST_v2.5_feh_m275_afe_p0_vvcrit0.4_EEPS.txz
+  - https://mist.science/data/tarballs_v2.5/eeps/MIST_v2.5_feh_m250_afe_p0_vvcrit0.4_EEPS.txz
+  - https://mist.science/data/tarballs_v2.5/eeps/MIST_v2.5_feh_m225_afe_p0_vvcrit0.4_EEPS.txz
+  - https://mist.science/data/tarballs_v2.5/eeps/MIST_v2.5_feh_m200_afe_p0_vvcrit0.4_EEPS.txz
+  - https://mist.science/data/tarballs_v2.5/eeps/MIST_v2.5_feh_m175_afe_p0_vvcrit0.4_EEPS.txz
+  - https://mist.science/data/tarballs_v2.5/eeps/MIST_v2.5_feh_m150_afe_p0_vvcrit0.4_EEPS.txz
+  - https://mist.science/data/tarballs_v2.5/eeps/MIST_v2.5_feh_m125_afe_p0_vvcrit0.4_EEPS.txz
+  - https://mist.science/data/tarballs_v2.5/eeps/MIST_v2.5_feh_m100_afe_p0_vvcrit0.4_EEPS.txz
+  - https://mist.science/data/tarballs_v2.5/eeps/MIST_v2.5_feh_m075_afe_p0_vvcrit0.4_EEPS.txz
+  - https://mist.science/data/tarballs_v2.5/eeps/MIST_v2.5_feh_m050_afe_p0_vvcrit0.4_EEPS.txz
+  - https://mist.science/data/tarballs_v2.5/eeps/MIST_v2.5_feh_m025_afe_p0_vvcrit0.4_EEPS.txz
+  - https://mist.science/data/tarballs_v2.5/eeps/MIST_v2.5_feh_p000_afe_p0_vvcrit0.4_EEPS.txz
+  - https://mist.science/data/tarballs_v2.5/eeps/MIST_v2.5_feh_p025_afe_p0_vvcrit0.4_EEPS.txz
+  - https://mist.science/data/tarballs_v2.5/eeps/MIST_v2.5_feh_p050_afe_p0_vvcrit0.4_EEPS.txz

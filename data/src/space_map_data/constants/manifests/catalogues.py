@@ -10,8 +10,8 @@ are. The fields:
 - `terms_url`: the page that carries that wording.
 - `distribution`: who may serve data made from the catalogue. `open`,
   `non-commercial` and `site-only` are the tiers of the texture manifests.
-  A source that states no licence is never `open`: it is `non-commercial`,
-  or `undecided` until someone decides.
+  A source that states no licence is never `open`. It is `non-commercial` or
+  `site-only`, or `undecided` until someone decides.
 - `cds`: `catalogue` is the CDS identifier, `files` the files to take.
 - `zenodo`: `record` is the record number, `files` the files to take. No
   `files` takes every file.

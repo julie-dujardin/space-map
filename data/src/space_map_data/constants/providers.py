@@ -70,6 +70,7 @@ class PROVIDERS(StrEnum):
     BLACK_HOLE_CATALOGUES = "black_hole_catalogues"
     TRANSIENT_CATALOGUES = "transient_catalogues"
     STELLAR_PARAMETER_CATALOGUES = "stellar_parameter_catalogues"
+    STELLAR_MODEL_CATALOGUES = "stellar_model_catalogues"
     PASTEL_SIMBAD = "pastel_simbad"
     GCVS_SIMBAD = "gcvs_simbad"
     SPICY_GAIA = "spicy_gaia"

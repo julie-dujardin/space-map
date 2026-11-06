@@ -46,6 +46,7 @@ class TestManifests:
             "galaxies",
             "nebulae",
             "star-clusters",
+            "stellar-models",
             "stellar-parameters",
             "stellar-remnants",
             "transients",
@@ -61,7 +62,7 @@ class TestManifests:
             c.key
             for c in load_catalogues(group)
             if c.license.startswith("None stated")
-            and c.distribution not in ("undecided", "non-commercial")
+            and c.distribution not in ("undecided", "non-commercial", "site-only")
         ]
         assert not cleared
 

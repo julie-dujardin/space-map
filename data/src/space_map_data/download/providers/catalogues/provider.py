@@ -360,3 +360,8 @@ class TransientCataloguesDownloader(CatalogueDownloader):
 class StellarParameterCataloguesDownloader(CatalogueDownloader):
     name = PROVIDERS.STELLAR_PARAMETER_CATALOGUES
     group = "stellar-parameters"
+
+
+class StellarModelCataloguesDownloader(CatalogueDownloader):
+    name = PROVIDERS.STELLAR_MODEL_CATALOGUES
+    group = "stellar-models"
