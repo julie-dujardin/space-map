@@ -1372,6 +1372,8 @@
 	"attribution_imagery": "Bildmaterial",
 	"attribution_stars": "Sterne",
 	"attribution_constellations": "Sternbilder",
+	"attribution_galaxy": "Milchstraße",
+	"attribution_galaxy_model": "Modell",
 	"attribution_map": "Karte",
 	"attribution_section_panorama": "Oberflächenpanorama",
 	"provider_nasa": "NASA",

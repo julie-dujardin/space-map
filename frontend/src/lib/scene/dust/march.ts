@@ -303,8 +303,17 @@ export interface Volume {
 	data: Uint8Array | Uint16Array;
 }
 
-/** One byte a texel, or four half floats. */
-export type VolumeFormat = 'r8' | 'rgba16f';
+/** One byte a texel, one half float, or four. */
+export type VolumeFormat = 'r8' | 'r16f' | 'rgba16f';
+
+/** GL formats of a volume, and its values a texel. */
+function volumeFormat(gl: WebGL2RenderingContext, format: VolumeFormat) {
+	if (format === 'r8')
+		return { internal: gl.R8, layout: gl.RED, type: gl.UNSIGNED_BYTE, channels: 1 };
+	if (format === 'r16f')
+		return { internal: gl.R16F, layout: gl.RED, type: gl.HALF_FLOAT, channels: 1 };
+	return { internal: gl.RGBA16F, layout: gl.RGBA, type: gl.HALF_FLOAT, channels: 4 };
+}
 
 /** 3D textures that upload a few slices each frame. */
 export class VolumeTextures {
@@ -317,7 +326,7 @@ export class VolumeTextures {
 		private readonly format: VolumeFormat
 	) {
 		const gl = renderer.getContext() as WebGL2RenderingContext;
-		const internal = format === 'r8' ? gl.R8 : gl.RGBA16F;
+		const { internal } = volumeFormat(gl, format);
 		this.textures = volumes.map(({ size }) => {
 			const texture = gl.createTexture();
 			renderer.state.bindTexture(gl.TEXTURE_3D, texture);
@@ -341,9 +350,8 @@ export class VolumeTextures {
 	step(): void {
 		const gl = this.renderer.getContext() as WebGL2RenderingContext;
 		const { state } = this.renderer;
-		const r8 = this.format === 'r8';
-		const channels = r8 ? 1 : 4;
-		gl.pixelStorei(gl.UNPACK_ALIGNMENT, r8 ? 1 : 2);
+		const { layout, type, channels } = volumeFormat(gl, this.format);
+		gl.pixelStorei(gl.UNPACK_ALIGNMENT, this.format === 'r8' ? 1 : 2);
 		gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
 		gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
 		let bytes = UPLOAD_BYTES_PER_FRAME;
@@ -364,8 +372,8 @@ export class VolumeTextures {
 				nx,
 				ny,
 				count,
-				r8 ? gl.RED : gl.RGBA,
-				r8 ? gl.UNSIGNED_BYTE : gl.HALF_FLOAT,
+				layout,
+				type,
 				data,
 				plane * upload.next
 			);

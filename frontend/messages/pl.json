@@ -1414,6 +1414,8 @@
 	"attribution_imagery": "Obrazowanie",
 	"attribution_stars": "Gwiazdy",
 	"attribution_constellations": "Gwiazdozbiory",
+	"attribution_galaxy": "Droga Mleczna",
+	"attribution_galaxy_model": "model",
 	"attribution_map": "Mapa",
 	"attribution_section_panorama": "Panorama powierzchni",
 	"provider_nasa": "NASA",

@@ -95,7 +95,7 @@ export const RENDER_TIER_PRESETS: Record<RenderTier, RenderTierPreset> = {
 		starBytes: 160 * MB,
 		starFetches: 4,
 		dust: { mode: 'map', nest: 'low', passes: 4 },
-		glow: { grid: 'low', size: 256, steps: 48, passes: 4 }
+		glow: { grid: 'low', size: 256, steps: 48, passes: 4, galaxy: 512 }
 	},
 	high: {
 		maxPixelRatio: 2,
@@ -114,7 +114,7 @@ export const RENDER_TIER_PRESETS: Record<RenderTier, RenderTierPreset> = {
 		starBytes: 400 * MB,
 		starFetches: 6,
 		dust: { mode: 'map', nest: 'high', passes: 8 },
-		glow: { grid: 'high', size: 512, steps: 48, passes: 8 }
+		glow: { grid: 'high', size: 512, steps: 48, passes: 8, galaxy: 1024 }
 	}
 };
 

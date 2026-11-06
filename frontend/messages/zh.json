@@ -1373,6 +1373,8 @@
 	"attribution_imagery": "图像",
 	"attribution_stars": "恒星",
 	"attribution_constellations": "星座",
+	"attribution_galaxy": "银河系",
+	"attribution_galaxy_model": "模型",
 	"attribution_map": "地图",
 	"attribution_section_panorama": "地表全景",
 	"provider_nasa": "NASA",

@@ -10,6 +10,10 @@
  * Its cut is fixed and its exposure follows the map itself, never the drawn
  * limit or the nodes that load, so the glow holds still while they change.
  *
+ * Model light (`model.ts`) adds the light the catalogue lacks, so the whole
+ * Galaxy draws from any place. Far outside, each map has a second one about the
+ * Galaxy (`outside.ts`).
+ *
  * It needs the GPU nest of the dust, so the `low` tier goes without it.
  */
 
@@ -23,7 +27,7 @@ import { passJitter, type StarDust } from '$lib/scene/dust/star-dust';
 import { BASE_LIMIT_MAG } from '$lib/scene/starfield/band';
 import { SwitchFade } from '$lib/scene/visibility/switch-fade';
 import { MarchBudget } from './budget';
-import { GlowComposite } from './composite';
+import { GlowComposite, type GlowMapView } from './composite';
 import { ADAPT_REST_MS, SUN_EXPOSURE, placeGain } from './exposure';
 import { GlowEye } from './eye';
 import {
@@ -33,7 +37,9 @@ import {
 	type GlowMetadata,
 	type GlowVolume
 } from './grid';
+import type { FarDustEntry } from './far-dust';
 import { GlowMarch } from './march';
+import { galaxyFrame, type GalaxyFrame } from './outside';
 
 /** How a device draws the glow. */
 export interface GlowPlan {
@@ -44,6 +50,8 @@ export interface GlowPlan {
 	steps: number;
 	/** Passes that make one map. */
 	passes: number;
+	/** Edge of the map about the Galaxy, for a camera far outside. */
+	galaxy: number;
 }
 
 /** What the starfield knows of this frame. */
@@ -83,14 +91,47 @@ export const GLOW_CUT_MAG = BASE_LIMIT_MAG;
 
 const distance = (a: Vec3, b: Vec3): number => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
 
+/** The model's share of a map's light over which the label shows, and under
+ *  which it goes again: two, so a share near one does not flicker. */
+export const MODEL_SHOWN_SHARE = 0.25;
+export const MODEL_HIDDEN_SHARE = 0.2;
+
 /** A map being made. */
 interface MapJob {
 	origin: Vec3;
 	reach: number;
 	pass: number;
 	row: number;
+	/** In each pass, the sky map first, then the map about the Galaxy. */
+	galaxyStage: boolean;
+	frame: GalaxyFrame | null;
 	/** The map at the Sun, whose mean is the exposure's reference. */
 	reference: boolean;
+}
+
+/** A sky map, the map about the Galaxy beside it, and that map's frame. */
+class MapSet {
+	frame: GalaxyFrame | null = null;
+	private readonly view: GlowMapView;
+
+	constructor(
+		readonly sky: SkyMap,
+		readonly galaxy: SkyMap | null
+	) {
+		this.view = { sky: sky.external, galaxy: null, frame: null };
+	}
+
+	/** What the composite reads. */
+	get shown(): GlowMapView {
+		this.view.galaxy = this.frame && this.galaxy ? this.galaxy.external : null;
+		this.view.frame = this.frame;
+		return this.view;
+	}
+
+	dispose(): void {
+		this.sky.dispose();
+		this.galaxy?.dispose();
+	}
 }
 
 export class GlowSky {
@@ -98,13 +139,19 @@ export class GlowSky {
 	private plan: GlowPlan | null;
 	private readonly load: GpuLoad<GlowMetadata, GlowVolume>;
 	private grid: VolumeTextures | null = null;
+	private model: VolumeTextures | null = null;
+	private far: { textures: VolumeTextures; entry: FarDustEntry } | null = null;
 	/** The dust's nest that the march reads. */
 	private nest: NestTextures | null = null;
 	private march: GlowMarch | null = null;
-	/** The map that draws, the one it blends in from, and the one being made. */
-	private front: SkyMap | null = null;
-	private previous: SkyMap | null = null;
-	private back: SkyMap | null = null;
+	/** The maps that draw, the ones they blend in from, and the ones being made. */
+	private front: MapSet | null = null;
+	private previous: MapSet | null = null;
+	private back: MapSet | null = null;
+	/** The model holds a visible share of the front map's light. */
+	private modelShown = false;
+	/** That, and the glow shows. */
+	private modelSeen = false;
 	/** Progress of the blend from the previous map, 0 to 1. */
 	private blend = 1;
 	private composite: GlowComposite | null = null;
@@ -165,7 +212,10 @@ export class GlowSky {
 		const old = this.plan;
 		this.plan = plan;
 		const shape =
-			plan?.size === old?.size && plan?.steps === old?.steps && plan?.passes === old?.passes;
+			plan?.size === old?.size &&
+			plan?.steps === old?.steps &&
+			plan?.passes === old?.passes &&
+			plan?.galaxy === old?.galaxy;
 		if (plan?.grid === old?.grid && shape) return;
 		if (plan?.grid !== old?.grid || this.renderer.getContext().isContextLost()) {
 			this.load.restart(true);
@@ -183,13 +233,19 @@ export class GlowSky {
 		this.referenceStarted = this.sunMeasured = this.frontMeasured = false;
 		this.eyeDue = this.eyeStarted = false;
 		this.eyeRestMs = 0;
+		this.modelShown = false;
 	}
 
 	/** Free the GPU objects. A lost context took them already. */
 	private release(live: boolean): void {
 		this.releaseMaps(live);
-		if (live) this.grid?.dispose();
-		this.grid = null;
+		if (live) {
+			this.grid?.dispose();
+			this.model?.dispose();
+			this.far?.textures.dispose();
+		}
+		this.grid = this.model = null;
+		this.far = null;
 	}
 
 	/** Free what the build made on the grid. */
@@ -224,14 +280,56 @@ export class GlowSky {
 		this.onChange();
 	}
 
+	/** A throw here makes the load try again. So the fields change only once
+	 *  every texture is made, and a throw frees what it made. */
 	private received(volume: GlowVolume): LoadPhase {
 		const { size, shells } = volume.entry;
-		this.grid = new VolumeTextures(
-			this.renderer,
-			[volume.a, volume.b].map((data) => ({ size: [size, size, shells], data })),
-			'rgba16f'
-		);
+		const { model, far } = volume;
+		const made: { dispose(): void }[] = [];
+		const keep = <T extends { dispose(): void }>(textures: T): T => {
+			made.push(textures);
+			return textures;
+		};
+		try {
+			const grid = keep(
+				new VolumeTextures(
+					this.renderer,
+					[volume.a, volume.b].map((data) => ({ size: [size, size, shells], data })),
+					'rgba16f'
+				)
+			);
+			const boxes = model
+				? keep(new VolumeTextures(this.renderer, [model.inner, model.outer], 'r16f'))
+				: null;
+			const farDust = far
+				? {
+						textures: keep(
+							new VolumeTextures(this.renderer, [{ size: far.size, data: far.codes }], 'r8')
+						),
+						entry: far.entry
+					}
+				: null;
+			this.grid = grid;
+			this.model = boxes;
+			this.far = farDust;
+		} catch (err) {
+			for (const textures of made) textures.dispose();
+			throw err;
+		}
 		return 'uploading';
+	}
+
+	/** The grid, then the model and the far dust, a few slices a frame. */
+	private uploads(volumes: (VolumeTextures | null | undefined)[]) {
+		const all = volumes.filter((v): v is VolumeTextures => !!v);
+		return {
+			get uploaded() {
+				return all.every((v) => v.uploaded);
+			},
+			step() {
+				all.find((v) => !v.uploaded)?.step();
+			}
+		};
 	}
 
 	private build(
@@ -242,10 +340,30 @@ export class GlowSky {
 		rotation: Mat3Rows
 	): void {
 		const { renderer, scene } = this;
-		this.march = new GlowMarch(renderer, nest, grid, meta, meta.tiers[plan.grid], plan);
-		this.front = new SkyMap(renderer, plan.size);
-		this.previous = new SkyMap(renderer, plan.size);
-		this.back = new SkyMap(renderer, plan.size);
+		// The map about the Galaxy draws model light, so a grid alone has none.
+		const galaxy = meta.model ? plan.galaxy : 0;
+		this.march = new GlowMarch(
+			renderer,
+			nest,
+			grid,
+			this.model,
+			this.far,
+			meta,
+			meta.tiers[plan.grid],
+			{ ...plan, galaxy }
+		);
+		const set = () => {
+			const sky = new SkyMap(renderer, plan.size);
+			try {
+				return new MapSet(sky, galaxy > 0 ? new SkyMap(renderer, galaxy) : null);
+			} catch (err) {
+				sky.dispose();
+				throw err;
+			}
+		};
+		this.front = set();
+		this.previous = set();
+		this.back = set();
 		this.eye = new GlowEye(renderer, plan.size);
 		const [a, b, c] = rotation;
 		const axes = new Matrix3().set(a[0], b[0], c[0], a[1], b[1], c[1], a[2], b[2], c[2]);
@@ -281,7 +399,7 @@ export class GlowSky {
 		if (load.phase === 'uploading' && grid && nest && plan && meta && rotation) {
 			this.checkInputs(meta, frame.tree);
 			load.upload(
-				grid,
+				this.uploads([grid, this.model, this.far?.textures]),
 				() => this.build(nest, grid, plan, meta, rotation),
 				(err) => {
 					// A throw here would repeat on every frame.
@@ -301,7 +419,7 @@ export class GlowSky {
 		if (!rotation) return;
 		const at = treeToNest(rotation, frame.at);
 		const wanted = this.enabled && (frame.drawing || this.origin === null);
-		if (wanted) this.follow(at, frame.nowMs);
+		if (wanted) this.follow(at, frame.nowMs, meta?.model?.centre_pc ?? null);
 		else this.drop();
 		this.draw(frame, at);
 	}
@@ -314,7 +432,7 @@ export class GlowSky {
 		this.stale = false;
 	}
 
-	private follow(at: Vec3, nowMs: number): void {
+	private follow(at: Vec3, nowMs: number, centre: Vec3 | null): void {
 		const { march, back, plan } = this;
 		if (!march || !back || !plan) return;
 		this.stale = this.origin === null || distance(at, this.origin) > this.reach;
@@ -329,43 +447,55 @@ export class GlowSky {
 				reach: reference ? this.dust.reachAtSun : this.dust.latestReach,
 				pass: 0,
 				row: 0,
+				galaxyStage: false,
+				frame: back.galaxy && centre ? galaxyFrame(origin, centre) : null,
 				reference
 			};
 			this.referenceStarted ||= reference;
 			this.job = job;
 		}
-		let rows = this.budget.rows;
-		this.marched = rows > 0 && job.pass < plan.passes;
-		while (rows > 0 && job.pass < plan.passes) {
-			const count = Math.min(rows, plan.size - job.row);
+		// The budget counts rows of the sky map; a row of the other map costs more.
+		let texels = this.budget.rows * plan.size;
+		this.marched = texels > 0 && job.pass < plan.passes;
+		while (texels > 0 && job.pass < plan.passes) {
+			const galaxy = job.galaxyStage ? back.galaxy : null;
+			const map = galaxy ?? back.sky;
+			const edge = galaxy ? plan.galaxy : plan.size;
+			const count = Math.min(Math.max(Math.floor(texels / edge), 1), edge - job.row);
 			march.run(
-				back,
+				map,
 				job.origin,
 				GLOW_CUT_MAG,
 				passJitter(job.pass, plan.passes),
 				1 / (job.pass + 1),
 				job.row,
-				count
+				count,
+				galaxy ? job.frame : null
 			);
 			job.row += count;
-			rows -= count;
+			texels -= count * edge;
 			this.rowsMarched += count;
-			if (job.row === plan.size) {
-				job.row = 0;
-				job.pass++;
-				this.passes++;
+			if (job.row < edge) continue;
+			job.row = 0;
+			if (!job.galaxyStage && job.frame && back.galaxy) {
+				job.galaxyStage = true;
+				continue;
 			}
+			job.galaxyStage = false;
+			job.pass++;
+			this.passes++;
 		}
 		const near = distance(at, job.origin) <= job.reach;
 		if (job.reference) {
 			if (job.pass < plan.passes) return;
-			this.measure(back, true);
+			this.measure(back.sky, true);
 			// The map at the Sun is the first map too while the camera is near it.
 			if (near) this.swap(job, nowMs);
 			else this.job = null;
 			return;
 		}
-		const done = job.pass >= plan.passes || (job.pass > 0 && job.row === 0 && !near);
+		const done =
+			job.pass >= plan.passes || (job.pass > 0 && job.row === 0 && !job.galaxyStage && !near);
 		// A map that took over during a blend would drop the map it blends from at
 		// once. So it waits, and marches more passes meanwhile.
 		if (done && this.blend >= 1) this.swap(job, nowMs);
@@ -382,7 +512,11 @@ export class GlowSky {
 	/** The map that was being made takes over, blended in so a refresh shows no
 	 *  step. The first map needs no blend: the fade brings it in. */
 	private swap(job: MapJob, nowMs: number): void {
-		if (this.back) this.measure(this.back, false);
+		if (this.back) {
+			this.back.frame = job.frame;
+			this.measure(this.back.sky, false);
+			this.eye?.askShare(this.modelShown ? MODEL_HIDDEN_SHARE : MODEL_SHOWN_SHARE);
+		}
 		const free = this.previous;
 		this.previous = this.front;
 		this.front = this.back;
@@ -400,12 +534,15 @@ export class GlowSky {
 	private draw(frame: GlowFrame, at: Vec3): void {
 		const { composite, front, previous, eye } = this;
 		if (!composite || !front || !previous || !eye) return;
-		this.placeGain = placeGain(at);
+		this.placeGain = placeGain(at, this.load.meta?.model?.centre_pc ?? null);
+		const shown = eye.shareAnswer();
+		if (shown !== null) this.modelShown = shown;
 		const known = this.sunMeasured && this.frontMeasured;
 		this.fade.step(this.enabled && known && frame.drawing, frame.dtMs);
 		this.blend = Math.min(this.blend + frame.dtMs / BLEND_MS, 1);
 		const share = this.fade.share * frame.share;
 		if (known) this.adapt(eye, share > 0, frame.nowMs, frame.dtMs);
+		this.modelSeen = this.modelShown && share > 0 && this.eyeStarted;
 		if (share <= 0 || !this.eyeStarted) {
 			composite.hide();
 			return;
@@ -432,8 +569,8 @@ export class GlowSky {
 			1
 		);
 		composite.show(
-			front.external,
-			previous.external,
+			front.shown,
+			previous.shown,
 			this.blend,
 			eye.texture,
 			SUN_EXPOSURE * this.placeGain,
@@ -467,6 +604,12 @@ export class GlowSky {
 		eye.ask();
 	}
 
+	/** Model light holds a visible share of the glow that shows, so the UI must
+	 *  say the view is model. */
+	get modelInView(): boolean {
+		return this.load.phase === 'ready' && this.modelSeen;
+	}
+
 	/** True while a frame would change what draws. */
 	busy(): boolean {
 		if (this.load.phase === 'uploading') return this.dust.marchNest !== null;
@@ -474,6 +617,8 @@ export class GlowSky {
 		// The frame after a march is drawn too: its length sets the budget.
 		if (this.fade.fading || this.marched || this.blend < 1) return true;
 		if (this.eyeDue || this.eyeRestMs > 0) return true;
+		// The label waits for the answer on the model's share.
+		if (this.eye?.sharePending) return true;
 		return this.job !== null || this.stale;
 	}
 
@@ -489,6 +634,11 @@ export class GlowSky {
 			reach: this.reach,
 			cut: GLOW_CUT_MAG,
 			adaptingMs: Math.max(this.eyeRestMs - this.lastMs, 0),
+			model: this.load.meta?.model ? true : false,
+			modelInView: this.modelInView,
+			galaxy: this.front?.frame
+				? { tan: this.front.frame.tan, share: this.front.frame.share }
+				: null,
 			placeGain: this.placeGain,
 			share: this.fade.share,
 			stale: this.stale,

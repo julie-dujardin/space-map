@@ -1425,6 +1425,8 @@
 	"attribution_imagery": "Изображения",
 	"attribution_stars": "Звёзды",
 	"attribution_constellations": "Созвездия",
+	"attribution_galaxy": "Млечный Путь",
+	"attribution_galaxy_model": "модель",
 	"attribution_map": "Карта",
 	"attribution_section_panorama": "Панорама поверхности",
 	"provider_nasa": "NASA",

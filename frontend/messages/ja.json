@@ -1501,6 +1501,8 @@
 	"attribution_imagery": "画像",
 	"attribution_stars": "恒星",
 	"attribution_constellations": "星座",
+	"attribution_galaxy": "天の川銀河",
+	"attribution_galaxy_model": "モデル",
 	"attribution_map": "地図",
 	"attribution_section_panorama": "地表パノラマ",
 	"provider_nasa": "NASA",

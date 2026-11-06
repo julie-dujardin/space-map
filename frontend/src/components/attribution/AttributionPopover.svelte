@@ -284,6 +284,16 @@
 				</section>
 			{/if}
 
+			{#if ctx.credits.galaxyModel}
+				<section class="space-y-1">
+					{@render sectionHeader(m.attribution_galaxy())}
+					<p class="text-muted-foreground">
+						{m.attribution_galaxy_model_text()}
+						<span class="font-mono text-blue-500">{m.attribution_galaxy_model_intent()}</span>
+					</p>
+				</section>
+			{/if}
+
 			{#if focusedModel}
 				<section class="space-y-1">
 					{@render sectionHeader(m.attribution_section_models())}

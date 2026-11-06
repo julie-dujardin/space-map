@@ -44,3 +44,14 @@ describe('CreditsStore.registerImagery', () => {
 		expect(credits.imageryOf('rings')).toHaveLength(2);
 	});
 });
+
+describe('CreditsStore.setGalaxyModel', () => {
+	it('starts off and follows the last call', () => {
+		const credits = new CreditsStore();
+		expect(credits.galaxyModel).toBe(false);
+		credits.setGalaxyModel(true);
+		expect(credits.galaxyModel).toBe(true);
+		credits.setGalaxyModel(false);
+		expect(credits.galaxyModel).toBe(false);
+	});
+});

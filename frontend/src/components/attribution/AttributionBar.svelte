@@ -11,6 +11,8 @@
 	export interface AttributionChip {
 		label: string;
 		names: string[];
+		/** Keeps its width when the bar is short; a chip is cut otherwise. */
+		whole?: boolean;
 	}
 
 	interface Props {
@@ -63,6 +65,11 @@
 			{ label: m.attribution_orbits(), names: chips.orbits },
 			{ label: m.attribution_imagery(), names: chips.imagery },
 			{ label: m.attribution_constellations(), names: chips.constellations },
+			{
+				label: m.attribution_galaxy(),
+				names: chips.galaxyModel ? [m.attribution_galaxy_model()] : [],
+				whole: true
+			},
 			{ label: m.attribution_stars(), names: chips.stars }
 		];
 	});
@@ -81,9 +88,11 @@
 		>
 			{#each shown as chip (chip.label)}
 				{#if chip.names.length > 0}
-					<!-- The chips share what the host's width leaves after the logo; the
-					     last, usually the long list of star catalogues, gives way first. -->
-					<span class="min-w-0 truncate last:min-w-28 last:shrink-[100000]">
+					<!-- The chips share what the host's width leaves after the logo. The
+					     last, usually the star catalogues, is cut first. -->
+					<span
+						class={chip.whole ? 'shrink-0' : 'min-w-0 truncate last:min-w-28 last:shrink-[100000]'}
+					>
 						<span class={ink.dim}>{chip.label}:</span>
 						{chip.names.join(' · ')}
 					</span>

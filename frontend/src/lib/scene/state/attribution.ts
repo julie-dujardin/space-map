@@ -72,6 +72,8 @@ export interface AttributionChips {
 	/** Who drew the culture's lines, with its authors, and who placed their
 	 *  stars, while they draw. */
 	constellations: string[];
+	/** True while model light is a visible share of the glow in view. A label, not a credit. */
+	galaxyModel: boolean;
 }
 
 /** Reads the credit stores' version counters, so a caller in a `$derived` or
@@ -110,5 +112,11 @@ export function attributionChips(
 		)
 	];
 
-	return { orbits, imagery: [...organisations].sort(), stars, constellations };
+	return {
+		orbits,
+		imagery: [...organisations].sort(),
+		stars,
+		constellations,
+		galaxyModel: credits.galaxyModel
+	};
 }

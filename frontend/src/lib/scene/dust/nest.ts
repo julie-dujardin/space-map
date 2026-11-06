@@ -46,6 +46,18 @@ export interface NestLevelEntry {
 	low: NestFile;
 }
 
+/** Coarse dust past the levels, about the Galactic centre. Only the glow reads it. */
+export interface NestFarEntry {
+	centre_pc: Vec3;
+	half_extent_pc: Vec3;
+	z_map: 'asinh' | 'linear';
+	z_scale_pc: number;
+	floor: number;
+	top: number;
+	high: NestFile;
+	low: NestFile;
+}
+
 export interface NestCredit {
 	key: string;
 	name: string;
@@ -63,6 +75,7 @@ export interface NestMetadata {
 	frame: { rotation_to_icrs: Mat3Rows };
 	levels: NestLevelEntry[];
 	credits: NestCredit[];
+	far: NestFarEntry;
 }
 
 /** One level of the nest in memory. */

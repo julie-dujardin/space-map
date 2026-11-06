@@ -213,6 +213,10 @@ export interface CoreMessages {
 	// (undocumented)
 	attribution_constellations: () => string;
 	// (undocumented)
+	attribution_galaxy: () => string;
+	// (undocumented)
+	attribution_galaxy_model: () => string;
+	// (undocumented)
 	attribution_imagery: () => string;
 	// (undocumented)
 	attribution_orbits: () => string;

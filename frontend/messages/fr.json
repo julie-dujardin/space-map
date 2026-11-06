@@ -1514,6 +1514,8 @@
 	"attribution_imagery": "Images",
 	"attribution_stars": "Étoiles",
 	"attribution_constellations": "Constellations",
+	"attribution_galaxy": "Voie lactée",
+	"attribution_galaxy_model": "modèle",
 	"attribution_map": "Carte",
 	"attribution_section_panorama": "Panorama de surface",
 	"provider_nasa": "NASA",

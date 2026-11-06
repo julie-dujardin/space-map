@@ -14,7 +14,14 @@ import { GLOW_CUT_MAG, GlowSky, type GlowFrame, type GlowPlan } from './glow-sky
 
 const gl = vi.hoisted(() => ({
 	live: new Set<object>(),
-	runs: [] as { origin: Vec3; from: number; rows: number; cut: number; weight: number }[],
+	runs: [] as {
+		origin: Vec3;
+		from: number;
+		rows: number;
+		cut: number;
+		weight: number;
+		galaxy: boolean;
+	}[],
 	shown: 0,
 	uploadFrames: 2,
 	measured: [] as boolean[],
@@ -23,22 +30,36 @@ const gl = vi.hoisted(() => ({
 	/** Questions to the eye, and what the GPU answers: null while it has no answer. */
 	asks: 0,
 	close: null as boolean | null,
+	/** Questions on the model's share, and the answer. */
+	shareAsks: [] as number[],
+	modelShare: null as boolean | null,
+	/** A question on the share is out. */
+	sharePending: false,
+	/** The edge of the map about the Galaxy that each march was built for. */
+	galaxyEdges: [] as number[],
 	/** The blend of each frame shown. */
 	blends: [] as number[],
 	marches: 0,
 	failMarch: false,
+	/** Volumes made, and the one whose constructor throws, counted from 1. */
+	volumes: 0,
+	failVolumeAt: 0,
 	lost: false
 }));
 
 const net = vi.hoisted(() => ({
 	metadata: null as (() => Promise<unknown>) | null,
-	volumes: 0
+	volumes: 0,
+	/** More of the glow's data, as the model. */
+	extra: {} as Record<string, unknown>
 }));
 
 vi.mock('$lib/scene/dust/march', () => ({
 	VolumeTextures: class {
 		steps = 0;
+		readonly volume = true;
 		constructor() {
+			if (++gl.volumes === gl.failVolumeAt) throw new Error('glow: out of memory');
 			gl.live.add(this);
 		}
 		get uploaded() {
@@ -64,10 +85,11 @@ vi.mock('$lib/scene/dust/march', () => ({
 
 vi.mock('./march', () => ({
 	GlowMarch: class {
-		constructor() {
+		constructor(...args: unknown[]) {
 			// On a lost context the march does not link.
 			if (gl.failMarch) throw new Error('dust march: link failed');
 			gl.marches++;
+			gl.galaxyEdges.push((args[7] as GlowPlan).galaxy);
 			gl.live.add(this);
 		}
 		run(
@@ -77,9 +99,10 @@ vi.mock('./march', () => ({
 			_jitter: number,
 			weight: number,
 			from: number,
-			rows: number
+			rows: number,
+			frame: unknown
 		) {
-			gl.runs.push({ origin, from, rows, cut, weight });
+			gl.runs.push({ origin, from, rows, cut, weight, galaxy: frame !== null });
 		}
 		dispose() {
 			gl.live.delete(this);
@@ -104,6 +127,15 @@ vi.mock('./eye', () => ({
 		}
 		answer() {
 			return gl.asks > 0 ? gl.close : null;
+		}
+		askShare(share: number) {
+			gl.shareAsks.push(share);
+		}
+		shareAnswer() {
+			return gl.shareAsks.length > 0 ? gl.modelShare : null;
+		}
+		get sharePending() {
+			return gl.sharePending;
 		}
 		dispose() {
 			gl.live.delete(this);
@@ -132,7 +164,12 @@ vi.mock('./grid', async (importActual) => ({
 	fetchGlowMetadata: () => net.metadata!(),
 	fetchGlowVolume: async () => {
 		net.volumes++;
-		return { entry: { size: 2, shells: 2 }, a: new Uint16Array(32), b: new Uint16Array(32) };
+		return {
+			entry: { size: 2, shells: 2 },
+			a: new Uint16Array(32),
+			b: new Uint16Array(32),
+			...net.extra
+		};
 	}
 }));
 
@@ -145,7 +182,7 @@ const META = {
 	distribution: 'open',
 	tiers: { high: {}, low: {} }
 };
-const PLAN: GlowPlan = { grid: 'high', size: 64, steps: 8, passes: 2 };
+const PLAN: GlowPlan = { grid: 'high', size: 64, steps: 8, passes: 2, galaxy: 0 };
 
 let clock = 0;
 let canvas: EventTarget;
@@ -216,12 +253,19 @@ beforeEach(() => {
 	gl.steps = [];
 	gl.asks = 0;
 	gl.close = null;
+	gl.shareAsks = [];
+	gl.modelShare = null;
+	gl.sharePending = false;
+	gl.galaxyEdges = [];
 	gl.blends = [];
 	gl.marches = 0;
 	gl.failMarch = false;
+	gl.volumes = 0;
+	gl.failVolumeAt = 0;
 	gl.lost = false;
 	net.metadata = async () => META;
 	net.volumes = 0;
+	net.extra = {};
 	dust = {
 		marchNest: {},
 		reachAtSun: 0.05,
@@ -281,6 +325,24 @@ describe('loading', () => {
 		await vi.advanceTimersByTimeAsync(0);
 		expect(glow.stats().phase).toBe('idle');
 		expect(glow.busy()).toBe(false);
+	});
+});
+
+describe('a load whose textures fail', () => {
+	it('frees the grid when the model does not upload, so the retry holds one grid', async () => {
+		const box = { size: [2, 2, 2], data: new Uint16Array(8) };
+		net.extra = { model: { inner: box, outer: box } };
+		gl.failVolumeAt = 2;
+		const volumes = () => [...gl.live].filter((o) => 'volume' in o).length;
+		const glow = make();
+		glow.update(frame([0, 0, 0]));
+		await vi.advanceTimersByTimeAsync(0);
+		expect(glow.stats().phase).toBe('idle');
+		expect(volumes()).toBe(0);
+		await vi.advanceTimersByTimeAsync(5_000);
+		await ready(glow);
+		expect(net.volumes).toBe(2);
+		expect(volumes()).toBe(2);
 	});
 });
 
@@ -634,5 +696,77 @@ describe('the inputs of the grid', () => {
 		glow.setPlan({ ...PLAN, grid: 'low', size: 32 });
 		await ready(glow);
 		expect(stale()).toBe(1);
+	});
+});
+
+describe('outside the Galaxy', () => {
+	const CENTRE: Vec3 = [8_277, 0, -21];
+	const withModel = () => {
+		net.metadata = async () => ({ ...META, model: { centre_pc: CENTRE } });
+	};
+	const OUTSIDE: Vec3 = [8_277, 30_000, -21];
+
+	it('marches no map about the Galaxy inside it, nor on a host with no model', async () => {
+		withModel();
+		const glow = make({ ...PLAN, galaxy: 32 });
+		await ready(glow);
+		settle(glow, [0, 0, 0]);
+		expect(gl.runs.some((run) => run.galaxy)).toBe(false);
+		net.metadata = async () => META;
+		const bare = make({ ...PLAN, galaxy: 32 });
+		await ready(bare, OUTSIDE);
+		settle(bare, OUTSIDE);
+		expect(gl.runs.some((run) => run.galaxy)).toBe(false);
+	});
+
+	it('makes the maps about the Galaxy and their march only with a model', async () => {
+		withModel();
+		await ready(make({ ...PLAN, galaxy: 32 }));
+		// The grid, the march, three sky maps, three maps about the Galaxy, the eye and the composite.
+		expect(gl.live.size).toBe(10);
+		net.metadata = async () => META;
+		const before = gl.live.size;
+		await ready(make({ ...PLAN, galaxy: 32 }));
+		expect(gl.live.size - before).toBe(7);
+		expect(gl.galaxyEdges).toEqual([32, 0]);
+	});
+
+	it('marches the sky map and the map about the Galaxy in each pass, far outside', async () => {
+		withModel();
+		const glow = make({ ...PLAN, galaxy: 32 });
+		await ready(glow, OUTSIDE);
+		settle(glow, OUTSIDE);
+		const far = gl.runs.filter((run) => run.origin[1] > 0);
+		const sky = far.filter((run) => !run.galaxy).reduce((sum, run) => sum + run.rows, 0);
+		const galaxy = far.filter((run) => run.galaxy).reduce((sum, run) => sum + run.rows, 0);
+		expect(sky).toBe(PLAN.size * PLAN.passes);
+		expect(galaxy).toBe(32 * PLAN.passes);
+		expect(glow.stats().galaxy?.share).toBe(1);
+		expect(glow.busy()).toBe(false);
+	});
+
+	it('says the view is model once the GPU finds the model holds a share of a map, with two thresholds', async () => {
+		const glow = make();
+		await ready(glow);
+		settle(glow, [0, 0, 0]);
+		expect(glow.modelInView).toBe(false);
+		expect(gl.shareAsks.at(-1)).toBeGreaterThan(0);
+		gl.modelShare = true;
+		settle(glow, [0, 0, 0]);
+		expect(glow.modelInView).toBe(true);
+		glow.update(frame([0, 0, 0], { drawing: false, share: 0 }));
+		expect(glow.modelInView).toBe(false);
+	});
+
+	it('stays awake while the question on the model’s share is out', async () => {
+		const glow = make();
+		await ready(glow);
+		settle(glow, [0, 0, 0]);
+		gl.sharePending = true;
+		glow.update(frame([0, 0, 0]));
+		expect(glow.busy()).toBe(true);
+		gl.sharePending = false;
+		glow.update(frame([0, 0, 0]));
+		expect(glow.busy()).toBe(false);
 	});
 });

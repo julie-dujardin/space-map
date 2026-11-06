@@ -15,6 +15,9 @@
  * Inside the disc the mean hardly changes, but the dots grow brighter as more
  * stars draw. A gain set by the camera's place keeps the band readable among
  * them there. It reads nothing that loads, so it holds still while nodes do.
+ * Far outside the Galaxy the dots draw some 9 mag past the skybox's limit, and
+ * the same gain grows by a bounded share of that, so the model's Galaxy holds
+ * the view and the dots of the catalogue sit on it.
  *
  * `eye.ts` runs the eye's law on the GPU.
  */
@@ -50,19 +53,37 @@ export const PLACE_RISE_PC = 8;
 /** Height (pc) above the plane at which the gain by place is half, in mag: from
  *  above the disc the eye brightens the glow, and more would wash out the stars. */
 export const PLACE_HEIGHT_PC = 4_000;
+/** Gain (mag) by place far outside the Galaxy. */
+export const OUTSIDE_GAIN_MAG = 1.5;
+/** Distances (pc) from the Galactic centre over which that gain rises: 1 inside
+ *  the first, so no view from within the disc changes. */
+export const OUTSIDE_FROM_PC = 16_000;
+export const OUTSIDE_FULL_PC = 30_000;
+
 /** Where the stars take the sky from the skybox (pc). */
 const JOIN_PC = (STARS_IN_AU * AU_KM) / KM_PER_PC;
+
+/** Share of the gain far outside, by distance from the Galactic centre `centre`. */
+function outsideShare(at: Vec3, centre: Vec3): number {
+	const d = Math.hypot(at[0] - centre[0], at[1] - centre[1], at[2] - centre[2]);
+	const t = Math.min(Math.max((d - OUTSIDE_FROM_PC) / (OUTSIDE_FULL_PC - OUTSIDE_FROM_PC), 0), 1);
+	return t * t * (3 - 2 * t);
+}
 
 /**
  * Gain over the eye's from the camera's place `at` (pc from the Sun, on nest
  * axes, so z is height above the plane). It is 1 at the join and inside it, so
- * the join does not move, and rises with no step or kink past it.
+ * the join does not move, and rises with no step or kink past it. The part far
+ * outside the Galaxy is for a glow with model light: `centre` is the model's
+ * Galactic centre. Without a model it is null, and the catalogue's glow, a ball
+ * about the Sun, draws as it did.
  */
-export function placeGain(at: Vec3): number {
+export function placeGain(at: Vec3, centre: Vec3 | null): number {
 	const out = Math.max(Math.hypot(at[0], at[1], at[2]) - JOIN_PC, 0) / PLACE_RISE_PC;
 	const rise = (out * out) / (1 + out * out);
 	const up = at[2] / PLACE_HEIGHT_PC;
-	return 10 ** ((0.4 * PLACE_GAIN_MAG * rise) / (1 + up * up));
+	const outside = centre ? outsideShare(at, centre) : 0;
+	return 10 ** (0.4 * ((PLACE_GAIN_MAG * rise) / (1 + up * up) + OUTSIDE_GAIN_MAG * outside));
 }
 
 /** The gain over the Sun's exposure that a map of mean brightness `mean` asks for. */

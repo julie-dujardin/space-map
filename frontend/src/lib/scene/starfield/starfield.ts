@@ -665,6 +665,7 @@ export class StarfieldSystem {
 			dtMs
 		});
 		this.ctx.credits.setStars(drawing ? this.sceneCredits() : NO_CREDITS);
+		this.ctx.credits.setGalaxyModel(this.glow?.modelInView ?? false);
 	}
 
 	/** Stars and the dust in front of them draw together. A store takes this on

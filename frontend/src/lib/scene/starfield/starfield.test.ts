@@ -186,7 +186,7 @@ function fakeCtx(systemShare = 1): ContextManager {
 	return {
 		layers,
 		onDataStale: null,
-		credits: { setStars: vi.fn() },
+		credits: { setStars: vi.fn(), setGalaxyModel: vi.fn() },
 		visibility: { systemShare }
 	} as unknown as ContextManager;
 }

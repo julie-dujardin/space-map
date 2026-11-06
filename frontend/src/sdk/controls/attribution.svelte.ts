@@ -21,11 +21,13 @@ export class AttributionControl implements Control<SpaceMap> {
 		const imagery = group();
 		const stars = group();
 		const constellations = group();
+		const galaxy = group();
 		root.append(
 			link(HOME_URL, 'spacemap', 'sm-attribution__home'),
 			orbits,
 			imagery,
 			constellations,
+			galaxy,
 			stars,
 			link(CREDITS_URL, host().messages.credits_see_all())
 		);
@@ -35,6 +37,8 @@ export class AttributionControl implements Control<SpaceMap> {
 				fill(orbits, host().messages.attribution_orbits(), chips.orbits);
 				fill(imagery, host().messages.attribution_imagery(), chips.imagery);
 				fill(constellations, host().messages.attribution_constellations(), chips.constellations);
+				const model = chips.galaxyModel ? [host().messages.attribution_galaxy_model()] : [];
+				fill(galaxy, host().messages.attribution_galaxy(), model);
 				fill(stars, host().messages.attribution_stars(), chips.stars);
 			});
 		});

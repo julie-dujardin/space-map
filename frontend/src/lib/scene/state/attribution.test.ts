@@ -181,4 +181,14 @@ describe('attributionChips', () => {
 		]);
 		expect(attributionChips(fakeCtx(credits, null)).orbits).toEqual(['NASA', 'ESA', 'JAXA']);
 	});
+
+	it('labels the Milky Way as a model while the store says so', () => {
+		const credits = new CreditsStore();
+		const ctx = fakeCtx(credits, null);
+		expect(attributionChips(ctx).galaxyModel).toBe(false);
+		credits.setGalaxyModel(true);
+		expect(attributionChips(ctx).galaxyModel).toBe(true);
+		credits.setGalaxyModel(false);
+		expect(attributionChips(ctx).galaxyModel).toBe(false);
+	});
 });

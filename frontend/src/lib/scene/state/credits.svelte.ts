@@ -65,6 +65,8 @@ export class CreditsStore {
 	stars = $state.raw<readonly ExtrasolarCredit[]>([]);
 	/** The culture and catalogues behind the constellation lines, while they draw. */
 	constellations = $state.raw<readonly ExtrasolarCredit[]>([]);
+	/** True while model light is a visible share of the glow in view. */
+	galaxyModel = $state(false);
 	/** Each archive behind the loaded scene and where its bodies are: their
 	 *  parents, or `WHOLE_SCENE`. Reassigned so `$derived` bar consumers
 	 *  recompute. */
@@ -120,6 +122,11 @@ export class CreditsStore {
 
 	setConstellations(credits: readonly ExtrasolarCredit[]): void {
 		this.constellations = credits;
+	}
+
+	/** The starfield calls this every frame, so a repeat must not notify. */
+	setGalaxyModel(on: boolean): void {
+		if (this.galaxyModel !== on) this.galaxyModel = on;
 	}
 
 	registerOrientation(credit: OrientationCredit): void {

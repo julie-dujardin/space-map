@@ -3,6 +3,10 @@
  * so every solid thing draws over it on either depth path. `1 - exp(-g)` stays
  * under the bloom threshold, and composes with the stars' screen blending in
  * any order.
+ *
+ * Far outside, a map about the Galaxy holds the disc at about a screen pixel a
+ * texel (`outside.ts`); the octahedral map holds the rest of the sky. Each map
+ * has its own frame, so the blend from the last map reads each in its own.
  */
 
 import {
@@ -22,6 +26,11 @@ import {
 	type Texture
 } from 'three';
 import { octUvGlsl } from '$lib/scene/dust/octahedral';
+import type { GalaxyFrame } from './outside';
+
+/** The map about the Galaxy fades out over this share of its half width at its
+ *  edge, so its edge does not show where the halo is faint in both maps. */
+const EDGE_SHARE = 0.05;
 
 const VERTEX = /* glsl */ `
 uniform highp mat3 uRayAxes;
@@ -41,18 +50,58 @@ uniform highp float uBlend;
 uniform highp sampler2D uGain;
 uniform highp float uExposure;
 uniform highp float uShare;
+uniform highp sampler2D uGalaxy;
+uniform highp sampler2D uGalaxyPrevious;
+uniform highp mat3 uFrame;
+uniform highp mat3 uFramePrevious;
+/** Tangent of the half width and share of each map about the Galaxy: front in
+ *  x and y, previous in z and w. A share of 0 means none. */
+uniform highp vec4 uGalaxyShape;
 varying highp vec3 vRay;
 ${octUvGlsl(size)}
 
+// The sky map's light, or where the map about the Galaxy holds the ray, a mix
+// toward it by its share.
+highp vec3 galaxyMix(highp sampler2D map, highp mat3 frame, highp vec2 shape, highp vec3 ray, highp vec3 sky) {
+	if (shape.y <= 0.0) return sky;
+	highp vec3 c = ray * frame;
+	if (c.z <= 0.0) return sky;
+	highp vec2 q = c.xy / (c.z * shape.x);
+	highp float edge = 1.0 - max(abs(q.x), abs(q.y));
+	if (edge <= 0.0) return sky;
+	highp vec3 galaxy = textureLod(map, q * 0.5 + 0.5, 0.0).rgb;
+	return mix(sky, galaxy, shape.y * min(edge * ${(1 / EDGE_SHARE).toFixed(1)}, 1.0));
+}
+
 void main() {
-	highp vec2 uv = dustOctUv(normalize(vRay));
-	highp vec3 glow = textureLod(uMap, uv, 0.0).rgb;
-	if (uBlend < 1.0) glow = mix(textureLod(uPrevious, uv, 0.0).rgb, glow, uBlend);
+	highp vec3 ray = normalize(vRay);
+	highp vec2 uv = dustOctUv(ray);
+	highp vec3 glow = galaxyMix(uGalaxy, uFrame, uGalaxyShape.xy, ray, textureLod(uMap, uv, 0.0).rgb);
+	if (uBlend < 1.0) {
+		highp vec3 previous = textureLod(uPrevious, uv, 0.0).rgb;
+		previous = galaxyMix(uGalaxyPrevious, uFramePrevious, uGalaxyShape.zw, ray, previous);
+		glow = mix(previous, glow, uBlend);
+	}
 	// The eye's gain over the Sun's exposure, in log (eye.ts).
 	glow *= uExposure * exp(texelFetch(uGain, ivec2(0), 0).g);
 	gl_FragColor = vec4((1.0 - exp(-glow)) * uShare, 1.0);
 }
 `;
+
+/** What the composite reads of one map: the sky, and the map about the Galaxy
+ *  with its frame where there is one. */
+export interface GlowMapView {
+	sky: Texture;
+	galaxy: Texture | null;
+	frame: GalaxyFrame | null;
+}
+
+function setFrame(out: Matrix3, frame: GalaxyFrame | null): void {
+	if (!frame) return;
+	const a = frame.axes;
+	// The axes are columns; Matrix3.set takes rows.
+	out.set(a[0], a[3], a[6], a[1], a[4], a[7], a[2], a[5], a[8]);
+}
 
 /** Before every opaque object. */
 const RENDER_ORDER = -1e6;
@@ -83,6 +132,11 @@ export class GlowComposite {
 				uGain: { value: null as Texture | null },
 				uExposure: { value: 0 },
 				uShare: { value: 0 },
+				uGalaxy: { value: null as Texture | null },
+				uGalaxyPrevious: { value: null as Texture | null },
+				uFrame: { value: new Matrix3() },
+				uFramePrevious: { value: new Matrix3() },
+				uGalaxyShape: { value: new Vector4() },
 				uRayAxes: { value: this.axes },
 				uLens: { value: new Vector4() }
 			},
@@ -110,8 +164,8 @@ export class GlowComposite {
 	}
 
 	show(
-		map: Texture,
-		previous: Texture,
+		map: GlowMapView,
+		previous: GlowMapView,
 		blend: number,
 		gain: Texture,
 		exposure: number,
@@ -120,8 +174,19 @@ export class GlowComposite {
 		sceneToTree: Matrix4
 	): void {
 		const { uniforms } = this.mesh.material;
-		uniforms.uMap.value = map;
-		uniforms.uPrevious.value = previous;
+		uniforms.uMap.value = map.sky;
+		uniforms.uPrevious.value = previous.sky;
+		// A sampler must hold a texture even where its share is 0.
+		uniforms.uGalaxy.value = map.galaxy ?? map.sky;
+		uniforms.uGalaxyPrevious.value = previous.galaxy ?? previous.sky;
+		setFrame(uniforms.uFrame.value as Matrix3, map.frame);
+		setFrame(uniforms.uFramePrevious.value as Matrix3, previous.frame);
+		const shape = (f: GalaxyFrame | null, galaxy: Texture | null) =>
+			f && galaxy ? [f.tan, f.share] : [1, 0];
+		(uniforms.uGalaxyShape.value as Vector4).set(
+			...(shape(map.frame, map.galaxy) as [number, number]),
+			...(shape(previous.frame, previous.galaxy) as [number, number])
+		);
 		uniforms.uBlend.value = blend;
 		uniforms.uGain.value = gain;
 		uniforms.uExposure.value = exposure;

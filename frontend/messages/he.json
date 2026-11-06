@@ -1414,6 +1414,8 @@
 	"attribution_imagery": "תצלומים",
 	"attribution_stars": "כוכבים",
 	"attribution_constellations": "קבוצות כוכבים",
+	"attribution_galaxy": "שביל החלב",
+	"attribution_galaxy_model": "מודל",
 	"attribution_map": "מפה",
 	"attribution_section_panorama": "פנורמה של פני השטח",
 	"provider_nasa": "NASA",

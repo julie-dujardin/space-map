@@ -1393,6 +1393,8 @@
 	"attribution_imagery": "Immagini",
 	"attribution_stars": "Stelle",
 	"attribution_constellations": "Costellazioni",
+	"attribution_galaxy": "Via Lattea",
+	"attribution_galaxy_model": "modello",
 	"attribution_map": "Mappa",
 	"attribution_section_panorama": "Panorama di superficie",
 	"provider_nasa": "NASA",

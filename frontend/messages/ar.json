@@ -1470,6 +1470,8 @@
 	"attribution_imagery": "الصور",
 	"attribution_stars": "النجوم",
 	"attribution_constellations": "الكوكبات",
+	"attribution_galaxy": "درب التبانة",
+	"attribution_galaxy_model": "نموذج",
 	"attribution_map": "الخريطة",
 	"attribution_section_panorama": "بانوراما السطح",
 	"provider_nasa": "ناسا",
