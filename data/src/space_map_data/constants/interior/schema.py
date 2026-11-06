@@ -91,6 +91,11 @@ LAYER_ROLES = frozenset(
         # any boundary between materials.
         "radiative_zone",
         "convective_zone",
+        # The Sun's core is the region below 0.2 R☉ where fusion runs, and it
+        # is radiative. A heavier star has a mixed core that convection
+        # bounds, about 0.05 to 0.12 of its radius. The two definitions give
+        # different sizes, so they have two roles.
+        "convective_core",
         "core",
         "outer_core",
         "inner_core",

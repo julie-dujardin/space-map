@@ -486,6 +486,57 @@ INTERIOR_SOURCES: dict[str, InteriorReference] = {
         "Thermal evolution models of Uranus and Neptune",
         "ice-giant temperatures",
     ),
+    # --- other stars (stars.py) -------------------------------------------
+    "thevenin_2002": InteriorReference(
+        "Thévenin et al. 2002 (Astron. Astrophys. 392)",
+        "https://doi.org/10.1051/0004-6361:20021074",
+        "α Centauri A and B: envelope depths, centre values and A's convective"
+        " core from a seismic calibration of the pair",
+        "α Cen layers",
+    ),
+    "demeulenaer_2010": InteriorReference(
+        "de Meulenaer et al. 2010 (Astron. Astrophys. 523)",
+        "https://doi.org/10.1051/0004-6361/201014966",
+        "α Centauri A's core from its oscillations, favouring a radiative core",
+        "α Cen A core",
+    ),
+    "nsamba_2018": InteriorReference(
+        "Nsamba et al. 2018 (Mon. Not. R. Astron. Soc. 479)",
+        "https://doi.org/10.1093/mnrasl/sly092",
+        "α Centauri A's core from seismic grid fits, favouring a convective core",
+        "α Cen A core",
+    ),
+    "guenther_2014": InteriorReference(
+        "Guenther, Demarque & Gruberbauer 2014 (Astrophys. J. 787)",
+        "https://doi.org/10.1088/0004-637X/787/2/164",
+        "Procyon A: envelope depth and convective core from its p modes",
+        "Procyon layers",
+    ),
+    "kervella_2003": InteriorReference(
+        "Kervella et al. 2003 (Astron. Astrophys. 408)",
+        "https://doi.org/10.1051/0004-6361:20030994",
+        "Sirius A: interferometric radius, envelope depth and centre temperature"
+        " of its evolutionary model",
+        "Sirius A layers",
+    ),
+    "soriano_2010": InteriorReference(
+        "Soriano & Vauclair 2010 (Astron. Astrophys. 513)",
+        "https://doi.org/10.1051/0004-6361/200911862",
+        "μ Arae: radius and convective core from its oscillations",
+        "μ Ara layers",
+    ),
+    "pamyatnykh_2004": InteriorReference(
+        "Pamyatnykh, Handler & Dziembowski 2004 (Mon. Not. R. Astron. Soc. 350)",
+        "https://doi.org/10.1111/j.1365-2966.2004.07721.x",
+        "ν Eridani: convective core and its hydrogen from its oscillations",
+        "ν Eri layers",
+    ),
+    "mazumdar_2006": InteriorReference(
+        "Mazumdar et al. 2006 (Astron. Astrophys. 459)",
+        "https://doi.org/10.1051/0004-6361:20064980",
+        "β Canis Majoris: radius and core hydrogen from its oscillations",
+        "β CMa layers",
+    ),
     # --- taxonomy → meteorite analogue ------------------------------------
     "demeo_2009": InteriorReference(
         "DeMeo et al. 2009 (Icarus 202)",

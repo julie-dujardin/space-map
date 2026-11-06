@@ -17,6 +17,7 @@ from space_map_data.constants.interior.schema import (
     STATES,
     STRUCTURES,
 )
+from space_map_data.constants.interior.stars import STAR_INTERIORS
 from space_map_data.constants.interior.taxonomy import (
     TAXONOMY_COMPOSITION,
     resolve_class,
@@ -28,7 +29,7 @@ CLASSES = sorted(TAXONOMY_COMPOSITION)
 
 def _source_keys() -> set[str]:
     keys: set[str] = set()
-    for body in INTERIOR_FACTS.values():
+    for body in (*INTERIOR_FACTS.values(), *STAR_INTERIORS.values()):
         if body.structure_source:
             keys.add(body.structure_source)
         keys |= set(body.centre_temperature_sources)

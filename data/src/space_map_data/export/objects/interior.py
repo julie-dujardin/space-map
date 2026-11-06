@@ -88,7 +88,7 @@ def interior_block(object_id: str, taxonomy: dict) -> dict | None:
     """
     facts = INTERIOR_FACTS.get(object_id)
     if facts is not None:
-        return _from_layers(object_id, facts)
+        return from_layers(object_id, facts)
     entry = taxonomy.get(object_id)
     if entry is not None:
         return _from_taxonomy(object_id, *entry)
@@ -110,7 +110,7 @@ def interior_from_mapping(object_id: str, mapping: dict) -> dict | None:
         body = _named(
             BodyInterior, {k: v for k, v in mapping.items() if k not in _BODY_OWN}
         )
-        return _from_layers(object_id, BodyInterior(layers=layers, **body), refs)
+        return from_layers(object_id, BodyInterior(layers=layers, **body), refs)
     except (AttributeError, TypeError, ValueError) as exc:
         logger.warning(
             "%s: unusable hand-authored interior (%s); shipping without one",
@@ -178,12 +178,13 @@ def _named(cls, mapping: dict) -> dict:
     }
 
 
-def _from_layers(
+def from_layers(
     object_id: str,
     facts: BodyInterior,
     refs: dict[str, InteriorReference] = INTERIOR_SOURCES,
 ) -> dict:
-    """Roll a per-body layer model up into one composition."""
+    """The block of a layer model: its layers, and their roll-up into one
+    composition where every layer has a mass."""
     _validate(object_id, facts, refs)
 
     block: dict = {"structure": facts.structure}
