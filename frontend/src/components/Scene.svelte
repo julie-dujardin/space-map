@@ -131,11 +131,18 @@
 					name: body.name ?? ''
 				});
 			}),
-			map.on('camera', ({ lat, lon, distanceKm }) => {
+			map.on('camera', ({ lat, lon, distanceKm, pitch, bearing }) => {
 				// The URL carries scene units, which is what a shared link has always
 				// meant by zoom; the map reports kilometres.
-				if (map.focusedBody)
-					appState.setCamera({ latitude: lat, longitude: lon, zoom: kmToScene(distanceKm) });
+				if (map.focusedBody) {
+					appState.setCamera({
+						latitude: lat,
+						longitude: lon,
+						zoom: kmToScene(distanceKm),
+						pitch,
+						bearing
+					});
+				}
 			}),
 			map.on('userpromoted', (count) => onUserPromotedChange?.(count)),
 			map.on('featureselect', ({ bodyId, featureId, lat, lon, diameterM }) =>
@@ -182,7 +189,8 @@
 					view: () => ({
 						distance: view.zoom,
 						latitude: view.latitude,
-						longitude: view.longitude
+						longitude: view.longitude,
+						angles: { pitch: view.pitch, bearing: view.bearing }
 					})
 				})
 				.then((arrival) => onArrival?.(arrival, view.id, view.name))

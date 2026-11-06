@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { PerspectiveCamera, Quaternion, Vector3 } from 'three';
 import { ObjectType, type BodyData, type PositionedBody } from '$lib/types/objects';
 import { OrbitalSource } from '$lib/fetch/position/format';
@@ -8,9 +8,12 @@ import { cartesianToSpherical, sphericalToCartesian } from '$lib/math/spherical'
 import {
 	clampCameraOutsideBody,
 	clampCameraToLimits,
+	finestTexelKm,
 	LANDED_KEEP_AWAY_KM,
+	surfaceClearanceKm,
 	type SurfaceClampContext
 } from './camera-limits';
+import type { BodyObjects } from '$lib/scene/types';
 
 function mkBody(
 	data: Partial<BodyData> & Pick<BodyData, 'id'>,
@@ -313,7 +316,7 @@ describe('clampCameraToLimits', () => {
 	it('leaves a camera inside the band where it is', () => {
 		const cam = at(20, 30, 50_000);
 		const before = cam.position.clone();
-		clampCameraToLimits(cam, {
+		clampCameraToLimits(cam.position, {
 			minDistance: kmToScene(10_000),
 			maxDistance: kmToScene(100_000),
 			minLat: -40,
@@ -324,17 +327,17 @@ describe('clampCameraToLimits', () => {
 
 	it('holds the camera between the two distances', () => {
 		const near = at(0, 0, 500);
-		clampCameraToLimits(near, { minDistance: kmToScene(10_000) });
+		clampCameraToLimits(near.position, { minDistance: kmToScene(10_000) });
 		expect(reads(near).km).toBeCloseTo(10_000, 6);
 
 		const far = at(0, 0, 5e6);
-		clampCameraToLimits(far, { maxDistance: kmToScene(1e6) });
+		clampCameraToLimits(far.position, { maxDistance: kmToScene(1e6) });
 		expect(reads(far).km).toBeCloseTo(1e6, 4);
 	});
 
 	it('holds latitude inside its band without moving the rest', () => {
 		const cam = at(80, 45, 20_000);
-		clampCameraToLimits(cam, { minLat: -30, maxLat: 30 });
+		clampCameraToLimits(cam.position, { minLat: -30, maxLat: 30 });
 		const out = reads(cam);
 		expect(out.lat).toBeCloseTo(30, 9);
 		expect(out.lon).toBeCloseTo(45, 9);
@@ -344,17 +347,17 @@ describe('clampCameraToLimits', () => {
 	it('holds longitude inside a band that runs through the antimeridian', () => {
 		// 170 east to 170 west is the twenty degrees across the antimeridian.
 		const inside = at(0, 178, 20_000);
-		clampCameraToLimits(inside, { minLon: 170, maxLon: -170 });
+		clampCameraToLimits(inside.position, { minLon: 170, maxLon: -170 });
 		expect(reads(inside).lon).toBeCloseTo(178, 9);
 
 		const outside = at(0, 100, 20_000);
-		clampCameraToLimits(outside, { minLon: 170, maxLon: -170 });
+		clampCameraToLimits(outside.position, { minLon: 170, maxLon: -170 });
 		expect(reads(outside).lon).toBeCloseTo(170, 9);
 	});
 
 	it('takes the nearer edge of a longitude band the short way round', () => {
 		const cam = at(0, -100, 20_000);
-		clampCameraToLimits(cam, { minLon: 170, maxLon: -170 });
+		clampCameraToLimits(cam.position, { minLon: 170, maxLon: -170 });
 		expect(reads(cam).lon).toBeCloseTo(-170, 9);
 	});
 
@@ -364,7 +367,7 @@ describe('clampCameraToLimits', () => {
 		const quat = new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), Math.PI / 2);
 		const q: [number, number, number, number] = [quat.x, quat.y, quat.z, quat.w];
 		const cam = at(0, 90, 20_000, q);
-		clampCameraToLimits(cam, { minLon: -20, maxLon: 20 }, q);
+		clampCameraToLimits(cam.position, { minLon: -20, maxLon: 20 }, q);
 		expect(reads(cam, q).lon).toBeCloseTo(20, 9);
 		// Unrotated, the very same position reads elsewhere and is untouched by
 		// the scene-frame reading.
@@ -374,7 +377,46 @@ describe('clampCameraToLimits', () => {
 	it('does nothing at all when the band names nothing', () => {
 		const cam = at(70, 120, 3);
 		const before = cam.position.clone();
-		clampCameraToLimits(cam, {});
+		clampCameraToLimits(cam.position, {});
 		expect(cam.position.distanceTo(before)).toBe(0);
+	});
+});
+
+vi.mock('$lib/scene/objects/surface/tile-overlay', () => ({ tilesDrawable: () => true }));
+
+function tiled(radiusKm: number, maxLevel: number, patchLevel?: number): BodyObjects {
+	const tiles = {
+		id: 'tiles',
+		tile_size: 1024,
+		max_level: maxLevel,
+		version: 'v',
+		patches:
+			patchLevel === undefined
+				? undefined
+				: [{ id: 'site', max_level: patchLevel, x: [0, 0], y: [0, 0], version: 'v' }]
+	};
+	return { body: mkBody({ id: 'naif-499', radiusKm }), surfaceTiles: tiles } as BodyObjects;
+}
+
+describe('surfaceClearanceKm', () => {
+	it('keeps the type clearance for a body with no maps', () => {
+		expect(surfaceClearanceKm(mkBody({ id: 'naif-499' }))).toBe(100);
+	});
+
+	it('comes down to where the finest pixel is a few on screen', () => {
+		const bo = tiled(3390, 11, 16);
+		const texel = finestTexelKm(bo)!;
+		// Level 16 is 2048 · 2^16 px around the equator: ~16 cm on Mars.
+		expect(texel * 1000).toBeCloseTo((2 * Math.PI * 3390 * 1000) / (2048 * 2 ** 16), 6);
+		expect(surfaceClearanceKm(bo.body, texel)).toBeCloseTo(texel * 300, 9);
+	});
+
+	it('takes the finest level anywhere, not the one under the camera', () => {
+		expect(finestTexelKm(tiled(3390, 11, 16))).toBeLessThan(finestTexelKm(tiled(3390, 11))! / 30);
+	});
+
+	it('never lets a coarse map hold the camera farther out than its type', () => {
+		const bo = tiled(6371, 0);
+		expect(surfaceClearanceKm(bo.body, finestTexelKm(bo))).toBe(100);
 	});
 });

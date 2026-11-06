@@ -61,13 +61,15 @@ const baseView: MapViewState = {
 	navFromPlace: null,
 	navToPlace: null,
 	trip: DEFAULT_TRIP,
-	north: null
+	north: null,
+	pitch: 0,
+	bearing: 0
 };
 
 describe('serializeUrl', () => {
 	it('drops the name segment when name is empty', () => {
 		expect(serializeUrl({ ...baseView, name: '' })).toBe(
-			'/b/10?at=2026-01-15T12:00:00.000Z,45.00000,0.00000,42.430'
+			'/b/10?at=2026-01-15T12:00:00.000Z,45.00000,0.00000,42.43'
 		);
 	});
 
@@ -640,7 +642,7 @@ describe('applyNav', () => {
 describe('serializeUrl on a trip', () => {
 	it('writes /nav/<from>/<to> with the camera block', () => {
 		const url = serializeUrl(applyNav(baseView, 'naif-399', 'naif-499'));
-		expect(url).toBe('/nav/naif-399/naif-499?at=2026-01-15T12:00:00.000Z,45.00000,0.00000,42.430');
+		expect(url).toBe('/nav/naif-399/naif-499?at=2026-01-15T12:00:00.000Z,45.00000,0.00000,42.43');
 	});
 
 	// Both ends carry their prefix: a trip can join two id spaces, and the path
@@ -804,13 +806,13 @@ describe('a planet in the URL', () => {
 	it('writes the planet route back, with its name', () => {
 		const view = applyFocus(baseView, { type: 'x', id: 'x-27424668-b-1', name: 'Proxima Cen b' });
 		expect(serializeUrl(view)).toBe(
-			'/x/27424668/b/1/Proxima%20Cen%20b?at=2026-01-15T12:00:00.000Z,45.00000,0.00000,42.430'
+			'/x/27424668/b/1/Proxima%20Cen%20b?at=2026-01-15T12:00:00.000Z,45.00000,0.00000,42.43'
 		);
 	});
 });
 
 describe('figure pages', () => {
-	const at = '?at=2026-01-15T12:00:00.000Z,45.00000,0.00000,42.430';
+	const at = '?at=2026-01-15T12:00:00.000Z,45.00000,0.00000,42.43';
 
 	function visit(params: Record<string, string>, query = '') {
 		Object.assign(page, {
@@ -926,5 +928,41 @@ describe('the north ref', () => {
 		);
 		expect(serializeUrl(applyGroup(view, 'cat-moons', 'Moons'))).toContain('&north=parent');
 		expect(serializeUrl(applyNav(view, 'naif-399', 'naif-499'))).toContain('&north=parent');
+	});
+});
+
+describe('the camera angle', () => {
+	function open(url: string) {
+		page.params = { type: 'b', id: '499' };
+		page.route = { id: '/[type]/[id]/[[name]]' } as typeof page.route;
+		page.url = new URL(url) as typeof page.url;
+	}
+
+	it('round-trips to a tenth of a degree', () => {
+		open('http://x/b/499?at=now,1,2,3&angle=62.5,-40');
+		const view = parseUrl()!;
+		expect([view.pitch, view.bearing]).toEqual([62.5, -40]);
+		expect(serializeUrl({ ...view, pitch: 62.54, bearing: -40.01 })).toContain('&angle=62.5,-40.0');
+	});
+
+	it('reads a level view from anything else', () => {
+		for (const raw of ['', '12', 'a,b', '1,2,3x']) {
+			open(`http://x/b/499?at=now,1,2,3&angle=${raw}`);
+			const view = parseUrl()!;
+			expect([view.pitch, view.bearing]).toEqual([0, 0]);
+		}
+	});
+
+	it('writes nothing for a level view', () => {
+		expect(serializeUrl({ ...baseView, pitch: 0.01, bearing: -0.04 })).not.toContain('angle=');
+	});
+});
+
+describe('the camera distance', () => {
+	it('keeps a camera tens of metres over Mars where it was', () => {
+		const zoom = 0.000226826123; // ~3392.4 km in scene units
+		const view = { ...baseView, zoom };
+		const written = serializeUrl(view).match(/at=[^,]*,[^,]*,[^,]*,([^&]*)/)![1];
+		expect(Math.abs(Number(written) - zoom) / zoom).toBeLessThan(1e-8);
 	});
 });

@@ -94,6 +94,12 @@ export type BodyType =
 export function boxRing(latMin: number, latMax: number, lonMin: number, lonSpan: number): LonLat[];
 
 // @public
+export interface CameraAngles {
+	bearing?: number;
+	pitch?: number;
+}
+
+// @public
 export interface CameraHold {
 	// (undocumented)
 	readonly held: boolean;
@@ -135,7 +141,7 @@ export interface CameraPose {
 }
 
 // @public
-export interface CameraState {
+export interface CameraState extends Required<CameraAngles> {
 	// (undocumented)
 	body: string;
 	// (undocumented)
@@ -701,7 +707,7 @@ export function isViewable(entry: PanoramaEntry): boolean;
 export function jdToDate(jd: number): Date;
 
 // @public
-export interface JumpTarget extends CameraTarget {
+export interface JumpTarget extends CameraTarget, CameraAngles {
 	elevationDeg?: number;
 	facing?: string;
 }
@@ -1484,7 +1490,13 @@ export class SpaceMap {
 	// @internal
 	showOpeningView(): void;
 	// @internal
-	snapToBody(id: string, latitude: number, longitude: number, zoom: number): void;
+	snapToBody(
+		id: string,
+		latitude: number,
+		longitude: number,
+		zoom: number,
+		angles?: CameraAngles
+	): void;
 	// @internal
 	snapToBodyFacing(id: string, towardId: string, elevationDeg: number, distance: number): boolean;
 	// @internal
@@ -1518,7 +1530,7 @@ export interface SpaceMapOptions {
 	// (undocumented)
 	live?: boolean;
 	settings?: SceneSettings;
-	view?: CameraOptions;
+	view?: CameraOptions & CameraAngles;
 }
 
 // @public

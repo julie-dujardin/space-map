@@ -19,6 +19,7 @@ import {
 	TextureLoader,
 	TOUCH,
 	Vector2,
+	MathUtils,
 	Quaternion,
 	Vector3,
 	type WebGLRenderer
@@ -26,10 +27,9 @@ import {
 import type { ThrottledCSS2DRenderer } from '$lib/scene/label/throttled-renderer';
 import type { LabelledPath, PathStep } from '$lib/travel/labelled-path';
 import type { LabelledHazard } from '$lib/travel/hazards';
-import type { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import type { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import type { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
-import { OrbitControls as OrbitControlsClass } from 'three/addons/controls/OrbitControls.js';
+import { LEVEL_LOOK, LookOrbitControls, type LookAngles } from './camera/look-controls';
 import { cartesianToSpherical, sphericalToCartesian } from '$lib/math/spherical';
 import { OrbitalSource } from '$lib/fetch/position/format';
 import {
@@ -48,7 +48,7 @@ import {
 import { makeFeatureBody } from './focus/feature-focus';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import type { SimClock } from '$lib/scene/state/clock.svelte';
-import { AU_SCALE, kmToScene } from '$lib/math/units';
+import { AU_SCALE, kmToScene, sceneToKm } from '$lib/math/units';
 import { f64dist } from '$lib/scene/animation/math';
 import { TRAVEL_SYSTEM_PREFETCH_MULTIPLIER } from '$lib/scene/visibility/thresholds';
 import { EARTH_ID, SUN_ID } from '$lib/constants';
@@ -190,6 +190,10 @@ import {
 	minCameraDistance,
 	clampCameraOutsideBody,
 	clampCameraToLimits,
+	finestTexelKm,
+	reliefRadiiKm,
+	smallestRadiusKm,
+	surfaceClearanceKm,
 	type CameraBand,
 	type SurfaceClampContext
 } from './visibility/camera-limits';
@@ -197,6 +201,7 @@ import {
 	DAMPING_FRAME_MS,
 	cameraMotionScale,
 	frameDamping,
+	type MotionGround,
 	orbitDamping,
 	type MotionScale
 } from './camera/motion-scale';
@@ -232,6 +237,19 @@ const TIGHT_FAR_RELEASE = 2.3;
 const SUN_PROXY_FAR_FRACTION = 0.9;
 /** Scratch for the refraction lift in {@link SceneRenderer.updateSunProxy}. */
 const _sunLiftDir = new Vector3();
+/** Scratch for {@link SceneRenderer.motionGround}. */
+const _lookDir = new Vector3();
+/** Scratch for {@link SceneRenderer.standingHeight}. */
+const _lookUp = new Vector3();
+
+/** Height over the ground, in radii of the body, under which the camera
+ *  turns with the body's spin, and over which it holds still and watches it
+ *  turn. In between it follows part of the spin. */
+const SPIN_FOLLOW_FULL = 0.5;
+const SPIN_FOLLOW_NONE = 2;
+const _spinNow = new Quaternion();
+const _spinStep = new Quaternion();
+const _noTurn = new Quaternion();
 
 /** On-screen drift a trail may accumulate before it is rewritten. */
 const TRAIL_DRIFT_PX = 0.25;
@@ -259,7 +277,7 @@ export class SceneRenderer {
 	private labelRenderer: ThrottledCSS2DRenderer;
 	private scene: Scene;
 	private camera: PerspectiveCamera;
-	private controls: OrbitControls;
+	private controls: LookOrbitControls;
 	/** Last {@link cameraMotionScale}; also read by the keyboard nudge. */
 	private motionScale: MotionScale = { rotate: 1, translate: 1 };
 	private pointerInteraction!: PointerInteraction;
@@ -303,7 +321,12 @@ export class SceneRenderer {
 	private holdingCamera = false;
 	private readonly _tmpV3 = new Vector3();
 	private readonly _tmpFeet = new Vector3();
+	private readonly surfaceClamps = new Map<string, SurfaceClampContext | undefined>();
+	private surfaceClampsFrame = -1;
+	private surfaceClampsJd = NaN;
 	private nearbyModels!: NearbyModels;
+	/** The spin {@link followSpin} last saw, and whose. */
+	private spinFrom: { id: string; quat: Quaternion } | null = null;
 
 	/** Where the reader may take the camera. Null is unrestricted, which is what
 	 *  the app runs on. */
@@ -377,6 +400,8 @@ export class SceneRenderer {
 		cameraStaysOnBody: false,
 		leavesAim: false,
 		aim: null,
+		aimLooks: false,
+		aimPose: null,
 		focusStartTime: 0,
 		focusDurationMs: FOCUS_DURATION_MS
 	};
@@ -628,11 +653,18 @@ export class SceneRenderer {
 		);
 
 		// OrbitControls — target always at origin
-		this.controls = new OrbitControlsClass(this.camera, canvas);
+		this.controls = new LookOrbitControls(
+			this.camera,
+			canvas,
+			this.lookSurfaceRadius,
+			this.standingHeight,
+			() => (this.pendingUrlWrite = true)
+		);
 		this.controls.enableDamping = true;
 		this.orbitDampingFactor = orbitDamping(sceneSettings().resolvedReducedMotion);
-		this.controls.minDistance = focusBody ? minCameraDistance(focusBody) : POINT_MIN_DISTANCE;
-		// Read at each clamp, so the cap holds the camera where a placement put it.
+		// Read at each clamp: the cap holds the camera where a placement put it,
+		// and the floor follows maps that land after the focus.
+		Object.defineProperty(this.controls, 'minDistance', { get: () => this.minCameraDistance() });
 		Object.defineProperty(this.controls, 'maxDistance', { get: () => this.maxCameraDistance() });
 		this.controls.target.set(0, 0, 0);
 		this.controls.update();
@@ -725,7 +757,7 @@ export class SceneRenderer {
 		// The URL framing belongs to the target: a probe's metre-scale zoom against
 		// the fallback body would bury the camera inside it. Default framing until
 		// the target lands.
-		const framing =
+		const framing: CameraView =
 			focusBody?.data.id === initialView.id
 				? initialView
 				: {
@@ -741,10 +773,12 @@ export class SceneRenderer {
 			this.focusController.focusedBodyQuat()
 		);
 		this.camera.position.set(...camPos);
+		this.controls.setLook(framing.look ?? LEVEL_LOOK);
 		this.focusController.setPendingInitialView({
 			latitude: framing.latitude,
 			longitude: framing.longitude,
-			zoom: framing.zoom
+			zoom: framing.zoom,
+			look: framing.look
 		});
 
 		if (focusBody) ctx.visibility.setFocused(focusBody);
@@ -1288,9 +1322,15 @@ export class SceneRenderer {
 		if (!this.shouldRender(nowMs)) {
 			// Damping keeps stepping: a camera still moving fires 'change' and
 			// wakes the loop on the next frame. The band holds here too, or a
-			// camera resting against an edge would drift off it unwatched.
+			// camera resting against an edge would drift off it unwatched, and
+			// so do the surfaces under a turned view, which the orbit sets again
+			// each frame.
 			this.controls.update();
 			this.applyReaderLimits(nowMs);
+			const near = this.controls.turned ? this.nearSurfaces() : undefined;
+			if (near) this.clampToSurfaces(near);
+			this.settleLook();
+			this.focusController.holdInitialView();
 			return;
 		}
 		if (this.fpsSamples.length < SceneRenderer.FPS_SAMPLE_FRAMES) {
@@ -1318,6 +1358,7 @@ export class SceneRenderer {
 		// Bodies are at this frame's positions and the camera has not been moved
 		// yet: the seam where a host can read one and drive the other.
 		this.callbacks.onFrame?.(this.sceneJd, renderedDtMs);
+		this.followSpin(nowMs);
 
 		const controlsSettled = this.holdingCamera
 			? this.applyHeldCamera()
@@ -1331,49 +1372,30 @@ export class SceneRenderer {
 
 		this.applyReaderLimits(nowMs);
 
-		// Keep the camera from tunnelling into the focused object's parent (e.g.
-		// Earth while focused on the ISS): minDistance only guards the focused body
-		// itself, but the orbit sphere around a low orbiter dips below its parent.
-		// The clamp caps its wall at the focused object's own radial distance, so a
-		// low orbiter stays reachable without clipping the parent; a landed probe
-		// or surface feature gets a floor on the rendered terrain under the camera.
-		const focused = this.holdingCamera ? undefined : this.focusController.current;
-		if (focused) {
-			const parentId = collisionParentId(focused.data.parentId);
-			const parent = parentId ? this.ctx.getBody(parentId) : undefined;
-			const seated =
-				Boolean(this.bodyObjects.get(focused.data.id)?.isLanded) || isSurfaceFeature(focused);
-			if (parent) {
-				clampCameraOutsideBody(
-					this.camera,
-					parent,
-					this.focus.focusTruePos,
-					this.surfaceClamp(parent, seated)
-				);
-			}
-			// A shape model reaches past the sphere its radius describes, so the
-			// focused body needs the same wall its parent gets — minDistance is a
-			// sphere and can't fence an elongated mesh without walling off its
-			// narrow sides.
-			if (hasModelSurface(this.bodyObjects.get(focused.data.id))) {
-				clampCameraOutsideBody(
-					this.camera,
-					focused,
-					this.focus.focusTruePos,
-					this.surfaceClamp(focused, false)
-				);
-			}
+		const near = this.nearSurfaces();
+		if (near) {
+			this.clampToSurfaces(near);
 			this.setMotionScale(
-				cameraMotionScale(this.camera, this.focus.focusTruePos, focused, parent, seated)
+				cameraMotionScale(
+					this.camera,
+					this.focus.focusTruePos,
+					near.focused,
+					near.parent,
+					near.seated,
+					this.controls.orbitPosition,
+					this.motionGround
+				)
 			);
 		} else {
 			this.setMotionScale({ rotate: 1, translate: 1 });
 		}
+		this.settleLook();
+		this.focusController.holdInitialView();
 
-		if (this.pendingUrlWrite && controlsSettled) {
+		if (this.pendingUrlWrite && controlsSettled && !this.focusController.awaitsInitialView) {
 			this.pendingUrlWrite = false;
 			const { latitude, longitude, distance } = this.getCameraState();
-			this.callbacks.onCameraPosition?.(latitude, longitude, distance);
+			this.callbacks.onCameraPosition?.(latitude, longitude, distance, this.controls.look);
 		}
 
 		// Deferred system-data unload so a reversed mid-fly doesn't thrash the GPU.
@@ -1656,6 +1678,134 @@ export class SceneRenderer {
 		target.dispose();
 	}
 
+	/** Closest the orbit comes to the focus: off its shape model or the lowest
+	 *  of its relief, by the clearance its maps allow. The clamps hold the
+	 *  surface itself. */
+	private minCameraDistance(): number {
+		const body = this.focusController?.current;
+		if (!body) return POINT_MIN_DISTANCE;
+		const bo = this.bodyObjects.get(body.data.id);
+		// Until its relief is in, the lowest the ground may go is not known: a
+		// link into a basin must not open pushed up to the equator's height.
+		const lowest = bo && (modelMinRadiusKm(bo) ?? reliefRadiiKm(bo)?.min ?? smallestRadiusKm(bo));
+		return minCameraDistance(body, lowest, bo && finestTexelKm(bo));
+	}
+
+	/** Clearance the clamps keep over `body`, finer where its maps are. */
+	private clearanceKm(body: PositionedBody): number {
+		const bo = this.bodyObjects.get(body.data.id);
+		return surfaceClearanceKm(body, bo && finestTexelKm(bo));
+	}
+
+	/**
+	 * Turn the camera with the spin of the body under it, so that close to the
+	 * ground the ground holds still. A flight, a held camera and a view off the
+	 * body hold their own course, and start the count again after.
+	 */
+	private followSpin(nowMs: number): void {
+		const body = this.spinningBody();
+		const flying = nowMs - this.focus.focusStartTime < this.focus.focusDurationMs;
+		if (!body?.orientation || flying || this.holdingCamera || this.focus.aim) {
+			this.spinFrom = null;
+			return;
+		}
+		_spinNow.copy(bodyQuaternion(body.orientation, this.sceneJd, body.nutPrec));
+		const from = this.spinFrom;
+		this.spinFrom = { id: body.data.id, quat: _spinNow.clone() };
+		if (!from || from.id !== body.data.id) return;
+		const radiusKm = effectiveRadiusKm(body.data);
+		const height =
+			sceneToKm(this.controls.orbitPosition.length()) / radiusKm -
+			(body === this.focusController.current ? 1 : 0);
+		const t = MathUtils.clamp(
+			(SPIN_FOLLOW_NONE - height) / (SPIN_FOLLOW_NONE - SPIN_FOLLOW_FULL),
+			0,
+			1
+		);
+		const share = t * t * (3 - 2 * t);
+		if (share === 0) return;
+		_spinStep.copy(_spinNow).multiply(from.quat.invert());
+		this.controls.carry(_noTurn.identity().slerp(_spinStep, share));
+	}
+
+	/** The body whose spin carries the ground under the camera: the focused
+	 *  body, or the one a feature or a landed probe sits on. */
+	private spinningBody(): PositionedBody | undefined {
+		const focused = this.focusController.current;
+		return focused && (this.standingOn(focused) ?? focused);
+	}
+
+	/** A flight or a held camera owns the camera, and ends a turn where the
+	 *  view stands; otherwise a clamp's push this frame goes into the orbit. */
+	private settleLook(): void {
+		// A flight holds its camera target until it settles.
+		if (this.holdingCamera || this.focus.camTargetWorld) this.controls.endLook();
+		else this.controls.adoptPlacement();
+	}
+
+	/** The focused object and the body it may tunnel into. None while the
+	 *  camera is held. */
+	private nearSurfaces():
+		| { focused: PositionedBody; parent: PositionedBody | undefined; seated: boolean }
+		| undefined {
+		const focused = this.holdingCamera ? undefined : this.focusController.current;
+		if (!focused) return undefined;
+		const parentId = collisionParentId(focused.data.parentId);
+		const parent = parentId ? this.ctx.getBody(parentId) : undefined;
+		const seated =
+			Boolean(this.bodyObjects.get(focused.data.id)?.isLanded) || isSurfaceFeature(focused);
+		return { focused, parent, seated };
+	}
+
+	/**
+	 * Keep the camera from tunnelling into the focused object's parent (e.g.
+	 * Earth while focused on the ISS): minDistance only guards the focused body
+	 * itself, but the orbit sphere around a low orbiter dips below its parent.
+	 * The clamp caps its wall at the focused object's own radial distance, so a
+	 * low orbiter stays reachable without clipping the parent; a landed probe
+	 * or surface feature gets a floor on the rendered terrain under the camera.
+	 *
+	 * The focused body needs the same wall where its surface leaves the sphere
+	 * minDistance describes: a shape model, or relief the camera may come down
+	 * to. A planet is its own parent, and is walled once.
+	 */
+	private clampToSurfaces({
+		focused,
+		parent,
+		seated
+	}: {
+		focused: PositionedBody;
+		parent: PositionedBody | undefined;
+		seated: boolean;
+	}): void {
+		const { camera } = this;
+		const at = this.focus.focusTruePos;
+		if (parent) {
+			const surface = this.surfaceClamp(parent, seated);
+			clampCameraOutsideBody(camera, parent, at, surface, this.clearanceKm(parent));
+		}
+		if (parent?.data.id === focused.data.id) return;
+		const surface = this.surfaceClamp(focused, false);
+		if (surface) clampCameraOutsideBody(camera, focused, at, surface, this.clearanceKm(focused));
+	}
+
+	/** The ground the gestures scale to: the one the clamps hold. */
+	private readonly motionGround: MotionGround = {
+		clearanceKm: (body) => this.clearanceKm(body),
+		radiusKm: (body, direction) => {
+			const surface = this.surfaceClamp(body, false);
+			if (!surface) return null;
+			const dir = _lookDir.copy(direction).applyQuaternion(surface.invQuat);
+			const radialKm = surface.radialKm([dir.x, dir.y, dir.z]);
+			// A shape model's radii run from its own centre, off the body's.
+			const off = surface.centerOffsetScene;
+			if (radialKm === null || !off) return radialKm;
+			return (
+				radialKm + sceneToKm(off[0] * direction.x + off[1] * direction.y + off[2] * direction.z)
+			);
+		}
+	};
+
 	/** Without stars to draw, the camera stays inside the solar system. Until
 	 *  the starfield knows, the camera goes no farther out than it is. */
 	private maxCameraDistance(): number {
@@ -1896,11 +2046,29 @@ export class SceneRenderer {
 		);
 	}
 
-	/** How to sample the camera floor under `body`: its shape model when one is
-	 *  mounted, else the rendered DEM — which only a seated view is close enough
-	 *  to need, and only where the body carries an orientation to sample in.
-	 *  Undefined leaves the clamp on the sphere at the body's radius. */
+	/** {@link buildSurfaceClamp}, built once a frame for each body: the clamps
+	 *  and the gestures ask for it many times over. */
 	private surfaceClamp(body: PositionedBody, seated: boolean): SurfaceClampContext | undefined {
+		if (this.surfaceClampsFrame !== this.frameIndex || this.surfaceClampsJd !== this.sceneJd) {
+			this.surfaceClamps.clear();
+			this.surfaceClampsFrame = this.frameIndex;
+			this.surfaceClampsJd = this.sceneJd;
+		}
+		const key = seated ? `${body.data.id}|seated` : body.data.id;
+		if (this.surfaceClamps.has(key)) return this.surfaceClamps.get(key);
+		const surface = this.buildSurfaceClamp(body, seated);
+		this.surfaceClamps.set(key, surface);
+		return surface;
+	}
+
+	/** How to sample the camera floor under `body`: its shape model when one is
+	 *  mounted, else the rendered relief, where the body carries an orientation
+	 *  to sample it in. Undefined leaves the clamp on the sphere at the body's
+	 *  radius. */
+	private buildSurfaceClamp(
+		body: PositionedBody,
+		seated: boolean
+	): SurfaceClampContext | undefined {
 		const bo = this.bodyObjects.get(body.data.id);
 		if (hasModelSurface(bo))
 			// The model's own quaternion, not a recomputed one: the mount carries
@@ -1914,10 +2082,12 @@ export class SceneRenderer {
 				centerOffsetScene: modelCenterOffsetScene(bo),
 				radialKm: (dir) => modelSurfaceRadialKm(bo, dir)
 			};
-		if (!seated || !body.orientation) return undefined;
+		const relief = bo && reliefRadiiKm(bo);
+		if (!body.orientation || (!seated && !relief)) return undefined;
 		return {
 			invQuat: bodyQuaternion(body.orientation, this.sceneJd, body.nutPrec).invert(),
 			seated,
+			outerRadiusKm: relief?.max,
 			radialKm: (dir) => renderedSurfaceRadialKm(bo, body.data.id, body.data.radiusKm, dir)
 		};
 	}
@@ -2184,9 +2354,10 @@ export class SceneRenderer {
 		};
 	}
 
-	/** @internal Where the camera is around the focused body, in scene units. */
+	/** @internal Where the camera orbits the focused body, in scene units: a
+	 *  middle-drag tilt is the view's, not the place's. */
 	getCameraState() {
-		const cam = this.camera.position;
+		const cam = this.controls.orbitPosition;
 		return cartesianToSpherical(
 			[cam.x, cam.y, cam.z],
 			[0, 0, 0],
@@ -2298,7 +2469,9 @@ export class SceneRenderer {
 	private applyReaderLimits(nowMs: number): void {
 		if (!this.limitsArmed || !this.cameraBand || this.holdingCamera) return;
 		if (nowMs - this.focus.focusStartTime < this.focus.focusDurationMs) return;
-		clampCameraToLimits(this.camera, this.cameraBand, this.focusController.focusedBodyQuat());
+		const band = this.cameraBand;
+		const quat = this.focusController.focusedBodyQuat();
+		this.controls.moveOrbit((orbit) => clampCameraToLimits(orbit, band, quat));
 	}
 
 	private static readonly INPUT_EVENTS = [
@@ -2343,6 +2516,7 @@ export class SceneRenderer {
 		this.disarmLimits();
 		this.holdingCamera = true;
 		this.controls.enabled = false;
+		this.controls.endLook();
 		this.focus.camOriginWorld = null;
 		this.focus.camTargetWorld = null;
 		this.focus.camTargetOffset = null;
@@ -2352,6 +2526,8 @@ export class SceneRenderer {
 		this.focus.arcOrbit = false;
 		this.focus.cameraStaysOnBody = false;
 		this.focus.aim = null;
+		this.focus.aimLooks = false;
+		this.focus.aimPose = null;
 	}
 
 	setHeldPose(pose: CameraPose): void {
@@ -2436,6 +2612,45 @@ export class SceneRenderer {
 		);
 	}
 
+	/** The ground the tilt and the wheel work over: the focused body's drawn
+	 *  surface along `direction`, or 0 for a focus standing on its ground (a
+	 *  feature, a landed craft), which the view then turns about. None where
+	 *  nothing is drawn to stand on — a craft in flight, a star with no disc —
+	 *  and none while the camera is held or looks away. */
+	private lookSurfaceRadius = (direction: Vector3): number | null => {
+		const focused = this.focusController.current;
+		if (this.holdingCamera || this.focus.aim || !focused) return null;
+		if (this.standingOn(focused)) return 0;
+		const bo = this.bodyObjects.get(focused.data.id);
+		if (isModelBearing(focused) || !(bo?.mesh || hasModelSurface(bo))) return null;
+		const radiusKm = effectiveRadiusKm(focused.data);
+		return kmToScene(this.motionGround.radiusKm(focused, direction) ?? radiusKm);
+	};
+
+	/** The body a feature or a landed craft stands on. */
+	private standingOn(focused: PositionedBody): PositionedBody | undefined {
+		if (isSurfaceFeature(focused)) return this.ctx.getBody(focused.featureAnchor!.hostId);
+		if (!this.bodyObjects.get(focused.data.id)?.isLanded) return undefined;
+		const parentId = collisionParentId(focused.data.parentId);
+		return parentId ? this.ctx.getBody(parentId) : undefined;
+	}
+
+	/** The camera's height over the ground the focus stands on, in radii of
+	 *  that ground: how far a view turned about the focus may turn. */
+	private standingHeight = (): number | null => {
+		const focused = this.focusController.current;
+		const host = focused && this.standingOn(focused);
+		const at = host?.position;
+		if (!host || !at) return null;
+		const fp = this.focus.focusTruePos;
+		const cam = this.controls.orbitPosition;
+		const up = _lookUp.set(cam.x + fp[0] - at[0], cam.y + fp[1] - at[1], cam.z + fp[2] - at[2]);
+		const dist = up.length();
+		const groundKm = this.motionGround.radiusKm(host, up.divideScalar(dist));
+		const ground = kmToScene(groundKm ?? effectiveRadiusKm(host.data));
+		return ground > 0 ? (dist - ground) / ground : null;
+	};
+
 	private onControlsEnd = (): void => {
 		this.pendingUrlWrite = true;
 		// User-initiated motion wins — don't overwrite it when orientation loads.
@@ -2452,6 +2667,7 @@ export class SceneRenderer {
 		// scale themselves — an arrow key over a surface must step as small as a
 		// drag does. Raising the dolly factor to it keeps the step multiplicative.
 		const { rotate, translate } = this.motionScale;
+		[azimuth, polar] = this.controls.toOrbitAxes(azimuth, polar);
 		if (azimuth !== 0) this.controls.rotateLeft(azimuth * rotate);
 		if (polar !== 0) this.controls.rotateUp(polar * rotate);
 		// dollyIn scales the orbit radius by its argument, so zooming in needs <1.
@@ -2495,9 +2711,6 @@ export class SceneRenderer {
 		// while labels weren't on `bo` yet (URL-load case) and no-op'd.
 		void loadBodyModel(bo, this.modelScene, this.ctx)
 			.then(() => {
-				if (this.focusController.current?.data.id === bo.body.data.id) {
-					this.controls.minDistance = minCameraDistance(bo.body, modelMinRadiusKm(bo));
-				}
 				if (this.ctx.layers.skipped.has('nomenclature')) return;
 				return attachNomenclatureLabels(bo, this.canvas, (featureId, lat, lon, diameterM) => {
 					if (!this.featureSelectEnabled) return;
@@ -2997,9 +3210,26 @@ export class SceneRenderer {
 		return spinDue || undrawn;
 	}
 
-	snapToBody(id: string, latitude: number, longitude: number, zoom: number): void {
+	snapToBody(
+		id: string,
+		latitude: number,
+		longitude: number,
+		zoom: number,
+		look?: LookAngles
+	): void {
 		this.disarmLimits();
-		this.focusController.snapToBody(id, latitude, longitude, zoom);
+		this.focusController.snapToBody(id, latitude, longitude, zoom, look);
+	}
+
+	/** @internal How the view is turned off the orbit pose. */
+	getLook(): LookAngles {
+		return this.controls.look;
+	}
+
+	/** @internal Turn the view off the orbit pose the camera is on. */
+	setLook(look: LookAngles): void {
+		this.controls.setLook(look);
+		this.pendingUrlWrite = true;
 	}
 
 	snapToBodyFrom(id: string, fromId: string, distance: number): void {

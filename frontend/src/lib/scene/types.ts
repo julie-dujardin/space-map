@@ -18,6 +18,7 @@ import type { ReliefTiles } from './objects/surface/relief-tiles';
 import type { DisplacementMeta } from './objects/surface/displacement';
 import type { TerrainWindowState } from './lod/terrain-window';
 import type { NoticeSink } from './notice';
+import type { LookAngles } from './camera/look-controls';
 
 /** Mesh/halo screen-size ratio above which the body label is dropped: the mesh
  *  fills enough of the view to identify itself, and the silhouette-centre offset
@@ -291,7 +292,9 @@ export interface Callbacks {
 	onFrame?(jd: number, dtMs: number): void;
 	/** End of a drawn frame that left the map at rest, once per rest. */
 	onIdle?(): void;
-	onCameraPosition?(latitude: number, longitude: number, zoom: number): void;
+	/** Where the camera now orbits, and how the view is turned off that pose:
+	 *  left out for a level view. */
+	onCameraPosition?(latitude: number, longitude: number, zoom: number, look?: LookAngles): void;
 	/** Number of user-promoted bodies that can be cleared (excludes the focused
 	 *  body — clearing it would leave the camera pointed at a torn-down mesh). */
 	onUserPromotedChange?(count: number): void;
@@ -314,6 +317,8 @@ export interface CameraView {
 	latitude: number;
 	longitude: number;
 	zoom: number;
+	/** The view's turn off the orbit pose; level when left out. */
+	look?: LookAngles;
 }
 
 /** Where a map opens: the body to settle on and the camera around it. */

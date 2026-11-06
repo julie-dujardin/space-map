@@ -7,6 +7,7 @@
  * unit stops at this class.
  */
 
+import { MathUtils } from 'three';
 import { ContextManager } from './state/context-manager.svelte';
 import { SimClock } from './state/clock.svelte';
 import { SceneRenderer } from './renderer';
@@ -20,6 +21,7 @@ import {
 	DEFAULT_ZOOM
 } from './framing';
 import type { Callbacks, CameraView, InitialView } from './types';
+import { LEVEL_LOOK, type LookAngles } from './camera/look-controls';
 import type { Notice, NoticeTopic } from './notice';
 import { MarkerExtension, type Marker, type MarkerOptions } from './extensions/marker';
 import { sceneToEcliptic, type CameraHold, type CameraPose } from './extensions/camera';
@@ -79,7 +81,7 @@ export interface SpaceMapOptions {
 	date?: Date;
 	live?: boolean;
 	/** Where the map opens. */
-	view?: CameraOptions;
+	view?: CameraOptions & CameraAngles;
 	/** Whether the reader may move the map at all. True unless it is said
 	 *  otherwise; false switches every gesture off. */
 	interactive?: boolean;
@@ -140,13 +142,39 @@ export interface CameraOptions {
 	distanceKm?: number;
 }
 
+/**
+ * How the view is turned off looking straight down at the place, in degrees.
+ * Close to a surface only: from half a radius up the turn the map allows
+ * shrinks, and from one radius up the view is level.
+ */
+export interface CameraAngles {
+	/** Off the vertical toward the horizon: 0 looks straight down. */
+	pitch?: number;
+	/** Clockwise from the north the map keeps up. */
+	bearing?: number;
+}
+
 /** The camera as it stands. `body` is what it orbits, which is also what the
  *  map draws in most detail. */
-export interface CameraState {
+export interface CameraState extends Required<CameraAngles> {
 	body: string;
 	lat: number;
 	lon: number;
 	distanceKm: number;
+}
+
+/** @internal The renderer's turn for `angles`. */
+export function lookOf(angles: CameraAngles): LookAngles {
+	return {
+		tilt: MathUtils.degToRad(angles.pitch ?? 0),
+		heading: -MathUtils.degToRad(angles.bearing ?? 0)
+	};
+}
+
+/** The public angles of the renderer's turn. */
+function anglesOf(look: LookAngles): Required<CameraAngles> {
+	const bearing = MathUtils.euclideanModulo(-MathUtils.radToDeg(look.heading) + 180, 360) - 180;
+	return { pitch: MathUtils.radToDeg(look.tilt), bearing: bearing === -180 ? 180 : bearing };
 }
 
 /** A named surface feature, as a `featureselect` event carries it. */
@@ -173,7 +201,7 @@ export interface FeatureTarget extends CameraTarget {
 
 /** The same, for a move that does not animate: framing a body against another
  *  one only makes sense as a placement, never as a flight. */
-export interface JumpTarget extends CameraTarget {
+export interface JumpTarget extends CameraTarget, CameraAngles {
 	/** Put this other body — the Sun, usually — behind the one being framed. */
 	facing?: string;
 	/** How far above the ecliptic to look from, in degrees. */
@@ -215,7 +243,13 @@ export interface GoToOptions {
 	camera?: 'fly' | 'cut' | 'pan' | 'none';
 	/** Where the camera ends up: scene units and body-fixed degrees. Read once
 	 *  the body is in the scene. */
-	view?: (body: PositionedBody) => { distance?: number; latitude?: number; longitude?: number };
+	view?: (body: PositionedBody) => {
+		distance?: number;
+		latitude?: number;
+		longitude?: number;
+		/** A cut's only: a flight lands level. */
+		angles?: CameraAngles;
+	};
 	/** Called once the object is in the scene, before it takes the focus:
 	 *  where a page records the navigation. */
 	commit?: (body: PositionedBody) => void;
@@ -440,7 +474,8 @@ export class SpaceMap {
 			id: view.body ?? DEFAULT_FOCUS_ID,
 			latitude: view.lat ?? DEFAULT_FRAMING_LAT,
 			longitude: view.lon ?? DEFAULT_FRAMING_LON,
-			zoom: view.distanceKm === undefined ? DEFAULT_ZOOM : kmToScene(view.distanceKm)
+			zoom: view.distanceKm === undefined ? DEFAULT_ZOOM : kmToScene(view.distanceKm),
+			look: lookOf(view)
 		};
 		const on = (gesture: MapGesture) =>
 			new GestureHandler(gestureStart(options.interactions?.[gesture], options.interactive), () =>
@@ -625,9 +660,9 @@ export class SpaceMap {
 	 *  no focus. Call it once {@link open} resolves. */
 	applyInitialView(): void {
 		this.renderer?.openView();
-		const { id, latitude, longitude, zoom } = this.initialView;
+		const { id, latitude, longitude, zoom, look } = this.initialView;
 		if (!this.focusedBody && this.ctx.getBody(id)) {
-			this.renderer?.snapToBody(id, latitude, longitude, zoom);
+			this.renderer?.snapToBody(id, latitude, longitude, zoom, look);
 		}
 		this.showOpeningView();
 	}
@@ -858,12 +893,18 @@ export class SpaceMap {
 				if (this.listeners.frame.size > 0) this.emit('frame', { jd, dtMs });
 			},
 			onIdle: () => this.emit('idle'),
-			onCameraPosition: (latitude, longitude, zoom) => {
+			onCameraPosition: (latitude, longitude, zoom, look = LEVEL_LOOK) => {
 				const body = this.focusedBody?.data.id;
 				// Nothing focused means nothing to measure the camera against, and
 				// the renderer reports one such settle while the scene is still empty.
 				if (body === undefined) return;
-				this.emit('camera', { body, lat: latitude, lon: longitude, distanceKm: sceneToKm(zoom) });
+				this.emit('camera', {
+					body,
+					lat: latitude,
+					lon: longitude,
+					distanceKm: sceneToKm(zoom),
+					...anglesOf(look)
+				});
 			},
 			onUserPromotedChange: (count) => this.emit('userpromoted', count),
 			onFeatureSelect: (bodyId, featureId, lat, lon, diameterM) =>
@@ -1061,7 +1102,8 @@ export class SpaceMap {
 						id,
 						view.latitude ?? DEFAULT_FRAMING_LAT,
 						view.longitude ?? DEFAULT_FRAMING_LON,
-						distance
+						distance,
+						view.angles && lookOf(view.angles)
 					);
 					break;
 				case 'pan':
@@ -1165,11 +1207,13 @@ export class SpaceMap {
 				target.elevationDeg ?? 0,
 				this.framing(target, body)
 			);
+			this.renderer?.setLook(lookOf(target));
 			return;
 		}
 		if (target.feature) {
 			const { featureId, lat, lon, diameterM } = target.feature;
 			this.focusOnFeature(body, featureId, lat, lon, diameterM, null, 'snap');
+			this.renderer?.setLook(lookOf(target));
 			return;
 		}
 		const camera = this.getCamera();
@@ -1177,7 +1221,8 @@ export class SpaceMap {
 			body,
 			target.lat ?? camera?.lat ?? DEFAULT_FRAMING_LAT,
 			target.lon ?? camera?.lon ?? DEFAULT_FRAMING_LON,
-			this.framing(target, body)
+			this.framing(target, body),
+			target
 		);
 	}
 
@@ -1188,7 +1233,13 @@ export class SpaceMap {
 		const body = this.focusedBody?.data.id;
 		if (!renderer || body === undefined) return null;
 		const { latitude, longitude, distance } = renderer.getCameraState();
-		return { body, lat: latitude, lon: longitude, distanceKm: sceneToKm(distance) };
+		return {
+			body,
+			lat: latitude,
+			lon: longitude,
+			distanceKm: sceneToKm(distance),
+			...anglesOf(renderer.getLook())
+		};
 	}
 
 	// -- what is drawn ----------------------------------------------------------
@@ -1352,8 +1403,14 @@ export class SpaceMap {
 
 	/** @internal Instantly focus + frame a body (no fly) — for deep links whose
 	 *  target loaded after the initial render settled on the placeholder parent. */
-	snapToBody(id: string, latitude: number, longitude: number, zoom: number): void {
-		this.renderer?.snapToBody(id, latitude, longitude, zoom);
+	snapToBody(
+		id: string,
+		latitude: number,
+		longitude: number,
+		zoom: number,
+		angles: CameraAngles = {}
+	): void {
+		this.renderer?.snapToBody(id, latitude, longitude, zoom, lookOf(angles));
 	}
 
 	/** @internal Snap focus onto a body, the camera on the line to another

@@ -145,7 +145,9 @@
 			body: appState.view.id,
 			lat: appState.view.latitude,
 			lon: appState.view.longitude,
-			distanceKm: sceneToKm(appState.view.zoom)
+			distanceKm: sceneToKm(appState.view.zoom),
+			pitch: appState.view.pitch,
+			bearing: appState.view.bearing
 		}
 	});
 	const ctx = map.ctx;
@@ -997,7 +999,7 @@
 		// URL camera framing, restored onto the real target once it loads: the
 		// renderer settles its initial focus on the parent while the target's
 		// chunk is still streaming.
-		const { latitude, longitude, zoom } = appState.view;
+		const { latitude, longitude, zoom, pitch, bearing } = appState.view;
 		// Pre-load the filter so the first earth-zone pass lands filtered: no
 		// flash of full SATCAT before the reload kicks in.
 		if (appState.view.type === UrlType.Group && appState.view.groupSlug) {
@@ -1072,7 +1074,7 @@
 			} else if (cameraFocus?.data.id !== initialId) {
 				// Explicit URL camera, but the renderer settled on the parent while
 				// the target streamed: snap onto it (no fly, opens already framed).
-				map.snapToBody(initialId, latitude, longitude, zoom);
+				map.snapToBody(initialId, latitude, longitude, zoom, { pitch, bearing });
 			}
 		} else if (isNav) {
 			// A trip end the scene cannot place is the panel's story to tell.

@@ -1,5 +1,5 @@
 import { Matrix4, Quaternion, Vector3, type PerspectiveCamera } from 'three';
-import type { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import type { LookOrbitControls } from '$lib/scene/camera/look-controls';
 import type { Vec3 } from './math';
 import { f64dist, f64lerp, f64slerpArc } from './math';
 import {
@@ -39,7 +39,13 @@ export interface FocusState {
 	/** The orbit pivot, from the focus, when the camera looks away from the
 	 *  focused body: at a constellation, say. Null when it looks at the body. */
 	aim: Vec3 | null;
-	/** An orbit fly started looking away from the body: the turn back eases in. */
+	/** The aim is ground the view was turned to over the last focus: it settles
+	 *  as the same turn over this one's ground, not as a pivot of its own. */
+	aimLooks: boolean;
+	/** The orientation that turn settles on, for the pan to end on it. */
+	aimPose: Quaternion | null;
+	/** An orbit fly started looking away from the body, at the sky or tilted
+	 *  over its ground: the turn back eases in. */
 	leavesAim: boolean;
 	focusStartTime: number;
 	focusDurationMs: number;
@@ -52,6 +58,14 @@ const _lookAtQuat = new Quaternion();
 const _lookAtQ = new Quaternion();
 const _forwardA = new Vector3();
 const _forwardB = new Vector3();
+const _settleGround = new Vector3();
+
+/** Whether the camera's view runs off the focus, at the scene origin. */
+function looksAway(camera: PerspectiveCamera): boolean {
+	_forwardA.set(0, 0, -1).applyQuaternion(camera.quaternion);
+	_forwardB.copy(camera.position).negate().normalize();
+	return _forwardA.dot(_forwardB) < 1 - 1e-9;
+}
 
 /** Compute the orientation a camera at `eye` would have when looking at `target`, without mutating any camera. */
 function lookAtQuaternion(eye: Vec3, target: Vec3, up: Vector3): Quaternion {
@@ -69,7 +83,7 @@ function lookAtQuaternion(eye: Vec3, target: Vec3, up: Vector3): Quaternion {
 export function stepFocusAnimation(
 	state: FocusState,
 	camera: PerspectiveCamera,
-	controls: OrbitControls,
+	controls: LookOrbitControls,
 	repositionAll: () => void,
 	rebuildPointCloudBasis: () => void
 ): boolean {
@@ -150,7 +164,7 @@ export function stepFocusAnimation(
 						state.focusTargetWorld[2] + state.aim[2]
 					]
 				: state.focusTargetWorld;
-			const lookAtQ = lookAtQuaternion(camWorld, lookAt, camera.up);
+			const lookAtQ = state.aimPose ?? lookAtQuaternion(camWorld, lookAt, camera.up);
 			camera.quaternion.slerpQuaternions(state.flyQ0!, lookAtQ, s);
 			camera.position.set(
 				camWorld[0] - state.focusTruePos[0],
@@ -173,7 +187,8 @@ export function stepFocusAnimation(
 		// Rebuild point cloud vertex buffers relative to new focus
 		rebuildPointCloudBasis();
 	}
-	if (state.aim) controls.target.set(state.aim[0], state.aim[1], state.aim[2]);
+	const looksOn = state.aim !== null && state.aimLooks;
+	if (state.aim && !looksOn) controls.target.set(state.aim[0], state.aim[1], state.aim[2]);
 	else controls.target.set(0, 0, 0);
 	if (state.camTargetWorld) {
 		const cx = state.camTargetWorld[0] - state.focusTruePos[0];
@@ -194,6 +209,13 @@ export function stepFocusAnimation(
 		state.arcOrbit = false;
 		state.leavesAim = false;
 		state.cameraStaysOnBody = false;
+		if (looksOn) {
+			const [x, y, z] = state.aim!;
+			state.aim = null;
+			state.aimLooks = false;
+			state.aimPose = null;
+			controls.lookToward(_settleGround.set(x, y, z));
+		}
 	}
 	return !controls.update();
 }
@@ -214,6 +236,8 @@ export function prepareFocusTarget(
 	state.focusTargetWorld = [...bodyPosition];
 	state.focusStartTime = performance.now();
 	state.aim = null;
+	state.aimLooks = false;
+	state.aimPose = null;
 	state.leavesAim = false;
 	// Arc-orbit is only for re-framing the already-focused body; a new-body focus
 	// (incl. the orbitFly approach set by the controller) must use the linear path.
@@ -344,8 +368,10 @@ export function prepareFlyToCamera(
 	state.focusOriginWorld = [...state.focusTruePos];
 	state.focusTargetWorld = [...state.focusTruePos];
 	state.focusStartTime = performance.now();
-	state.leavesAim = state.aim !== null;
+	state.leavesAim = state.aim !== null || looksAway(camera);
 	state.aim = null;
+	state.aimLooks = false;
+	state.aimPose = null;
 	state.orbitFly = true;
 	state.arcOrbit = true;
 	state.cameraStaysOnBody = false;

@@ -347,6 +347,7 @@ export {
 
 // -- the Solar System map -----------------------------------------------------
 export type {
+	CameraAngles,
 	CameraLimits,
 	CameraOptions,
 	CameraState,

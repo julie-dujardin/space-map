@@ -220,6 +220,11 @@ export interface MapViewState {
 	 *  `parent`, `parent-2`, …), or `galactic`. Null = the planetary system of
 	 *  the place. Deep-linked as `&north=`. */
 	north: string | null;
+	/** How the view is turned off looking straight down, in degrees: off the
+	 *  vertical, and clockwise from north. Deep-linked as `&angle=` when the
+	 *  view is not level. */
+	pitch: number;
+	bearing: number;
 }
 
 /** A point on a body's surface, as a trip end names one. */
@@ -267,5 +272,7 @@ export const DEFAULT_VIEW: MapViewState = {
 	navFromPlace: null,
 	navToPlace: null,
 	trip: DEFAULT_TRIP,
-	north: null
+	north: null,
+	pitch: 0,
+	bearing: 0
 };

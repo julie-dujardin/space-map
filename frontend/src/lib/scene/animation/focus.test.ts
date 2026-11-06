@@ -1,5 +1,5 @@
 import { PerspectiveCamera, Quaternion, Vector3 } from 'three';
-import type { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import type { LookOrbitControls } from '$lib/scene/camera/look-controls';
 import { describe, expect, it } from 'vitest';
 import {
 	prepareAim,
@@ -23,6 +23,8 @@ function state(): FocusState {
 		arcOrbit: false,
 		cameraStaysOnBody: false,
 		aim: null,
+		aimLooks: false,
+		aimPose: null,
 		leavesAim: false,
 		focusStartTime: 0,
 		focusDurationMs: 0
@@ -42,7 +44,7 @@ const controls = () =>
 		target: new Vector3(),
 		enableDamping: true,
 		update: () => false
-	}) as unknown as OrbitControls;
+	}) as unknown as LookOrbitControls;
 
 describe('prepareAim', () => {
 	it('moves the pivot off the focus and leaves the camera in its place', () => {
@@ -80,6 +82,18 @@ describe('prepareAim', () => {
 			() => {}
 		);
 		expect(cam.quaternion.angleTo(start)).toBeLessThan(0.1);
+	});
+
+	it('eases a flight round the focus in from a view tilted off it', () => {
+		const focus = state();
+		const cam = new PerspectiveCamera();
+		cam.position.set(0, 0, 5);
+		cam.lookAt(0, 1, 0);
+		prepareFlyToCamera(focus, cam, [0, 0, 5], [0, 5, 0]);
+		expect(focus.leavesAim).toBe(true);
+		cam.lookAt(0, 0, 0);
+		prepareFlyToCamera(focus, cam, [0, 0, 5], [0, 5, 0]);
+		expect(focus.leavesAim).toBe(false);
 	});
 
 	it('ends at the next focus', () => {

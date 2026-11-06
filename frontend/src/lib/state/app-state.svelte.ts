@@ -1,6 +1,5 @@
 import { pushState as sveltePushState, replaceState as svelteReplaceState } from '$app/navigation';
 import { DEFAULT_VIEW, UrlType, type DrawerTab, type MapViewState, type NavPlace } from './view';
-import type { CameraView } from '$lib/scene/types';
 import {
 	applyClose,
 	applyFeature,
@@ -119,8 +118,12 @@ export class AppState {
 		this.replaceNow();
 	}
 
-	setCamera(cam: CameraView) {
-		this.view = { ...this.view, ...cam };
+	/** Where the camera orbits; a report with no angles is a level view. */
+	setCamera(
+		cam: Pick<MapViewState, 'latitude' | 'longitude' | 'zoom'> &
+			Partial<Pick<MapViewState, 'pitch' | 'bearing'>>
+	) {
+		this.view = { ...this.view, pitch: 0, bearing: 0, ...cam };
 		this.cameraKnown = true;
 		this.replaceNow();
 	}

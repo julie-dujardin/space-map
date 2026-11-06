@@ -81,9 +81,15 @@ function screenX(point: Vector3, camera: PerspectiveCamera): number {
  * the rotation OrbitControls derives from `rotateSpeed`: a drag of the full
  * viewport height is one whole turn.
  */
-function groundTravelPx(dragPx: number, radiusKm: number, altitudeKm: number): number {
+function groundTravelPx(
+	dragPx: number,
+	radiusKm: number,
+	altitudeKm: number,
+	objectType = ObjectType.PLANET
+): number {
 	const camera = camAt(radiusKm + altitudeKm);
-	const { rotate } = cameraMotionScale(camera, FOCUS, mkBody(radiusKm), undefined, false);
+	const body = mkBody(radiusKm, [0, 0, 0], 'naif-499', objectType);
+	const { rotate } = cameraMotionScale(camera, FOCUS, body, undefined, false);
 	const theta = (2 * Math.PI * dragPx * rotate) / VIEWPORT_H;
 
 	const before = new Vector3(0, 0, kmToScene(radiusKm));
@@ -99,13 +105,20 @@ describe('cameraMotionScale rotate', () => {
 
 	it('holds 1:1 on a body of a wholly different size', () => {
 		// Phobos, 2 km up — same rule, three orders of magnitude down.
-		expect(groundTravelPx(50, 11.1, 2)).toBeCloseTo(50, 1);
+		expect(groundTravelPx(50, 11.1, 2, ObjectType.MOON)).toBeCloseTo(50, 1);
 	});
 
 	it('hands back the default rate once the body is small on screen', () => {
 		// Past ~7.7 radii the 1:1 ask exceeds three's own rate and is clamped.
 		const far = camAt(3390 * 20);
 		expect(cameraMotionScale(far, FOCUS, mkBody(3390), undefined, false).rotate).toBe(1);
+	});
+
+	it('keeps the drag rate for a focus with no place at the date', () => {
+		const placed = cameraMotionScale(camAt(5000), FOCUS, mkBody(3390), undefined, false);
+		const unplaced = { ...mkBody(3390), position: null };
+		const scale = cameraMotionScale(camAt(5000), FOCUS, unplaced, undefined, false);
+		expect(scale.rotate).toBeCloseTo(placed.rotate, 12);
 	});
 
 	it('stays positive with the camera on the surface', () => {
@@ -133,9 +146,24 @@ describe('cameraMotionScale translate', () => {
 		);
 	});
 
-	it('floors instead of freezing on the surface', () => {
+	it('floors at the clearance the clamp keeps instead of freezing on the surface', () => {
 		const mars = mkBody(3390);
-		expect(cameraMotionScale(camAt(3390), FOCUS, mars, undefined, false).translate).toBe(0.02);
+		expect(cameraMotionScale(camAt(3390), FOCUS, mars, undefined, false).translate).toBeCloseTo(
+			100 / 3390,
+			10
+		);
+	});
+
+	it('steps finely where the maps let the camera low', () => {
+		// 50 m over a basin 2 km under the sphere, with a 50 m clearance.
+		const mars = mkBody(3390);
+		const scale = cameraMotionScale(camAt(3388.05), FOCUS, mars, undefined, false, undefined, {
+			clearanceKm: () => 0.05,
+			radiusKm: () => 3388
+		});
+		expect(scale.translate).toBeCloseTo(0.05 / 3388.05, 10);
+		expect(scale.rotate).toBeGreaterThan(0);
+		expect(scale.rotate).toBeLessThan(1e-5);
 	});
 
 	it('follows the parent when it is the nearer surface', () => {

@@ -1,5 +1,4 @@
-import { Vector3, type Mesh, type PerspectiveCamera, type Scene } from 'three';
-import type { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { Quaternion, Vector3, type Mesh, type PerspectiveCamera, type Scene } from 'three';
 import {
 	ObjectType,
 	isExoplanet,
@@ -10,6 +9,11 @@ import {
 import { OrbitalSource } from '$lib/fetch/position/format';
 import { cartesianToSpherical, offsetFacing, sphericalToCartesian } from '$lib/math/spherical';
 import type { BodyObjects, Callbacks, CameraView } from '$lib/scene/types';
+import {
+	LEVEL_LOOK,
+	type LookAngles,
+	type LookOrbitControls
+} from '$lib/scene/camera/look-controls';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import type { SimClock } from '$lib/scene/state/clock.svelte';
 import {
@@ -17,13 +21,13 @@ import {
 	isMeshUpgradable,
 	upgradeBodyMesh
 } from '$lib/scene/objects/body/lifecycle';
-import { isModelBearing, modelMinRadiusKm, unloadBodyModel } from '$lib/scene/objects/body/model';
+import { isModelBearing, unloadBodyModel } from '$lib/scene/objects/body/model';
 import {
 	disposeNomenclatureLabels,
 	nomenclatureBodyId
 } from '$lib/scene/objects/surface/nomenclature';
 import { buildTrails } from '$lib/scene/objects/body/bulk';
-import { POINT_MIN_DISTANCE, minCameraDistance } from '$lib/scene/visibility/camera-limits';
+import { minCameraDistance } from '$lib/scene/visibility/camera-limits';
 import {
 	FOCUS_DURATION_MS,
 	prepareAim,
@@ -36,12 +40,18 @@ import { sceneSettings } from '$lib/scene/settings.svelte';
 import type { PointCloudSystem } from '$lib/scene/pointclouds/system';
 import type { SystemDataLoader } from '$lib/scene/system-data/loader';
 import { PromotionRegistry, type PromotionDeps } from './promotion';
+import { angularDuration, FOCUS_ROT_PACING } from '$lib/scene/animation/pacing';
+import { surfaceDataEpoch } from '$lib/scene/position/rendered-surface';
+
+const _from = new Vector3();
+const _forward = new Vector3();
+const _ground = new Vector3();
 
 export interface FocusDeps {
 	ctx: ContextManager;
 	clock: SimClock;
 	camera: PerspectiveCamera;
-	controls: OrbitControls;
+	controls: LookOrbitControls;
 	scene: Scene;
 	bodyObjects: Map<string, BodyObjects>;
 	clickables: Mesh[];
@@ -68,10 +78,13 @@ export class FocusController {
 	private focusSets = 0;
 	private focusedBody: PositionedBody | undefined;
 	private readonly _tmpV3 = new Vector3();
-	/** The opening view of the focused body, kept until its spin is on the mesh
-	 *  and the camera can be put at the right angle. Dropped once applied, once
-	 *  the camera moves, and once the focus goes to another body. */
+	/** The opening view of the focused body, put back as its spin, maps and
+	 *  relief land. Dropped once the camera moves, and once the focus goes to
+	 *  another body. */
 	private pendingInitialView: CameraView | null = null;
+	/** The ground data the held view was last put back on. */
+	private heldEpoch = -1;
+	private heldFloor = NaN;
 	/** Members of the last {@link syncUpgradeTargets} pass. */
 	private upgradeTargetIds = new Set<string>();
 
@@ -118,6 +131,12 @@ export class FocusController {
 		this.pendingInitialView = view;
 	}
 
+	/** Whether the opening view still waits to be placed on its body's axes:
+	 *  until then the camera's lat and lon say nothing. */
+	get awaitsInitialView(): boolean {
+		return this.pendingInitialView !== null;
+	}
+
 	clearPendingInitialView(): void {
 		this.pendingInitialView = null;
 	}
@@ -125,7 +144,9 @@ export class FocusController {
 	/** The camera is set from body-fixed angles whose body has no spin yet:
 	 *  it turns when the spin lands. */
 	get awaitsSpin(): boolean {
-		return this.pendingInitialView !== null;
+		if (!this.pendingInitialView) return false;
+		const q = this.focusedBodyQuat();
+		return !q || (q[0] === 0 && q[1] === 0 && q[2] === 0 && q[3] === 1);
 	}
 
 	/** Quaternion for lat/lon framing around `body`; undefined for scene-frame
@@ -249,7 +270,7 @@ export class FocusController {
 	 *  Clears the focused body — otherwise `updatePositions` re-pins the origin
 	 *  to it every frame; a moving point needs the caller to re-drive it. */
 	focusOnPoint(position: Vec3, distance?: number): void {
-		const { focus, camera, controls, callbacks } = this.deps;
+		const { focus, camera, callbacks } = this.deps;
 		const camWorld = this.cameraTruePos();
 		let camPos: Vec3 | undefined;
 		if (distance !== undefined) {
@@ -265,7 +286,6 @@ export class FocusController {
 			];
 		}
 		this.focusedBody = undefined;
-		controls.minDistance = POINT_MIN_DISTANCE;
 		this.promotion.emitUserPromotedCount();
 		prepareFocusTarget(
 			focus,
@@ -277,6 +297,33 @@ export class FocusController {
 		);
 		const spherical = cartesianToSpherical(camPos ?? camWorld, position, undefined);
 		callbacks.onCameraPosition?.(spherical.latitude, spherical.longitude, spherical.distance);
+	}
+
+	/**
+	 * A focus change that leaves the camera where it is: when the view is on
+	 * ground of the new focus, at a turn its height allows, the camera looks on
+	 * at that ground and settles turned over it. Otherwise it turns to the body.
+	 */
+	private looksOnOver(bodyPosition: Readonly<Vec3>): void {
+		const { focus, camera, controls } = this.deps;
+		const camWorld = this.cameraTruePos();
+		_from.set(
+			camWorld[0] - bodyPosition[0],
+			camWorld[1] - bodyPosition[1],
+			camWorld[2] - bodyPosition[2]
+		);
+		camera.getWorldDirection(_forward);
+		if (!controls.groundAlong(_from, _forward, _ground)) return;
+		if (!controls.looksOver(_from, _ground)) return;
+		// Before the aim is set: an aimed camera has no ground to read.
+		focus.aimPose = controls.lookPose(_from, _ground, new Quaternion());
+		focus.aim = [_ground.x, _ground.y, _ground.z];
+		focus.aimLooks = true;
+		// The turn is what the view sweeps: little or none, the spot staying put.
+		if (focus.focusDurationMs > 0) {
+			const angle = camera.quaternion.angleTo(focus.aimPose);
+			focus.focusDurationMs = angularDuration(angle, FOCUS_ROT_PACING);
+		}
 	}
 
 	/** Turn the camera to `direction` from where it stands, keeping the focus.
@@ -335,8 +382,7 @@ export class FocusController {
 	}
 
 	setFocusTarget(body: PositionedBody, camPos?: Vec3): void {
-		const { ctx, bodyObjects, controls, callbacks, focus, camera, systemData, loadTexture } =
-			this.deps;
+		const { ctx, bodyObjects, callbacks, focus, camera, systemData, loadTexture } = this.deps;
 		this.focusSets++;
 		// A surface feature renders nothing itself: the host draws the terrain.
 		// An extrasolar object takes only its halo and name: the starfield draws
@@ -344,8 +390,7 @@ export class FocusController {
 		const drawsItself = !isSurfaceFeature(body) && !isExtrasolar(body) && !isExoplanet(body);
 		if (!isSurfaceFeature(body)) this.promotion.ensureBodyObjects(body);
 
-		// Unfocused bodies stay halo-only for cost; minDistance below reads the
-		// focused body's mesh radius, so swap focus first.
+		// Unfocused bodies stay halo-only for cost.
 		const prev = this.focusedBody;
 		// Labels live on the landing body, not the probe — dispose only when it changes.
 		const prevNomBodyId = nomenclatureBodyId(prev, bodyObjects);
@@ -370,7 +415,6 @@ export class FocusController {
 		this.focusedBody = body;
 		// Retire the synthetic feature body so getBody stops resolving a stale id.
 		if (!isSurfaceFeature(body)) ctx.bodies.focusFeature = null;
-		controls.minDistance = minCameraDistance(body, modelMinRadiusKm(bodyObjects.get(body.data.id)));
 		// System/attribution follow the host (a crater has no ephemeris); camera
 		// still orbits the feature body.
 		const featureHost = isSurfaceFeature(body)
@@ -398,6 +442,7 @@ export class FocusController {
 				camPos,
 				sceneSettings().resolvedReducedMotion
 			);
+			if (!camPos) this.looksOnOver(pos);
 		}
 		// Re-emit: the clear button excludes the focused body, so it must stay in sync.
 		this.promotion.emitUserPromotedCount();
@@ -471,12 +516,18 @@ export class FocusController {
 
 	/** Instantly focus a now-resident body per the URL, no approach fly — for a
 	 *  late-arriving chunk landing after the camera settled on the placeholder parent. */
-	snapToBody(id: string, latitude: number, longitude: number, zoom: number): void {
+	snapToBody(
+		id: string,
+		latitude: number,
+		longitude: number,
+		zoom: number,
+		look: LookAngles = LEVEL_LOOK
+	): void {
 		const body = this.deps.ctx.getBody(id);
 		const pos = body && this.place(body);
 		if (!body || !pos) return;
 		this.settleOnBodyInstant(body, pos);
-		this.snapToBodyFrame(latitude, longitude, zoom);
+		this.snapToBodyFrame(latitude, longitude, zoom, look);
 	}
 
 	/** Snap focus onto a body, framed toward `towardId` (e.g. the Sun) at
@@ -545,7 +596,12 @@ export class FocusController {
 	/** Snap the camera to a body-fixed lat/lon/zoom for URL deep links, no fly.
 	 *  Uses the current quat (identity if not loaded); queues a replay to
 	 *  correct the angle once orientation lands. */
-	snapToBodyFrame(latitude: number, longitude: number, zoom: number): void {
+	snapToBodyFrame(
+		latitude: number,
+		longitude: number,
+		zoom: number,
+		look: LookAngles = LEVEL_LOOK
+	): void {
 		const body = this.focusedBody;
 		if (!body) return;
 		const { camera, controls, callbacks } = this.deps;
@@ -555,27 +611,29 @@ export class FocusController {
 		const camOffset = sphericalToCartesian([0, 0, 0], latitude, longitude, zoom, quat);
 		camera.position.set(camOffset[0], camOffset[1], camOffset[2]);
 		controls.update();
+		controls.setLook(look);
 		// Read back via cartesianToSpherical to canonicalize to (-180, 180] — feature
 		// lon is stored 0..360 and would otherwise leak straight to the URL.
 		const settled = cartesianToSpherical(camOffset, [0, 0, 0], quat);
-		callbacks.onCameraPosition?.(settled.latitude, settled.longitude, settled.distance);
-		// A view queued before this one would put the camera back where it was.
-		// This one is queued while the mesh has no spin: its angle is wrong till then.
-		this.pendingInitialView = bodyFixed && isIdentity(quat!) ? { latitude, longitude, zoom } : null;
+		callbacks.onCameraPosition?.(
+			settled.latitude,
+			settled.longitude,
+			settled.distance,
+			controls.look
+		);
+		// Held until the reader moves: the body's spin, its maps and its relief
+		// land after it, and each would leave the camera somewhere else.
+		this.pendingInitialView = bodyFixed ? { latitude, longitude, zoom, look } : null;
 	}
 
-	/** Re-place the camera at the URL's body-fixed lat/lon once orientation has
-	 *  loaded — the ctor's initial placement runs before that fetch and falls
-	 *  back to scene-frame. */
+	/** Put the camera back on the held view, once the body's spin has landed
+	 *  or its ground has moved: the first placement fell back to scene axes and
+	 *  to whatever floor the ground's data then allowed. */
 	reapplyInitialViewIfPending(): void {
 		const pending = this.pendingInitialView;
 		if (!pending) return;
-		const quat = this.focusedBodyQuat();
-		// Identity quat → no orientation data (e.g. asteroids); keep scene-frame placement.
-		if (!quat || isIdentity(quat)) {
-			this.pendingInitialView = null;
-			return;
-		}
+		// No spin yet, or none at all: scene axes, as the first placement.
+		const quat = this.focusedBodyQuat() ?? [0, 0, 0, 1];
 		const camPos = sphericalToCartesian(
 			[0, 0, 0],
 			pending.latitude,
@@ -585,7 +643,20 @@ export class FocusController {
 		);
 		this.deps.camera.position.set(...camPos);
 		this.deps.controls.update();
-		this.pendingInitialView = null;
+		this.deps.controls.setLook(pending.look ?? LEVEL_LOOK);
+	}
+
+	/** Per frame: once the ground's data moves the floor (its relief drawn,
+	 *  its maps' clearance known), the held view goes back where it was put,
+	 *  out of the push the earlier floor gave it. */
+	holdInitialView(): void {
+		if (!this.pendingInitialView) return;
+		const epoch = surfaceDataEpoch();
+		const floor = this.deps.controls.minDistance;
+		if (epoch === this.heldEpoch && floor === this.heldFloor) return;
+		this.heldEpoch = epoch;
+		this.heldFloor = floor;
+		this.reapplyInitialViewIfPending();
 	}
 }
 
@@ -595,11 +666,6 @@ export class FocusController {
 function framesInBodyAxes(b: PositionedBody): boolean {
 	if (isModelBearing(b) || isExtrasolar(b)) return false;
 	return !isExoplanet(b) || b.data.mapped === true;
-}
-
-/** A mesh quaternion with no spin on it yet. */
-function isIdentity(q: readonly number[]): boolean {
-	return q[0] === 0 && q[1] === 0 && q[2] === 0 && q[3] === 1;
 }
 
 /** Bodies whose mesh should be upgraded while `focus` is focused: the focus

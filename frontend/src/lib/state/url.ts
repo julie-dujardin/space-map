@@ -295,10 +295,14 @@ export function parseUrl(): MapViewState | null {
 	return applySharedParams(defaults);
 }
 
-/** Overlay the query blocks every route shares, `?at=<date,lat,lon,zoom>` and
- *  `&north=`, on top of a defaults object. */
+/** Overlay the query blocks every route shares, `?at=<date,lat,lon,zoom>`,
+ *  `&north=` and `&angle=`, on top of a defaults object. */
 function applySharedParams(view: MapViewState): MapViewState {
-	const defaults = { ...view, north: parseNorth(page.url.searchParams.get('north')) };
+	const defaults = {
+		...view,
+		north: parseNorth(page.url.searchParams.get('north')),
+		...parseAngle(page.url.searchParams.get('angle'))
+	};
 	const at = page.url.searchParams.get('at');
 	if (!at) return defaults;
 
@@ -316,6 +320,23 @@ function applySharedParams(view: MapViewState): MapViewState {
 		return { ...defaults, date, isNow };
 
 	return { ...defaults, date, isNow, latitude, longitude, zoom, framed: true };
+}
+
+/** `&angle=<pitch>,<bearing>` in degrees; a level view for anything else. */
+export function parseAngle(raw: string | null): { pitch: number; bearing: number } {
+	const parts = (raw ?? '').split(',');
+	const [pitch, bearing] = parts.map(Number);
+	if (parts.length !== 2 || !Number.isFinite(pitch) || !Number.isFinite(bearing)) {
+		return { pitch: 0, bearing: 0 };
+	}
+	return { pitch, bearing };
+}
+
+/** `&angle=` for a view that is not level, to a tenth of a degree. */
+function serializeAngle(pitch: number, bearing: number): string {
+	const p = pitch.toFixed(1);
+	const b = bearing.toFixed(1);
+	return Number(p) === 0 && Number(b) === 0 ? '' : `&angle=${p},${b}`;
 }
 
 /** Depth reached inside a drawer tab: a member page, a quadrangle or ring
@@ -585,13 +606,18 @@ export function applyFeature(
  *  `/g/culture-<key>/f/<figure>/<name>` for figures,
  *  `/x/<host>/b/<n>/<name>` for planets, or
  *  `/<type>/<id>/f/<featureId>/<name>` for features — plus the shared
- *  `?at=<date>,<lat>,<lon>,<zoom>` and `&north=` query blocks. */
+ *  `?at=<date>,<lat>,<lon>,<zoom>`, `&north=` and `&angle=` query blocks. */
 export function serializeUrl(state: MapViewState): string {
 	const r = (n: number) => n.toFixed(5);
 	const dateStr = state.isNow ? 'now' : state.date.toISOString();
-	const at = `${dateStr},${r(state.latitude)},${r(state.longitude)},${state.zoom.toPrecision(5).replace('e+', 'e')}`;
-	// The camera's north goes with the camera, on every route.
-	const north = state.north ? `&north=${encodeURIComponent(state.north)}` : '';
+	// The distance is from the body's centre: near the ground, nine digits keep
+	// a camera tens of metres up where it was.
+	const zoom = String(Number(state.zoom.toPrecision(9))).replace('e+', 'e');
+	const at = `${dateStr},${r(state.latitude)},${r(state.longitude)},${zoom}`;
+	// The camera's north and its angle go with the camera, on every route.
+	const north =
+		(state.north ? `&north=${encodeURIComponent(state.north)}` : '') +
+		serializeAngle(state.pitch, state.bearing);
 
 	const img =
 		typeof state.imageIndex === 'number' && Number.isInteger(state.imageIndex)

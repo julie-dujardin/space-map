@@ -4,6 +4,7 @@ import type { PerspectiveCamera, Quaternion } from 'three';
 import { Vector3 } from 'three';
 import type { Vec3 } from '$lib/scene/animation/math';
 import type { BodyObjects } from '$lib/scene/types';
+import { tilesDrawable } from '$lib/scene/objects/surface/tile-overlay';
 import { cartesianToSpherical, clampLongitude, sphericalToCartesian } from '$lib/math/spherical';
 
 /** Default surface clearance in km, by object type. */
@@ -53,6 +54,41 @@ export interface SurfaceClampContext {
 const _dirBF = new Vector3();
 const _corner = new Vector3();
 
+/** Clearance per km of the finest map pixel: from that height a pixel of the
+ *  map spans about three of a 1000 px tall view. */
+const CLEARANCE_PER_TEXEL = 300;
+
+/**
+ * Surface clearance in km for a body. Spacecraft/debris span ~0.3 m to ~100 m;
+ * a fixed clearance would block close approach to tiny craft, so fall back to a
+ * fraction of the radius to keep max zoom-in proportional to real size.
+ *
+ * Maps finer than that let the camera down until their finest pixel spans a
+ * few on screen. One floor for the whole body, so it does not move from place
+ * to place.
+ */
+export function surfaceClearanceKm(body: PositionedBody, finestTexelKm?: number): number {
+	const typical = SURFACE_CLEARANCE_KM[body.data.objectType] ?? effectiveRadiusKm(body.data) * 0.25;
+	return finestTexelKm === undefined
+		? typical
+		: Math.min(typical, finestTexelKm * CLEARANCE_PER_TEXEL);
+}
+
+/** Ground size in km of the finest pixel the body's drawn tile pyramids hold,
+ *  patches included. Undefined without one. */
+export function finestTexelKm(bo: BodyObjects): number | undefined {
+	const radiusKm = effectiveRadiusKm(bo.body.data);
+	if (!(radiusKm > 0)) return undefined;
+	let widest = 0;
+	for (const tiles of [bo.surfaceTiles, bo.displacementMeta?.tiles]) {
+		if (!tiles || !tilesDrawable(tiles)) continue;
+		const level = Math.max(tiles.max_level, ...(tiles.patches ?? []).map((p) => p.max_level));
+		// Level z is 2^(z+1) tiles around the equator.
+		widest = Math.max(widest, tiles.tile_size * 2 ** (level + 1));
+	}
+	return widest > 0 ? (2 * Math.PI * radiusKm) / widest : undefined;
+}
+
 /** Nearest and farthest the drawn relief comes to the body's centre, in km.
  *  Undefined for a body drawn without one. */
 export function reliefRadiiKm(bo: BodyObjects): { min: number; max: number } | undefined {
@@ -75,13 +111,6 @@ export function smallestRadiusKm(bo: BodyObjects): number {
 	return axes ? sceneToKm(Math.min(...axes)) : effectiveRadiusKm(bo.body.data);
 }
 
-/** Surface clearance in km for a body. Spacecraft/debris span ~0.3 m to ~100 m;
- *  a fixed clearance would block close approach to tiny craft, so fall back to a
- *  fraction of the radius to keep max zoom-in proportional to real size. */
-function surfaceClearanceKm(body: PositionedBody): number {
-	return SURFACE_CLEARANCE_KM[body.data.objectType] ?? effectiveRadiusKm(body.data) * 0.25;
-}
-
 /** Closest the orbit controls may bring the camera to a focus with no body: it
  *  has no surface to keep off. */
 export const POINT_MIN_DISTANCE = kmToScene(0.01);
@@ -91,8 +120,14 @@ export const POINT_MIN_DISTANCE = kmToScene(0.01);
  *  the fence is a sphere, so an elongated model would otherwise wall the camera
  *  off far from its narrow sides — {@link clampCameraOutsideBody} holds the
  *  real surface there. */
-export function minCameraDistance(body: PositionedBody, minRadiusKm?: number): number {
-	return kmToScene((minRadiusKm ?? effectiveRadiusKm(body.data)) + surfaceClearanceKm(body));
+export function minCameraDistance(
+	body: PositionedBody,
+	minRadiusKm?: number,
+	finestTexelKm?: number
+): number {
+	return kmToScene(
+		(minRadiusKm ?? effectiveRadiusKm(body.data)) + surfaceClearanceKm(body, finestTexelKm)
+	);
 }
 
 /**
@@ -116,7 +151,8 @@ export function clampCameraOutsideBody(
 	camera: PerspectiveCamera,
 	body: PositionedBody,
 	focusTruePos: Vec3,
-	surface?: SurfaceClampContext
+	surface?: SurfaceClampContext,
+	clearanceKm = surfaceClearanceKm(body)
 ): void {
 	const radiusKm = body.data.radiusKm;
 	const at = body.position;
@@ -182,7 +218,6 @@ export function clampCameraOutsideBody(
 		return;
 	}
 
-	const clearanceKm = surfaceClearanceKm(body);
 	// The bounding sphere gates the sampling, but never becomes the wall: for a
 	// lumpy model it sits well outside the surface, and falling back to it would
 	// fling a close-up camera out by most of a radius.
@@ -230,9 +265,10 @@ export interface CameraBand {
 }
 
 /**
- * Hold the camera inside the band the host allows the reader. The camera sits
- * at the origin's body, so its position reads straight off as the lat, lon and
- * distance {@link SpaceMap.getCamera} reports, and goes back the same way.
+ * Hold the place the camera orbits from inside the band the host allows the
+ * reader. It is given from the origin's body, so it reads straight off as the
+ * lat, lon and distance {@link SpaceMap.getCamera} reports, and goes back the
+ * same way.
  *
  * Reader input only: the caller decides when a move is the reader's, and a
  * programmatic flight is never clamped. Run it before the surface clamps —
@@ -241,11 +277,10 @@ export interface CameraBand {
  * through the ground.
  */
 export function clampCameraToLimits(
-	camera: PerspectiveCamera,
+	cam: Vector3,
 	band: CameraBand,
 	bodyQuat?: [number, number, number, number]
 ): void {
-	const cam = camera.position;
 	const { latitude, longitude, distance } = cartesianToSpherical(
 		[cam.x, cam.y, cam.z],
 		[0, 0, 0],
