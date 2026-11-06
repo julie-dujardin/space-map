@@ -16,7 +16,7 @@ from space_map_data.models.object import Object
 
 
 def _ctx() -> ObjectDataContext:
-    return cast(ObjectDataContext, SimpleNamespace(wikidata_entities=None, units=None))
+    return cast(ObjectDataContext, SimpleNamespace(body_radii=None))
 
 
 def _sat() -> Object:

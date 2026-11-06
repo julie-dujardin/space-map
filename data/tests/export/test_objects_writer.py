@@ -2,6 +2,7 @@
 
 import gzip
 import math
+from typing import ClassVar
 from unittest.mock import MagicMock
 
 import orjson
@@ -9,6 +10,11 @@ import pytest
 
 from space_map_data.export.names import Names
 from space_map_data.export.objects import writer
+from space_map_data.export.objects.body_radius import (
+    BodyRadii,
+    BodyRadius,
+    kernel_shapes,
+)
 from space_map_data.export.objects.compact import CompactMap
 from space_map_data.export.objects.pick import pick_attrs
 from space_map_data.export.objects.writer import (
@@ -18,12 +24,10 @@ from space_map_data.export.objects.writer import (
     _iso_currency_code,
     build_model_sources,
     hash_bucket,
-    radii_block,
     render_quality,
     write_object_bundles,
 )
 from space_map_data.models.object import ModelProvenance, ObjectType
-from space_map_data.models.object.sbdb import SBDB
 from tests.conftest import EntityStub, make_object
 from tests.export.conftest import layers_of
 
@@ -211,7 +215,7 @@ class TestRenderQuality:
             model_name="cassini",
             model_provenance=ModelProvenance.spacecraft,
         )
-        assert render_quality(obj, {}) == "high"
+        assert render_quality(obj, None) == "high"
 
     def test_shape_model_is_high(self):
         obj = make_object(
@@ -220,11 +224,11 @@ class TestRenderQuality:
             model_name="eros-near",
             model_provenance=ModelProvenance.missions,
         )
-        assert render_quality(obj, {}) == "high"
+        assert render_quality(obj, None) == "high"
 
     def test_texture_only_is_high(self):
         obj = make_object(map_texture_available=True)
-        assert render_quality(obj, {}) == "high"
+        assert render_quality(obj, None) == "high"
 
     def test_lightcurve_model_is_medium_despite_diameter(self):
         obj = make_object(
@@ -234,8 +238,8 @@ class TestRenderQuality:
             model_name="damit-104",
             model_provenance=ModelProvenance.lightcurve,
         )
-        obj.sbdb = SBDB(spkid=2000021, object_id="spkid-2000021", diameter=98.0)
-        assert render_quality(obj, {}) == "medium"
+        size = BodyRadius(49.0, 49.0, 49.0, "sbdb")
+        assert render_quality(obj, size) == "medium"
 
     def test_texture_outranks_lightcurve_model(self):
         obj = make_object(
@@ -243,28 +247,34 @@ class TestRenderQuality:
             model_provenance=ModelProvenance.lightcurve,
             map_texture_available=True,
         )
-        assert render_quality(obj, {}) == "high"
+        assert render_quality(obj, None) == "high"
 
     def test_star_is_high_without_texture(self):
         obj = make_object(id="naif-10", object_type=ObjectType.star, naif_id=10)
-        radii = {10: {"a": 695700.0, "b": 695700.0, "c": 695700.0}}
-        assert render_quality(obj, radii) == "high"
+        size = BodyRadius(695700.0, 695700.0, 695700.0, "pck")
+        assert render_quality(obj, size) == "high"
 
     def test_pck_radii_only_is_low(self):
         obj = make_object(id="naif-901", object_type=ObjectType.moon, naif_id=901)
-        radii = {901: {"a": 606.0, "b": 606.0, "c": 606.0}}
-        assert render_quality(obj, radii) == "low"
+        size = BodyRadius(606.0, 606.0, 606.0, "pck")
+        assert render_quality(obj, size) == "low"
 
     def test_sbdb_diameter_only_is_low(self):
         obj = make_object(
             id="spkid-2000433", object_type=ObjectType.asteroid, spkid=2000433
         )
-        obj.sbdb = SBDB(spkid=2000433, object_id="spkid-2000433", diameter=16.8)
-        assert render_quality(obj, {}) == "low"
+        size = BodyRadius(8.4, 8.4, 8.4, "sbdb")
+        assert render_quality(obj, size) == "low"
+
+    def test_a_catalogue_size_is_low(self):
+        """Weywot: only AsterSat sizes it."""
+        obj = make_object(id="spkid-120050000", object_type=ObjectType.moon)
+        size = BodyRadius(40.5, 40.5, 40.5, "astersat")
+        assert render_quality(obj, size) == "low"
 
     def test_no_size_signal_is_none(self):
         obj = make_object(id="probe-2", object_type=ObjectType.spacecraft)
-        assert render_quality(obj, {}) is None
+        assert render_quality(obj, None) is None
 
 
 class TestBuildModelSources:
@@ -371,41 +381,79 @@ class TestLinkNames:
         assert self._localized("fr") == {}
 
 
-class TestRadiiBlock:
-    """Which table a body's ellipsoid was read off, so the sidebar credits it."""
+class TestBundleRadius:
+    """The bundle sizes a body from `body_radius`, never from a Wikidata claim."""
 
-    def test_kernel_body_is_pck(self):
-        assert radii_block(599) == {"radii_source": "pck"}
+    _WIKIDATA_RADIUS: ClassVar[dict] = {"radius": {"value": 100.0, "unit": "kilometre"}}
 
-    def test_kernel_body_cites_no_paper(self):
-        assert "radii_reference" not in radii_block(599)
+    @pytest.fixture(autouse=True)
+    def _no_images(self, monkeypatch):
+        monkeypatch.setattr(writer, "collect_object_images", lambda object_id: None)
+        monkeypatch.setattr(writer, "panoramas_block", lambda object_id: None)
 
-    def test_ringed_small_body_is_its_occultation_fit(self):
-        # Chariklo — no PCK covers it; the chords give pole and limb together.
-        assert radii_block(2010199)["radii_source"] == "occultation"
+    @staticmethod
+    def _weywot():
+        return make_object(
+            id="spkid-120050000",
+            name="Weywot",
+            naif_id=None,
+            wikidata_qid="Q83894",
+            object_type=ObjectType.moon,
+        )
 
-    def test_photometric_shape_is_not_called_an_occultation(self):
-        # Varuna's axes come from 19 years of light-curve amplitude, no chords.
-        assert radii_block(2020000)["radii_source"] == "photometry"
+    def test_a_catalogue_size_beats_the_wikidata_radius(self):
+        radii = BodyRadii(
+            sizes={"spkid-120050000": BodyRadius(40.5, 40.5, 40.5, "astersat")},
+            wikidata_km=lambda qid: 100.0,
+        )
+        data = TestPlanetFamilies._global(
+            self._weywot(), {}, body_radii=radii, extracted=self._WIKIDATA_RADIUS
+        )
+        assert data["radii"] == {"a": 40.5, "b": 40.5, "c": 40.5}
+        assert data["radii_source"] == "astersat"
+        assert "radius" not in data.get("wikidata", {})
 
-    def test_measured_shape_cites_the_work_that_fitted_it(self):
-        # Bienor's pole is a 2017 paper, its ellipsoid a 2024 one — the size
-        # rows must credit the latter.
-        assert radii_block(2054598)["radii_reference"]["url"].endswith("202450833")
+    def test_the_wikidata_radius_rides_in_radii(self):
+        radii = BodyRadii(wikidata_km=lambda qid: 100.0)
+        data = TestPlanetFamilies._global(
+            self._weywot(), {}, body_radii=radii, extracted=self._WIKIDATA_RADIUS
+        )
+        assert data["radii"] == {"a": 100.0, "b": 100.0, "c": 100.0}
+        assert data["radii_source"] == "wikidata"
+        assert "radius" not in data.get("wikidata", {})
+
+    def test_a_measured_shape_cites_the_work_that_fitted_it(self):
+        # Bienor's pole is a 2017 paper, its ellipsoid a 2024 one: the size
+        # rows credit the second.
+        bienor = make_object(
+            id="spkid-20054598", naif_id=2054598, object_type=ObjectType.asteroid
+        )
+        radii = BodyRadii(kernel_shapes({2054598: {"a": 1.0, "b": 1.0, "c": 1.0}}))
+        data = TestPlanetFamilies._global(bienor, {}, body_radii=radii)
+        assert data["radii_source"] == "occultation"
+        assert data["radii_reference"]["url"].endswith("202450833")
+
+    def test_a_body_with_no_size_has_no_radii(self):
+        data = TestPlanetFamilies._global(self._weywot(), {})
+        assert "radii" not in data
 
 
 class TestPlanetFamilies:
     """A Solar System planet's page carries its planet families."""
 
     @staticmethod
-    def _global(obj, planet_families: dict[str, list[str]]) -> dict:
+    def _global(
+        obj,
+        planet_families: dict[str, list[str]],
+        body_radii: BodyRadii | None = None,
+        extracted: dict | None = None,
+    ) -> dict:
         entities = MagicMock()
         entities.get_entity.return_value = None
         entities.get_referenced.return_value = None
         names = (
             "nasa_science_urls",
             "orientation",
-            "radii",
             "gms",
             "nut_prec",
             "model_sources",
@@ -422,9 +470,10 @@ class TestPlanetFamilies:
             obj,
             Names(obj.name),
             None,
-            {},
+            extracted or {},
             entities,
             MagicMock(),
+            body_radii=body_radii or BodyRadii(),
             layers=layers_of(),
             nomenclature_body_ids=set(),
             planet_families=planet_families,

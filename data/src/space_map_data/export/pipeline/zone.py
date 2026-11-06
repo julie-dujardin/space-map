@@ -9,6 +9,7 @@ from pathlib import Path
 
 from space_map_data.export.earth_sat_filter import is_docked
 from space_map_data.export.names import Names, ObjectNames, resolve_wikidata_qid
+from space_map_data.export.objects.body_radius import BodyRadii
 from space_map_data.export.objects.moon_sources import MoonSourceBlocks
 from space_map_data.export.objects.rings import RingMoon
 from space_map_data.export.objects.writer import (
@@ -58,7 +59,8 @@ class ObjectDataContext:
     units: UnitConverter
     nasa_science_urls: dict[str, str]
     orientation: dict[int, dict]
-    radii: dict[int, dict]
+    # The size of each body, by the source order of `body_radius`.
+    body_radii: BodyRadii
     gms: dict[int, float]
     nut_prec: dict[int, dict[str, list[float]]]
     texture_layers: TextureLayers
@@ -149,7 +151,7 @@ def build_zone_object_data(
         ctx.units,
         ctx.nasa_science_urls,
         orientation=ctx.orientation,
-        radii=ctx.radii,
+        body_radii=ctx.body_radii,
         gms=ctx.gms,
         nut_prec=ctx.nut_prec,
         layers=ctx.texture_layers,
@@ -190,8 +192,7 @@ def _write_element_parts(
     zone: str,
     zoom: int,
     has_localized: dict[str, bool],
-    wikidata_entities: WikidataEntityCache,
-    units: UnitConverter,
+    body_radii: BodyRadii,
     time: str | None,
     validity_start_jd: float = UNBOUNDED_START_JD,
     validity_end_jd: float = UNBOUNDED_END_JD,
@@ -211,16 +212,14 @@ def _write_element_parts(
     num_parts = max(1, math.ceil(len(objects) / CHUNK_SIZE))
     for part_idx in range(num_parts):
         chunk = objects[part_idx * CHUNK_SIZE : (part_idx + 1) * CHUNK_SIZE]
-        chunk_entities = _entities_for(chunk, wikidata_entities)
         write_chunk(
             chunk,
             out_dir,
             zone,
             zoom,
             part_offset + part_idx,
-            chunk_entities,
+            body_radii,
             has_localized,
-            units,
             _chunk_source(chunk, zone, part_idx),
             time=time,
             validity_start_jd=validity_start_jd,
@@ -301,8 +300,7 @@ def export_zone(
             zone,
             zoom,
             zone_data.has_localized,
-            ctx.wikidata_entities,
-            ctx.units,
+            ctx.body_radii,
             time=snap.label,
             validity_start_jd=snap.validity_start_jd,
             validity_end_jd=snap.validity_end_jd,
@@ -430,8 +428,7 @@ def export_earth_zone(
             "earth",
             0,
             zone_data.has_localized,
-            ctx.wikidata_entities,
-            ctx.units,
+            ctx.body_radii,
             time=date_iso,
         )
         built[date_iso] = SnapshotResult(

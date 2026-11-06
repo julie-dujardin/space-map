@@ -25,6 +25,7 @@ from space_map_data.export.notable import (
     render_geometry,
     textured_object_ids,
 )
+from space_map_data.export.objects.body_radius import BodyRadii, BodyRadius
 from space_map_data.export.objects.writer import ChunkObjectData
 from space_map_data.export.small_body_color import resolve_major_body_color
 from space_map_data.models.object.main import Object, ObjectType
@@ -47,17 +48,8 @@ class HostMoons:
     named: int  # moons with an IAU name (asteroid moonlets are mostly unnamed)
 
 
-def _mean_diameter_km(naif_id: int | None, radii: dict[int, dict]) -> float | None:
-    """Mean triaxial diameter (km) from PCK radii, or None when unavailable."""
-    if naif_id is None:
-        return None
-    r = radii.get(naif_id)
-    if not r:
-        return None
-    vals = [v for v in (r.get("a"), r.get("b"), r.get("c")) if v is not None]
-    if not vals:
-        return None
-    return sum(vals) / len(vals) * 2.0
+def _mean_diameter_km(size: BodyRadius | None) -> float | None:
+    return size.diameter_km if size is not None else None
 
 
 def _resolve_host(session: Session, parent_id: str) -> str:
@@ -86,7 +78,7 @@ def _resolve_host(session: Session, parent_id: str) -> str:
 def notable_moons_by_host(
     session: Session,
     names: ObjectNames,
-    radii: dict[int, dict],
+    radii: BodyRadii,
     poles: dict[int, dict],
 ) -> dict[str, HostMoons]:
     """Top moons per host body, keyed by the host's Object.id.
@@ -122,29 +114,33 @@ def notable_moons_by_host(
     result: dict[str, HostMoons] = {}
     for parent_id, children in by_parent.items():
         host_id = _resolve_host(session, parent_id)
+        sizes = {
+            r.id: radii.pick(r.id, r.naif_id, r.wikidata_qid, ObjectType.moon)
+            for r in children
+        }
         # Stable id pre-sort so equal-ranked moons keep a deterministic order.
         children.sort(key=lambda r: r.id)
         children.sort(
             key=lambda r: (
                 r.image_available,
                 r.sitelinks_count,
-                _mean_diameter_km(r.naif_id, radii) or 0.0,
+                _mean_diameter_km(sizes[r.id]) or 0.0,
             ),
             reverse=True,
         )
         top = children[:NOTABLE_MOON_COUNT]
         moons = []
         for r in top:
-            # Triaxial radii + pole give the lineup its true oblate shape and tilt
-            # (the same geometry as the 3D scene); diameter_km stays for the list.
-            geo = render_geometry(r.naif_id, r.wikidata_qid, radii, poles=poles)
+            # The lineup draws the shape and the tilt; diameter_km is for the list.
+            size = sizes[r.id]
+            geo = render_geometry(size, r.naif_id, poles)
             surface = resolve_major_body_color(r.naif_id)
             moons.append(
                 NotableObject(
                     object_id=r.id,
                     wikidata_qid=r.wikidata_qid,
                     names=names.object(r.id),
-                    diameter_km=_mean_diameter_km(r.naif_id, radii),
+                    diameter_km=_mean_diameter_km(size),
                     first_obs=None,
                     radii=geo.radii,
                     pole=geo.pole,
@@ -176,7 +172,7 @@ def attach_notable_moons(
     session: Session,
     chunk: ChunkObjectData,
     names: ObjectNames,
-    radii: dict[int, dict],
+    radii: BodyRadii,
     poles: dict[int, dict],
     displacement_metadata: dict[str, dict] | None = None,
     model_slugs: dict[str, str] | None = None,

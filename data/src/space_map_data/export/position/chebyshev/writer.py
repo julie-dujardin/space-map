@@ -17,7 +17,7 @@ import orjson
 from sqlalchemy.orm import Session
 
 from space_map_data.constants.providers import ID_TYPES
-from space_map_data.export.position.elements.writer import object_radius_km
+from space_map_data.export.objects.body_radius import BodyRadii
 from space_map_data.export.position.format import (
     CHEBYSHEV_FLAG_FLOAT64_COEFFS,
     ID_TYPE_ORDINAL,
@@ -251,7 +251,7 @@ def write_chebyshev(
     session: Session,
     download_dir: Path,
     out_dir: Path,
-    radii: dict[int, dict],
+    radii: BodyRadii,
     has_localized: dict[str, bool],
 ) -> dict[str, dict]:
     """Write Chebyshev exports, partitioned by zone and time chunk.
@@ -305,18 +305,16 @@ def write_chebyshev(
         if not should_export(obj, naif_id):
             skipped_filter += 1
             continue
-        # Most asteroids have no PCK radii entry; fall back to SBDB diameter so
-        # the frontend gets a real size (camera floor, halo yield, size note).
-        radius = (radii.get(naif_id) or {}).get("a")
+        # The first semi-axis of the `body_radius` pick: the size for the camera
+        # floor, the halo yield and the size note.
+        size = radii.of(obj)
+        radius = size.a if size is not None else None
         if radius is None:
-            radius = object_radius_km(obj)
-            if math.isnan(radius):
-                radius = None
-                logger.debug(
-                    "Chebyshev: no radius for %s (naif_id=%d); exporting NaN",
-                    obj.id,
-                    naif_id,
-                )
+            logger.debug(
+                "Chebyshev: no radius for %s (naif_id=%d); exporting NaN",
+                obj.id,
+                naif_id,
+            )
         zone = _determine_zone(obj.object_type, parent_id)
         has_loc = bool(has_localized.get(obj.id, False))
         zone_bodies[zone].append(

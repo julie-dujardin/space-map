@@ -29,7 +29,7 @@ from space_map_data.export.groups.registry import (
 )
 from space_map_data.export.names import Names, ObjectNames
 from space_map_data.export.notable import NotableObject, render_geometry
-from space_map_data.export.quantities import UnitConverter
+from space_map_data.export.objects.body_radius import BodyRadii
 from space_map_data.export.small_body_color import (
     albedo_beyond_hex,
     resolve_small_body_color,
@@ -231,8 +231,7 @@ def _notable_members(
     session: Session,
     names: ObjectNames,
     *filter_clauses,
-    radii: dict[int, dict] | None = None,
-    units: UnitConverter | None = None,
+    radii: BodyRadii | None = None,
     poles: dict[int, dict] | None = None,
 ) -> list[NotableObject]:
     """Top members by (has image, sitelinks, diameter, brightness).
@@ -244,17 +243,16 @@ def _notable_members(
     planets (Ceres, Pluto, …) still rank. spkid tiebreak keeps the selection
     deterministic across exports.
 
-    ``radii``/``units`` and the Wikidata items resolve each member's render size
-    (PCK triaxial radii or the Wikidata-radius override) so the lineup hero
-    sizes dwarf planets the same way the 3D scene does. ``poles`` gives the
-    PCK dwarfs (Ceres in MBA, Pluto in TNO) the same axial tilt they get on the
-    dwarf-planet page.
+    ``radii`` gives each member the render size the 3D scene draws. ``poles``
+    gives the PCK dwarfs (Ceres in MBA, Pluto in TNO) the axial tilt they get
+    on the dwarf-planet page.
     """
     rows = (
         session.query(
             Object.id,
             Object.naif_id,
             Object.wikidata_qid,
+            Object.object_type,
             SBDB.spkid,
             SBDB.diameter,
             SBDB.first_obs,
@@ -276,13 +274,14 @@ def _notable_members(
         .limit(NOTABLE_MEMBER_COUNT)
         .all()
     )
-    radii = radii or {}
+    radii = radii or BodyRadii()
     members: list[NotableObject] = []
     for row in rows:
         (
             object_id,
             naif_id,
             qid,
+            object_type,
             spkid,
             diameter,
             first_obs,
@@ -290,7 +289,8 @@ def _notable_members(
             spec_b,
             spec_t,
         ) = row
-        geo = render_geometry(naif_id, qid, radii, units, names.entities, poles)
+        size = radii.pick(object_id, naif_id, qid, object_type)
+        geo = render_geometry(size, naif_id, poles)
         surface = resolve_small_body_color(object_id, spkid, spec_b or spec_t, albedo)
         members.append(
             NotableObject(
@@ -300,7 +300,6 @@ def _notable_members(
                 diameter_km=diameter,
                 first_obs=first_obs,
                 radii=geo.radii,
-                radius_km=geo.radius_km,
                 pole=geo.pole,
                 albedo=albedo,
                 # SMASS (spec_B) preferred over Tholen (spec_T).
@@ -316,8 +315,7 @@ def _notable_members(
 def build_small_body_group_stats(
     session: Session,
     names: ObjectNames,
-    radii: dict[int, dict] | None = None,
-    units: UnitConverter | None = None,
+    radii: BodyRadii | None = None,
     poles: dict[int, dict] | None = None,
 ) -> SmallBodyGroupStats:
     """Return member counts and discovery-year histograms per small-body group.
@@ -325,7 +323,7 @@ def build_small_body_group_stats(
     All aggregation runs in SQL — the function pulls only summary rows
     (~5k for class×year histograms, ~200 each for NEO/PHA). Rows lacking a
     parseable year are excluded from histograms but still count toward
-    ``member_counts``. ``radii``/``units``/``poles`` give notable members
+    ``member_counts``. ``radii``/``poles`` give notable members
     their render size + tilt for the lineup hero.
     """
     base = (
@@ -473,7 +471,6 @@ def build_small_body_group_stats(
             names,
             SBDB.class_ == cls,
             radii=radii,
-            units=units,
             poles=poles,
         )
         if members:
@@ -483,7 +480,6 @@ def build_small_body_group_stats(
         names,
         SBDB.neo.is_(True),
         radii=radii,
-        units=units,
         poles=poles,
     )
     if neo_notable:
@@ -493,7 +489,6 @@ def build_small_body_group_stats(
         names,
         SBDB.pha.is_(True),
         radii=radii,
-        units=units,
         poles=poles,
     )
     if pha_notable:

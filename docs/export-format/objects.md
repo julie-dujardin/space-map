@@ -58,7 +58,7 @@ interface GlobalObjectData {
     archive_url?: string;
     mission?: { name: string; primary_type: "object"; primary_id: string }; // observing spacecraft (mission shapes only); primary_id is "probe-<id>"; `name` is the global name of the craft's page, other languages in LocalizedObjectData.link_names
   };
-  render_quality?: "high" | "medium" | "low"; // best-available-asset render tier: high = faithful 3D model (spacecraft/mission/radar), map texture, or procedural star surface; medium = lightcurve-inversion convex hull only; low = size-only sphere/ellipsoid (PCK radii or SBDB diameter). Absent → no known physical extent, halo/point at best
+  render_quality?: "high" | "medium" | "low"; // best-available-asset render tier: high = faithful 3D model (spacecraft/mission/radar), map texture, or procedural star surface; medium = lightcurve-inversion convex hull only; low = size-only sphere/ellipsoid of the `body_radius` pick (`radii`, or `sbdb.diameter` where SBDB is the best size). Absent → no known physical extent, halo/point at best
   atmosphere?: {                      // cited atmospheric facts for the ~24 bodies with a measured envelope (see below)
     type: string;                     // "stellar_atmosphere" | "gas_giant_envelope" | "thick_atmosphere" | "thin_atmosphere" | "tenuous_collisional" | "tenuous_exosphere" | "exosphere" | "transient_exosphere" | "localized_plume" | "frozen_collapsed" | "none_detected"
     note?: string;                    // what sustains or varies it ("volcanic", "seasonal_orbit", "sputtered_ice", …); the frontend holds the sentence
@@ -327,9 +327,11 @@ interface GlobalObjectData {
     // α += Σ ra[i]  · sin(θ_i(T)),  δ += Σ dec[i] · cos(θ_i(T)),  W += Σ pm[i] · sin(θ_i(T))
     ra: number[]; dec: number[]; pm: number[];
   };
-  radii?: {                           // triaxial radii (km, body-fixed X/Y/Z): SPICE PCK, else an occultation-fitted ellipsoid
+  radii?: {                           // semi-axes (km, body-fixed X/Y/Z) from `export/objects/body_radius.py`; a = b = c for a source that gives one size. Absent where SBDB's diameter is the best size (it stays in `sbdb.diameter`)
     a: number; b: number; c: number;
   };
+  radii_source?: "pck" | "occultation" | "photometry" | "astersat" | "johnston" | "wikidata"; // with `radii`, best source first: the SPICE PCK or a fitted ellipsoid, then SBDB (not written here), AsterSat for a satellite, Johnston's Archive, AsterSat for a primary, Wikidata P2120 (else half of P2386)
+  radii_reference?: { title: string; url: string }; // the work that fitted an `occultation` or `photometry` ellipsoid
   pointing?: {                        // hand-edited per-spacecraft attitude (spacecraft-orientation.yaml)
     // The frontend aims the focused model's `primary.axis` exactly at the
     // `primary.target` direction, then rolls so `secondary.axis` points as
@@ -405,7 +407,6 @@ interface GlobalObjectData {
     discovery_date?: string;  // ISO 8601
     launch_date?: string;
     mass?: QuantityWithUnit;
-    radius?: QuantityWithUnit;
     density?: QuantityWithUnit;
     surface_gravity?: QuantityWithUnit;
     absolute_magnitude?: number;

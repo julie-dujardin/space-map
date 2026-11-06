@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from space_map_data.constants.promoted import PROMOTED_EXTRA_IDS, PROMOTED_TYPES
 from space_map_data.export.labels import _promoted_ids
+from space_map_data.export.objects.body_radius import BodyRadii
 from space_map_data.export.position.chebyshev.coverage import (
     chebyshev_coverage,
     chebyshev_written_ids,
@@ -96,7 +97,9 @@ class TestTargetPool:
     def test_targets_ship_alongside_the_perturbers(
         self, session, download_dir, tmp_path
     ):
-        manifest = write_chebyshev(session, download_dir, tmp_path / "out", {}, {})
+        manifest = write_chebyshev(
+            session, download_dir, tmp_path / "out", BodyRadii(), {}
+        )
         assert set(manifest) == {"major_asteroids"}
 
     def test_a_body_in_both_pools_is_read_once(self, download_dir):

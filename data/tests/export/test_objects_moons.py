@@ -4,9 +4,13 @@ import pytest
 from sqlalchemy.orm import Session
 
 from space_map_data.export.names import ObjectNames
+from space_map_data.export.objects.body_radius import (
+    BodyRadii,
+    BodyRadius,
+    kernel_shapes,
+)
 from space_map_data.export.objects.moons import (
     NOTABLE_MOON_COUNT,
-    _mean_diameter_km,
     notable_moons_by_host,
 )
 from space_map_data.models.object import Object, ObjectType
@@ -22,6 +26,11 @@ RADII = {
     501: {"a": 1829.4, "b": 1819.3, "c": 1815.7},  # Io
     502: {"a": 1562.6, "b": 1560.3, "c": 1559.5},  # Europa
 }
+# Dysnomia's Johnston diameter, halved.
+BODY_RADII = BodyRadii(
+    kernel_shapes(RADII),
+    {"spkid-120136199": BodyRadius(350.0, 350.0, 350.0, "johnston")},
+)
 # IAU pole keyed by naif_id. Io only, so Europa exercises the untilted path.
 POLES = {501: {"ra": 268.05, "dec": 64.50}}
 
@@ -52,13 +61,6 @@ def _add(
     )
 
 
-def test_mean_diameter_from_radii() -> None:
-    assert _mean_diameter_km(None, RADII) is None
-    assert _mean_diameter_km(999, RADII) is None  # not in table
-    # (1829.4 + 1819.3 + 1815.7) / 3 * 2
-    assert _mean_diameter_km(501, RADII) == pytest.approx(3642.93, abs=0.1)
-
-
 class TestNotableMoonsByHost:
     def test_barycenter_moons_attach_to_planet_host(self, session: Session) -> None:
         _add(session, "naif-5", ObjectType.barycenter)
@@ -85,7 +87,7 @@ class TestNotableMoonsByHost:
         )
         session.commit()
 
-        hosts = notable_moons_by_host(session, _names(session), RADII, POLES)
+        hosts = notable_moons_by_host(session, _names(session), BODY_RADII, POLES)
         # Keyed by the planet, not the barycenter.
         assert set(hosts) == {"naif-599"}
         host = hosts["naif-599"]
@@ -112,13 +114,29 @@ class TestNotableMoonsByHost:
         )
         session.commit()
 
-        hosts = notable_moons_by_host(session, _names(session), RADII, POLES)
+        hosts = notable_moons_by_host(session, _names(session), BODY_RADII, POLES)
         assert set(hosts) == {"spkid-20000130"}
         assert hosts["spkid-20000130"].total == 1
         # No naif_id / radii → no diameter, no discovery date.
         moon = hosts["spkid-20000130"].moons[0]
         assert moon.diameter_km is None
         assert moon.first_obs is None
+
+    def test_a_catalogue_size_sizes_an_asteroid_moon(self, session: Session) -> None:
+        _add(session, "spkid-20136199", ObjectType.dwarf_planet, name="Eris")
+        _add(
+            session,
+            "spkid-120136199",
+            ObjectType.moon,
+            name="Dysnomia",
+            parent_id="spkid-20136199",
+        )
+        session.commit()
+
+        hosts = notable_moons_by_host(session, _names(session), BODY_RADII, POLES)
+        (moon,) = hosts["spkid-20136199"].moons
+        assert moon.diameter_km == 700.0
+        assert moon.radii == {"a": 350.0, "b": 350.0, "c": 350.0, "source": "johnston"}
 
     def test_named_count_excludes_unnamed_moons(self, session: Session) -> None:
         _add(session, "spkid-1", ObjectType.asteroid, name="Ida")
@@ -127,7 +145,9 @@ class TestNotableMoonsByHost:
         _add(session, "spkid-3", ObjectType.moon, name=None, parent_id="spkid-1")
         session.commit()
 
-        host = notable_moons_by_host(session, _names(session), RADII, POLES)["spkid-1"]
+        host = notable_moons_by_host(session, _names(session), BODY_RADII, POLES)[
+            "spkid-1"
+        ]
         assert host.total == 2
         assert host.named == 1
 
@@ -142,7 +162,9 @@ class TestNotableMoonsByHost:
         _add(session, "naif-591", ObjectType.moon, parent_id="naif-5", sitelinks=10)
         session.commit()
 
-        host = notable_moons_by_host(session, _names(session), RADII, POLES)["naif-599"]
+        host = notable_moons_by_host(session, _names(session), BODY_RADII, POLES)[
+            "naif-599"
+        ]
         assert [m.object_id for m in host.moons] == ["naif-590", "naif-591", "naif-501"]
 
     def test_id_tiebreak_is_deterministic(self, session: Session) -> None:
@@ -152,7 +174,9 @@ class TestNotableMoonsByHost:
             _add(session, f"naif-{n}", ObjectType.moon, parent_id="naif-5")
         session.commit()
 
-        host = notable_moons_by_host(session, _names(session), RADII, POLES)["naif-599"]
+        host = notable_moons_by_host(session, _names(session), BODY_RADII, POLES)[
+            "naif-599"
+        ]
         assert [m.object_id for m in host.moons] == ["naif-510", "naif-511", "naif-512"]
 
     def test_limits_to_notable_moon_count(self, session: Session) -> None:
@@ -162,7 +186,9 @@ class TestNotableMoonsByHost:
             _add(session, f"naif-{600 + n}", ObjectType.moon, parent_id="naif-5")
         session.commit()
 
-        host = notable_moons_by_host(session, _names(session), RADII, POLES)["naif-599"]
+        host = notable_moons_by_host(session, _names(session), BODY_RADII, POLES)[
+            "naif-599"
+        ]
         assert len(host.moons) == NOTABLE_MOON_COUNT
         assert host.total == NOTABLE_MOON_COUNT + 5
 
@@ -173,5 +199,5 @@ class TestNotableMoonsByHost:
         _add(session, "naif-501", ObjectType.moon, parent_id="naif-5")
         session.commit()
 
-        hosts = notable_moons_by_host(session, _names(session), RADII, POLES)
+        hosts = notable_moons_by_host(session, _names(session), BODY_RADII, POLES)
         assert set(hosts) == {"naif-5"}

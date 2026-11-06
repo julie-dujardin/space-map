@@ -7,6 +7,8 @@ import struct
 import pytest
 
 from space_map_data.constants.providers import ID_TYPES
+from space_map_data.export.objects.body_radius import BodyRadii, BodyRadius
+from space_map_data.export.position.elements.chunk import radius_km_overrides
 from space_map_data.export.position.elements.writer import (
     _float_value,
     _parse_numeric_id,
@@ -358,28 +360,8 @@ class TestWriteSgp4Elements:
         _, _, _, _, _, _, _, source, _ = _read_header(raw)
         assert source == SOURCE_ORDINAL[OrbitalSource.spice]
 
-    def test_radius_from_sbdb_diameter(self, tmp_path):
-        """Object with SBDB diameter gets radius = diameter / 2."""
-        from space_map_data.models.object.sbdb import SBDB
-
-        sbdb = SBDB(spkid="2000433", object_id="spkid-2000433", diameter=33.0)
-        obj = make_object(
-            id="spkid-2000433",
-            object_type=ObjectType.asteroid,
-            spkid=2000433,
-        )
-        obj.sbdb = sbdb
-
-        out = tmp_path / "radius.bin.gz"
-        write_elements([obj], out, OrbitalSource.spice, has_localized={})
-
-        raw = gzip.decompress(out.read_bytes())
-        offset = HEADER_SIZE + 8 + 8 + 8 + 8 + 8 + 56  # column 12, radius_km
-        (radius,) = struct.unpack_from("<f", raw, offset)
-        assert radius == 16.5  # 33.0 / 2
-
     def test_radius_override(self, tmp_path):
-        """Object without SBDB but with a radius_km_override."""
+        """The radius column holds the `body_radius` pick."""
         obj = make_object(id="naif-399", object_type=ObjectType.planet)
 
         out = tmp_path / "override.bin.gz"
@@ -730,3 +712,33 @@ class TestWriteParabolicElements:
         assert sub_format == SUBFORMAT_PARABOLIC
         assert row_count == 0
         assert len(raw) == HEADER_SIZE
+
+
+class TestChunkRadii:
+    """A chunk's radius column is the pick of `body_radius` for each object."""
+
+    def test_a_catalogue_size_beats_the_wikidata_radius(self):
+        """Weywot: AsterSat 40.5 km, Wikidata 100 km."""
+        weywot = make_object(
+            id="spkid-120050000",
+            naif_id=None,
+            wikidata_qid="Q83894",
+            object_type=ObjectType.moon,
+        )
+        radii = BodyRadii(
+            sizes={"spkid-120050000": BodyRadius(40.5, 40.5, 40.5, "astersat")},
+            wikidata_km=lambda qid: 100.0,
+        )
+        assert radius_km_overrides([weywot], radii) == {"spkid-120050000": 40.5}
+
+    def test_an_sbdb_diameter_is_halved(self):
+        """Eros: SBDB is the only source."""
+        eros = make_object(
+            id="spkid-2000433", object_type=ObjectType.asteroid, spkid=2000433
+        )
+        radii = BodyRadii(sizes={"spkid-2000433": BodyRadius(8.4, 8.4, 8.4, "sbdb")})
+        assert radius_km_overrides([eros], radii) == {"spkid-2000433": 8.4}
+
+    def test_a_body_with_no_size_has_no_override(self):
+        caliban = make_object(id="naif-716", naif_id=716, object_type=ObjectType.moon)
+        assert radius_km_overrides([caliban], BodyRadii()) == {}

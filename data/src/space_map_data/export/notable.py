@@ -13,7 +13,6 @@ from typing import NamedTuple
 
 from sqlalchemy.orm import Session
 
-from space_map_data.constants.measured_shapes import measured_shape_references
 from space_map_data.constants.orientation import ORIENTATION_SOURCE_PCK
 from space_map_data.export.disk_photometry import lunar_weight_scale
 from space_map_data.export.images import (
@@ -24,8 +23,7 @@ from space_map_data.export.images import (
     pick_thumbnail,
 )
 from space_map_data.export.names import Names
-from space_map_data.export.objects.wikidata_claims import radius_km_from_claims
-from space_map_data.export.quantities import UnitConverter
+from space_map_data.export.objects.body_radius import BodyRadius, lineup_radii
 from space_map_data.export.systems import displacement_block
 from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.models.object.main import Object
@@ -68,12 +66,12 @@ class NotableObject:
     # bodies rather than the kind of call — one probe rarely did the same
     # thing at all of them.
     visits: list[dict] | None = None
-    # Triaxial radii {a, b, c} km; a measured ellipsoid adds source + reference.
+    # Semi-axes {a, b, c} km; a source other than the PCK adds `source`, and a
+    # measured ellipsoid its `reference`.
     radii: dict | None = None
     # A star's colour on the lineup: its temperature (K), else its BP − RP.
     teff: float | None = None
     bp_rp: float | None = None
-    radius_km: float | None = None  # Wikidata P2120 fallback when no radii/diameter
     # An exoplanet's diameter from its catalogue's estimated radius.
     estimated_diameter_km: float | None = None
     pole: dict | None = None  # IAU J2000 pole {ra, dec} deg, for the lineup's true tilt
@@ -99,40 +97,6 @@ class NotableObject:
     activity: dict | None = (
         None  # `activity.collection_row`; shared by the 3 heat pages
     )
-
-
-# Bodies whose ellipsoid is a published fit rather than a kernel constant.
-_MEASURED_SHAPES = {
-    naif_id: {"source": source, "reference": dict(reference._asdict())}
-    for naif_id, (source, reference) in measured_shape_references().items()
-}
-
-
-def render_size(
-    naif_id: int | None,
-    qid: str | None,
-    radii: dict[int, dict],
-    units: UnitConverter | None,
-    wikidata_entities: WikidataEntityCache | None,
-) -> tuple[dict | None, float | None]:
-    """Render size for the lineup, mirroring the position pipeline.
-
-    PCK triaxial radii take precedence; else the Wikidata radius (P2120), used
-    for bodies with no SBDB diameter (most trans-Neptunian dwarfs).
-
-    A measured ellipsoid carries its ``source`` and the work that fitted it, the
-    way the pole carries its own: a lineup of small bodies must not credit the
-    PCK for a shape read off occultation chords.
-    """
-    if naif_id is not None and (pck := radii.get(naif_id)) is not None:
-        if (measured := _MEASURED_SHAPES.get(naif_id)) is not None:
-            return {**pck, **measured}, None
-        return pck, None
-    if units is not None and wikidata_entities is not None and qid is not None:
-        wd = wikidata_entities.get_entity(qid)
-        if wd is not None and (r := radius_km_from_claims(wd["claims"], units, qid)):
-            return None, r
-    return None, None
 
 
 def j2000_poles(
@@ -169,28 +133,23 @@ def j2000_poles(
 
 
 class RenderGeometry(NamedTuple):
-    """A body's lineup render geometry: triaxial radii, scalar-radius fallback, pole."""
+    """A body's lineup render geometry: radii and pole."""
 
     radii: dict | None
-    radius_km: float | None
     pole: dict | None
 
 
 def render_geometry(
+    size: BodyRadius | None,
     naif_id: int | None,
-    qid: str | None,
-    radii: dict[int, dict],
-    units: UnitConverter | None = None,
-    wikidata_entities: WikidataEntityCache | None = None,
     poles: dict[int, dict] | None = None,
 ) -> RenderGeometry:
-    """Lineup render geometry (size + tilt) as one bundle, so a body renders the
-    same wherever it appears. Omit ``units``/``wikidata_entities`` or ``poles``
-    (from :func:`j2000_poles`) to skip that source.
+    """Lineup size and tilt, so a body renders the same wherever it appears.
+
+    ``size`` is the `body_radius` pick, ``poles`` from :func:`j2000_poles`.
     """
-    triaxial, radius_km = render_size(naif_id, qid, radii, units, wikidata_entities)
     pole = (poles or {}).get(naif_id) if naif_id is not None else None
-    return RenderGeometry(triaxial, radius_km, pole)
+    return RenderGeometry(lineup_radii(size), pole)
 
 
 def _member_entity(member: NotableObject, wikidata_entities: WikidataEntityCache):
@@ -348,8 +307,6 @@ def notable_entries(
             entry["teff"] = member.teff
         if member.bp_rp is not None:
             entry["bp_rp"] = member.bp_rp
-        if member.radius_km is not None:
-            entry["radius_km"] = member.radius_km
         if member.estimated_diameter_km is not None:
             entry["estimated_diameter_km"] = member.estimated_diameter_km
         if member.pole is not None:

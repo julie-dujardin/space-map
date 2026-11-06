@@ -1,17 +1,14 @@
 """Tests for space_map_data.export.position.frames."""
 
 import math
-from typing import Any, ClassVar
 
 import pytest
-from sqlalchemy.orm import joinedload
 
 from space_map_data.export.position.frames import (
     _OBLIQUITY_RAD,
     equatorial_to_ecliptic,
     equatorial_to_ecliptic_vector,
     is_equatorial,
-    measured_moon_radius_km,
     moon_orbit,
     moon_orbit_cached,
 )
@@ -297,69 +294,3 @@ class TestMoonOrbitCached:
         first = moon_orbit_cached(obj, OrbitalSource.sbdb_moon)
         assert first == {}
         assert moon_orbit_cached(obj, OrbitalSource.sbdb_moon) is first
-
-
-class TestMeasuredMoonRadius:
-    """Only the two moon zones carry these rows; every other zone shares the writer."""
-
-    # What each zone's query eager-loads. The writers run in worker threads on
-    # rows the session has expunged, so anything outside this raises.
-    _ZONE_LOADS: ClassVar[dict[OrbitalSource, tuple[Any, ...]]] = {
-        OrbitalSource.sbdb_moon: (Object.sbdb_moon, Object.johnston_moon),
-        OrbitalSource.astersat: (Object.astersat_moon, Object.johnston_moon),
-        OrbitalSource.sbdb: (Object.sbdb,),
-    }
-
-    def _expunged(self, session, source, *, astersat=None, johnston=None):
-        """One object as its zone worker gets it: eager-loaded, then detached."""
-        obj = Object(
-            id="spkid-120000022", object_type=ObjectType.moon, orbital_source=source
-        )
-        obj.astersat_moon = astersat
-        obj.johnston_moon = johnston
-        session.add(obj)
-        session.commit()
-        session.expunge_all()
-        loaded = (
-            session.query(Object)
-            .options(*(joinedload(rel) for rel in self._ZONE_LOADS[source]))
-            .one()
-        )
-        session.expunge(loaded)
-        return loaded
-
-    def test_astersat_radius_wins(self, session):
-        obj = self._expunged(
-            session,
-            OrbitalSource.astersat,
-            astersat=_astersat_linus(satellite_radius_km=7.0),
-            johnston=_johnston_linus(diameter_km=28.0),
-        )
-        assert measured_moon_radius_km(obj) == 7.0
-
-    def test_johnston_diameter_is_halved(self, session):
-        obj = self._expunged(
-            session,
-            OrbitalSource.astersat,
-            astersat=_astersat_linus(),
-            johnston=_johnston_linus(diameter_km=1.4),
-        )
-        assert measured_moon_radius_km(obj) == pytest.approx(0.7)
-
-    def test_an_sbdb_moon_never_reads_the_astersat_row(self, session):
-        """Its zone eager-loads sbdb_moon and johnston_moon, not astersat_moon."""
-        obj = self._expunged(
-            session, OrbitalSource.sbdb_moon, johnston=_johnston_linus(diameter_km=1.4)
-        )
-        assert measured_moon_radius_km(obj) == pytest.approx(0.7)
-
-    def test_a_source_with_no_moon_rows_reads_nothing(self, session):
-        """The small-body zones share the writer and load neither relationship."""
-        obj = self._expunged(session, OrbitalSource.sbdb)
-        assert measured_moon_radius_km(obj) is None
-
-    def test_a_moon_with_no_measurement(self, session):
-        obj = self._expunged(
-            session, OrbitalSource.astersat, astersat=_astersat_linus()
-        )
-        assert measured_moon_radius_km(obj) is None

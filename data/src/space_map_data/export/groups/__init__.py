@@ -89,6 +89,7 @@ from space_map_data.export.notable import (
     shape_model_slugs,
     textured_object_ids,
 )
+from space_map_data.export.objects.body_radius import load_body_radii
 from space_map_data.export.objects.fragments import build_comet_families
 from space_map_data.export.objects.missions import build_probe_missions
 from space_map_data.export.objects.stars import (
@@ -408,13 +409,14 @@ def run_groups_tier(
         )
         craft_models = craft_model_slugs(session, model_metadata or {})
         gallery_subjects = _gallery_subjects(session, names)
+        body_radii = load_body_radii(session, radii, wikidata_entities, units)
         build = build_earth_groups_data(session)
         small_body_stats = build_small_body_group_stats(
-            session, names, radii, units, poles
+            session, names, body_radii, poles
         )
         earth_orbit_stats = build_earth_orbit_classes(session, names)
         feature_types = build_feature_type_groups(session, names)
-        sun = star_member(session, names, radii, gms, poles)
+        sun = star_member(session, names, body_radii, gms, poles)
         build.membership[GroupType.EARTH_ORBIT_CLASS] = earth_orbit_stats.membership
         build.stats[GroupType.EARTH_ORBIT_CLASS] = earth_orbit_stats.satcat_stats
 
@@ -437,7 +439,7 @@ def run_groups_tier(
             small_body_stats.discovery_histograms,
             small_body_stats.largest_bodies,
             earth_orbit_stats,
-            radii,
+            body_radii,
             gms,
             poles,
             wikidata_entities,
@@ -457,19 +459,13 @@ def run_groups_tier(
         solar_system_map = build_solar_system_map(
             session,
             names,
+            body_radii,
             radii,
-            wikidata_entities,
-            units,
             small_body_stats.orbit_samples,
             planet_elements,
         )
         planetary_systems_map = build_planetary_systems_map(
-            session,
-            radii,
-            poles,
-            load_ring_metadata(out_dir),
-            units,
-            wikidata_entities,
+            session, body_radii, poles, load_ring_metadata(out_dir)
         )
     missions = _mission_groups(names)
     star_families = build_star_family_groups(star_objects or [], names, sun=sun)

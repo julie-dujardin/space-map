@@ -7,8 +7,7 @@ contiguous `0..N-1` run. The on-disk result must be byte-identical to writing
 the whole combo at once.
 """
 
-from unittest.mock import MagicMock
-
+from space_map_data.export.objects.body_radius import BodyRadii
 from space_map_data.export.pipeline import orchestrator, zone
 from space_map_data.export.pipeline.orchestrator import (
     _Aggregators,
@@ -42,8 +41,7 @@ def _write(objs, out_dir, part_offset, monkeypatch, chunk_size=10) -> int:
         "moons",
         0,
         has_localized={},
-        wikidata_entities=MagicMock(),
-        units=MagicMock(),
+        body_radii=BodyRadii(),
         time=None,
         part_offset=part_offset,
     )

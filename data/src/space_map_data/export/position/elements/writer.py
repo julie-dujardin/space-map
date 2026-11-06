@@ -473,12 +473,8 @@ def _sgp4_int(o: Object, key: str) -> int:
 
 
 def object_radius_km(o: Object, overrides: dict[str, float] | None = None) -> float:
-    """Get object radius in km from SBDB diameter or overrides."""
-    if o.spkid is not None and o.sbdb is not None and o.sbdb.diameter is not None:
-        return o.sbdb.diameter / 2.0
-    if overrides and (r := overrides.get(o.id)):
-        return r
-    return MISSING_FLOAT64
+    """Object radius in km: the `body_radius` pick, which includes SBDB."""
+    return (overrides or {}).get(o.id, MISSING_FLOAT64)
 
 
 def _write_has_localized(

@@ -70,16 +70,12 @@ from space_map_data.export.notable import CraftModel, NotableObject, render_geom
 from space_map_data.export.objects import radiation
 from space_map_data.export.objects.activity import collection_row
 from space_map_data.export.objects.atmosphere import limb_profile, pressure_block
+from space_map_data.export.objects.body_radius import BodyRadii
 from space_map_data.export.objects.interior import cutaway_layers, ocean_block
 from space_map_data.export.objects.missions import probe_launch_year
 from space_map_data.export.objects.rings import ring_catalog_sources, ring_mass_block
 from space_map_data.export.objects.temperature import heliocentric_distance_au
-from space_map_data.export.objects.wikidata_claims import (
-    diameter_km_from_claims,
-    discovery_year_from_claims,
-    radius_km_from_claims,
-)
-from space_map_data.export.quantities import UnitConverter
+from space_map_data.export.objects.wikidata_claims import discovery_year_from_claims
 from space_map_data.export.small_body_color import (
     albedo_beyond_hex,
     resolve_major_body_color,
@@ -174,12 +170,13 @@ def _body_member(
     obj_id: str,
     naif_id: int | None,
     qid: str | None,
-    radii: dict[int, dict],
+    object_type: ObjectType,
+    radii: BodyRadii,
     gms: dict[int, float],
     poles: dict[int, dict],
 ) -> NotableObject:
     """Denormalize a body, attaching its PCK mass + shared lineup render geometry."""
-    geo = render_geometry(naif_id, qid, radii, poles=poles)
+    geo = render_geometry(radii.pick(obj_id, naif_id, qid, object_type), naif_id, poles)
     surface = resolve_major_body_color(naif_id)
     return NotableObject(
         object_id=obj_id,
@@ -189,7 +186,6 @@ def _body_member(
         first_obs=None,
         mass_kg=mass_kg_from_gm(gms.get(naif_id) if naif_id is not None else None),
         radii=geo.radii,
-        radius_km=geo.radius_km,
         pole=geo.pole,
         # A dwarf planet takes its colour from SBDB in its own builder.
         color=surface.color,
@@ -198,29 +194,30 @@ def _body_member(
 
 
 def _largest_by_radius(
-    session: Session, names: ObjectNames, where, radii: dict[int, dict]
+    session: Session, names: ObjectNames, where, radii: BodyRadii
 ) -> LargestBody | None:
-    """Biggest body matching ``where``, by mean PCK radius.
-
-    Major bodies have no SBDB row, so size comes from the same PCK radii the
-    renderer uses; triaxial bodies average their axes.
-    """
+    """Biggest body matching ``where``, by mean radius."""
     best: LargestBody | None = None
-    rows = session.query(Object.id, Object.naif_id).filter(where).all()
-    for obj_id, naif_id in rows:
-        axes = radii.get(naif_id) if naif_id is not None else None
-        if not axes:
+    rows = (
+        session.query(
+            Object.id, Object.naif_id, Object.wikidata_qid, Object.object_type
+        )
+        .filter(where)
+        .all()
+    )
+    for obj_id, naif_id, qid, object_type in rows:
+        size = radii.pick(obj_id, naif_id, qid, object_type)
+        if size is None:
             continue
-        mean_radius = sum(axes[k] for k in ("a", "b", "c")) / 3
-        if best is None or mean_radius * 2 > best.diameter_km:
+        if best is None or size.diameter_km > best.diameter_km:
             best = LargestBody(
                 names=names.object(obj_id),
-                diameter_km=mean_radius * 2,
+                diameter_km=size.diameter_km,
                 object_id=obj_id,
             )
     if best is None:
         logger.info(
-            "No PCK radius for any of the %d bodies matching %s; no largest card",
+            "No radius for any of the %d bodies matching %s; no largest card",
             len(rows),
             where,
         )
@@ -232,7 +229,7 @@ def _ranked_members(
     names: ObjectNames,
     where,
     limit: int,
-    radii: dict[int, dict],
+    radii: BodyRadii,
     gms: dict[int, float],
     poles: dict[int, dict],
 ) -> list[NotableObject]:
@@ -242,7 +239,9 @@ def _ranked_members(
     filter/pin on top.
     """
     rows = (
-        session.query(Object.id, Object.naif_id, Object.wikidata_qid)
+        session.query(
+            Object.id, Object.naif_id, Object.wikidata_qid, Object.object_type
+        )
         .filter(where)
         .order_by(
             Object.image_available.desc(), Object.sitelinks_count.desc(), Object.id
@@ -258,13 +257,15 @@ def _ranked_members(
 def _planet_members(
     session: Session,
     names: ObjectNames,
-    radii: dict[int, dict],
+    radii: BodyRadii,
     gms: dict[int, float],
     poles: dict[int, dict],
 ) -> list[NotableObject]:
     """The planets, in heliocentric order (NAIF 199…899)."""
     rows = (
-        session.query(Object.id, Object.naif_id, Object.wikidata_qid)
+        session.query(
+            Object.id, Object.naif_id, Object.wikidata_qid, Object.object_type
+        )
         .filter(Object.object_type == ObjectType.planet)
         .order_by(Object.naif_id)
         .all()
@@ -277,7 +278,7 @@ def _planet_members(
 def _planetary_system_members(
     session: Session,
     names: ObjectNames,
-    radii: dict[int, dict],
+    radii: BodyRadii,
     gms: dict[int, float],
     poles: dict[int, dict],
 ) -> list[NotableObject]:
@@ -306,14 +307,15 @@ def _planetary_system_members(
             Object.id,
             Object.naif_id,
             Object.wikidata_qid,
+            Object.object_type,
         )
         .filter(Object.object_type.in_(_PLANET_TYPES), Object.parent_id.in_(with_moons))
         .all()
     )
     members = []
-    for bary_id, host_id, naif_id, qid in hosts:
+    for bary_id, host_id, naif_id, qid, object_type in hosts:
         host = _body_member(
-            names, host_id, naif_id, qid, radii=radii, gms=gms, poles=poles
+            names, host_id, naif_id, qid, object_type, radii=radii, gms=gms, poles=poles
         )
         members.append(
             replace(
@@ -327,41 +329,22 @@ def _planetary_system_members(
     return members
 
 
-def _wikidata_diameter_km(
-    qid: str | None, entities: WikidataEntityCache, units: UnitConverter
-) -> float | None:
-    """A dwarf planet's diameter (km) from Wikidata — P2120 radius or P2386."""
-    if qid is None:
-        return None
-    entity = entities.get_entity(qid)
-    if entity is None:
-        return None
-    claims = entity["claims"]
-    radius = radius_km_from_claims(claims, units, qid)
-    if radius is not None:
-        return 2 * radius
-    return diameter_km_from_claims(claims, units, qid)
-
-
 def _dwarf_planet_members(
     session: Session,
     names: ObjectNames,
-    radii: dict[int, dict],
+    radii: BodyRadii,
     gms: dict[int, float],
     poles: dict[int, dict],
-    entities: WikidataEntityCache,
-    units: UnitConverter,
 ) -> list[NotableObject]:
-    """The dwarf planets, most-prominent first (image then sitelinks) — unlike
-    the eight majors they have no static heliocentric order. Lineup size comes
-    from each body's Wikidata diameter; none are in the PCK that sizes
-    planets/moons.
+    """The dwarf planets, most-prominent first (image then sitelinks). Unlike
+    the eight majors they have no static heliocentric order.
     """
     rows = (
         session.query(
             Object.id,
             Object.naif_id,
             Object.wikidata_qid,
+            Object.object_type,
             SBDB.spkid,
             SBDB.spec_B,
             SBDB.spec_T,
@@ -376,15 +359,15 @@ def _dwarf_planet_members(
         .all()
     )
     members: list[NotableObject] = []
-    for obj_id, naif_id, qid, spkid, spec_b, spec_t, albedo in rows:
+    for obj_id, naif_id, qid, object_type, spkid, spec_b, spec_t, albedo in rows:
         member = _body_member(
-            names, obj_id, naif_id, qid, radii=radii, gms=gms, poles=poles
+            names, obj_id, naif_id, qid, object_type, radii=radii, gms=gms, poles=poles
         )
-        member.diameter_km = _wikidata_diameter_km(member.wikidata_qid, entities, units)
+        size = radii.pick(obj_id, naif_id, qid, object_type)
+        member.diameter_km = size.diameter_km if size is not None else None
         if member.diameter_km is None:
             logger.warning(
-                "Dwarf planet %s (%s) has no Wikidata diameter; it won't size in "
-                "the lineup",
+                "Dwarf planet %s (%s) has no radius; it won't size in the lineup",
                 member.object_id,
                 member.wikidata_qid,
             )
@@ -638,14 +621,16 @@ def _moon_data(
 def star_member(
     session: Session,
     names: ObjectNames,
-    radii: dict[int, dict],
+    radii: BodyRadii,
     gms: dict[int, float],
     poles: dict[int, dict],
 ) -> NotableObject | None:
     """The Sun, pinned first on the Solar System root page and listed on its
     star family pages."""
     row = (
-        session.query(Object.id, Object.naif_id, Object.wikidata_qid)
+        session.query(
+            Object.id, Object.naif_id, Object.wikidata_qid, Object.object_type
+        )
         .filter(Object.object_type == ObjectType.star)
         .order_by(Object.naif_id)
         .first()
@@ -661,7 +646,7 @@ def _solar_system_members(
     session: Session,
     names: ObjectNames,
     star: NotableObject | None,
-    radii: dict[int, dict],
+    radii: BodyRadii,
     gms: dict[int, float],
     poles: dict[int, dict],
 ) -> list[NotableObject]:
@@ -684,7 +669,7 @@ def _solar_system_members(
 def _ring_system_members(
     session: Session,
     names: ObjectNames,
-    radii: dict[int, dict],
+    radii: BodyRadii,
     gms: dict[int, float],
     poles: dict[int, dict],
 ) -> list[NotableObject]:
@@ -694,9 +679,9 @@ def _ring_system_members(
     attaches the planet's mass, not the rings'.
     """
     rows = {
-        obj_id: (obj_id, naif_id, qid)
-        for obj_id, naif_id, qid in session.query(
-            Object.id, Object.naif_id, Object.wikidata_qid
+        row[0]: tuple(row)
+        for row in session.query(
+            Object.id, Object.naif_id, Object.wikidata_qid, Object.object_type
         ).filter(Object.id.in_(sorted(RING_CATALOGS)))
     }
     if missing := [body for body in RING_CATALOGS if body not in rows]:
@@ -753,7 +738,7 @@ def _property_members(
     body_ids: list[str],
     attach,
     page: str,
-    radii: dict[int, dict],
+    radii: BodyRadii,
     gms: dict[int, float],
     poles: dict[int, dict],
 ) -> list[NotableObject]:
@@ -762,9 +747,9 @@ def _property_members(
     constants know but the object table doesn't is logged and dropped.
     """
     rows = {
-        obj_id: (obj_id, naif_id, qid)
-        for obj_id, naif_id, qid in session.query(
-            Object.id, Object.naif_id, Object.wikidata_qid
+        row[0]: tuple(row)
+        for row in session.query(
+            Object.id, Object.naif_id, Object.wikidata_qid, Object.object_type
         ).filter(Object.id.in_(sorted(body_ids)))
     }
     if missing := [body for body in body_ids if body not in rows]:
@@ -787,7 +772,7 @@ def _property_members(
 def _atmosphere_members(
     session: Session,
     names: ObjectNames,
-    radii: dict[int, dict],
+    radii: BodyRadii,
     gms: dict[int, float],
     poles: dict[int, dict],
 ) -> list[NotableObject]:
@@ -826,7 +811,7 @@ def _atmosphere_members(
 def _ocean_members(
     session: Session,
     names: ObjectNames,
-    radii: dict[int, dict],
+    radii: BodyRadii,
     gms: dict[int, float],
     poles: dict[int, dict],
 ) -> list[NotableObject]:
@@ -913,7 +898,7 @@ def _activity_members(
     table: dict,
     rank,
     page: str,
-    radii: dict[int, dict],
+    radii: BodyRadii,
     gms: dict[int, float],
     poles: dict[int, dict],
 ) -> list[NotableObject]:
@@ -1074,7 +1059,7 @@ def _radiation_members(
     session: Session,
     names: ObjectNames,
     places: dict[str, radiation.Place],
-    radii: dict[int, dict],
+    radii: BodyRadii,
     gms: dict[int, float],
     poles: dict[int, dict],
 ) -> list[NotableObject]:
@@ -1300,7 +1285,7 @@ def _tidal_stats(members: list[NotableObject]) -> GroupExtraStats:
 def _probe_members(
     session: Session,
     names: ObjectNames,
-    radii: dict[int, dict],
+    radii: BodyRadii,
     gms: dict[int, float],
     poles: dict[int, dict],
 ) -> tuple[list[NotableObject], int]:
@@ -1322,7 +1307,7 @@ def _spacecraft_lineup(
     names: ObjectNames,
     entities: WikidataEntityCache,
     craft_models: dict[str, CraftModel],
-    radii: dict[int, dict],
+    radii: BodyRadii,
     gms: dict[int, float],
     poles: dict[int, dict],
 ) -> tuple[list[NotableObject], list[str]]:
@@ -1331,7 +1316,11 @@ def _spacecraft_lineup(
     fleet that shares a bus or the two Voyagers appear once."""
     rows = (
         session.query(
-            Object.id, Object.naif_id, Object.wikidata_qid, Object.sitelinks_count
+            Object.id,
+            Object.naif_id,
+            Object.wikidata_qid,
+            Object.object_type,
+            Object.sitelinks_count,
         )
         .filter(
             Object.id.in_(craft_models), Object.object_type == ObjectType.spacecraft
@@ -1347,12 +1336,12 @@ def _spacecraft_lineup(
         if entity := entities.get_referenced(qid):
             ranked.append((-len(entity["sitelinks"]), 0, slug))
     for row in by_model.values():
-        ranked.append((-(row[3] or 0), 1, row))
+        ranked.append((-(row[4] or 0), 1, row))
     ranked.sort(key=lambda r: r[:2])
     top = [entry for _, _, entry in ranked[:SPACECRAFT_LINEUP]]
     return (
         [
-            _body_member(names, *entry[:3], radii=radii, gms=gms, poles=poles)
+            _body_member(names, *entry[:4], radii=radii, gms=gms, poles=poles)
             for entry in top
             if isinstance(entry, tuple)
         ],
@@ -1375,7 +1364,7 @@ def build_category_data(
     discovery_histograms: dict[str, dict[int, int]],
     largest_bodies: dict[str, LargestBody],
     earth_orbit: EarthOrbitClassStats,
-    radii: dict[int, dict],
+    radii: BodyRadii,
     gms: dict[int, float],
     poles: dict[int, dict],
     entities: WikidataEntityCache,
@@ -1445,11 +1434,8 @@ def build_category_data(
         for slug in constellations
     }
 
-    units = UnitConverter(entities)
     planet_members = _planet_members(session, names, radii, gms, poles)
-    dwarf_members = _dwarf_planet_members(
-        session, names, radii, gms, poles, entities, units
-    )
+    dwarf_members = _dwarf_planet_members(session, names, radii, gms, poles)
     moon_members = _ranked_members(
         session,
         names,
@@ -1639,14 +1625,12 @@ def build_category_data(
         SBDB.class_.not_in(COMET_ORBIT_CLASSES),
         Object.object_type.is_distinct_from(ObjectType.dwarf_planet),
         radii=radii,
-        units=units,
     )
     comet_notable = _notable_members(
         session,
         names,
         SBDB.class_.in_(COMET_ORBIT_CLASSES),
         radii=radii,
-        units=units,
     )
 
     notable_members: dict[str, list[NotableObject]] = {}
@@ -1685,9 +1669,9 @@ def build_category_data(
     if system_members:
         notable_members[SATELLITE_SYSTEMS_SLUG] = system_members
 
-    # Stat cards. The small-body categories inherit the biggest member of any
-    # class that partitions them; the major-body ones rank PCK radii. Flags are
-    # excluded — a subset can't hold a body its own class doesn't.
+    # Stat cards. A small-body category takes the biggest member of the classes
+    # that partition it. A major-body category ranks the `body_radius` sizes.
+    # Flags are excluded: a subset cannot hold a body that its class does not.
     def _largest_of(class_slugs: list[str]) -> LargestBody | None:
         candidates = [b for s in class_slugs if (b := largest_bodies.get(s))]
         # ty types the key's argument from default=None.

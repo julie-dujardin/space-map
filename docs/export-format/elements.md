@@ -35,7 +35,7 @@ Each column is padded to 8-byte alignment. Julian Dates use float64 for sub-day 
 | 9 | w           | float32 | NaN     | Argument of perihelion (deg) |
 | 10| ma          | float32 | NaN     | Mean anomaly (deg) |
 | 11| n           | float32 | NaN     | Mean motion: **rev/day** if planet-scale, **deg/day** if system-scale |
-| 12| radius_km   | float32 | NaN     | Physical radius (km) |
+| 12| radius_km   | float32 | NaN     | Mean radius (km) of the `body_radius` pick (see objects.md `radii`); SBDB diameter / 2 where SBDB is the best size |
 | 13| om_dot      | float32 | 0.0     | Secular drift of `om` (deg/day). Populated by SPICE for non-whitelisted moons via the Method C mean-element fit; zero for everything else |
 | 14| w_dot       | float32 | 0.0     | Secular drift of `w` (deg/day). Same source / convention as `om_dot` |
 | 15| has_localized | uint8 | 0       | `1` iff the object has a localized detail bundle in at least one language; `0` otherwise. Frontend gates its localized-bundle fetch on this bit so flag-0 objects don't trigger a 404 per click |
@@ -109,7 +109,7 @@ Columns 0–3 are identical to Keplerian. Julian Dates use float64; other column
 | 8 | om          | float32 | NaN     | Longitude of ascending node (deg) |
 | 9 | w           | float32 | NaN     | Argument of perihelion (deg) |
 | 10| tp          | float64 | NaN     | Time of perihelion passage (Julian Date, TDB) |
-| 11| radius_km   | float32 | NaN     | Physical radius (km) |
+| 11| radius_km   | float32 | NaN     | Mean radius (km) of the `body_radius` pick, as in the elements file |
 | 12| has_localized | uint8 | 0       | Same semantics as the Keplerian column 15 |
 | 13| flags       | uint8   | 0       | Same semantics as the Keplerian column 16 |
 | 14| visible_from_days | float32 | NaN | Same semantics as the Keplerian column 17 |

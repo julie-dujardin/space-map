@@ -51,6 +51,7 @@ from space_map_data.export.notable import (
     j2000_poles,
     shape_model_slugs,
 )
+from space_map_data.export.objects.body_radius import BodyRadii, load_body_radii
 from space_map_data.export.objects.features import attach_notable_features
 from space_map_data.export.objects.fragments import (
     CometFamily,
@@ -384,8 +385,7 @@ def _iter_non_sbdb_zone_snapshots(
             "small_body_moons",
             0,
             session.query(Object)
-            # johnston_moon rides along for the measured radius override.
-            .options(joinedload(Object.sbdb_moon), joinedload(Object.johnston_moon))
+            .options(joinedload(Object.sbdb_moon))
             .filter(
                 Object.orbital_source == OrbitalSource.sbdb_moon,
                 Object.has_position == True,
@@ -397,7 +397,6 @@ def _iter_non_sbdb_zone_snapshots(
             session.query(Object)
             .options(
                 joinedload(Object.astersat_moon),
-                joinedload(Object.johnston_moon),
                 # The discovery-year gate reads it, and a lazy load here would
                 # fire inside a worker thread.
                 joinedload(Object.sbdb_moon),
@@ -1012,7 +1011,7 @@ def _write_metadata_json(
 def _run_chebyshev(
     session: Session,
     out_dir: Path,
-    radii: dict[int, dict],
+    radii: BodyRadii,
     agg: _Aggregators,
     tier_b_clean: bool,
 ) -> dict[str, dict]:
@@ -1208,13 +1207,14 @@ def _export(engine: Engine, names_session: Session, limit_per_zone: int) -> None
     probe_ephemeris_accuracy = load_probe_ephemeris_accuracy()
     probe_position_sources = load_probe_position_sources()
 
+    body_radii = load_body_radii(session, radii, wikidata_entities, units)
     ctx = ObjectDataContext(
         wikidata_entities=wikidata_entities,
         names=names,
         units=units,
         nasa_science_urls=_load_nasa_science_urls(),
         orientation=orientation,
-        radii=radii,
+        body_radii=body_radii,
         gms=gms,
         nut_prec=nut_prec,
         texture_layers=texture_layers,
@@ -1319,7 +1319,9 @@ def _export(engine: Engine, names_session: Session, limit_per_zone: int) -> None
         else:
             probe_ids = set()
 
-        chebyshev_zones = _run_chebyshev(session, out_dir, radii, agg, tier_b_clean)
+        chebyshev_zones = _run_chebyshev(
+            session, out_dir, body_radii, agg, tier_b_clean
+        )
         probe_zones, probe_coverage = _run_probes(
             session, out_dir, probe_ids, agg, tier_b_clean
         )
@@ -1355,7 +1357,7 @@ def _export(engine: Engine, names_session: Session, limit_per_zone: int) -> None
                 session,
                 agg.all_objects,
                 names,
-                radii,
+                body_radii,
                 j2000_poles(
                     orientation, nut_prec, nut_prec_angles, nut_prec_phase_degrees
                 ),

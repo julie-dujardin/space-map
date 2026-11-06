@@ -7,15 +7,15 @@ the SBDB snapshot metadata (one signature per export — a full pull replaces
 every row at once). Both carry `format_version` so an encoding change
 invalidates every part regardless of source freshness.
 
-Most per-object DB state (object_type, parent, scale, radius overrides) is
-NOT fingerprinted — it's republished by `/objects` every run, treated as the
-canonical refresh path. `has_localized` is the exception: it gates whether
-the frontend even fetches the localized bundle, so a stale byte would hide
-data `/objects` already refreshed.
+Most per-object DB state (object_type, parent, scale) is not fingerprinted.
+`/objects` republishes it every run. Two columns are fingerprinted:
+`has_localized`, because it gates the fetch of the localized bundle, and the
+`small_bodies/...` radius column, because the scene sizes a body by it.
 """
 
 import hashlib
 import json
+import struct
 from functools import cache
 from pathlib import Path
 
@@ -63,6 +63,14 @@ def has_localized_digest(object_ids: list[str], has_localized: dict[str, bool]) 
     """
     bits = bytes(1 if has_localized.get(oid) else 0 for oid in object_ids)
     return hashlib.sha256(bits).hexdigest()[:16]
+
+
+def radius_digest(object_ids: list[str], radii: dict[str, float]) -> str:
+    """Digest of the part's radius column, in binary row order."""
+    column = struct.pack(
+        f"<{len(object_ids)}d", *(radii.get(i, 0.0) for i in object_ids)
+    )
+    return hashlib.sha256(column).hexdigest()[:16]
 
 
 @cache

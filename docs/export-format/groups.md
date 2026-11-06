@@ -59,10 +59,9 @@ interface NotableEntry {
   id?: string;                      // full Object.id; route /<type>/<id> (e.g. spkid-2000004, naif-502). Absent on group entries
   group?: string;                   // group slug; route /g/<slug> instead of an object (featured constellations in notable_satellites)
   feature_id?: number;              // IAU feature id (feature_type groups); `id` holds the host body — route /<type>/<id>/f/<feature_id>. Label/description overrides key on "<id>:<feature_id>"
-  diameter_km?: number;             // equivalent-sphere diameter (members) / mean PCK-radii diameter (moons) / equatorial diameter of a measured radius (exoplanets, 4 significant digits)
+  diameter_km?: number;             // equivalent-sphere diameter (members) / mean diameter of `radii` (moons, dwarf planets) / equatorial diameter of a measured radius (exoplanets, 4 significant digits)
   mass_kg?: number;                 // body mass from PCK GM (major bodies only — e.g. category planet/moon members)
-  radii?: { a: number; b: number; c: number }; // triaxial PCK radii km, body-fixed X/Y/Z (equatorial a, polar c); major bodies, Ceres/Pluto + PCK moons
-  radius_km?: number;               // scalar render radius (Wikidata P2120); lineup size fallback when no radii/diameter (most TNO dwarfs)
+  radii?: { a: number; b: number; c: number; source?: "occultation" | "photometry" | "astersat" | "johnston" | "wikidata"; reference?: { title: string; url: string } }; // semi-axes km, body-fixed X/Y/Z (equatorial a, polar c), the object bundle's `radii`. `source` is absent for the PCK; `reference` names the work of a fitted ellipsoid. Absent where SBDB's diameter is the best size (it is then `diameter_km`)
   estimated_diameter_km?: number;   // exoplanets: diameter of the catalogue's estimated radius, when it has no measured one (4 significant digits)
   pole?: { ra: number; dec: number; source?: "lightcurve" | "occultation" }; // IAU J2000 pole RA/Dec (deg); the lineup's true axial tilt. `source` is present only when the pole isn't the PCK's — small-body members tilt on DAMIT lightcurve poles, which the footer credits to DAMIT rather than to the IAU/NAIF
   albedo?: number;                  // SBDB geometric albedo (small bodies only); see `color`

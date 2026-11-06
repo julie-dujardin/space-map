@@ -23,17 +23,14 @@ from space_map_data.download.providers.bjj_rings import (
 from space_map_data.download.providers.bjj_rings import (
     OUTER_RADIUS_KM as SATURN_RING_OUTER_KM,
 )
-from space_map_data.export.groups.categories import _wikidata_diameter_km
 from space_map_data.export.groups.registry import CLASS_SLUG_PREFIX
 from space_map_data.export.groups.small_body import OrbitClassSample
 from space_map_data.export.names import Names, ObjectNames
-from space_map_data.export.notable import render_size
-from space_map_data.export.quantities import UnitConverter
+from space_map_data.export.objects.body_radius import BodyRadii
 from space_map_data.export.small_body_color import (
     resolve_major_body_color,
     resolve_small_body_color,
 )
-from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.models.object.main import Object, ObjectType
 from space_map_data.models.object.sbdb import SBDB, CometPrefix, OrbitClass
 
@@ -110,34 +107,43 @@ class SolarSystemMap:
 
 
 def _diameter_km(
-    naif_id: int | None, qid: str | None, radii: dict[int, dict]
+    obj_id: str,
+    naif_id: int | None,
+    qid: str | None,
+    object_type: ObjectType,
+    radii: BodyRadii,
 ) -> float | None:
-    """Render diameter from PCK triaxial radii (major bodies) — equator = max(a,b,c)."""
-    triaxial, _ = render_size(naif_id, qid, radii, None, None)
-    if triaxial is None:
-        return None
-    return 2 * max(triaxial["a"], triaxial["b"], triaxial["c"])
+    """The diameter of the `body_radius` pick, as the lineups show it."""
+    size = radii.pick(obj_id, naif_id, qid, object_type)
+    return size.diameter_km if size is not None else None
 
 
 def _star_and_planets(
     session: Session,
     names: ObjectNames,
-    radii: dict[int, dict],
+    radii: BodyRadii,
+    pck: dict[int, dict],
     planet_elements: dict[int, dict],
     moon_counts: dict[str, int],
 ) -> list[MapObject]:
     """The Sun (pinned at a=0) and the eight planets, in heliocentric order."""
     out: list[MapObject] = []
     rows = (
-        session.query(Object.id, Object.naif_id, Object.wikidata_qid, Object.name)
+        session.query(
+            Object.id,
+            Object.naif_id,
+            Object.wikidata_qid,
+            Object.object_type,
+            Object.name,
+        )
         .filter(Object.object_type.in_((ObjectType.star, ObjectType.planet)))
         .order_by(Object.naif_id)
         .all()
     )
-    for obj_id, naif_id, qid, name in rows:
-        diameter = _diameter_km(naif_id, qid, radii)
+    for obj_id, naif_id, qid, object_type, name in rows:
+        diameter = _diameter_km(obj_id, naif_id, qid, object_type, radii)
         if diameter is None:
-            logger.warning("Minimap: %s (%s) has no PCK radii; skipping", obj_id, name)
+            logger.warning("Minimap: %s (%s) has no radius; skipping", obj_id, name)
             continue
         if naif_id == 10:
             kind, a, i = "star", 0.0, 0.0
@@ -161,7 +167,7 @@ def _star_and_planets(
                 i=i,
                 diameter_km=diameter,
                 color=None,
-                rings=_saturn_rings(naif_id, radii),
+                rings=_saturn_rings(naif_id, pck),
                 moon_count=moon_counts.get(obj_id) if kind == "planet" else None,
             )
         )
@@ -185,7 +191,7 @@ def _saturn_rings(naif_id: int | None, radii: dict[int, dict]) -> dict | None:
 def _moons(
     session: Session,
     names: ObjectNames,
-    radii: dict[int, dict],
+    radii: BodyRadii,
     planet_elements: dict[int, dict],
     count: int,
     min_diameter: float,
@@ -220,6 +226,7 @@ def _moons(
             Object.id,
             Object.naif_id,
             Object.wikidata_qid,
+            Object.object_type,
             Object.name,
             Object.parent_id,
         )
@@ -230,12 +237,12 @@ def _moons(
     candidates: dict[
         str, list[tuple[float, str, int | None, str | None, str | None]]
     ] = defaultdict(list)
-    for obj_id, naif_id, qid, name, parent_id in rows:
+    for obj_id, naif_id, qid, object_type, name, parent_id in rows:
         host = bary_to_host.get(parent_id, parent_id)
         if host not in planets:  # asteroid/dwarf moons aren't stacked
             continue
         host_total[host] += 1
-        diameter = _diameter_km(naif_id, qid, radii)
+        diameter = _diameter_km(obj_id, naif_id, qid, object_type, radii)
         if diameter is None or diameter < min_diameter:
             continue
         candidates[host].append((diameter, obj_id, naif_id, qid, name))
@@ -274,11 +281,10 @@ def _moons(
 def _dwarf_planets(
     session: Session,
     names: ObjectNames,
-    entities: WikidataEntityCache,
-    units: UnitConverter,
+    radii: BodyRadii,
     planet_elements: dict[int, dict],
 ) -> list[MapObject]:
-    """Every dwarf planet, sized by its measured Wikidata diameter.
+    """Every dwarf planet, sized by its `body_radius` pick.
 
     Distance/inclination come from SBDB; Pluto carries no SBDB row, so it falls
     back to its Horizons mean elements (outer join keeps it in).
@@ -288,6 +294,7 @@ def _dwarf_planets(
             Object.id,
             Object.naif_id,
             Object.wikidata_qid,
+            Object.object_type,
             Object.name,
             SBDB.spkid,
             SBDB.a,
@@ -302,8 +309,11 @@ def _dwarf_planets(
         .all()
     )
     out: list[MapObject] = []
-    for obj_id, naif_id, qid, name, spkid, a, i, spec_b, spec_t, albedo in rows:
-        diameter = _wikidata_diameter_km(qid, entities, units)
+    for row in rows:
+        obj_id, naif_id, qid, object_type, name, spkid, a, i, spec_b, spec_t, albedo = (
+            row
+        )
+        diameter = _diameter_km(obj_id, naif_id, qid, object_type, radii)
         fallback = planet_elements.get(naif_id, {})
         a = a if a is not None else fallback.get("a")
         i = i if i is not None else fallback.get("i")
@@ -446,9 +456,8 @@ def _belts(orbit_samples: list[OrbitClassSample]) -> list[Belt]:
 def build_solar_system_map(
     session: Session,
     names: ObjectNames,
-    radii: dict[int, dict],
-    entities: WikidataEntityCache,
-    units: UnitConverter,
+    radii: BodyRadii,
+    pck: dict[int, dict],
     orbit_samples: list[OrbitClassSample],
     planet_elements: dict[int, dict],
 ) -> SolarSystemMap:
@@ -458,8 +467,8 @@ def build_solar_system_map(
         session, names, radii, planet_elements, MOON_COUNT, MIN_MOON_DIAMETER_KM
     )
     objects = (
-        _star_and_planets(session, names, radii, planet_elements, moon_counts)
-        + _dwarf_planets(session, names, entities, units, planet_elements)
+        _star_and_planets(session, names, radii, pck, planet_elements, moon_counts)
+        + _dwarf_planets(session, names, radii, planet_elements)
         + _asteroids(session, names, ASTEROID_COUNT)
         + moons
     )

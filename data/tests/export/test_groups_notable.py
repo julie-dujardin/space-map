@@ -17,8 +17,10 @@ from space_map_data.constants.interior.bodies import INTERIOR_FACTS
 from space_map_data.constants.radiation.environments import RADIATION_ENVIRONMENTS
 from space_map_data.constants.rings.catalog import RING_CATALOGS, catalog_span_km
 from space_map_data.export import notable
+from space_map_data.export.groups import solar_system_map
 from space_map_data.export.groups.categories import (
     _atmosphere_stats,
+    _dwarf_planet_members,
     _magnetic_stats,
     _ocean_stats,
     _planetary_system_members,
@@ -39,6 +41,7 @@ from space_map_data.export.names import Names, ObjectNames
 from space_map_data.export.notable import NotableObject
 from space_map_data.export.objects.activity import collection_row
 from space_map_data.export.objects.atmosphere import atmosphere_block, pressure_block
+from space_map_data.export.objects.body_radius import BodyRadii, BodyRadius
 from space_map_data.export.objects.interior import ocean_block
 from space_map_data.export.objects.radiation import (
     Place,
@@ -252,17 +255,77 @@ class TestLargestBody:
         assert body.diameter_km == 939.4
 
 
-class TestRenderSize:
-    """`render_size` render-radius priority (mirrors the position pipeline)."""
+class TestRenderGeometry:
+    """A lineup body's geometry: the `body_radius` pick and the IAU pole."""
 
-    def test_prefers_pck_triaxial_radii(self) -> None:
-        pluto = {"a": 1188.3, "b": 1188.3, "c": 1188.3}
-        triaxial, radius_km = notable.render_size(999, "Q339", {999: pluto}, None, None)
-        assert triaxial == pluto
-        assert radius_km is None
+    def test_pck_radii_carry_no_source(self) -> None:
+        pluto = BodyRadius(1188.3, 1188.3, 1188.3, "pck")
+        pole = {"ra": 132.99, "dec": -6.16}
+        geo = notable.render_geometry(pluto, 999, {999: pole})
+        assert geo == notable.RenderGeometry(pluto.axes(), pole)
 
-    def test_none_without_radii_or_wikidata(self) -> None:
-        assert notable.render_size(None, None, {}, None, None) == (None, None)
+    def test_a_catalogue_size_names_its_source(self) -> None:
+        eris = BodyRadius(1163.0, 1163.0, 1163.0, "johnston")
+        geo = notable.render_geometry(eris, None, {})
+        assert geo.radii == {**eris.axes(), "source": "johnston"}
+
+    def test_none_without_a_size(self) -> None:
+        assert notable.render_geometry(None, None) == notable.RenderGeometry(None, None)
+
+
+class TestDwarfPlanets:
+    """The dwarf-planet card and the minimap size a dwarf by `body_radius`."""
+
+    @staticmethod
+    def _eris(session: Session) -> BodyRadii:
+        session.add(
+            Object(
+                id="spkid-20136199",
+                name="136199 Eris",
+                object_type=ObjectType.dwarf_planet,
+                wikidata_qid="Q611",
+            )
+        )
+        session.add(
+            SBDB(
+                spkid="20136199",
+                object_id="spkid-20136199",
+                class_=OrbitClass.TNO,
+                a=67.9,
+                i=44.0,
+            )
+        )
+        session.commit()
+        return BodyRadii(
+            sizes={"spkid-20136199": BodyRadius(1163.0, 1163.0, 1163.0, "johnston")},
+            wikidata_km=lambda qid: 1100.0,
+        )
+
+    def test_the_card_takes_the_catalogue_diameter(self, session: Session) -> None:
+        radii = self._eris(session)
+        (eris,) = _dwarf_planet_members(session, _names(session), radii, {}, {})
+        assert eris.diameter_km == 2326.0
+        assert eris.radii == {
+            "a": 1163.0,
+            "b": 1163.0,
+            "c": 1163.0,
+            "source": "johnston",
+        }
+
+    def test_the_minimap_takes_the_catalogue_diameter(self, session: Session) -> None:
+        radii = self._eris(session)
+        (eris,) = solar_system_map._dwarf_planets(session, _names(session), radii, {})
+        assert eris.diameter_km == 2326.0
+
+    def test_the_minimap_takes_the_mean_diameter(self, session: Session) -> None:
+        """Haumea draws at the lineup's mean diameter, not its longest axis."""
+        self._eris(session)
+        haumea = BodyRadius(1050.0, 840.0, 537.0, "occultation")
+        radii = BodyRadii(sizes={"spkid-20136199": haumea})
+        (body,) = solar_system_map._dwarf_planets(session, _names(session), radii, {})
+        (member,) = _dwarf_planet_members(session, _names(session), radii, {}, {})
+        assert body.diameter_km == member.diameter_km == haumea.diameter_km
+        assert haumea.diameter_km == pytest.approx(1618.0)
 
 
 class TestNamedCounts:
@@ -328,9 +391,17 @@ class TestProbeMembers:
         )
         _add_member(session, 99)  # an asteroid — must be excluded too
 
-        members, total = _probe_members(session, _names(session), {}, {}, {})
+        members, total = _probe_members(session, _names(session), BodyRadii(), {}, {})
         assert total == 3
         assert [m.object_id for m in members] == ["probe-2", "probe-1", "probe-3"]
+
+    def test_a_probe_takes_no_wikidata_size(self, session: Session) -> None:
+        """JWST's Wikidata radius is half its mirror, not a body radius."""
+        sp = OrbitalSource.spice_probe
+        _add_spacecraft(session, "probe-170", orbital_source=sp, qid="Q186447")
+        radii = BodyRadii(wikidata_km=lambda qid: 0.00325)
+        (jwst,), _ = _probe_members(session, _names(session), radii, {}, {})
+        assert jwst.radii is None
 
 
 def _craft_meta(span: float | None) -> dict:
@@ -608,7 +679,7 @@ class TestPlanetarySystemMembers:
         session.commit()
         jupiter = labelled({"en": "Jupiter", "fr": "Jupiter", "ru": "Юпитер"})
         names = ObjectNames(EntityStub({"Q319": jupiter}), session)
-        (member,) = _planetary_system_members(session, names, {}, {}, {})
+        (member,) = _planetary_system_members(session, names, BodyRadii(), {}, {})
         assert (member.object_id, member.image_of) == ("naif-5", "naif-599")
         (entry,) = notable.notable_entries([member])
         assert (entry["name"], entry["system_name"]) == ("Jupiter", "Jupiter system")

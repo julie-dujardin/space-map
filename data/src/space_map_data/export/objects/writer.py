@@ -20,7 +20,6 @@ from pathlib import Path
 
 import orjson
 
-from space_map_data.constants.measured_shapes import measured_shape_references
 from space_map_data.constants.providers import LANGUAGES
 from space_map_data.constants.stars import families as star_rules
 from space_map_data.export.disk_photometry import lunar_weight_scale
@@ -37,6 +36,11 @@ from space_map_data.export.names import (
 )
 from space_map_data.export.objects.activity import activity_block
 from space_map_data.export.objects.atmosphere import atmosphere_block
+from space_map_data.export.objects.body_radius import (
+    BodyRadii,
+    BodyRadius,
+    bundle_fields,
+)
 from space_map_data.export.objects.celestrak import (
     build_satcat_global,
     build_satcat_localized,
@@ -118,20 +122,6 @@ K_GLOBAL = 1100
 K_LOCALIZED = 5500
 
 _QID_CURRENCY = "Q8142"
-
-# The radii table is SPICE PCK except for these, each fitted by a named work.
-_MEASURED_SHAPE_REFERENCES = measured_shape_references()
-
-
-def radii_block(naif_id: int) -> dict:
-    """Who measured this body's ellipsoid — the sidebar credits them for the
-    size rows, which a spin pole says nothing about. A measured shape names its
-    own work, because that is often not the paper the pole came from."""
-    measured = _MEASURED_SHAPE_REFERENCES.get(naif_id)
-    if measured is None:
-        return {"radii_source": "pck"}
-    source, reference = measured
-    return {"radii_source": source, "radii_reference": dict(reference._asdict())}
 
 
 def hash_bucket(obj_id: str, n_buckets: int) -> int:
@@ -237,7 +227,7 @@ def build_chunk_object_data(
     units: UnitConverter,
     nasa_science_urls: dict[str, str],
     orientation: dict[int, dict],
-    radii: dict[int, dict],
+    body_radii: BodyRadii,
     gms: dict[int, float],
     nut_prec: dict[int, dict[str, list[float]]],
     layers: TextureLayers,
@@ -294,7 +284,7 @@ def build_chunk_object_data(
             units,
             nasa_science_urls,
             orientation,
-            radii,
+            body_radii,
             gms,
             nut_prec,
             layers,
@@ -414,13 +404,13 @@ _IMAGE_KEYS = {"image", "logo_image"}
 _TEMPERATURE_READINGS = ("min", "mean", "max")
 
 
-def render_quality(obj: Object, radii: dict[int, dict]) -> str | None:
+def render_quality(obj: Object, size: BodyRadius | None) -> str | None:
     """Best-available-asset render tier for an object.
 
-    high   — faithful 3D model, map texture, or procedural star surface
-    medium — lightcurve-inversion convex hull only
-    low    — size only: sphere/ellipsoid from PCK radii or SBDB diameter
-    None   — no physical extent known; halo/point at best
+    high: a faithful 3D model, a map texture, or the procedural star surface.
+    medium: a lightcurve-inversion convex hull only.
+    low: a size only, the sphere or ellipsoid of the `body_radius` pick.
+    None: no known physical extent. The body draws as a halo or a point.
     """
     has_model = obj.model_name is not None
     if has_model and obj.model_provenance != ModelProvenance.lightcurve:
@@ -433,13 +423,7 @@ def render_quality(obj: Object, radii: dict[int, dict]) -> str | None:
         return "high"
     if has_model:
         return "medium"
-    if obj.naif_id is not None and obj.naif_id in radii:
-        return "low"
-    # FK guard before the relationship read — writer runs in worker threads.
-    sbdb = obj.sbdb if obj.spkid is not None else None
-    if sbdb is not None and sbdb.diameter is not None:
-        return "low"
-    return None
+    return "low" if size is not None else None
 
 
 def build_model_sources(
@@ -528,7 +512,7 @@ def _build_global(
     units: UnitConverter,
     nasa_science_urls: dict[str, str],
     orientation: dict[int, dict],
-    radii: dict[int, dict],
+    body_radii: BodyRadii,
     gms: dict[int, float],
     nut_prec: dict[int, dict[str, list[float]]],
     layers: TextureLayers,
@@ -565,7 +549,8 @@ def _build_global(
         model_source = model_sources.get(obj.model_name)
         if model_source:
             data["model_source"] = model_source
-    quality = render_quality(obj, radii)
+    size = body_radii.of(obj)
+    quality = render_quality(obj, size)
     if quality is not None:
         data["render_quality"] = quality
     clouds_meta = layers.clouds.get(obj.id)
@@ -689,12 +674,8 @@ def _build_global(
     if obj.naif_id is not None and obj.naif_id in nut_prec:
         data["nut_prec"] = nut_prec[obj.naif_id]
 
-    # Triaxial radii (km, along body-fixed X, Y, Z). The table is PCK except for
-    # the small bodies no kernel covers, and the sidebar credits a different
-    # work for each, so the shape carries its own citation.
-    if obj.naif_id is not None and obj.naif_id in radii:
-        data["radii"] = radii[obj.naif_id]
-        data.update(radii_block(obj.naif_id))
+    # The size, with its source for the sidebar credit.
+    data.update(bundle_fields(size))
 
     # Gravitational parameter (km^3/s^2) from SPICE PCK
     if obj.naif_id is not None and obj.naif_id in gms:
@@ -771,10 +752,8 @@ def _build_global(
     # Wikidata claims (non-localized, excluding image fields handled above)
     if extracted:
         wikidata_section: dict = {}
-        wikidata_keys = [c.key for c in GLOBAL_CLAIMS]
-        # SPICE PCK radii supersede the Wikidata radius — skip it when present.
-        if "radii" in data:
-            wikidata_keys = [k for k in wikidata_keys if k != "radius"]
+        # The radius is in `radii`, from `body_radius`.
+        wikidata_keys = [c.key for c in GLOBAL_CLAIMS if c.key != "radius"]
         for key in wikidata_keys:
             if key in _IMAGE_KEYS:
                 continue

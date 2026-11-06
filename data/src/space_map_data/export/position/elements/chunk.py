@@ -3,8 +3,7 @@
 import logging
 from pathlib import Path
 
-from space_map_data.export.names import resolve_wikidata_qid
-from space_map_data.export.objects.wikidata_claims import radius_km_from_claims
+from space_map_data.export.objects.body_radius import BodyRadii
 from space_map_data.export.position.elements import sidecar
 from space_map_data.export.position.elements.writer import (
     write_elements,
@@ -15,10 +14,7 @@ from space_map_data.export.position.format import (
     UNBOUNDED_END_JD,
     UNBOUNDED_START_JD,
 )
-from space_map_data.export.position.frames import measured_moon_radius_km
 from space_map_data.export.position.layout import position_zone_dir
-from space_map_data.export.quantities import UnitConverter
-from space_map_data.export.wikidata import WikidataEntity
 from space_map_data.models.object import Object, OrbitalSource
 from space_map_data.utils.paths import DOWNLOAD_DIR, SOURCES_POSITION_DIR
 
@@ -58,15 +54,19 @@ def _sgp4_validity_window(objects: list[Object]) -> tuple[float, float]:
     ) + SGP4_VALIDITY_SLACK_DAYS
 
 
+def radius_km_overrides(objects: list[Object], radii: BodyRadii) -> dict[str, float]:
+    """The scene radius (km) of each object that has one: its mean radius."""
+    return {obj.id: size.mean_km for obj in objects if (size := radii.of(obj))}
+
+
 def write_chunk(
     objects: list[Object],
     out_dir: Path,
     zone: str,
     zoom: int,
     part: int,
-    chunk_entities: dict[str, WikidataEntity | None],
+    body_radii: BodyRadii,
     has_localized: dict[str, bool],
-    units: UnitConverter,
     orbital_source: OrbitalSource,
     time: str | None = None,
     validity_start_jd: float = UNBOUNDED_START_JD,
@@ -88,27 +88,7 @@ def write_chunk(
         chunk_dir = chunk_dir / time
     out_path = chunk_dir / f"{part}.bin.gz"
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    radius_km_overrides: dict[str, float] = {}
-    for obj in objects:
-        # Asteroid moons are measured by their own catalogues and almost never
-        # have a Wikidata item, so they must be read off the moon row or they
-        # fall back to a nominal size the bundle could have stated exactly.
-        if (measured := measured_moon_radius_km(obj)) is not None:
-            radius_km_overrides[obj.id] = measured
-        qid = resolve_wikidata_qid(obj)
-        if qid and (wd := chunk_entities.get(qid)):
-            try:
-                r = radius_km_from_claims(wd["claims"], units, qid=qid)
-            except Exception as exc:
-                logger.error(
-                    "Error extracting radius for %s (%s): %s",
-                    obj.id,
-                    qid,
-                    exc,
-                )
-                r = None
-            if r is not None:
-                radius_km_overrides[obj.id] = r
+    radii = radius_km_overrides(objects, body_radii)
     # SGP4 needs a tight validity window — the propagator blows up past ~a
     # year from epoch. Kepler/parabolic orbits have no hard cutoff, so they
     # keep whatever the caller passed.
@@ -136,6 +116,8 @@ def write_chunk(
         # is shared across every small_bodies/* part. A re-download invalidates
         # all of them at once. No CelesTrak-style per-day variance.
         signature = dict(sidecar.build_sbdb_part_signature(DOWNLOAD_DIR))
+        # The radii come from more catalogues than the SBDB fingerprint covers.
+        signature["radius_km"] = sidecar.radius_digest([o.id for o in objects], radii)
     if signature is not None:
         # The gate byte rides into the binary but isn't covered by the source
         # fingerprints above, so a newly matched QID would otherwise leave a
@@ -150,7 +132,7 @@ def write_chunk(
         objects,
         out_path,
         orbital_source,
-        radius_km_overrides or None,
+        radii or None,
         has_localized=has_localized,
         start_jd=start_jd,
         end_jd=end_jd,

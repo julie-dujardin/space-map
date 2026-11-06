@@ -16,12 +16,10 @@ from pathlib import Path
 import orjson
 from sqlalchemy.orm import Session
 
-from space_map_data.export.notable import render_size
+from space_map_data.export.objects.body_radius import BodyRadii
 from space_map_data.export.objects.writer import _orbit_elements
 from space_map_data.export.position.frames import equatorial_to_ecliptic_vector
-from space_map_data.export.quantities import UnitConverter
 from space_map_data.export.small_body_color import resolve_major_body_color
-from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.models.object.main import Object, ObjectType
 from space_map_data.probes.propagation import AU_KM
 
@@ -39,7 +37,8 @@ class SystemMoon:
 
 @dataclass
 class SystemMap:
-    barycenter_id: str
+    # None for a host that orbits the Sun itself, like Quaoar.
+    barycenter_id: str | None
     primary_id: str
     primary_radius_km: float
     moons: list[SystemMoon]
@@ -87,15 +86,25 @@ def _ring_span(metas: list[dict] | None, radius_km: float) -> dict | None:
 
 def build_planetary_systems_map(
     session: Session,
-    radii: dict[int, dict],
+    radii: BodyRadii,
     poles: dict[int, dict],
     ring_metadata: dict[str, list[dict]],
-    units: UnitConverter,
-    entities: WikidataEntityCache,
 ) -> list[SystemMap]:
-    """One map per barycenter with a moon, in heliocentric order."""
+    """One map per host body with a moon, in heliocentric order."""
+    barycenters = {
+        bary_id
+        for (bary_id,) in session.query(Object.id).filter(
+            Object.object_type == ObjectType.barycenter
+        )
+    }
     hosts = (
-        session.query(Object.parent_id, Object.id, Object.naif_id, Object.wikidata_qid)
+        session.query(
+            Object.parent_id,
+            Object.id,
+            Object.naif_id,
+            Object.wikidata_qid,
+            Object.object_type,
+        )
         .filter(
             Object.object_type.in_((ObjectType.planet, ObjectType.dwarf_planet)),
             Object.parent_id.isnot(None),
@@ -103,19 +112,22 @@ def build_planetary_systems_map(
         .all()
     )
     out: list[SystemMap] = []
-    for bary_id, host_id, host_naif, host_qid in sorted(hosts, key=lambda r: r[2]):
-        triaxial, _ = render_size(host_naif, host_qid, radii, None, None)
-        if triaxial is None:
+    for parent_id, host_id, host_naif, host_qid, host_type in sorted(
+        hosts, key=lambda r: r[2]
+    ):
+        host_size = radii.pick(host_id, host_naif, host_qid, host_type)
+        if host_size is None:
             continue
-        radius_km = max(triaxial["a"], triaxial["b"], triaxial["c"])
+        radius_km = host_size.equatorial_km
         pole = _pole_ecliptic(poles[host_naif]) if host_naif in poles else None
+        bary_id = parent_id if parent_id in barycenters else None
         # SPICE hangs a system's moons off the barycenter, but a few sit on the
         # planet itself; take both so no system draws short.
         moon_rows = (
             session.query(Object)
             .filter(
                 Object.object_type == ObjectType.moon,
-                Object.parent_id.in_((bary_id, host_id)),
+                Object.parent_id.in_((host_id, bary_id) if bary_id else (host_id,)),
             )
             .all()
         )
@@ -127,11 +139,7 @@ def build_planetary_systems_map(
             a_au = el.get("a")
             if a_au is None or a_au <= 0:
                 continue
-            moon_radii, moon_radius = render_size(
-                obj.naif_id, obj.wikidata_qid, radii, units, entities
-            )
-            if moon_radii is not None:
-                moon_radius = max(moon_radii["a"], moon_radii["b"], moon_radii["c"])
+            moon_size = radii.of(obj)
             moons.append(
                 SystemMoon(
                     id=obj.id,
@@ -139,7 +147,7 @@ def build_planetary_systems_map(
                     tilt_deg=_tilt_to_equator(
                         el.get("i", 0.0), el.get("om", 0.0), pole
                     ),
-                    radius_km=moon_radius or 0.0,
+                    radius_km=moon_size.mean_km if moon_size else 0.0,
                     color=resolve_major_body_color(obj.naif_id)[0],
                 )
             )
@@ -165,8 +173,13 @@ def build_planetary_systems_map(
 
 
 def write_planetary_systems_map(out_dir: Path, systems: list[SystemMap]) -> None:
+    """Each map under its barycenter, else under its host body.
+
+    The Planetary Systems tiles read a map by its barycenter member. The system
+    map finds a map by `primary.id`.
+    """
     payload = {
-        s.barycenter_id: {
+        s.barycenter_id or s.primary_id: {
             "primary": {"id": s.primary_id, "radius_km": s.primary_radius_km},
             "moons": [
                 {
