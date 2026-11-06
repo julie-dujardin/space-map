@@ -14,9 +14,8 @@ import type {
 	PlanetSystem
 } from '$lib/fetch/extrasolar/planets';
 import { localName } from '$lib/format/name';
-import { drawsSurfaceMap } from '$lib/scene/objects/body/system';
-import { JUPITER_RADIUS_KM } from '$lib/math/units';
 import { treeToScene } from '$lib/scene/starfield/tree';
+import { planetDraws, planetRadiusKm } from './drawn';
 import { lunarWeightScaleOf } from './photometry';
 import { J2000_JD } from '$lib/time/jd';
 import { ObjectType, type BodyData, type PositionedBody } from '$lib/types/objects';
@@ -88,12 +87,10 @@ function planetBody(
 	file: PlanetSystem,
 	hostRecord: PlanetSystem['hosts'][number]
 ): PositionedBody {
-	const radiusRj = planet.values.radius;
-	const radiusKm =
-		typeof radiusRj === 'number' && radiusRj > 0 ? radiusRj * JUPITER_RADIUS_KM : NaN;
+	const radiusKm = planetRadiusKm(planet);
 	const parentId = extrasolarObjectId(planet.host);
 	const id = planetObjectId(planet.host, planet.number);
-	const mapped = radiusKm > 0 && drawsSurfaceMap(id, planet);
+	const mapped = planetDraws(id, planet);
 	const data: BodyData = {
 		id,
 		name: localName(planet),

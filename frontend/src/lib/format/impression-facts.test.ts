@@ -7,11 +7,13 @@ const host = { teff: 2566, radius: 0.1192 };
 const record = (
 	values: Record<string, number | string[]>,
 	estimated: string[] = [],
-	limits: string[] = []
+	limits: string[] = [],
+	computed: string[] = []
 ) => ({
 	values,
 	estimated,
-	limits
+	limits,
+	computed
 });
 
 describe('impressionFacts', () => {
@@ -34,6 +36,13 @@ describe('impressionFacts', () => {
 		expect(impressionFacts(estimated, host)).toEqual(['distance', 'brightness']);
 		const limited = record({ radius: 0.18, mass: 0.03, semi_major_axis: 0.8 }, [], ['mass<']);
 		expect(impressionFacts(limited, host)).toEqual(['size', 'distance', 'brightness']);
+	});
+
+	it('leaves out a limit of any value and a value computed from the others', () => {
+		const planet = record({ radius: 0.12, mass: 0.01, semi_major_axis: 0.04 }, [], ['radius<']);
+		expect(impressionFacts(planet, host)).toEqual(['mass', 'distance', 'brightness']);
+		const kepler = record({ radius: 0.12, semi_major_axis: 0.04 }, [], [], ['semi_major_axis']);
+		expect(impressionFacts(kepler, host)).toEqual(['size', 'brightness']);
 	});
 
 	it('needs the temperature and the radius of the star for its brightness', () => {

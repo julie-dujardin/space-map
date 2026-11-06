@@ -1,5 +1,5 @@
 import { SUN_ID } from '$lib/constants';
-import { isExtrasolarObjectId } from '$lib/fetch/extrasolar/ids';
+import { isExtrasolarObjectId, isStarObjectId, planetOfObjectId } from '$lib/fetch/extrasolar/ids';
 import type { NotableMemberEntry } from '$lib/fetch/groups/details';
 import type { ModelIndexEntry } from '$lib/fetch/models';
 import type { ModelBundleMeta } from '$lib/scene/objects/body/model';
@@ -25,13 +25,14 @@ export const RENDER_HINTS: Record<string, Pick<LineupGeometry, 'surfaceFrame' | 
  *  exoplanet's estimated diameter, as the scene draws it. The tilt comes
  *  from the IAU `pole`. It also carries the render hints, the measured colour
  *  and albedo, and the law of the ground. `null` for a member with no size or
- *  for an exoplanet with no map, so it also filters what the row can draw. */
+ *  for a star of another system, so it also filters what the row can draw. A
+ *  planet of another star must pass the rule of `drawnPlanetIds` first. */
 export function geometryFromMember(m: NotableMemberEntry & { id: string }): LineupGeometry | null {
 	// A surface feature isn't a body — its `id` is the host it sits on, so it
 	// would draw (and key) as a duplicate of that host's sphere.
 	if (m.feature_id != null) return null;
-	// An exoplanet has no colour of its own, so it draws only with a map.
-	if (isExtrasolarObjectId(m.id) && m.texture !== true) return null;
+	// A row of stars draws a star of another system (`starGeometryFromMember`).
+	if (isStarObjectId(m.id)) return null;
 	const geom: LineupGeometry = { radiusKm: 0 };
 	if (m.radii) {
 		const eq = Math.max(m.radii.a, m.radii.b, m.radii.c);
@@ -54,7 +55,8 @@ export function geometryFromMember(m: NotableMemberEntry & { id: string }): Line
 	if (m.displacement) geom.displacement = m.displacement;
 	if (m.model) geom.model = m.model;
 	// Explicit false only — absent means a pre-flag export, which still probes.
-	geom.texture = m.texture;
+	// A planet of another star that passed the rule has a map.
+	geom.texture = planetOfObjectId(m.id) ? true : m.texture;
 	if (m.id === SUN_ID) geom.photosphere = { teff: SUN_TEFF };
 	return {
 		...geom,

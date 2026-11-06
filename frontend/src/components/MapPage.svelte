@@ -1301,7 +1301,7 @@
 						md:center-clear-of-panel md:left-1/2 md:bottom-[calc(var(--safe-bottom)_+_5.5rem)] md:w-[min(44rem,calc(100vw_-_var(--panel-inset)_-_2rem))]
 						{isMobileViewport && panelHeightDvh > 12 ? 'pointer-events-none opacity-0' : ''}"
 				>
-					<ImpressionNotice id={impressionId} />
+					<ImpressionNotice id={impressionId} collapsible={isMobileViewport} />
 				</div>
 			{/if}
 			<!-- Inert under the sidebar: Tab would open search behind it. -->

@@ -155,7 +155,7 @@
 	import { bodyHref } from '$lib/state/page-href';
 	import { isModifiedClick } from '$lib/modified-click';
 	import { createScrub, DRAG_SLOP, SWIPE_PX } from '$lib/charts/scrub';
-	import { formatKm } from '$lib/format/distance';
+	import { formatSizeKm } from '$lib/format/distance';
 	import { sizeComparison } from '$lib/format/mass';
 	import {
 		ASIDE_END_PAD,
@@ -601,12 +601,10 @@
 		focusBody(hoveredId);
 	}
 
-	/** How big the body is, in the unit its own size calls for. A craft is
-	 *  quoted across the whole mesh, booms included, which is what the row
-	 *  draws — its slot is the narrower body. */
+	/** How big the body is. A craft is quoted across its whole mesh, as the
+	 *  row draws it. */
 	function sizeText(b: Body): string {
-		const text = formatKm(b.diameterKm * (b.craft ? (b.meshSpanRatio ?? 1) : 1));
-		return b.sizeEstimated ? `≈ ${text}` : text;
+		return formatSizeKm(b.diameterKm * (b.craft ? (b.meshSpanRatio ?? 1) : 1), b.sizeEstimated);
 	}
 
 	const scrub = createScrub({

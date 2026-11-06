@@ -1611,7 +1611,7 @@
 	"artist_impression_body_plain": "Powierzchnia tej planety nigdy nie została sfotografowana. Ta wizja artystyczna opiera się na modelach, szacunkach i nielicznych dostępnych informacjach.",
 	"artist_impression_fact_size": "jej rozmiar",
 	"artist_impression_fact_mass": "jej masa",
-	"artist_impression_fact_molecules": "cząsteczki wykryte w jej atmosferze",
+	"artist_impression_fact_molecules": "cząsteczki, których obecność w jej atmosferze zgłoszono",
 	"artist_impression_fact_distance": "jej odległość od gwiazdy",
 	"artist_impression_fact_brightness": "jasność jej gwiazdy",
 	"attribution_type_specular": "odbicia",

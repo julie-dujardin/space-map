@@ -22,18 +22,17 @@ describe('geometryFromMember', () => {
 		expect(geometryFromMember(base)?.texture).toBeUndefined();
 	});
 
-	it('leaves out an exoplanet with no map, which a list sizes', () => {
-		const planet = { name: 'HD 209458 b', id: 'x-20014192-b-1', diameter_km: 198700 };
-		expect(geometryFromMember(planet)).toBeNull();
-		expect(geometryFromMember({ ...planet, texture: false })).toBeNull();
+	it('leaves out a star of another system, which a row of stars draws', () => {
+		expect(
+			geometryFromMember({ name: 'TRAPPIST-1', id: 'x-558442032', diameter_km: 167000 })
+		).toBeNull();
 	});
 
-	it('draws an exoplanet with a map', () => {
+	it('draws an exoplanet with its map, whatever its entry says', () => {
 		const planet = { name: 'TRAPPIST-1 e', id: 'x-558442032-b-4', diameter_km: 11740 };
-		expect(geometryFromMember({ ...planet, texture: true })).toMatchObject({
-			radiusKm: 5870,
-			texture: true
-		});
+		const drawn = { radiusKm: 5870, texture: true };
+		expect(geometryFromMember({ ...planet, texture: true })).toMatchObject(drawn);
+		expect(geometryFromMember({ ...planet, texture: false })).toMatchObject(drawn);
 	});
 
 	it('sizes an exoplanet with no measured radius by its estimate', () => {

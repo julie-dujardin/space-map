@@ -39,7 +39,7 @@
 		VPAD,
 		type FitBody
 	} from '../../components/detail/charts/lineup-fit';
-	import { lineupBody, resolveObject, type CompareObject } from '$lib/compare/geometry';
+	import { lineupBody, resolveObject, sizeText, type CompareObject } from '$lib/compare/geometry';
 	import { presetOn, type ComparePreset } from '$lib/compare/presets';
 	import { isStarObjectId } from '$lib/fetch/extrasolar/ids';
 	import type { ObjectHit } from '$lib/search/client';
@@ -355,10 +355,6 @@
 			label: labelWidth(object.name, sizeText(object)),
 			aspect: object.geometry.aspect
 		};
-	}
-
-	function sizeText(object: CompareObject): string {
-		return formatKm(object.radiusKm * 2 * (object.geometry.meshSpanRatio ?? 1));
 	}
 
 	// --- the set itself, which lives in the query string ---

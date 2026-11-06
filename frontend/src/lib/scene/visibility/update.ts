@@ -73,6 +73,15 @@ const _modelSphereCenter = new Vector3();
 // Scratch for projecting a label anchor to NDC (off-screen-center test).
 const _anchorProj = new Vector3();
 
+/** Whether a sphere at camera-space `c` reaches into the view. The side
+ *  planes of the frustum pass through the camera. */
+function sphereInView(c: Vector3, r: number, projScale: number, halfW: number, halfH: number) {
+	if (c.z >= r) return false;
+	const outX = (projScale * Math.abs(c.x) + halfW * c.z) / Math.hypot(projScale, halfW);
+	const outY = (projScale * Math.abs(c.y) + halfH * c.z) / Math.hypot(projScale, halfH);
+	return outX <= r && outY <= r;
+}
+
 /** Avoids redundant label style writes. */
 function fadeLabel(label: CSS2DObject, share: number): void {
 	if (label.userData.systemShare === share) return;
@@ -540,9 +549,11 @@ export function updateBodyVisibility(
 
 		const haloShare = ctx.visibility.haloThresholdShare(body.data.id, screenR < HALO_RADIUS_PX);
 		if (isFocused) ctx.visibility.focusedAtFullSize = drawn && haloShare === 0;
-		if (bo.artistImpression && bo.textureTier && drawn && haloShare === 0) {
+		if (bo.artistImpression && bo.textureTier && drawn && group.visible && haloShare === 0) {
 			const rank = isFocused ? -1 : dist;
-			if (rank < impressionDist) {
+			const [bx, by, bz] = body.position!;
+			const c = tmpV3.set(bx - fp[0], by - fp[1], bz - fp[2]).applyMatrix4(cameraInverse);
+			if (rank < impressionDist && sphereInView(c, bo.radiusScene, projScale, halfW, halfH)) {
 				impressionDist = rank;
 				ctx.visibility.impressionInView = body.data.id;
 			}

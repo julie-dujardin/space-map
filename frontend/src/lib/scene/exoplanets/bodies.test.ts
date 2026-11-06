@@ -3,7 +3,6 @@ import type { Planet, PlanetSystem } from '$lib/fetch/extrasolar/planets';
 import { orbitalElementsToPositionJD } from '$lib/math/orbit/position';
 import { elementsOffset } from '$lib/math/orbit/offset';
 import { AU_SCALE } from '$lib/math/units';
-import { sceneSettings } from '$lib/scene/settings.svelte';
 import { J2000_JD } from '$lib/time/jd';
 import { isDiscless, ObjectType } from '$lib/types/objects';
 import { NO_ORBIT_AU, NO_ORBIT_FACTOR, makePlanetBodies, outerOrbitAU } from './bodies';
@@ -115,7 +114,7 @@ describe('a planet with a map', () => {
 		expect(isDiscless(data)).toBe(true);
 	});
 
-	it('stays a dot with no map this embed may serve, or with maps off', () => {
+	it('stays a dot with no map this embed may serve', () => {
 		const make = (extra: Partial<Planet>) =>
 			makePlanetBodies({
 				...ALPHA_CEN,
@@ -125,11 +124,5 @@ describe('a planet with a map', () => {
 		expect(
 			make({ tiers: ['low'], texture: { ...texture, distribution: 'site-only' } }).mapped
 		).toBe(undefined);
-		sceneSettings().showSurfaceTexture = false;
-		try {
-			expect(make({ tiers: ['low'] }).mapped).toBeUndefined();
-		} finally {
-			sceneSettings().showSurfaceTexture = true;
-		}
 	});
 });

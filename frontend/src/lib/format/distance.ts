@@ -39,6 +39,12 @@ export function formatKm(value: number): string {
 	return formatQuantity({ value, unit: 'kilometre' }, true);
 }
 
+/** The size of a body. An estimate reads "≈ 13,050 km". */
+export function formatSizeKm(km: number, estimated = false): string {
+	const text = formatKm(km);
+	return estimated ? `≈ ${text}` : text;
+}
+
 /** Where a height above a body starts to read in AU, km. */
 const HEIGHT_AU_FROM_KM = AU_TO_KM_THRESHOLD * AU_KM;
 

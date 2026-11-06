@@ -15,11 +15,10 @@ import { SUN_ID } from '$lib/constants';
 import { familiesOf } from '$lib/fetch/extrasolar/families';
 import { fetchExtrasolarMetadata } from '$lib/fetch/extrasolar/files';
 import { extrasolarIdOf, isStarObjectId, planetOfObjectId } from '$lib/fetch/extrasolar/ids';
-import { planetCatalogue } from '$lib/fetch/extrasolar/planets';
+import { formatSizeKm } from '$lib/format/distance';
 import { localName } from '$lib/format/name';
-import { JUPITER_RADIUS_KM } from '$lib/math/units';
+import { drawnPlanet, planetRadiusKm } from '$lib/scene/exoplanets/drawn';
 import { lunarWeightScaleOf } from '$lib/scene/exoplanets/photometry';
-import { drawsSurfaceMap } from '$lib/scene/objects/body/system';
 import {
 	extrasolarLookup,
 	POINT_SOURCE_SLUG,
@@ -57,6 +56,13 @@ export interface CompareObject {
 /** The row's body for one object. */
 export function lineupBody(object: CompareObject): LineupBody {
 	return { id: object.id, name: object.name, radiusKm: object.radiusKm, ...object.geometry };
+}
+
+/** The object's size for the list, the labels and the fit. A craft is quoted
+ *  across its whole mesh. */
+export function sizeText(object: CompareObject): string {
+	const { meshSpanRatio, sizeEstimated } = object.geometry;
+	return formatSizeKm(object.radiusKm * 2 * (meshSpanRatio ?? 1), sizeEstimated);
 }
 
 /** What the row draws for a bundle that *is* the object: the mesh alone, no
@@ -158,23 +164,19 @@ async function starObject(id: string, seed: { name: string }): Promise<CompareOb
 	};
 }
 
-/** A planet of another star, drawn as in the scene: only with a map it may
- *  draw, at the archive's radius (an estimate too, which the row marks). Null
- *  for any other planet. */
-async function mappedPlanet(
+/** A planet of another star, drawn as in the scene at the archive's radius.
+ *  The row marks an estimated radius. Null for a planet that does not draw. */
+async function drawnPlanetObject(
 	id: string,
-	at: { host: number; n: number },
 	seed: { name: string; type?: string }
 ): Promise<CompareObject | null> {
-	const planet = (await planetCatalogue.planet(at.host, at.n).catch(() => null))?.planet;
-	const radiusRj = planet?.values.radius;
-	if (!planet || typeof radiusRj !== 'number' || !(radiusRj > 0)) return null;
-	if (!drawsSurfaceMap(id, planet)) return null;
+	const planet = await drawnPlanet(id);
+	if (!planet) return null;
 	return {
 		id,
 		name: seed.name || localName(planet),
 		type: seed.type,
-		radiusKm: Number((radiusRj * JUPITER_RADIUS_KM).toPrecision(RADIUS_DIGITS)),
+		radiusKm: Number(planetRadiusKm(planet).toPrecision(RADIUS_DIGITS)),
 		geometry: {
 			texture: true,
 			lunarWeightScale: lunarWeightScaleOf(id),
@@ -193,9 +195,8 @@ export async function resolveObject(
 	seed: { name: string; type?: string; diameter_km?: number }
 ): Promise<CompareObject | null> {
 	if (isStarObjectId(id)) return starObject(id, seed);
-	// A planet of another star has no bundle to draw from: its system file has its size and maps.
-	const planetAt = planetOfObjectId(id);
-	if (planetAt) return mappedPlanet(id, planetAt, seed);
+	// A planet of another star has no bundle. Its system file has its size and maps.
+	if (planetOfObjectId(id)) return drawnPlanetObject(id, seed);
 	const craft = await craftBundleFor(id);
 	if (craft) return { ...craft, name: seed.name || craft.name };
 

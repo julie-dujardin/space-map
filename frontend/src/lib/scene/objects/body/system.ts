@@ -7,7 +7,6 @@ import { dataBase } from '$lib/fetch/data-base';
 import { fetchWithTimeout } from '$lib/fetch/fetch-timeout';
 import { pickTexture, type TextureDistribution } from '$lib/host';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
-import { sceneSettings } from '$lib/scene/settings.svelte';
 import { disposeRingNode, type RingMeta } from '../surface/rings';
 import { attachRingBundles } from '../surface/ring-attach';
 import { disposeNomenclatureLabels } from '../surface/nomenclature';
@@ -153,10 +152,10 @@ export function surfaceOf(bodyId: string, maps: SurfaceMaps): PickedSurface | un
 	return pickTexture<PickedSurface>([best, ...(maps.alternates ?? [])]);
 }
 
-/** Whether a body draws a surface map: one is servable, it has tiers to load,
- *  and surface maps are on. */
+/** Whether a body draws a surface map: one is servable and it has tiers to
+ *  load. The debug setting for surface maps only hides the map. */
 export function drawsSurfaceMap(bodyId: string, maps: SurfaceMaps): boolean {
-	return !!surfaceOf(bodyId, maps)?.tiers?.length && sceneSettings().showSurfaceTexture;
+	return !!surfaceOf(bodyId, maps)?.tiers?.length;
 }
 
 /**

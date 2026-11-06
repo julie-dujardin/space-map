@@ -90,8 +90,12 @@ function scene(objectType: ObjectType, starPoint = false) {
 		bo,
 		ctx,
 		fades,
-		frame(radiusPx: number, dtMs: number, focusedId = 'body') {
-			bo.body.position![2] = -500 / radiusPx;
+		/** `offset` moves the body off the axis of the view, in scene units. */
+		frame(radiusPx: number, dtMs: number, focusedId = 'body', offset = [0, 0, 0]) {
+			const pos = bo.body.position!;
+			pos[0] = offset[0];
+			pos[1] = offset[1];
+			pos[2] = -500 / radiusPx + offset[2];
 			fades.beginFrame(dtMs);
 			updateBodyVisibility(
 				new Map([['body', bo]]),
@@ -170,6 +174,30 @@ describe('close-range halos and labels', () => {
 		frame(20, 100);
 		expect(bo.haloShare).toBe(1);
 		expect(bo.label!.visible).toBe(true);
+	});
+});
+
+describe('the artist-impression box', () => {
+	function mappedPlanet() {
+		const s = scene(ObjectType.EXOPLANET);
+		Object.assign(s.bo, { artistImpression: true, textureTier: 'low' });
+		return s;
+	}
+
+	it('names a mapped planet whose disc is in view', () => {
+		const { ctx, frame } = mappedPlanet();
+		frame(40, 16, 'other');
+		frame(40, 200, 'other');
+		expect(ctx.visibility.impressionInView).toBe('body');
+	});
+
+	it('names no planet behind the camera or past the side of the view', () => {
+		const { ctx, frame } = mappedPlanet();
+		frame(40, 16, 'other', [0, 0, 25]);
+		frame(40, 200, 'other', [0, 0, 25]);
+		expect(ctx.visibility.impressionInView).toBeNull();
+		frame(40, 200, 'other', [12.5, 0, 11.5]);
+		expect(ctx.visibility.impressionInView).toBeNull();
 	});
 });
 
