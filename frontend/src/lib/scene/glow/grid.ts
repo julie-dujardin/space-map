@@ -7,6 +7,7 @@
 import { KIND_VOLUME } from '$lib/fetch/extrasolar/container';
 import { fetchExtrasolarFile } from '$lib/fetch/extrasolar/files';
 import { NestFormatError, fetchStoredMetadata } from '$lib/scene/dust/nest';
+import { checkEmission, fetchEmission, type EmissionVolume, type GlowEmission } from './emission';
 import { fetchFarDust, type FarDust } from './far-dust';
 import { checkModel, fetchModelVolume, type GlowModel, type ModelVolume } from './model';
 
@@ -45,6 +46,8 @@ export interface GlowMetadata {
 	tiers: Record<GlowGridTier, GlowTierEntry>;
 	/** Model light of the whole Galaxy; a host without it draws the grid alone. */
 	model?: GlowModel;
+	/** Light that is not starlight; a host without it draws starlight alone. */
+	emission?: GlowEmission;
 }
 
 /** One tier of the grid in memory. Each texture holds uint16 half floats. */
@@ -55,6 +58,7 @@ export interface GlowVolume {
 	model: ModelVolume | null;
 	/** The dust past the nest's box, read where the model widens the first span. */
 	far: FarDust | null;
+	emission: EmissionVolume | null;
 }
 
 /** The first magnitude of the cut table and its step. The march finds an entry
@@ -75,6 +79,7 @@ export async function fetchGlowMetadata(): Promise<GlowMetadata | null> {
 	// A table the march cannot read is a format error, so the load ends here.
 	if (meta) tableAxis(meta);
 	if (meta?.model) checkModel(meta.model);
+	if (meta?.emission) checkEmission(meta.emission);
 	return meta;
 }
 
@@ -100,13 +105,14 @@ async function fetchTexture(
 
 export async function fetchGlowVolume(meta: GlowMetadata, tier: GlowGridTier): Promise<GlowVolume> {
 	const entry = meta.tiers[tier];
-	const [a, b, model, far] = await Promise.all([
+	const [a, b, model, far, emission] = await Promise.all([
 		fetchTexture(meta, entry, entry.files.a),
 		fetchTexture(meta, entry, entry.files.b),
 		meta.model ? fetchModelVolume(meta.token, meta.model, tier) : null,
-		meta.model ? fetchFarDust(tier) : null
+		meta.model ? fetchFarDust(tier) : null,
+		meta.emission ? fetchEmission(meta.token, meta.emission, tier) : null
 	]);
-	return { entry, a, b, model, far };
+	return { entry, a, b, model, far, emission };
 }
 
 /** The cut table for the march: `place_soft` and the colour, one vec4 an entry. */

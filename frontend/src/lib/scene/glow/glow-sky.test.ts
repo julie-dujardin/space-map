@@ -21,6 +21,7 @@ const gl = vi.hoisted(() => ({
 		cut: number;
 		weight: number;
 		galaxy: boolean;
+		alone: boolean;
 	}[],
 	shown: 0,
 	uploadFrames: 2,
@@ -39,6 +40,11 @@ const gl = vi.hoisted(() => ({
 	galaxyEdges: [] as number[],
 	/** The blend of each frame shown. */
 	blends: [] as number[],
+	/** The share each composite showed, by the order they were made in. */
+	composites: [] as number[][],
+	/** The share the far regions showed, and the parts each march was built for. */
+	regions: [] as number[],
+	parts: [] as unknown[],
 	marches: 0,
 	failMarch: false,
 	/** Volumes made, and the one whose constructor throws, counted from 1. */
@@ -50,6 +56,7 @@ const gl = vi.hoisted(() => ({
 const net = vi.hoisted(() => ({
 	metadata: null as (() => Promise<unknown>) | null,
 	volumes: 0,
+	emission: false,
 	/** More of the glow's data, as the model. */
 	extra: {} as Record<string, unknown>
 }));
@@ -90,8 +97,12 @@ vi.mock('./march', () => ({
 			if (gl.failMarch) throw new Error('dust march: link failed');
 			gl.marches++;
 			gl.galaxyEdges.push((args[7] as GlowPlan).galaxy);
+			const emission = args[9] as { parts: { halpha: boolean; scatter: boolean } } | null;
+			gl.parts.push(emission?.parts ?? null);
+			this.emissionAlone = !!emission && (emission.parts.halpha || emission.parts.scatter);
 			gl.live.add(this);
 		}
+		emissionAlone = false;
 		run(
 			_map: unknown,
 			origin: Vec3,
@@ -100,9 +111,10 @@ vi.mock('./march', () => ({
 			weight: number,
 			from: number,
 			rows: number,
-			frame: unknown
+			frame: unknown,
+			alone = false
 		) {
-			gl.runs.push({ origin, from, rows, cut, weight, galaxy: frame !== null });
+			gl.runs.push({ origin, from, rows, cut, weight, galaxy: frame !== null, alone });
 		}
 		dispose() {
 			gl.live.delete(this);
@@ -145,12 +157,53 @@ vi.mock('./eye', () => ({
 
 vi.mock('./composite', () => ({
 	GlowComposite: class {
+		private readonly shares: number[] = [];
+		constructor() {
+			gl.live.add(this);
+			gl.composites.push(this.shares);
+		}
+		show(
+			_map: unknown,
+			_previous: unknown,
+			blend: number,
+			_gain: unknown,
+			_exposure: number,
+			share: number
+		) {
+			gl.shown++;
+			gl.blends.push(blend);
+			this.shares.push(share);
+		}
+		hide() {}
+		dispose() {
+			gl.live.delete(this);
+		}
+	}
+}));
+
+vi.mock('./emission', async (importActual) => ({
+	...(await importActual<typeof import('./emission')>()),
+	EmissionTextures: class {
 		constructor() {
 			gl.live.add(this);
 		}
-		show(_map: unknown, _previous: unknown, blend: number) {
-			gl.shown++;
-			gl.blends.push(blend);
+		get uploaded() {
+			return true;
+		}
+		step() {}
+		dispose() {
+			gl.live.delete(this);
+		}
+	}
+}));
+
+vi.mock('./regions', () => ({
+	GlowRegions: class {
+		constructor() {
+			gl.live.add(this);
+		}
+		show(...args: unknown[]) {
+			gl.regions.push(args[4] as number);
 		}
 		hide() {}
 		dispose() {
@@ -168,6 +221,9 @@ vi.mock('./grid', async (importActual) => ({
 			entry: { size: 2, shells: 2 },
 			a: new Uint16Array(32),
 			b: new Uint16Array(32),
+			emission: net.emission
+				? { halpha: {}, scatter: {}, regions: { light: new Float32Array(3) } }
+				: null,
 			...net.extra
 		};
 	}
@@ -194,6 +250,7 @@ let dust: {
 	latestReach: number;
 	frame: unknown;
 	token: string | null;
+	columns: unknown;
 };
 
 function make(plan: GlowPlan | null = PLAN): GlowSky {
@@ -221,6 +278,8 @@ function frame(at: Vec3, extra: Partial<GlowFrame> = {}): GlowFrame {
 		active: true,
 		drawing: true,
 		share: 1,
+		skybox: 0,
+		heightPx: 900,
 		nowMs: clock,
 		dtMs: 16,
 		...extra
@@ -258,6 +317,9 @@ beforeEach(() => {
 	gl.sharePending = false;
 	gl.galaxyEdges = [];
 	gl.blends = [];
+	gl.composites = [];
+	gl.regions = [];
+	gl.parts = [];
 	gl.marches = 0;
 	gl.failMarch = false;
 	gl.volumes = 0;
@@ -265,6 +327,7 @@ beforeEach(() => {
 	gl.lost = false;
 	net.metadata = async () => META;
 	net.volumes = 0;
+	net.emission = false;
 	net.extra = {};
 	dust = {
 		marchNest: {},
@@ -277,7 +340,8 @@ beforeEach(() => {
 				[0, 0, 1]
 			]
 		},
-		token: NEST
+		token: NEST,
+		columns: { map: {}, origin: [0, 0, 0] }
 	};
 	warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 });
@@ -768,5 +832,86 @@ describe('outside the Galaxy', () => {
 		gl.sharePending = false;
 		glow.update(frame([0, 0, 0]));
 		expect(glow.busy()).toBe(false);
+	});
+});
+
+describe('light that is not starlight', () => {
+	const withEmission = () => {
+		net.emission = true;
+		net.metadata = async () => ({ ...META, emission: {} });
+	};
+	const NEAR_SUN: Vec3 = [0.005, 0, 0];
+
+	it('makes the map of the emission alone at the Sun with the first map, and no other', async () => {
+		withEmission();
+		const glow = make();
+		await ready(glow);
+		settle(glow, [0, 0, 0]);
+		const alone = gl.runs.filter((run) => run.alone);
+		expect(alone.length).toBeGreaterThan(0);
+		expect(alone.every((run) => run.origin.every((x) => x === 0))).toBe(true);
+		// Each pass marches the sky map, then the emission alone: 2 passes of 64 rows.
+		expect(alone.reduce((n, run) => n + run.rows, 0)).toBe(2 * 64);
+		const before = gl.runs.length;
+		settle(glow, [5, 0, 0]);
+		expect(gl.runs.slice(before).some((run) => run.alone)).toBe(false);
+		expect(glow.stats().emission?.sunMap).toBe(true);
+	});
+
+	it('draws the emission alone over the skybox inside the solar system, and the far regions on both sides', async () => {
+		withEmission();
+		const glow = make();
+		await ready(glow);
+		settle(glow, NEAR_SUN, { drawing: false, share: 0, skybox: 0.8 });
+		const [outside, inside] = gl.composites;
+		expect(outside.length).toBe(0);
+		expect(inside.at(-1)).toBeCloseTo(0.8, 6);
+		expect(gl.regions.at(-1)).toBeCloseTo(0.8, 6);
+		settle(glow, NEAR_SUN, { skybox: 0 });
+		expect(outside.at(-1)).toBe(1);
+		expect(gl.regions.at(-1)).toBe(1);
+	});
+
+	it('draws nothing of it with the glow off, once the fade ends', async () => {
+		withEmission();
+		const glow = make();
+		await ready(glow);
+		const inSky = { drawing: false, share: 0, skybox: 1 };
+		settle(glow, NEAR_SUN, inSky);
+		glow.setEnabled(false);
+		settle(glow, NEAR_SUN, inSky);
+		const [, inside] = gl.composites;
+		const shown = inside.length;
+		const regions = gl.regions.length;
+		for (let i = 0; i < 5; i++) glow.update(frame(NEAR_SUN, inSky));
+		expect(inside.length).toBe(shown);
+		expect(gl.regions.length).toBe(regions);
+	});
+
+	it('turns off for the gates: the maps are made again as on a host with none', async () => {
+		withEmission();
+		const glow = make();
+		await ready(glow);
+		settle(glow, [0, 0, 0]);
+		glow.setEmission({ halpha: false, scatter: false, regions: false });
+		gl.runs = [];
+		settle(glow, NEAR_SUN, { skybox: 0 });
+		expect(gl.parts.at(-1)).toEqual({ halpha: false, scatter: false, regions: false });
+		expect(gl.runs.some((run) => run.alone)).toBe(false);
+		// The march, three maps, the eye, the composite, no map of the emission alone
+		// and no regions; the grid and the emission's textures stay.
+		expect(gl.live.size).toBe(8);
+		glow.setEmission({ halpha: true, scatter: true, regions: true });
+		settle(glow, NEAR_SUN, { skybox: 0 });
+		expect(gl.live.size).toBe(11);
+	});
+
+	it('loads none of it, and draws as before, on a host with none', async () => {
+		const glow = make();
+		await ready(glow);
+		settle(glow, NEAR_SUN, { drawing: false, share: 0, skybox: 1 });
+		expect(gl.composites.length).toBe(1);
+		expect(gl.regions.length).toBe(0);
+		expect(glow.stats().emission).toBeNull();
 	});
 });

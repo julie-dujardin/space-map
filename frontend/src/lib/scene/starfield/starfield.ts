@@ -661,6 +661,8 @@ export class StarfieldSystem {
 			active: this.active,
 			drawing: this.group.visible,
 			share: gain * skyShare,
+			skybox: this.ctx.layers.isVisible('stars') ? gain * this.skyboxShare() : 0,
+			heightPx: viewportHeight,
 			nowMs,
 			dtMs
 		});

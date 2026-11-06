@@ -23,7 +23,7 @@
 import type { StarUniforms } from '$lib/scene/starfield/material';
 import { SwitchFade } from '$lib/scene/visibility/switch-fade';
 import { inSceneCredits, type ExtrasolarCredit } from '$lib/fetch/extrasolar/files';
-import type { WebGLRenderer } from 'three';
+import type { Texture, WebGLRenderer } from 'three';
 import { GpuLoad, type LoadPhase } from './gpu-load';
 import { DUST_MAP_LAYERS, DUST_MAP_SIZE } from './layout';
 import { DustMarch, NestTextures, SkyMap, canMarch } from './march';
@@ -109,6 +109,7 @@ export class StarDust {
 	private refreshes = 0;
 	/** Rises when the origin moves, so a node knows its shift is old. */
 	epoch = 0;
+	private readonly columnMap: { map: Texture; origin: Vec3 } = { map: null as never, origin: SUN };
 
 	constructor(
 		private readonly renderer: WebGLRenderer,
@@ -185,6 +186,19 @@ export class StarDust {
 	 *  of the map in use. */
 	get latestReach(): number {
 		return this.job?.reach ?? this.frontReach;
+	}
+
+	/** The map of the columns from the camera's side, and its origin: the Sun's
+	 *  own near the Sun. Null until the Sun's map is made, and without maps. Light
+	 *  that has no dust of the Sun's in it, as a nebula's, reads the whole column
+	 *  here. */
+	get columns(): { map: Texture; origin: Vec3 } | null {
+		const { sunMap, front } = this;
+		if (this.plan.mode !== 'map' || !sunMap || this.sunPasses < this.plan.passes) return null;
+		const home = this.origin === SUN || !front;
+		this.columnMap.map = home ? sunMap.external : front.external;
+		this.columnMap.origin = home ? SUN : this.origin;
+		return this.columnMap;
 	}
 
 	/** Tree axes to nest axes, as rows; null until the metadata is in. */

@@ -1,7 +1,7 @@
 /**
- * The glow's credits for /credits. They are the papers and datasets of the model,
- * in the shape of the nest's credits. The grid reads only the tree and the nest,
- * which credit themselves.
+ * The glow's credits for /credits: the papers and datasets of the model and of
+ * the emission, in the shape of the nest's credits. The grid reads only the tree
+ * and the nest, which credit themselves.
  */
 
 import type { ExtrasolarCredit } from '$lib/fetch/extrasolar/files';

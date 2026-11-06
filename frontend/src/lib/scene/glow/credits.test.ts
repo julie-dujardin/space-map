@@ -46,6 +46,18 @@ describe('glowCredits', () => {
 		expect(credits.some(inSceneCredits)).toBe(false);
 		expect(credits[2].license).toBe('CC0 1.0');
 	});
+
+	it('keeps the emission’s datasets, with no licence stated, off the credit bar too', () => {
+		const wise = paper('wise-hii-v3', 'Anderson et al. 2014, arXiv:1312.6202');
+		const mccallum = paper('mccallum-2025', 'McCallum et al. 2025, arXiv:2503.14348', 'CC BY 4.0');
+		const credits = glowCredits({ credits: [...META.credits, mccallum, wise] });
+		expect(credits.map((credit) => credit.organisation).slice(3)).toEqual([
+			'McCallum et al. 2025',
+			'Anderson et al. 2014'
+		]);
+		expect(credits[4].license).toBeUndefined();
+		expect(credits.some(inSceneCredits)).toBe(false);
+	});
 });
 
 let hosts = 0;
