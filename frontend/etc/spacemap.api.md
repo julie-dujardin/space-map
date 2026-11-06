@@ -30,7 +30,7 @@ import { TextureDataType } from 'three';
 import { Vector2 } from 'three';
 import { Vector3 } from 'three';
 import { Vector4 } from 'three';
-import type { WebGLRenderer } from 'three';
+import { WebGLRenderer } from 'three';
 
 // @public (undocumented)
 export type Anchor = InertialAnchor | SurfaceAnchor;

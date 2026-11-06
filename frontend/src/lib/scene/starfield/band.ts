@@ -4,6 +4,8 @@
 export const PREFETCH_AU = 500;
 /** Delays unloading to prevent churn near the prefetch boundary. */
 export const RELEASE_AU = 400;
+/** Limit magnitude with the camera near its target, as the skybox draws it. */
+export const BASE_LIMIT_MAG = 7.5;
 /** Past this distance (AU) the starfield takes the sky. */
 export const STARS_IN_AU = 2_000;
 /** Restores the skybox later to prevent flicker near the switch. */

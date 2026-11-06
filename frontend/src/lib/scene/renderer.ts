@@ -62,12 +62,14 @@ import { isReversedDepth } from './setup/depth-mode';
 import {
 	currentRenderTier,
 	dustPlan,
+	glowPlan,
 	renderPixelRatio,
 	starBudget,
 	type RenderTierPreset
 } from './render-tier';
 import { ConstellationSystem } from './constellations/constellations';
 import { StarDust } from './dust/star-dust';
+import { GlowSky } from './glow/glow-sky';
 import { StarfieldSystem } from './starfield/starfield';
 import { extrasolarObjectId } from '$lib/fetch/extrasolar/ids';
 import { ExoplanetSystems } from '$lib/scene/exoplanets/systems';
@@ -636,13 +638,15 @@ export class SceneRenderer {
 		);
 		this.pointClouds.seedBasis(focusPos);
 		this.pointClouds.setPointBudget(this.tier.pointBudget);
+		const dust = new StarDust(this.renderer, dustPlan(), this.invalidate);
 		this.starfield = new StarfieldSystem(
 			ctx,
 			this.scene,
 			starBudget(),
 			this.invalidate,
 			this.pointClouds.pickRegistry,
-			new StarDust(this.renderer, dustPlan(), this.invalidate)
+			dust,
+			new GlowSky(this.renderer, this.scene, glowPlan(), dust, this.invalidate)
 		);
 		this.constellations = new ConstellationSystem(
 			ctx,
@@ -3541,6 +3545,7 @@ export class SceneRenderer {
 		this.pointClouds.setPointBudget(this.tier.pointBudget);
 		this.starfield.setBudget(starBudget());
 		this.starfield.dust?.setPlan(dustPlan());
+		this.starfield.glow?.setPlan(glowPlan());
 	}
 
 	resize(width: number, height: number): void {

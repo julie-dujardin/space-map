@@ -66,7 +66,8 @@ import { dustBounds } from '$lib/scene/dust/extinction';
 import type { StarDust } from '$lib/scene/dust/star-dust';
 import type { NodeSample } from '$lib/scene/dust/node-shift';
 import { makeStarSurfaceMaterial, updateStarTransition } from '../objects/sun';
-import { PREFETCH_AU, RELEASE_AU, starsTakeSky } from './band';
+import type { GlowSky } from '$lib/scene/glow/glow-sky';
+import { BASE_LIMIT_MAG, PREFETCH_AU, RELEASE_AU, starsTakeSky } from './band';
 import { photosphereColour, starColours } from './colour';
 import {
 	FOCUS_FLOOR_MAG,
@@ -96,8 +97,6 @@ const ROOT = 'r';
 const METADATA = 'metadata.json';
 const NO_CREDITS: readonly ExtrasolarCredit[] = [];
 
-/** Limit magnitude with the camera near its target. */
-const BASE_LIMIT_MAG = 7.5;
 /** Zoom distance (pc) past which the limit rises by 5 magnitudes per decade. */
 const EXPOSURE_PC = 1;
 /** A box that can hold a star this bright loads whatever the budget. The
@@ -303,7 +302,9 @@ export class StarfieldSystem {
 		private readonly onChange: () => void,
 		private readonly pickRegistry: PickRegistry,
 		/** Dust in front of the stars. Null draws them as the catalogue has them. */
-		readonly dust: StarDust | null = null
+		readonly dust: StarDust | null = null,
+		/** The light of the stars not drawn. Null draws none. */
+		readonly glow: GlowSky | null = null
 	) {
 		this.group.name = 'starfield';
 		this.exactGroup.name = 'starfield-exact';
@@ -569,7 +570,8 @@ export class StarfieldSystem {
 
 	/** True while a frame would change what draws. */
 	busy(): boolean {
-		if (this.loading > 0 || this.dustRaysLeft || this.dust?.busy()) return true;
+		if (this.loading > 0 || this.dustRaysLeft || this.dust?.busy() || this.glow?.busy())
+			return true;
 		if (this.sky.fading || this.exactFade.fading || this.outsideFade.fading) return true;
 		if (this.drawn.size === 0) return false;
 		if (Math.abs(this.uniforms.uLimit.value - this.allowedLimit) > 0.01) return true;
@@ -650,11 +652,24 @@ export class StarfieldSystem {
 			(this.group.visible && this.drawn.size > 0) ||
 			(this.exactGroup.visible && this.exact.size > 0);
 		this.updateDust(cam, drawing, nowMs, dtMs);
+		this.glow?.update({
+			camera,
+			tree: this.tree?.token ?? null,
+			at: cam,
+			treeToScene: this.matrix,
+			treeScale: PC_SCENE,
+			active: this.active,
+			drawing: this.group.visible,
+			share: gain * skyShare,
+			nowMs,
+			dtMs
+		});
 		this.ctx.credits.setStars(drawing ? this.sceneCredits() : NO_CREDITS);
 	}
 
 	/** Stars and the dust in front of them draw together. A store takes this on
-	 *  each frame, so the array changes only when the dust's credits do. */
+	 *  each frame, so the array changes only when the dust's credits do. The glow
+	 *  has no sources of its own: they are the tree's and the nest's. */
 	private sceneCredits(): readonly ExtrasolarCredit[] {
 		const dust = this.dust?.credits() ?? NO_CREDITS;
 		if (dust !== this.dustCredits) {
@@ -789,6 +804,7 @@ export class StarfieldSystem {
 		}
 		this.nodes.clear();
 		this.setExactStars([]);
+		this.glow?.dispose();
 		this.dust?.dispose();
 		this.group.removeFromParent();
 		this.exactGroup.removeFromParent();

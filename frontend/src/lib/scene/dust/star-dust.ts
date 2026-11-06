@@ -171,6 +171,32 @@ export class StarDust {
 		return this.plan.mode === 'node' && this.load.phase === 'ready';
 	}
 
+	/** The nest on the GPU, once a map can use it. */
+	get marchNest(): NestTextures | null {
+		return this.load.phase === 'ready' && this.march ? this.gpu : null;
+	}
+
+	/** The reach of the refresh rule at the Sun. */
+	get reachAtSun(): number {
+		return this.sunReach;
+	}
+
+	/** The reach the latest refresh found: that of the map being made, else that
+	 *  of the map in use. */
+	get latestReach(): number {
+		return this.job?.reach ?? this.frontReach;
+	}
+
+	/** Tree axes to nest axes, as rows; null until the metadata is in. */
+	get frame(): NestMetadata['frame'] | null {
+		return this.load.meta?.frame ?? null;
+	}
+
+	/** The nest's token; null until the metadata is in. */
+	get token(): string | null {
+		return this.load.meta?.token ?? null;
+	}
+
 	/** Share of the dust's effect that draws. */
 	get share(): number {
 		return this.enabled ? this.fade.share : 0;

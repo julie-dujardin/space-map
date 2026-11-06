@@ -1,5 +1,6 @@
 import { isCoarsePointer, isLowEndDevice } from '$lib/device';
 import type { DustPlan } from '$lib/scene/dust/star-dust';
+import type { GlowPlan } from '$lib/scene/glow/glow-sky';
 import { sceneSettings } from '$lib/scene/settings.svelte';
 
 /**
@@ -50,6 +51,9 @@ export interface RenderTierPreset {
 	/** How stars read the dust. `high` nest: 26 MB on the wire, 64 MiB on the
 	 *  GPU. `low`: 3.6 MB, 8 MiB. */
 	dust: DustPlan;
+	/** How the light of the stars not drawn reaches the sky. It needs the GPU
+	 *  nest, so a tier with none goes without. */
+	glow: GlowPlan | null;
 }
 
 const MB = 1024 * 1024;
@@ -71,7 +75,8 @@ export const RENDER_TIER_PRESETS: Record<RenderTier, RenderTierPreset> = {
 		starPoints: 1_200_000,
 		starBytes: 80 * MB,
 		starFetches: 3,
-		dust: { mode: 'node', nest: 'low', passes: 1 }
+		dust: { mode: 'node', nest: 'low', passes: 1 },
+		glow: null
 	},
 	medium: {
 		maxPixelRatio: 1.5,
@@ -89,7 +94,8 @@ export const RENDER_TIER_PRESETS: Record<RenderTier, RenderTierPreset> = {
 		starPoints: 1_600_000,
 		starBytes: 160 * MB,
 		starFetches: 4,
-		dust: { mode: 'map', nest: 'low', passes: 4 }
+		dust: { mode: 'map', nest: 'low', passes: 4 },
+		glow: { grid: 'low', size: 256, steps: 48, passes: 4 }
 	},
 	high: {
 		maxPixelRatio: 2,
@@ -107,7 +113,8 @@ export const RENDER_TIER_PRESETS: Record<RenderTier, RenderTierPreset> = {
 		starPoints: 2_500_000,
 		starBytes: 400 * MB,
 		starFetches: 6,
-		dust: { mode: 'map', nest: 'high', passes: 8 }
+		dust: { mode: 'map', nest: 'high', passes: 8 },
+		glow: { grid: 'high', size: 512, steps: 48, passes: 8 }
 	}
 };
 
@@ -165,4 +172,9 @@ export function starBudget(): { points: number; bytes: number; fetches: number }
 /** How stars read the dust: the fill tier, and no sky map where memory is short. */
 export function dustPlan(): DustPlan {
 	return isLowEndDevice() ? RENDER_TIER_PRESETS.low.dust : currentRenderTier().dust;
+}
+
+/** The glow's plan, as the dust's: no glow where memory is short. */
+export function glowPlan(): GlowPlan | null {
+	return isLowEndDevice() ? RENDER_TIER_PRESETS.low.glow : currentRenderTier().glow;
 }

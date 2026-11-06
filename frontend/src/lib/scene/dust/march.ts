@@ -30,7 +30,7 @@ import { glslFloat, glslVec3 } from './glsl';
 
 /** What the march needs to know of a level. The codes stay out of it, so the
  *  `high` nest leaves the heap after the upload. */
-type LevelShape = Omit<NestLevel, 'codes'>;
+export type LevelShape = Omit<NestLevel, 'codes'>;
 
 /** Bytes of a level that go to the GPU in one frame. */
 const UPLOAD_BYTES_PER_FRAME = 4 * 1024 * 1024;
@@ -44,7 +44,7 @@ void main() {
 
 /** One branch for each level, fine to coarse. A sample reads the finest level
  *  that holds it. */
-function densityGlsl(levels: readonly LevelShape[]): string {
+export function densityGlsl(levels: readonly LevelShape[]): string {
 	const branches = levels.map((level, i) => {
 		const read = `uLevel${i}`;
 		const half = glslVec3(level.half);

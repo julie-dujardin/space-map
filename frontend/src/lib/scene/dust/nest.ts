@@ -78,46 +78,59 @@ export interface NestLevel {
 /** Request Timeout and Too Many Requests: a later try can pass. */
 const RETRYABLE = new Set([408, 429]);
 
-async function loadNestMetadata(url: string): Promise<NestMetadata | null> {
+type Stored = { format: number; distribution?: string };
+
+async function loadStoredMetadata<T extends Stored>(
+	url: string,
+	prefix: string,
+	format: number
+): Promise<T | null> {
 	if (extrasolarBase() === '') return null;
 	const res = await fetchWithTimeout(url, { cache: 'no-cache' });
-	// A host with no nest draws the stars as they are.
+	// A host with no such export draws the stars as they are.
 	if (res.status === 404) return null;
-	// A refusal or a page that is no nest reads the same on a retry. A timeout, a
-	// rate limit, a 5xx or a dropped connection may not.
+	// A refusal or a page that is no such export reads the same on a retry. A
+	// timeout, a rate limit, a 5xx or a dropped connection may not.
 	if (res.status >= 400 && res.status < 500 && !RETRYABLE.has(res.status)) {
-		throw new NestFormatError(`dust metadata.json returned ${res.status}`);
+		throw new NestFormatError(`${prefix} metadata.json returned ${res.status}`);
 	}
-	if (!res.ok) throw new Error(`dust metadata.json returned ${res.status}`);
+	if (!res.ok) throw new Error(`${prefix} metadata.json returned ${res.status}`);
 	const meta = (await res.json().catch((e: unknown) => {
-		if (e instanceof SyntaxError) throw new NestFormatError('dust metadata.json is not JSON');
+		if (e instanceof SyntaxError) throw new NestFormatError(`${prefix} metadata.json is not JSON`);
 		throw e;
-	})) as NestMetadata;
-	if (meta.format !== DUST_FORMAT) {
-		throw new NestFormatError(`dust format ${meta.format}, this code reads ${DUST_FORMAT}`);
+	})) as T;
+	if (meta.format !== format) {
+		throw new NestFormatError(`${prefix} format ${meta.format}, this code reads ${format}`);
 	}
 	return extrasolarAllowed(meta) ? meta : null;
 }
 
 /** Metadata by URL, on its way or in. */
-const metadata = new Map<string, Promise<NestMetadata | null>>();
+const metadata = new Map<string, Promise<unknown>>();
 
 /**
- * The nest's metadata, once per base URL, or null where this host may not draw
- * it. The scene and /credits share it. A failure is not kept, so the next call
- * tries again.
+ * A stored export's metadata, once per base URL, or null where this host may
+ * not draw it. The scene and /credits share it. A failure is not kept, so the
+ * next call tries again.
  */
-export function fetchNestMetadata(): Promise<NestMetadata | null> {
-	const url = `${extrasolarBase()}/v1/dust/metadata.json`;
+export function fetchStoredMetadata<T extends Stored>(
+	prefix: string,
+	format: number
+): Promise<T | null> {
+	const url = `${extrasolarBase()}/v1/${prefix}/metadata.json`;
 	const kept = metadata.get(url);
-	if (kept) return kept;
-	const p = loadNestMetadata(url);
+	if (kept) return kept as Promise<T | null>;
+	const p = loadStoredMetadata<T>(url, prefix, format);
 	metadata.set(url, p);
 	p.catch(() => {
 		if (metadata.get(url) === p) metadata.delete(url);
 	});
 	return p;
 }
+
+/** The nest's metadata, or null where this host may not draw it. */
+export const fetchNestMetadata = (): Promise<NestMetadata | null> =>
+	fetchStoredMetadata<NestMetadata>('dust', DUST_FORMAT);
 
 /** The authors and year of a citation. An author list can hold commas. */
 function citedWork(citation: string): string {
