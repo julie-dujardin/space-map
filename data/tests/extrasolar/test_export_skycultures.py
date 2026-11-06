@@ -9,7 +9,7 @@ import pytest
 
 from space_map_data.constants.stars import constellations
 from space_map_data.constants.stars import cultures as cultures_table
-from space_map_data.export.extrasolar import render, skycultures
+from space_map_data.export.extrasolar import planets, render, skycultures
 from space_map_data.export.extrasolar.build import ExportRefused, export_extrasolar
 from space_map_data.export.extrasolar.reader import ExportReader, NodeInfo
 from space_map_data.export.wikidata import WikidataEntityCache
@@ -195,8 +195,10 @@ class TestCultureFile:
         assert set(found) == {ids[0], ids[1], ids[3]}
         registry = Registry(tmp_path / "reg")
         with registry.reader():
+            hidden = planets.hidden_stars(planets.read_planets(registry))
             for region in sorted({int(region_of(cell_of(i))) for i in found}):
-                rows, _ = render.render_rows(render.region_table(registry, region))
+                table = render.region_table(registry, region, hidden)
+                rows, _ = render.render_rows(table)
                 for at, id_ in enumerate(rows["id"].tolist()):
                     if id_ in found:
                         xyz = [float(rows[axis][at]) for axis in "xyz"]

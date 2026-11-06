@@ -353,12 +353,16 @@ class StarSystems:
 
     roots: dict[int, int]
     stars: dict[int, int] = field(default_factory=dict)
+    as_star: set[int] = field(default_factory=set)
 
     def host(self, record: int) -> int:
         return 0
 
     def star(self, record: int) -> int:
         return self.stars.get(record, 0)
+
+    def drawn_as_star(self, record: int) -> bool:
+        return record in self.as_star
 
     def root(self, id_: int) -> int:
         return self.roots.get(id_, 0)
@@ -381,9 +385,9 @@ class TestStarSystemRoots:
         }
         assert planets[delta_a] == system and planets[delta_b] == system
 
-    def test_a_brown_dwarf_and_its_star_link_each_other(self, root, backup, tmp_path):
-        """The record stays on its host. It names its star, and the star's
-        Metadata row names the record."""
+    def test_a_record_names_the_star_that_it_also_is(self, root, backup, tmp_path):
+        """The record stays on its host, and names its star and the side that
+        is drawn."""
         inputs = downloads().write(tmp_path / "one")
         ingest(root, backup, inputs)
         (star,) = Registry(root).lookup("gaia", "dr3", ["505"])
@@ -391,15 +395,13 @@ class TestStarSystemRoots:
             root,
             backup,
             inputs,
-            systems=StarSystems({}, {0: int(star)}),
+            systems=StarSystems({}, {0: int(star)}, {0}),
         )
         rows = table_rows(root, "planets").to_pylist()
         (record,) = [row for row in rows if row["star"] is not None]
         assert record["star"] == star and record["host"] != star
-        meta = {row["id"]: row for row in table_rows(root, "metadata").to_pylist()}
-        path = f"{record['host']}/b/{record['number']}"
-        assert meta[int(star)]["planets"] == [path]
-        assert meta[record["host"]]["planets"] is None
+        assert record["as_star"] is True
+        assert {row["as_star"] for row in rows if row["star"] is None} == {None}
 
 
 class TestExoplanetIngest:

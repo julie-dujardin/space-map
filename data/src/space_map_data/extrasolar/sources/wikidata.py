@@ -10,7 +10,9 @@ or a companion.
 
 The classes of an item tell what it is about (`kind`). An item about a star
 goes to its star, an item about a system to a node of its system (`place`),
-so each object has one item at most. Readers look for that one.
+so each object has one item at most. Readers look for that one. A planet
+record drawn as its star hands that star its item when the star has none
+(`with_record_items`).
 
 Its English label (else its multilingual one) names the object unless it
 is a Gaia id or a SIMBAD identifier. A label that is a catalogue number
@@ -553,6 +555,37 @@ def report_lines(
         lines.append(f"  {case}: {len(found):,}")
         lines += [f"    {text}" for text in sorted(found)[:examples]]
     return lines
+
+
+def with_record_items(
+    rows: pa.Table,
+    items: Iterable[StarItem],
+    found: Iterable[tuple[str, dict, float | None, float | None]],
+) -> tuple[pa.Table, list[str]]:
+    """The rows and a row for each (QID, claim, ra, dec) of `found`: the item
+    of a planet record drawn as its star, which claims that star. They come
+    last, as the engine gives a star to the first row that claims it, so a
+    star with an item of its own keeps it. An item of the star list stays
+    where `place` put it, or left it off.
+    """
+    taken = {item.qid for item in items} | set(rows["catalogue_id"].to_pylist())
+    added = [
+        {
+            "catalogue_id": qid,
+            "match_ra": ra,
+            "match_dec": dec,
+            "claims": [claim],
+            "name": None,
+            "mint": False,
+        }
+        for qid, claim, ra, dec in found
+        if qid not in taken
+    ]
+    lines = [f"Wikidata: items of planet records drawn as their star: {len(added)}"]
+    if not added:
+        return rows, lines
+    table = pa.Table.from_pylist(added, rows.select(list(added[0])).schema)
+    return pa.concat_tables([rows, table], promote_options="default"), lines
 
 
 def engine_rows(

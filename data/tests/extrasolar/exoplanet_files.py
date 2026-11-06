@@ -90,7 +90,8 @@ class Downloads:
     flame_spec: list[dict] = field(default_factory=list)
     xgboost: list[dict] = field(default_factory=list)
     names: list[dict] = field(default_factory=list)
-    # Wikidata items as (QID, archive names, exoplanet.eu pages, articles).
+    # Wikidata items as (QID, archive names, exoplanet.eu pages, articles);
+    # none is about a star.
     wikidata_items: list[tuple[str, list[str], list[str], int]] = field(
         default_factory=list
     )
@@ -149,7 +150,7 @@ class Downloads:
         lines = ["\t".join(wikidata.COLUMNS)] + [
             f"<http://www.wikidata.org/entity/{qid}>\t"
             + "\t".join(f'"{"|".join(v)}"' if v else "" for v in (archive, eu))
-            + f"\t{articles}"
+            + f"\t{articles}\t0"
             for qid, archive, eu, articles in self.wikidata_items
         ]
         items.write_bytes(gzip.compress(("\n".join(lines) + "\n").encode()))

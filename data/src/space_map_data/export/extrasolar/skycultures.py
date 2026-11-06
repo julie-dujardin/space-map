@@ -656,17 +656,19 @@ def layout(record: dict, naming: Naming) -> tuple[dict, Members]:
     return content, members
 
 
-def positions(registry: Registry, ids: Iterable[int]) -> dict[int, list[float]]:
+def positions(
+    registry: Registry, ids: Iterable[int], hidden: np.ndarray
+) -> dict[int, list[float]]:
     """The render-tree position (pc) of each ID that the tree draws.
 
-    Each region is rendered whole, as `render.region_rows` renders it, so the
-    float64 positions are the tree's.
+    Each region is rendered whole, as `render.region_rows` renders it, with
+    the same `hidden` stars, so the float64 positions are the tree's.
     """
     wanted = np.unique(np.fromiter(ids, np.int64))
     found: dict[int, list[float]] = {}
     regions = region_of(cell_of(wanted))
     for region in np.unique(regions).tolist():
-        rows, _ = render.render_rows(render.region_table(registry, region))
+        rows, _ = render.render_rows(render.region_table(registry, region, hidden))
         hit = np.isin(rows["id"], wanted[regions == region])
         for id_, x, y, z in zip(
             rows["id"][hit].tolist(),
@@ -852,9 +854,11 @@ def build(
     registry: Registry,
     out: Path,
     wikidata: WikidataEntityCache,
+    hidden: np.ndarray,
     cultures_dir: Path | None = None,
 ) -> Result | None:
     """Write the culture files below `out` with their token, or None with no input.
+    `hidden` are the stars drawn as planets (`planets.hidden_stars`).
 
     The returned entry goes to `skycultures` in metadata.json.
     """
@@ -883,7 +887,7 @@ def build(
     laid_out = [layout(record, naming) for record in (*records, common)]
     ids = {id_ for _, members in laid_out for id_ in members.ids()}
     logger.info("sky cultures: positions of %d stars", len(ids))
-    found = positions(registry, ids)
+    found = positions(registry, ids, hidden)
     logger.info(
         "sky cultures: %d of %d stars are in the render tree", len(found), len(ids)
     )

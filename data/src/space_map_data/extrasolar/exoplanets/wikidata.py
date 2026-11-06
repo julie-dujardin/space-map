@@ -9,13 +9,18 @@ the planet's designation, and the slug of its exoplanet.eu page (P5653). An
 item whose ids reach two planets links to neither: the catalogues letter some
 systems differently, μ Ara among them. When several items reach one planet,
 the item with the most articles keeps it, then the lowest QID.
+
+A record that the export draws as the star that it also is hands its item to
+that star when the item is about a star (`star_items`): the record has no
+page of its own.
 """
 
 import logging
 import re
 from collections import defaultdict
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
+from typing import Protocol
 
 import pyarrow as pa
 
@@ -48,6 +53,18 @@ class Links:
 
 def link_items(planets: pa.Table, items: Iterable[ExoplanetItem]) -> Links:
     """The planet that each item reaches alone."""
+    links = _link(planets, items)
+    logger.info(
+        "Wikidata: %d planets have an item; %d items reach no planet, %d reach"
+        " several and link to none",
+        len(links.qid),
+        links.unlinked,
+        len(links.several),
+    )
+    return links
+
+
+def _link(planets: pa.Table, items: Iterable[ExoplanetItem]) -> Links:
     by_archive: dict[str, set[Number]] = defaultdict(set)
     by_eu: dict[str, set[Number]] = defaultdict(set)
     for row in planets.select(
@@ -82,13 +99,6 @@ def link_items(planets: pa.Table, items: Iterable[ExoplanetItem]) -> Links:
             best[number] = item
     links.qid = {number: item.qid for number, item in best.items()}
     links.several.sort(key=lambda qid: int(qid[1:]))
-    logger.info(
-        "Wikidata: %d planets have an item; %d items reach no planet, %d reach"
-        " several and link to none",
-        len(links.qid),
-        links.unlinked,
-        len(links.several),
-    )
     return links
 
 
@@ -115,6 +125,56 @@ def with_items(planets: pa.Table, links: Links) -> pa.Table:
     return planets.set_column(
         at, planets.schema.field(at), pa.array(cross_ids, pa.list_(CROSS_ID))
     )
+
+
+class PlanetRecord(Protocol):
+    """What `star_items` reads of a planet record (`table.Record`)."""
+
+    @property
+    def values(self) -> Mapping[str, object]: ...
+
+    def text(self, name: str) -> str | None: ...
+
+
+def star_items(
+    records: Sequence[PlanetRecord],
+    items: Iterable[ExoplanetItem],
+    hosted: Iterable[int],
+    drawn: Iterable[int],
+) -> dict[int, str]:
+    """The QID of each record of `drawn`, the records drawn as their star,
+    whose item is about a star. The items link as they do at the commit, to
+    the records with a host (`hosted`), which get a number."""
+    hosted = set(hosted)
+    table = pa.Table.from_pylist(
+        [
+            {
+                "host": at,
+                "number": 0,
+                "designation": record.text("designation"),
+                "cross_ids": record.values.get("cross_ids") or [],
+            }
+            for at, record in enumerate(records)
+            if at in hosted
+        ],
+        pa.schema(
+            [
+                ("host", pa.int64()),
+                ("number", pa.uint16()),
+                ("designation", pa.string()),
+                ("cross_ids", pa.list_(CROSS_ID)),
+            ]
+        ),
+    )
+    items = list(items)
+    about_star = {item.qid for item in items if item.star}
+    links = _link(table, items)
+    wanted = set(drawn)
+    return {
+        at: qid
+        for (at, _), qid in links.qid.items()
+        if at in wanted and qid in about_star
+    }
 
 
 def planet_qid(cross_ids: Iterable[dict]) -> str | None:

@@ -217,13 +217,15 @@ def ingest(
     item_simbad: SimbadList | None = None,
     record: dict | None = None,
     max_retired: int | None = None,
+    record_qid: str | None = None,
     **more,
 ) -> tuple[systems_ingest.SystemsExtension, str]:
     """An ingest of `stars`, with a P-type planet of `host`, the SIMBAD rows
     `simbad` (oid → ra, dec, V), the Gaia DR3 rows `gaia`, the rows of
     `passes` and, after the systems, the Wikidata `items`. `item_simbad`
     stands in for the SIMBAD list of the items. `record` replaces values of
-    the planet. `more` goes to `inputs`."""
+    the planet, and `record_qid` is its item, about a star. `more` goes to
+    `inputs`."""
     with IngestRun.start(root, root / "backup") as run:
         if gaia:
             run.add(GAIA_DR3, [gaia_rows(run, gaia)])
@@ -243,6 +245,7 @@ def ingest(
                 "class": ["planet"],
                 "mass": [1.0],
                 "period": [400.0],
+                "discovery_method": [None],
                 "binary_type": [P_TYPE],
                 "star_ids": [None],
             }
@@ -251,12 +254,17 @@ def ingest(
         )
         found, index = inputs(planets, **more)
         extension = systems_ingest.add_systems(run, found, index, True)
-        if items:
+        if items or record_qid:
             positions = {hip: values[:2] for hip, values in stars.items()}
             rows = wikidata.engine_rows(items, positions, {})
             rows, lines = wikidata.attach(
                 rows, items, run, extension.plan, item_simbad or index.stars
             )
+            if record_qid:
+                claims = extension.plan.star_claims
+                found = [(record_qid, *claim) for claim in claims.values()]
+                rows, more_lines = wikidata.with_record_items(rows, items, found)
+                lines += more_lines
             extension.items_placed(lines)
             run.add(wikidata.WIKIDATA, [rows])
         result = run.commit(max_retired=max_retired)
@@ -1200,11 +1208,12 @@ class TestBrownDwarfRecord:
             ("B", "star", star),
         ]
 
-    def test_the_two_link_each_other(self, done):
+    def test_the_record_names_its_star(self, done):
         registry, extension, report = done
         (star,) = registry.lookup("simbad", "oid", ["7"]).tolist()
-        assert extension.star(0) == star
-        assert "brown dwarf records linked to their star: 1" in report
+        assert extension.star(0) == star and extension.drawn_as_star(0)
+        assert extension.plan.star_claims[0].claim["catalogue_id"] == "7"
+        assert "planet records linked to their star: 1" in report
 
     def test_a_planet_of_the_star_goes_to_its_system(self, done):
         """Its planets go to the file of the system, as the host's."""
@@ -1212,6 +1221,79 @@ class TestBrownDwarfRecord:
         (host,) = ids_of(registry, ["1010"])
         (star,) = registry.lookup("simbad", "oid", ["7"]).tolist()
         assert extension.root(star) == extension.root(host) != 0
+
+
+class TestTheItemOfARecordDrawnAsItsStar:
+    """The record has no page, so its star takes its item."""
+
+    def done(self, tmp_path, class_: str):
+        root = tmp_path / "registry"
+        _, report = ingest(
+            root,
+            stars=STARS | {"1010": (70.0, 20.0, 8.0, 10.0, 0.2)},
+            host="1010",
+            record={
+                "designation": ["X b"],
+                "class": [class_],
+                "mass": [33.5 if class_ == "brown dwarf" else 5.0],
+                "binary_type": [None],
+                "star_ids": [[dict(zip(CROSS_ID.names, ("simbad", "oid", "7")))]],
+            },
+            simbad={"7": (70.0, 20.0 + 3 / 3600, None)},
+            record_qid="Q9",
+        )
+        registry = Registry(root)
+        (star,) = registry.lookup("simbad", "oid", ["7"]).tolist()
+        meta = {row["id"]: row for row in table(registry, METADATA.slug).to_pylist()}
+        return meta[star], report
+
+    def test_its_star_takes_it(self, tmp_path):
+        row, report = self.done(tmp_path, "brown dwarf")
+        assert {"catalogue": "wikidata", "release": "qid", "catalogue_id": "Q9"} in (
+            row["cross_ids"]
+        )
+        assert row["object"] is True
+        assert "items of planet records drawn as their star: 1" in report
+
+    def test_a_star_that_is_not_drawn_does_not(self, tmp_path):
+        row, report = self.done(tmp_path, "planet")
+        assert all(c["catalogue"] != "wikidata" for c in row["cross_ids"])
+        assert "items of planet records drawn as their star: 0" in report
+
+
+class TestPlanetRecordThatIsAStar:
+    """A planet under the IAU's line that a star catalogue also lists: its
+    star leaves the trees, and the record still names it."""
+
+    @pytest.fixture
+    def done(self, tmp_path):
+        root = tmp_path / "registry"
+        extension, report = ingest(
+            root,
+            stars=STARS | {"1010": (70.0, 20.0, 8.0, 10.0, 0.2)},
+            host="1010",
+            record={
+                "designation": ["X b"],
+                "class": ["planet"],
+                "mass": [11.3],
+                "binary_type": [None],
+                "star_ids": [[dict(zip(CROSS_ID.names, ("simbad", "oid", "7")))]],
+            },
+            simbad={"7": (70.0, 20.0 + 3 / 3600, None)},
+        )
+        return Registry(root), extension, report
+
+    def test_the_record_names_its_star(self, done):
+        registry, extension, report = done
+        (star,) = registry.lookup("simbad", "oid", ["7"]).tolist()
+        assert star and extension.star(0) == star
+        assert not extension.drawn_as_star(0)
+        assert "planet records linked to their star: 1" in report
+
+    def test_its_star_is_in_no_system(self, done):
+        registry, extension, _ = done
+        (star,) = registry.lookup("simbad", "oid", ["7"]).tolist()
+        assert extension.root(star) == 0
 
 
 class TestSystemObjectBecomesARow:

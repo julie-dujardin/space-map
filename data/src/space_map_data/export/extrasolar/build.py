@@ -577,10 +577,13 @@ class TreeResult:
     counts: Counter
 
 
-def _build_tree(registry: Registry, layout: Layout, workers: int) -> TreeResult:
-    """The render tree. Its render rows stay in the scratch for the planets."""
+def _build_tree(
+    registry: Registry, layout: Layout, workers: int, hidden: np.ndarray
+) -> TreeResult:
+    """The render tree. Its render rows stay in the scratch for the planets.
+    `hidden` are the stars drawn as planets."""
     scratch = layout.scratch
-    jobs = [render.RowsJob(registry, r, scratch) for r in range(REGION_COUNT)]
+    jobs = [render.RowsJob(registry, r, scratch, hidden) for r in range(REGION_COUNT)]
     counts: Counter = Counter()
     for _, region_counts in _run(workers, render.region_rows, jobs, "render rows"):
         counts.update(region_counts)
@@ -854,7 +857,8 @@ def _export(
         )
         del refs
         _refuse(problems)
-        tree = _build_tree(registry, layout, workers)
+        hidden = planets.hidden_stars(planet_rows)
+        tree = _build_tree(registry, layout, workers, hidden)
         wikidata = WikidataEntityCache()
         planet_files = planets.build(
             registry,
@@ -879,7 +883,9 @@ def _export(
             logger.info(
                 "census: %s %d, %d sources", kind, entry["count"], len(entry["sources"])
             )
-        cultures = skycultures.build(registry, layout.staging, wikidata, cultures_dir)
+        cultures = skycultures.build(
+            registry, layout.staging, wikidata, hidden, cultures_dir
+        )
         index_file, index_entry = system_index.write(listed, names, layout.staging)
         logger.info(
             "system index: %d systems, %d held stars",

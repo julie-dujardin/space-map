@@ -52,6 +52,24 @@ def mass_ratio(mass: float | None, central: float | None) -> float | None:
     return mass * JUPITER_IN_SUNS / central
 
 
+# The discovery methods that see the companion itself ("Other" is mostly
+# imaging). Any other finds it through its host, so no star catalogue holds a
+# point of its own for it.
+SEEN_BY = frozenset({"Imaging", "Other"})
+
+
+def seen(method: str | None) -> bool:
+    """Whether a discovery method saw the companion itself; none given counts."""
+    return method is None or method in SEEN_BY
+
+
+def drawn_as_star(class_: str | None, mass: float | None, method: str | None) -> bool:
+    """Whether a planet record that is also a catalogued star is drawn as that
+    star rather than as a planet: a seen brown dwarf, or a seen record with no
+    mass, which has nothing to set against the star catalogue."""
+    return seen(method) and (class_ == BROWN_DWARF or mass is None)
+
+
 def classify(
     mass: float | None, kind: str | None, central: float | None
 ) -> tuple[str, str, float | None]:

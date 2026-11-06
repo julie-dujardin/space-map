@@ -8,8 +8,7 @@ builds the host rows of each catalogue. `add_passes` runs the three catalogue
 passes. `PlanetsExtension` numbers the planets and writes the Planets part
 and the planets table at commit. It comes after the star systems: a
 circumbinary planet's host is the node of its pair, a planetary system is the
-root of its host's star system, and a brown dwarf record and the star that it
-also is link each other.
+root of its host's star system, and a record that is also a star names it.
 
 `read` raises for a stale entry of `planet_hosts`, before anything is written.
 `add_passes` raises for a key of `planet_hosts` that its row does not reach.
@@ -79,7 +78,7 @@ from space_map_data.extrasolar.sky import region_of
 from space_map_data.extrasolar.sources import gaia
 from space_map_data.extrasolar.sources.gaia import GaiaReader
 from space_map_data.extrasolar.store import region_file
-from space_map_data.extrasolar.tables import METADATA, POINT_SOURCE
+from space_map_data.extrasolar.tables import POINT_SOURCE
 
 logger = logging.getLogger(__name__)
 
@@ -711,6 +710,10 @@ class SystemHosts(Protocol):
         """The ID of the star that a planet record also is, else 0."""
         ...
 
+    def drawn_as_star(self, record: int) -> bool:
+        """Whether a planet record is drawn as the star that it also is."""
+        ...
+
     def root(self, id_: int) -> int:
         """The root of the system of an ID, else 0."""
         ...
@@ -750,6 +753,7 @@ class PlanetsExtension:
         # The node of the pair of each circumbinary planet.
         node_of: dict[int, float] = {}
         star_of: dict[int, int] = {}
+        as_star: set[int] = set()
         # System ID → rank of its key star, so that joined systems keep the
         # key rule.
         rank: dict[int, tuple] = {}
@@ -763,6 +767,8 @@ class PlanetsExtension:
                 circumbinary += bool(pair)
                 if star := self.systems.star(at):
                     star_of[at] = star
+                    if self.systems.drawn_as_star(at):
+                        as_star.add(at)
                 host = pair or host
                 if pair and (node := self.systems.node(pair)) is not None:
                     node_of[at] = node
@@ -809,6 +815,7 @@ class PlanetsExtension:
                 system_of[at],
                 node_of.get(at),
                 star_of.get(at),
+                at in as_star,
             )
             for at, number in assignment.number.items()
         ]
@@ -844,7 +851,6 @@ class PlanetsExtension:
             counts=counts,
             report=report,
             unreviewed=assignment.unreviewed + len(disagree),
-            patches={METADATA.slug: record_paths(planets)},
         )
 
     def _identity_ids(
@@ -1194,22 +1200,6 @@ class PlanetsExtension:
 HOST_COLUMNS = ["id", *COLUMNS]
 # The Gaia passes, the chunk rows and the rows outside the chunks.
 GAIA_SOURCES = (gaia.GAIA_DR3.name, gaia.GAIA_DR3_NAMED.name)
-
-
-def record_paths(planets: pa.Table) -> pa.Table:
-    """`id` and `planets` of Metadata: each star that a planet record also is,
-    with the path of each record below `/x/`."""
-    paths: dict[int, list[str]] = defaultdict(list)
-    for row in planets.select(["host", "number", "star"]).to_pylist():
-        if row["star"] is not None:
-            paths[row["star"]].append(f"{row['host']}/b/{row['number']}")
-    ids = sorted(paths)
-    return pa.table(
-        {
-            "id": pa.array(ids, pa.int64()),
-            "planets": pa.array([paths[i] for i in ids], pa.list_(pa.string())),
-        }
-    )
 
 
 def doubles(planets: pa.Table) -> list[str]:

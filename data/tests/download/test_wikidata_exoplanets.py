@@ -11,9 +11,9 @@ from space_map_data.download.providers.exoplanets import wikidata
 
 HEADER = "\t".join(wikidata.COLUMNS)
 ROWS = [
-    '<http://www.wikidata.org/entity/Q1>\t"51 Peg b"\t"51_peg_b--5"\t12',
-    '<http://www.wikidata.org/entity/Q2>\t"HD 160691 d|mu Ara d"\t\t9',
-    '<http://www.wikidata.org/entity/Q3>\t\t"11_umi_b--575"\t1',
+    '<http://www.wikidata.org/entity/Q1>\t"51 Peg b"\t"51_peg_b--5"\t12\t0',
+    '<http://www.wikidata.org/entity/Q2>\t"HD 160691 d|mu Ara d"\t\t9\t0',
+    '<http://www.wikidata.org/entity/Q3>\t\t"11_umi_b--575"\t1\t2',
 ]
 ITEMS = "\n".join([HEADER, *ROWS]) + "\n"
 
@@ -41,7 +41,7 @@ class TestReadItems:
         assert wikidata.read_items(path) == [
             wikidata.ExoplanetItem("Q1", ("51 Peg b",), ("51_peg_b--5",), 12),
             wikidata.ExoplanetItem("Q2", ("HD 160691 d", "mu Ara d"), (), 9),
-            wikidata.ExoplanetItem("Q3", (), ("11_umi_b--575",), 1),
+            wikidata.ExoplanetItem("Q3", (), ("11_umi_b--575",), 1, star=True),
         ]
         assert wikidata.exoplanet_qids(path) == {"Q1", "Q2", "Q3"}
 

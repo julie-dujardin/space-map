@@ -14,11 +14,13 @@
    of a node above it, or of another node of its WDS system near it. A
    candidate far from the place of its WDS id is a wrong id, and goes
    (`place_guard`).
-2. A planet record that is also a star of a star catalogue stays a record of
-   its host. Under the IAU's line its object leaves every tree, and no other
-   record brings it back. A brown dwarf is a member of its system too
-   (`Overlap`): its star takes the component of the MSC and the WDS that lies
-   where it lies from its host, and the record and the star link each other.
+2. A planet record that is also a star of a star catalogue is drawn once,
+   as one or the other (`drawn_as_star`); a star that hosts a record is a
+   star. A record drawn as a planet takes its star out of every tree, and no
+   other record brings it back, unless the star is another star that a wrong
+   id reaches (`_other_stars`). A record drawn as its star makes that star a
+   member of its host's system (`Overlap`): it takes the component of the MSC
+   and the WDS that lies where it lies from its host.
 3. Each source's trees become groups of points and interiors (`reduce`). El-
    Badry's pairs become groups of two points, and the parallax veto and the
    star-cluster test of the trees apply to them too: shared motion is all
@@ -45,7 +47,7 @@ import numpy as np
 import pyarrow as pa
 import pyarrow.compute as pc
 
-from space_map_data.extrasolar.exoplanets.iau import BROWN_DWARF
+from space_map_data.extrasolar.exoplanets.iau import drawn_as_star, seen
 from space_map_data.extrasolar.sky import position_angle
 from space_map_data.extrasolar.sky import separation as sky_separation
 from space_map_data.extrasolar.sources.hipparcos import to_gaia_epoch
@@ -182,7 +184,11 @@ class Inputs:
 
 # What happens to the star of a planet record.
 LEAVES, MEMBER, APART = "leaves the trees", "member", "at another distance"
-HOST_LEFT = "its host left the trees"
+OTHER_STAR = "a point of its own"
+# The outcomes of a star that is the record's object, and of one that is drawn
+# in its place.
+SAME_OBJECT = frozenset({LEAVES, MEMBER})
+AS_STAR = frozenset({MEMBER})
 
 
 @dataclass
@@ -512,8 +518,11 @@ def cluster_keys(
 
 
 def planet_overlaps(planets: pa.Table | None, resolver: Resolver) -> list[Overlap]:
-    """The planet records that are also a star other than their host, once per
-    record and star. A record under the IAU's line leaves the trees."""
+    """The planet records that are also a star other than their host: the
+    first star of each record, in the order of its `star_ids`. A record drawn
+    as a planet takes its star out of the trees (`drawn_as_star`). A star that
+    hosts a record is a star. A record with no host is not drawn, so it leaves
+    its star as it is."""
     if planets is None or not planets.num_rows:
         return []
     rows, catalogue, release, value = flatten_ids(planets, "star_ids")
@@ -524,24 +533,83 @@ def planet_overlaps(planets: pa.Table | None, resolver: Resolver) -> list[Overla
     keys = resolve_ids(resolver, wanted)
     hosts = planets["host"].to_pylist()
     classes = planets["class"].to_pylist()
-    found: dict[tuple[int, int], Overlap] = {}
+    masses = planets["mass"].to_pylist()
+    methods = planets["discovery_method"].to_pylist()
+    host_keys = set(hosts)
+    found: dict[int, Overlap] = {}
     for row, item in zip(rows.tolist(), ids):
         key = keys.get(item)
-        if key and key != hosts[row]:
-            member = classes[row] == BROWN_DWARF and hosts[row]
-            outcome = MEMBER if member else LEAVES
-            found.setdefault((row, key), Overlap(row, hosts[row], key, outcome))
+        if not key or not hosts[row] or key == hosts[row] or row in found:
+            continue
+        as_star = drawn_as_star(classes[row], masses[row], methods[row])
+        outcome = MEMBER if as_star or key in host_keys else LEAVES
+        found[row] = Overlap(row, hosts[row], key, outcome)
     return list(found.values())
+
+
+def _other_stars(
+    overlaps: list[Overlap],
+    planets: pa.Table,
+    facts: Facts,
+    close: frozenset[int],
+    reduced: Reduced,
+) -> None:
+    """The stars that a record reaches by a wrong id, before any leaves the
+    trees. A companion found through its host has no point of its own, so a
+    star with its own astrometry is another star. A record drawn as a planet
+    reaches another star when their parallaxes clearly disagree (`_apart`)."""
+    methods = planets["discovery_method"].to_pylist()
+    for item in overlaps:
+        star = facts.get(item.key)
+        method = methods[item.record]
+        if star is not None and not seen(method) and star.astrometry in OWN_ASTROMETRY:
+            item.outcome = OTHER_STAR
+            reduced.counts[f"{PLANETS}: unseen records that reach a point"] += 1
+            reduced.events.append(
+                (
+                    "unseen record reaches a point",
+                    PLANETS,
+                    f"{star.key} ({star.astrometry}) of {item.host}: {method}",
+                )
+            )
+        elif item.outcome == LEAVES:
+            _apart(item, facts, close, reduced, "planet")
+
+
+def _apart(
+    item: Overlap, facts: Facts, close: frozenset[int], reduced: Reduced, what: str
+) -> None:
+    """Parallaxes that clearly disagree show a wrong id: such a star stays as
+    it is, out of its record's system and with no link. A point of `close` can
+    hold a close pair, which throws off its astrometry."""
+    host, star = facts.get(item.host), facts.get(item.key)
+    if host is None or star is None or close & {item.host, item.key}:
+        return
+    if not disagree(host, star):
+        return
+    item.outcome = APART
+    reduced.counts[f"{PLANETS}: {what}s at another distance"] += 1
+    reduced.events.append(
+        (
+            f"{what} at another distance",
+            PLANETS,
+            (
+                f"{star.key} {star.parallax:.3f}"
+                f" ± {star.parallax_error:.3f} mas, host {host.key}"
+                f" {host.parallax:.3f} ± {host.parallax_error:.3f} mas"
+            ),
+        )
+    )
 
 
 def _leaving(overlaps: list[Overlap], reduced: Reduced) -> frozenset[int]:
     """The stars that leave the trees. No record brings one back: a star that
-    leaves is no member, and a host that leaves has no members."""
+    leaves is no member. A star that hosts a record never leaves."""
     dropped = frozenset(item.key for item in overlaps if item.outcome == LEAVES)
     for item in overlaps:
-        if item.outcome != MEMBER or not dropped & {item.key, item.host}:
+        if item.outcome != MEMBER or item.key not in dropped:
             continue
-        item.outcome = LEAVES if item.key in dropped else HOST_LEFT
+        item.outcome = LEAVES
         reduced.counts[f"{PLANETS}: brown dwarfs out with a star that leaves"] += 1
         reduced.events.append(
             (
@@ -556,27 +624,11 @@ def _leaving(overlaps: list[Overlap], reduced: Reduced) -> frozenset[int]:
 def _keep_near(
     overlaps: list[Overlap], facts: Facts, close: frozenset[int], reduced: Reduced
 ) -> None:
-    """Parallaxes that clearly disagree show a wrong id: such a star stays as
-    it is, out of its record's system and with no link. A point of `close` can
-    hold a close pair, which throws off its astrometry."""
+    """The stars of the records drawn as their star that a wrong id reaches
+    (`_apart`)."""
     for item in overlaps:
-        host, star = facts.get(item.host), facts.get(item.key)
-        if item.outcome != MEMBER or host is None or star is None:
-            continue
-        if disagree(host, star) and not close & {item.host, item.key}:
-            item.outcome = APART
-            reduced.counts[f"{PLANETS}: brown dwarfs at another distance"] += 1
-            reduced.events.append(
-                (
-                    "brown dwarf at another distance",
-                    PLANETS,
-                    (
-                        f"{star.key} {star.parallax:.3f}"
-                        f" ± {star.parallax_error:.3f} mas, host {host.key}"
-                        f" {host.parallax:.3f} ± {host.parallax_error:.3f} mas"
-                    ),
-                )
-            )
+        if item.outcome == MEMBER:
+            _apart(item, facts, close, reduced, "brown dwarf")
 
 
 def _places_apart(
@@ -949,13 +1001,16 @@ def prepare(inputs: Inputs, resolver: Resolver) -> Prepared:
     for source in (MSC, WDS):
         if source in by_source:
             place_guard(by_source[source], found[source], facts, reduced)
-    dropped = _leaving(overlaps, reduced)
     periods = planet_periods(inputs.planets)
     orbit_kept = np.zeros(orbit_keys.size, bool)
     if inputs.orbits is not None:
         orbit_kept = orbit_interiors(inputs.orbits, orbit_keys, periods, reduced)
-        orbit_kept &= ~np.isin(orbit_keys, list(dropped))
     close_keys = np.array(sorted(close), np.int64)
+    if inputs.planets is not None:
+        close_points = _close_pairs(orbit_keys[orbit_kept], close_keys)
+        _other_stars(overlaps, inputs.planets, facts, close_points, reduced)
+    dropped = _leaving(overlaps, reduced)
+    orbit_kept &= ~np.isin(orbit_keys, list(dropped))
     close_points = _close_pairs(orbit_keys[orbit_kept], close_keys)
     _keep_near(overlaps, facts, close_points, reduced)
     for source, kind in ((MSC, MSC_ID), (WDS, WDS_ID)):

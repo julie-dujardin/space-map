@@ -538,6 +538,26 @@ class TestReadStarObjects:
         assert stars == [StarObject(built.held[0, "A"], "Kepler-16 A", "Q5")]
 
 
+class TestStarDrawnAsAPlanet:
+    """A star that a planet record also is, drawn as the planet, has no entry:
+    the planet has the page."""
+
+    def _stars(self, tmp_path, as_star: bool) -> list:
+        stars = [
+            star(10, 20, 50, name="Host"),
+            star(10, 21, 50, name="B") | {"_qid": "Q7"},
+        ]
+        record = planet(0, 1) | {"_star": 1, "as_star": as_star}
+        built = write_registry(tmp_path / "reg", stars, planets=[record])
+        return [s.qid for s in read_extrasolar_objects(built.root)[0]]
+
+    def test_drawn_as_the_planet(self, tmp_path):
+        assert self._stars(tmp_path, False) == []
+
+    def test_drawn_as_its_star(self, tmp_path):
+        assert self._stars(tmp_path, True) == ["Q7"]
+
+
 class TestReadPlanetObjects:
     """The planets with an entry: those whose row holds a Wikidata QID."""
 

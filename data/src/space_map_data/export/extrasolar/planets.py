@@ -1,9 +1,11 @@
 """The planets of the extrasolar export: a planet index and one file per system.
 
 The input is the planets table, one row per live planet keyed by its host
-and number, with the ID of the star that keys its system. The hosts come
-from Metadata and Point source, and their places from the render rows of the
-tree build, so a host sits at its point of the render tree.
+and number, with the ID of the star that keys its system. A record that is
+also a star is drawn once, as its `as_star` says: drawn as its star, it is
+in no file; drawn as a planet, its star has no render row (`hidden_stars`). The
+hosts come from Metadata and Point source, and their places from the render
+rows of the tree build, so a host sits at its point of the render tree.
 
 Files, JSON in gzip:
 - planets/index.json.gz: per host, its system, its planet numbers, its place
@@ -13,9 +15,8 @@ Files, JSON in gzip:
   each planet's orbit in the scene's frame (`orbits`), its catalogue values,
   its families (`families`, `families_estimated`) and whether it is tidally
   locked (`tidally_locked`). A host and a planet have the names of their pages
-  (`name`, `names`, from `export.names`), and a brown dwarf the star that it
-  also is (`star`). A planet with a map has the texture keys of a body of a
-  system file (`TextureLayers.blocks`).
+  (`name`, `names`, from `export.names`). A planet with a map has the texture
+  keys of a body of a system file (`TextureLayers.blocks`).
 
 Every file has the token of the section in its `token` field. The token
 hashes each file with 16 zeros in that field, as for the sky cultures.
@@ -90,8 +91,9 @@ ZERO_TOKEN = "0" * container.TOKEN_SIZE
 EXAMPLES = 10
 
 KEY_COLUMNS = ("host", "number", "system")
+# Which of a record and its star is drawn; neither is a value of the planet.
+LINK_COLUMNS = ("star", "as_star")
 TOP_COLUMNS = (
-    "star",
     "name",
     "name_source",
     "designation",
@@ -104,6 +106,7 @@ TOP_COLUMNS = (
     "status",
 )
 FLAG_COLUMNS = ("assumed", "estimated", "computed", "limits")
+NOT_VALUES = frozenset((*KEY_COLUMNS, *LINK_COLUMNS, *TOP_COLUMNS, *FLAG_COLUMNS))
 SOURCE_SUFFIX = "_source"
 METADATA_COLUMNS = ["id", "name", "name_source", "class", "cross_ids", "system", "mask"]
 SYSTEM_COLUMNS = ["id", "ra", "dec", "primary", "members"]
@@ -205,7 +208,7 @@ def _f32(value) -> float | None:
     return float(str(np.float32(value)))
 
 
-def read_planets(registry: Registry) -> pa.Table | None:
+def read_records(registry: Registry) -> pa.Table | None:
     """Every row of the planets table, or None with no table."""
     tables = [
         registry.read_table(SLUG, region) for region in registry.table_regions(SLUG)
@@ -214,6 +217,24 @@ def read_planets(registry: Registry) -> pa.Table | None:
     if not tables:
         return None
     return pa.concat_tables(tables).cast(SCHEMA)
+
+
+def as_stars(table: pa.Table) -> pa.Array:
+    """Which rows are drawn as the star that they also are."""
+    return table["as_star"].combine_chunks().fill_null(False)
+
+
+def read_planets(registry: Registry) -> pa.Table | None:
+    """The rows of the planets table that are drawn as planets, or None with
+    no table."""
+    table = read_records(registry)
+    return None if table is None else table.filter(pc.invert(as_stars(table)))
+
+
+def hidden_stars(planets: pa.Table | None) -> np.ndarray:
+    """The stars that the rows of `planets` (`read_planets`) also are, sorted."""
+    stars = [] if planets is None else planets["star"].drop_null().to_pylist()
+    return np.unique(np.array(stars, np.int64))
 
 
 @dataclass(frozen=True)
@@ -465,7 +486,7 @@ def planet_record(row: dict, host: dict, maps: dict) -> dict:
     sources = {}
     values = {}
     for name, value in row.items():
-        if name in KEY_COLUMNS or name in TOP_COLUMNS or name in FLAG_COLUMNS:
+        if name in NOT_VALUES:
             continue
         value = _finite(value)
         if value is None:
@@ -556,17 +577,28 @@ def build(
     `host_pages` names the hosts with an entry, by ID, and `textures` holds
     the maps of the planets.
     """
-    table = read_planets(registry)
-    if table is None:
+    records = read_records(registry)
+    if records is None:
         logger.warning("no planets table: the export has no planets")
         return None
     problems = Problems()
     counts: Counter = Counter()
+    every = list(zip(records["host"].to_pylist(), records["number"].to_pylist()))
+    doubled = [k for k, n in Counter(every).items() if n > 1]
+    problems.add("a planet number given twice", [f"{h}/b/{n}" for h, n in doubled])
+    problems.add("a host in two systems", hosts_with_several_systems(records))
+    stars = as_stars(records)
+    as_star_numbers = set(
+        zip(
+            records["host"].filter(stars).to_pylist(),
+            records["number"].filter(stars).to_pylist(),
+        )
+    )
+    counts["records drawn as the star that they also are"] = len(as_star_numbers)
+    table = records.filter(pc.invert(stars))
+    counts["planets whose star is not drawn"] = table["star"].drop_null().length()
     rows = table.to_pylist()
     numbers = [(row["host"], row["number"]) for row in rows]
-    doubled = [k for k, n in Counter(numbers).items() if n > 1]
-    problems.add("a planet number given twice", [f"{h}/b/{n}" for h, n in doubled])
-    problems.add("a host in two systems", hosts_with_several_systems(table))
 
     host_ids = sorted({row["host"] for row in rows} | {row["system"] for row in rows})
     hosts: dict[int, dict] = {}
@@ -669,7 +701,9 @@ def build(
         logger.warning("planets: the map of %s is of no served planet", page_id)
 
     previous = _previous_planets(live)
-    gone = _gone(registry, served_numbers | set(aliases), previous, state)
+    gone = _gone(
+        registry, served_numbers | set(aliases) | as_star_numbers, previous, state
+    )
     problems.add("a served planet is gone", gone, len(gone))
     if problems:
         return Result([], {}, problems, counts)

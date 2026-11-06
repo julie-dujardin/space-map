@@ -28,7 +28,8 @@ parallax where a parallax places a star, and for the catalogue distance of a
 planet host: the orbit fit takes out the motion of the light centre. The
 single-star parallax of Point source still decides whether a parallax places
 the star. A planet host with no magnitude takes HOST_PLACEHOLDER_MAG, so every
-placed host has a row.
+placed host has a row. A star that a planet record also is and that is drawn
+as that planet (`planets.hidden_stars`) has none.
 
 The build works in three steps with scratch files on disk: render rows per
 region, the node of each row from the whole sky, then the node files in
@@ -43,6 +44,7 @@ from pathlib import Path
 
 import numpy as np
 import pyarrow as pa
+import pyarrow.compute as pc
 
 from space_map_data.export.extrasolar import container
 from space_map_data.export.extrasolar.container import Column, Written
@@ -286,11 +288,13 @@ def _floats(table: pa.Table, name: str) -> np.ndarray:
     return table[name].to_numpy().astype(np.float64)
 
 
-def region_table(registry: Registry, region: int) -> pa.Table:
-    """The Point source rows of a region that `render_rows` reads."""
+def region_table(registry: Registry, region: int, hidden: np.ndarray) -> pa.Table:
+    """The Point source rows of a region that `render_rows` reads, without
+    `hidden`, the stars drawn as planets (`planets.hidden_stars`)."""
     table = registry.read_table("point-source", region, list(COLUMNS))
     if table is None:
         table = POINT_SOURCE.schema.empty_table().select(list(COLUMNS))
+    table = table.filter(pc.invert(pc.is_in(table["id"], pa.array(hidden, pa.int64()))))
     orbits = registry.read_table(
         BINARY_ORBIT.slug, region, list(placement.ORBIT_PARALLAX_COLUMNS)
     )
@@ -442,11 +446,12 @@ class RowsJob:
     registry: Registry
     region: int
     scratch: Path
+    hidden: np.ndarray
 
 
 def region_rows(job: RowsJob) -> tuple[int, Counter]:
     """Write the render rows of one region to the scratch directory."""
-    rows, counts = render_rows(region_table(job.registry, job.region))
+    rows, counts = render_rows(region_table(job.registry, job.region, job.hidden))
     for name, values in rows.items():
         path = scratch_file(job.scratch, job.region, name)
         path.parent.mkdir(parents=True, exist_ok=True)

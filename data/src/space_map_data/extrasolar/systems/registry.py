@@ -420,6 +420,7 @@ class RegistryResolver:
 def registry_planets(registry: Registry, hub: Simbad) -> pa.Table:
     """PLANETS_INPUT from the registry's planets table."""
     columns = ["host", "number", "designation", "class", "mass", "period"]
+    columns += ["discovery_method"]
     columns += ["binary_type", "cross_ids"]
     tables = [
         table

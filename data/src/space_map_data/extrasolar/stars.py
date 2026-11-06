@@ -45,6 +45,7 @@ from space_map_data.download.providers.stars import wikidata_stars
 from space_map_data.download.providers.stars.gaia_source import pixel_range
 from space_map_data.extrasolar.engine import IngestResult, IngestRun
 from space_map_data.extrasolar.exoplanets import ingest as exoplanets
+from space_map_data.extrasolar.exoplanets import wikidata as planet_wikidata
 from space_map_data.extrasolar.registry import Registry, RegistryError
 from space_map_data.extrasolar.sources import (
     apogee,
@@ -273,12 +274,21 @@ def ingest(
         # The systems read the rows of every pass that places a star.
         inputs, index = read_inputs(run, simbad_list, planets, read.hub, reader)
         found = add_systems(run, inputs, index, complete)
+        hosts = [] if inputs.planets is None else inputs.planets["host"].to_pylist()
+        hosted = [at for at, host in enumerate(hosts) if host]
         del inputs, index
         run.extend(exoplanets.PlanetsExtension(planets, found))
         item_rows, lines = wikidata.attach(
             item_rows, items, run, found.plan, simbad_list
         )
-        found.items_placed(lines)
+        claims = found.plan.star_claims
+        record_items = planet_wikidata.star_items(
+            planets.records, planets.items, hosted, claims
+        )
+        item_rows, more = wikidata.with_record_items(
+            item_rows, items, [(qid, *claims[at]) for at, qid in record_items.items()]
+        )
+        found.items_placed([*lines, *more])
         # A source that is not permanent comes after the permanent sources.
         run.add(WIKIDATA, [item_rows], complete)
         run.add(jmdc.JMDC, [_keep(jmdc.engine_rows(hd_positions), ranges)], complete)

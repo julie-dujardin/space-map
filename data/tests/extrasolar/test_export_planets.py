@@ -221,12 +221,6 @@ class TestPlanetFiles:
         assert "tidally_locked" not in other["computed"]
         assert report["planets"]["planets with a map"] == 1
 
-    def test_the_star_that_a_record_also_is(self, tmp_path, out):
-        rows = [*PLANETS[:1], {**PLANETS[1], "star": 77}, *PLANETS[2:]]
-        built, _, reader = _export(tmp_path, out, rows)
-        assert reader.planet(built.ids[0], 2)["star"] == 77
-        assert reader.planet(built.ids[0], 1)["star"] is None
-
     def test_marks_the_planets_with_an_entry(self, tmp_path, out):
         item = {"catalogue": "wikidata", "release": "qid", "catalogue_id": "Q1"}
         rows = [
@@ -556,6 +550,42 @@ class TestHostsInTheTree:
         colour = render.bp_rp_from_teff(teff)
         assert colour[:4] == pytest.approx([5.1, 0.823, 0.813, -0.12])
         assert math.isnan(colour[4])
+
+
+class TestRecordsThatAreStars:
+    """A planet record that is also a star (star index 5) is drawn once, as
+    its `as_star` says."""
+
+    def _export(self, tmp_path, out, as_star):
+        rows = [*PLANETS[:1], {**PLANETS[1], "_star": 5, "as_star": as_star}]
+        return _export(tmp_path, out, [*rows, *PLANETS[2:]])
+
+    def _drawn(self, built, reader) -> bool:
+        position = tuple(_expected_position(STARS[5]).tolist())
+        return reader.find_render(built.ids[5], position) is not None
+
+    def test_drawn_as_its_star(self, tmp_path, out):
+        built, report, reader = self._export(tmp_path, out, True)
+        assert reader.planet(built.ids[0], 2) is None
+        assert reader.planet(built.ids[0], 1) is not None
+        assert self._drawn(built, reader)
+        assert report["planets"]["records drawn as the star that they also are"] == 1
+
+    def test_drawn_as_the_planet(self, tmp_path, out):
+        built, report, reader = self._export(tmp_path, out, False)
+        record = reader.planet(built.ids[0], 2)
+        assert record is not None
+        assert "star" not in record and "star" not in record["values"]
+        assert "as_star" not in record["values"]
+        assert not self._drawn(built, reader)
+        assert report["planets"]["planets whose star is not drawn"] == 1
+
+    def test_a_served_record_may_go_to_its_star(self, tmp_path, out):
+        _export(tmp_path, out)
+        rows = [*PLANETS[:1], {**PLANETS[1], "_star": 5, "as_star": True}]
+        built = write_registry(tmp_path / "reg2", STARS, planets=[*rows, *PLANETS[2:]])
+        export_extrasolar(built.root, out, workers=1)
+        assert ExportReader(out / "v1" / "x").planet(built.ids[0], 2) is None
 
 
 class TestChecks:

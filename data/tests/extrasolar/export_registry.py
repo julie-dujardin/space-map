@@ -116,7 +116,8 @@ def planet(
 ) -> dict:
     """A planets table row of star index `host`, in the file of star index
     `system` (the host by default), with a 10-day circular orbit unless
-    `values` say otherwise. ("node", n) stands for node n of the systems."""
+    `values` say otherwise. ("node", n) stands for node n of the systems, and
+    `_star` names the star index that the record also is."""
     row: dict = {
         "_host": host,
         "_system": host if system is None else system,
@@ -594,6 +595,8 @@ def write_registry(
                 "host": object_id(row["_host"]),
                 "system": object_id(row["_system"]),
             }
+            if "_star" in row:
+                values["star"] = object_id(row["_star"])
             rows.append(values)
         table = pa.Table.from_pylist(
             [{name: r.get(name) for name in PLANETS_TABLE.names} for r in rows],

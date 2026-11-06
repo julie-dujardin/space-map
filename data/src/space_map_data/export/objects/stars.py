@@ -29,6 +29,7 @@ from pathlib import Path
 from typing import NamedTuple
 
 import orjson
+import pyarrow as pa
 import pyarrow.parquet as pq
 
 from space_map_data.constants.providers import BASE_LOCALE, LANGUAGES
@@ -38,7 +39,7 @@ from space_map_data.constants.stars.literature import (
     REFERENCES,
     StarKey,
 )
-from space_map_data.export.extrasolar.planets import read_planets
+from space_map_data.export.extrasolar.planets import hidden_stars, read_planets
 from space_map_data.export.images import collect_star_images
 from space_map_data.export.in_place import refresh_versions
 from space_map_data.export.names import (
@@ -235,8 +236,7 @@ def _star_objects(registry: Registry) -> list[StarObject]:
     return [star for part in parts for star in part]
 
 
-def _planet_objects(registry: Registry) -> list[PlanetObject]:
-    table = read_planets(registry)
+def _planet_objects(table: pa.Table | None) -> list[PlanetObject]:
     if table is None:
         return []
     columns = [
@@ -305,9 +305,13 @@ def read_extrasolar_objects(
     root: Path = REGISTRY_ROOT,
 ) -> tuple[list[StarObject], list[PlanetObject]]:
     """The stars and the planets with an entry, from one version of the
-    registry: the Metadata table and the planets table."""
+    registry: the Metadata table and the planets table. A star drawn as a
+    planet has none: the planet has the page."""
     with Registry(root).reader() as registry:
-        return _star_objects(registry), _planet_objects(registry)
+        planets = read_planets(registry)
+        hidden = set(hidden_stars(planets).tolist())
+        stars = [star for star in _star_objects(registry) if star.id not in hidden]
+        return stars, _planet_objects(planets)
 
 
 def available_extrasolar_objects(

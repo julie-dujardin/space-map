@@ -3,7 +3,10 @@
 An item is in the list when it carries a NASA Exoplanet Archive id (`P5667`,
 the archive's planet name) or an exoplanet.eu id (`P5653`, the slug of its
 page), and has an article in at least one of the site's languages. The list
-gives each item all its values of both, and its count of articles. Host stars
+gives each item all its values of both, its count of articles, and whether one
+of its classes (`P31`) is a kind (`P279*`) of a star or a brown dwarf, as the
+list of star items reads them: an item about a companion that is also a star.
+Host stars
 carry archive ids too: they reach no planet. A list or disambiguation item is
 not in the list: some carry a planet's ids after a merge, and their article
 is the list.
@@ -33,6 +36,7 @@ from space_map_data.download.providers.catalogues.fetch import (
 )
 from space_map_data.download.providers.stars.wikidata_stars import (
     SEPARATOR,
+    STAR_ROOT_QIDS,
     parse_term,
 )
 from space_map_data.utils.paths import SOURCES_EXOPLANETS_DIR
@@ -52,6 +56,7 @@ PREFIX schema: <http://schema.org/>
 """
 _WIKIS = " ".join(f"<https://{lang}.wikipedia.org/>" for lang in LANGUAGES)
 _NOT_PLANETS = " ".join(f"wd:{qid}" for qid in NOT_PLANET_QIDS)
+_STAR_ROOTS = " ".join(f"wd:{qid}" for qid in STAR_ROOT_QIDS)
 
 # The items with an article, and their count of articles.
 _ARTICLES = f"""\
@@ -66,13 +71,18 @@ SELECT ?item
   (GROUP_CONCAT(DISTINCT ?archive_id; SEPARATOR="{SEPARATOR}") AS ?archive)
   (GROUP_CONCAT(DISTINCT ?eu_id; SEPARATOR="{SEPARATOR}") AS ?eu)
   (SAMPLE(?n) AS ?articles)
+  (COUNT(DISTINCT ?star_class) AS ?star_classes)
 WHERE {{
   {{ {_ARTICLES} }}
   OPTIONAL {{ ?item wdt:P5667 ?archive_id . }}
   OPTIONAL {{ ?item wdt:P5653 ?eu_id . }}
+  OPTIONAL {{
+    ?item wdt:P31 ?star_class . ?star_class wdt:P279* ?star_root .
+    VALUES ?star_root {{ {_STAR_ROOTS} }}
+  }}
 }} GROUP BY ?item"""
 COUNT_QUERY = f"{_PREFIXES}SELECT (COUNT(*) AS ?items) WHERE {{ {{ {_ARTICLES} }} }}"
-COLUMNS = ("?item", "?archive", "?eu", "?articles")
+COLUMNS = ("?item", "?archive", "?eu", "?articles", "?star_classes")
 # Items are added more often than removed. A count under this share of the
 # previous one shows a failed query.
 MIN_SHARE_OF_PREVIOUS = 0.95
@@ -87,6 +97,8 @@ class ExoplanetItem:
     eu: tuple[str, ...]
     # Articles in the site's languages.
     articles: int
+    # One of its classes is a kind of star or brown dwarf.
+    star: bool = False
 
 
 def _values(text: str | None) -> tuple[str, ...]:
@@ -105,10 +117,14 @@ def read_items(path: Path = ITEMS_FILE) -> list[ExoplanetItem]:
     for line in lines[1:]:
         if not line:
             continue
-        item, archive, eu, articles = map(parse_term, line.split("\t"))
-        if item is None or articles is None:
+        item, archive, eu, articles, stars = map(parse_term, line.split("\t"))
+        if item is None or articles is None or stars is None:
             raise ValueError(f"{path}: row without an item or a count: {line!r}")
-        items.append(ExoplanetItem(item, _values(archive), _values(eu), int(articles)))
+        items.append(
+            ExoplanetItem(
+                item, _values(archive), _values(eu), int(articles), int(stars) > 0
+            )
+        )
     return items
 
 

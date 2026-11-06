@@ -3,7 +3,9 @@
 The host is the star the planet orbits, and the pair's star for a planet
 around both stars of a binary. `system` is the ID of the star that keys the
 planetary system, one for all planets of the system, around either star.
-`star` is the ID of the star that a brown dwarf also is, in its star system.
+`star` is the ID of the star that the record also is, and `as_star` says
+which of the two the export draws: true for the star, false for the planet.
+The star systems decide it (`drawn_as_star`).
 
 Its column groups each come whole from one source, the first in the group's
 source order with a value in the group. Mass and radius put a measured value
@@ -144,6 +146,7 @@ KEY_FIELDS = (
     pa.field("number", pa.uint16(), nullable=False),
     pa.field("system", pa.int64(), nullable=False),
     pa.field("star", pa.int64()),
+    pa.field("as_star", pa.bool_()),
 )
 NAME_FIELDS = (
     pa.field("name", pa.string()),
@@ -565,10 +568,12 @@ def to_row(
     system: int,
     node: float | None = None,
     star: int | None = None,
+    as_star: bool = False,
 ) -> dict:
     """The table row of a record. `node` is the node of the pair that a
     circumbinary planet orbits, for a planet with no node of its own. `star`
-    is the star that the record also is."""
+    is the star that the record also is, and `as_star` whether the record is
+    drawn as that star."""
     values = dict(record.values)
     assumed = set(record.assumed)
     if values.get("node") is None:
@@ -576,6 +581,7 @@ def to_row(
         assumed.add("node")
     row = {name: values.get(name) for name in SCHEMA.names}
     row.update(host=host, number=number, system=system, star=star)
+    row["as_star"] = None if star is None else as_star
     row["assumed"] = sorted(assumed)
     row["estimated"] = sorted(record.estimated)
     row["computed"] = sorted(record.computed)

@@ -39,10 +39,10 @@ from space_map_data.extrasolar.systems.pairs import PAIRS, el_badry_pairs, orbit
 from space_map_data.extrasolar.systems.planets import PLANETS_INPUT, planet_star_ids
 from space_map_data.extrasolar.systems.prepare import (
     APART,
-    HOST_LEFT,
     ID_OFF,
     LEAVES,
     MEMBER,
+    OTHER_STAR,
     Inputs,
     vetoed_pairs,
 )
@@ -1028,12 +1028,27 @@ class TestBrownDwarfs:
         assert shape(systems, 92) == ("binary star", 2, [92, 93])
         assert systems.counts[f"{PLANETS}: brown dwarfs in another system"] == 1
 
-    def test_a_record_with_no_host_leaves_its_star_out(self):
-        """The ingest gives a host that gets no ID the key 0."""
+    def test_a_record_with_no_host_leaves_its_star_as_it_is(self):
+        """The ingest gives a host that gets no ID the key 0. Such a record
+        is not drawn, so its star is."""
         resolver = FakeResolver({STAR_ID: 92}, [on_a_circle(92, 3.5)])
         systems = build(Inputs(planets=planets([record(0)])), resolver)
-        assert systems.overlaps["outcome"].to_pylist() == [LEAVES]
-        assert systems.points.num_rows == 0
+        assert systems.overlaps.num_rows == 0
+
+    def test_a_record_is_its_first_star(self):
+        """Its ids reach two stars: the first in the order of its ids."""
+        other = {"catalogue": "simbad", "release": "oid", "catalogue_id": "8"}
+        resolver = FakeResolver(
+            {("hip", "2007", "1"): 90, STAR_ID: 92, ("simbad", "oid", "8"): 93},
+            [
+                fact(90, 10.0, 0.0, 9.0, parallax=10.0),
+                on_a_circle(92, 5.0),
+                on_a_circle(93, 50.0),
+            ],
+        )
+        found = record(90, star_ids=[other, SIMBAD_STAR])
+        systems = build(Inputs(planets=planets([found])), resolver)
+        assert systems.overlaps["key"].to_pylist() == [93]
 
     def test_a_star_inside_the_light_of_its_host_is_no_star_of_its_own(self):
         """A record links no star to its own host."""
@@ -1211,9 +1226,9 @@ class TestBrownDwarfs:
             [92, 93, ("binary star", 2, [90, 91])],
         )
 
-    def test_a_star_that_leaves_stays_out(self):
+    def test_two_records_of_each_other_are_two_stars(self):
         """One record calls B a planet of A, the other A a brown dwarf of B.
-        B leaves, so A has no host to be a member with."""
+        Each star hosts a record, so both are stars."""
         ids = [
             {"catalogue": EU, "release": "catalog", "catalogue_id": name}
             for name in ("X A", "X B")
@@ -1226,16 +1241,22 @@ class TestBrownDwarfs:
             Inputs(
                 planets=planets(
                     [
-                        record(90, "planet", designation="X B", star_ids=[ids[1]]),
+                        record(
+                            90,
+                            "planet",
+                            mass=5.0,
+                            designation="X B",
+                            star_ids=[ids[1]],
+                        ),
                         record(92, designation="X A", star_ids=[ids[0]]),
                     ]
                 )
             ),
             resolver,
         )
-        assert systems.points.num_rows == 0
+        assert shape(systems, 90)[:2] == ("binary star", 2)
         assert systems.overlaps["key"].to_pylist() == [90, 92]
-        assert systems.overlaps["outcome"].to_pylist() == [HOST_LEFT, LEAVES]
+        assert systems.overlaps["outcome"].to_pylist() == [MEMBER, MEMBER]
 
     def test_leaving_wins_over_a_membership(self):
         """Two records reach one star: a planet of one host, a brown dwarf of
@@ -1245,7 +1266,8 @@ class TestBrownDwarfs:
             [fact(90, 10.0, 0.0, 9.0), fact(91, 12.0, 0.0, 9.0), on_a_circle(92, 5.0)],
         )
         systems = build(
-            Inputs(planets=planets([record(90, "planet"), record(91)])), resolver
+            Inputs(planets=planets([record(90, "planet", mass=5.0), record(91)])),
+            resolver,
         )
         assert systems.points.num_rows == 0
         assert systems.overlaps["outcome"].to_pylist() == [LEAVES, LEAVES]
@@ -1392,7 +1414,7 @@ class TestPlanets:
         systems = build(
             Inputs(
                 msc=msc_nodes(comp, pairs, []),
-                planets=planets([record(90, "planet")]),
+                planets=planets([record(90, "planet", mass=5.0)]),
             ),
             resolver,
         )
@@ -1400,6 +1422,69 @@ class TestPlanets:
         assert systems.overlaps["key"].to_pylist() == [92]
         assert systems.overlaps["designation"].to_pylist() == ["X b"]
         assert systems.overlaps["outcome"].to_pylist() == [LEAVES]
+
+    def test_a_record_with_no_mass_is_its_star(self):
+        """It is a planet only by default, so the star catalogue decides."""
+        resolver = FakeResolver(
+            {("hip", "2007", "1"): 90, ("simbad", "oid", "7"): 92},
+            [fact(90, 10.0, 0.0, 9.0, parallax=10.0), on_a_circle(92, 5.0)],
+        )
+        systems = build(Inputs(planets=planets([record(90, "planet")])), resolver)
+        assert systems.overlaps["outcome"].to_pylist() == [MEMBER]
+        assert shape(systems, 90)[:2] == ("binary star", 2)
+
+    def test_a_transiting_brown_dwarf_leaves(self):
+        """Found through its host, it has no point of its own: the star that
+        it reaches is a catalogue entry of the record."""
+        resolver = FakeResolver(
+            {("hip", "2007", "1"): 90, ("simbad", "oid", "7"): 92},
+            [
+                fact(90, 10.0, 0.0, 9.0, parallax=10.0),
+                on_a_circle(92, 0.2, astrometry="simbad"),
+            ],
+        )
+        found = record(90, mass=54.0, discovery_method="Transit")
+        systems = build(Inputs(planets=planets([found])), resolver)
+        assert systems.overlaps["outcome"].to_pylist() == [LEAVES]
+        assert systems.points.num_rows == 0
+
+    def test_a_planet_at_another_distance_reaches_another_star(self):
+        resolver = FakeResolver(
+            {("hip", "2007", "1"): 90, ("simbad", "oid", "7"): 92},
+            [
+                fact(90, 10.0, 0.0, 9.0, parallax=10.0),
+                on_a_circle(92, 30.0, parallax=40.0),
+            ],
+        )
+        found = record(90, "planet", mass=5.0, discovery_method="Imaging")
+        systems = build(Inputs(planets=planets([found])), resolver)
+        assert systems.overlaps["outcome"].to_pylist() == [APART]
+
+    def test_a_star_that_hosts_a_record_is_a_star(self):
+        """A planet record reaches a star that has a planet of its own."""
+        resolver = FakeResolver(
+            {("hip", "2007", "1"): 90, ("simbad", "oid", "7"): 92},
+            [fact(90, 10.0, 0.0, 9.0, parallax=10.0), on_a_circle(92, 5.0)],
+        )
+        rows = [
+            record(90, "planet", mass=5.0, discovery_method="Imaging"),
+            record(92, "planet", mass=1.0, star_ids=None, designation="Y b"),
+        ]
+        systems = build(Inputs(planets=planets(rows)), resolver)
+        assert systems.overlaps["outcome"].to_pylist() == [MEMBER]
+
+    def test_a_transiting_planet_reaches_no_star_with_a_point(self):
+        """A Gaia star that its record reaches is another star."""
+        resolver = FakeResolver(
+            {("hip", "2007", "1"): 90, ("simbad", "oid", "7"): 92},
+            [
+                fact(90, 10.0, 0.0, 9.0, parallax=10.0),
+                on_a_circle(92, 90.0, astrometry="gaia-dr3", parallax=11.0),
+            ],
+        )
+        found = record(90, "planet", mass=0.01, discovery_method="Transit")
+        systems = build(Inputs(planets=planets([found])), resolver)
+        assert systems.overlaps["outcome"].to_pylist() == [OTHER_STAR]
 
     def test_circumbinary_host_is_the_pair(self):
         comp = [msc_comp("1", "A", HIP=1), msc_comp("1", "B", HIP=2)]

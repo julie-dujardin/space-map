@@ -24,7 +24,7 @@
    row, `orbit` on the pairs, with the assumed node of the planets where an
    orbit has none, and `star` on the held stars. It gives the planets
    extension the host of a circumbinary planet, the root of each host, the
-   node of each drawn pair and the star that a brown dwarf record also is.
+   node of each drawn pair and the star that a planet record also is.
 """
 
 import json
@@ -34,6 +34,7 @@ from collections import Counter, defaultdict
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field, replace
 from pathlib import Path
+from typing import NamedTuple
 
 import numpy as np
 import pyarrow as pa
@@ -102,7 +103,7 @@ from space_map_data.extrasolar.systems.planets import (
     read_oec_trees,
     read_planet_systems,
 )
-from space_map_data.extrasolar.systems.prepare import MEMBER, Inputs
+from space_map_data.extrasolar.systems.prepare import AS_STAR, SAME_OBJECT, Inputs
 from space_map_data.extrasolar.systems.registry import gaia_keys, point_facts
 from space_map_data.extrasolar.systems.report import report_lines, target_keys
 from space_map_data.extrasolar.systems.simbad import SimbadIndex, read_simbad
@@ -547,6 +548,7 @@ def run_planets(run: IngestRun, prepared: Prepared, hub: Simbad) -> pa.Table:
         found["class"].append(record.text("class"))
         found["mass"].append(record.get("mass"))
         found["period"].append(record.get("period"))
+        found["discovery_method"].append(record.text("discovery_method"))
         found["binary_type"].append(record.text("binary_type"))
         found["star_ids"].append(
             [dict(zip(CROSS_ID.names, item)) for item in star_ids] or None
@@ -554,6 +556,14 @@ def run_planets(run: IngestRun, prepared: Prepared, hub: Simbad) -> pa.Table:
     return pa.table(
         {name: found[name] for name in PLANETS_INPUT.names}, schema=PLANETS_INPUT
     )
+
+
+class StarClaim(NamedTuple):
+    """The claim of a star, as a pass row gives it, and its place."""
+
+    claim: dict
+    ra: float | None
+    dec: float | None
 
 
 @dataclass
@@ -584,6 +594,8 @@ class Plan:
     held_labels: pa.Array = field(default_factory=lambda: pa.array([], pa.string()))
     # Planet record index → the label of the star that it also is.
     stars: dict[int, str] = field(default_factory=dict)
+    # The claim and place of the star of each record drawn as that star.
+    star_claims: dict[int, StarClaim] = field(default_factory=dict)
 
 
 def _without_letter(name: str) -> str:
@@ -933,7 +945,10 @@ def pass_rows(
         len(star_keys) - star_distances["distance"].null_count
     )
     counts["composite spectral types moved"] = int(moved.sum())
-    parts = [resolved_part, point_part, pa.table(star_table)]
+    stars, star_claims, record_part = _record_stars(
+        systems.overlaps, point_keys, resolver, fact, counts
+    )
+    parts = [resolved_part, point_part, pa.table(star_table), record_part]
     held_labels = pa.array([], pa.string())
     if drawn is not None:
         held_part, held_labels = _held_rows(
@@ -968,7 +983,6 @@ def pass_rows(
             continue
         for record in record_of.get((row["host"], row["designation"]), []):
             hosts[record] = label
-    stars = _record_stars(systems.overlaps, point_keys, point_labels, counts)
     items = pc.list_flatten(claimed)
     is_oid = pc.and_(
         pc.equal(items.field("catalogue"), SYSTEM_CLAIMS),
@@ -1012,23 +1026,60 @@ def pass_rows(
         drawn,
         held_labels,
         stars,
+        star_claims,
     )
 
 
 def _record_stars(
-    overlaps: pa.Table, keys: np.ndarray, labels: pa.Array, counts: Counter
-) -> dict[int, str]:
-    """The label of the star of each brown dwarf record that is a member of a
-    system. `keys` are the sorted points."""
-    members = overlaps.filter(pc.equal(overlaps["outcome"], MEMBER))
-    at = find_sorted(keys, members["key"].to_numpy())
-    counts["brown dwarf records with their star in a system"] = int((at >= 0).sum())
-    counts["brown dwarf records with their star in no system"] = int((at < 0).sum())
-    return {
-        record: labels[int(found)].as_py()
-        for record, found in zip(members["record"].to_pylist(), at.tolist())
-        if found >= 0
-    }
+    overlaps: pa.Table,
+    keys: np.ndarray,
+    resolver: RunResolver,
+    fact: Callable[[np.ndarray, str], pa.Array],
+    counts: Counter,
+) -> tuple[dict[int, str], dict[int, StarClaim], pa.Table]:
+    """The label of the star that each planet record also is, the claim of
+    each star that a record is drawn as, and a row that claims each such star
+    outside the trees, so that the commit gives it its ID: the export draws
+    only one of the two. `keys` are the sorted points."""
+    outcome = overlaps["outcome"]
+    same = overlaps.filter(pc.is_in(outcome, pa.array(sorted(SAME_OBJECT))))
+    star_keys = same["key"].to_numpy()
+    at = find_sorted(keys, star_keys)
+    counts["planet records with their star in a system"] = int((at >= 0).sum())
+    counts["planet records with their star in no system"] = int((at < 0).sum())
+    claims = resolver.claims(star_keys)
+    labels = _id_texts(*claims.select(CROSS_ID.names).columns)
+    claimed = pc.is_valid(labels).to_numpy(zero_copy_only=False)
+    counts["stars of planet records with no claim"] = int((~claimed).sum())
+    ra, dec = fact(star_keys, "ra"), fact(star_keys, "dec")
+    stars: dict[int, str] = {}
+    star_claims: dict[int, StarClaim] = {}
+    for n, (record, result) in enumerate(
+        zip(same["record"].to_pylist(), same["outcome"].to_pylist())
+    ):
+        if not claimed[n]:
+            continue
+        stars[record] = labels[n].as_py()
+        if result in AS_STAR:
+            claim = {name: claims[name][n].as_py() for name in CROSS_ID.names}
+            star_claims[record] = StarClaim(claim, ra[n].as_py(), dec[n].as_py())
+    # A star in no tree has no row of the pass yet. One star can be several
+    # records' star.
+    outside = (at < 0) & claimed
+    _, unique = np.unique(star_keys[outside], return_index=True)
+    rows = np.flatnonzero(outside)[unique]
+    take = pa.array(rows, pa.int64())
+    part = pa.table(
+        {
+            "catalogue_id": labels.take(take),
+            "mint": pa.array(np.zeros(rows.size, bool)),
+            "match_ra": ra.take(take),
+            "match_dec": dec.take(take),
+            "match_mag": fact(star_keys[rows], "mag"),
+            "claims": _one_claim(claims.take(take)),
+        }
+    )
+    return stars, star_claims, part
 
 
 def _anchors(nodes: pa.Table, resolver: RunResolver) -> np.ndarray:
@@ -1291,6 +1342,10 @@ class SystemsExtension:
         """The ID of the star that a planet record also is, else 0."""
         return self._stars.get(record, 0)
 
+    def drawn_as_star(self, record: int) -> bool:
+        """Whether a planet record is drawn as the star that it also is."""
+        return record in self.plan.star_claims and self.star(record) != 0
+
     def root(self, id_: int) -> int:
         """The root of the system of an ID, else 0."""
         at = find_sorted(self._root_keys, np.array([id_], np.int64))[0]
@@ -1389,7 +1444,7 @@ class SystemsExtension:
         lines += [f"pass: {k} {v:,}" for k, v in sorted(plan.counts.items())]
         lines += _engine_lines(self.run)
         lines.append(f"circumbinary hosts: {len(self._hosts):,}")
-        lines.append(f"brown dwarf records linked to their star: {len(self._stars):,}")
+        lines.append(f"planet records linked to their star: {len(self._stars):,}")
         report = "\n".join(lines) + "\n"
         return ExtensionResult(
             parts={},

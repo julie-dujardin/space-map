@@ -1,6 +1,7 @@
 """Tests for the links of the Wikidata exoplanet items to the planets."""
 
 import logging
+from dataclasses import dataclass
 
 import pyarrow as pa
 
@@ -10,6 +11,7 @@ from space_map_data.extrasolar.exoplanets.wikidata import (
     eu_slug,
     link_items,
     planet_qid,
+    star_items,
     with_items,
 )
 from space_map_data.extrasolar.tables import CROSS_ID
@@ -40,8 +42,41 @@ def _planets(*rows: tuple[int, int, str | None, list[tuple[str, str]]]) -> pa.Ta
     )
 
 
-def _item(qid: str, archive=(), eu=(), articles: int = 1) -> ExoplanetItem:
-    return ExoplanetItem(qid, tuple(archive), tuple(eu), articles)
+def _item(
+    qid: str, archive=(), eu=(), articles: int = 1, star: bool = False
+) -> ExoplanetItem:
+    return ExoplanetItem(qid, tuple(archive), tuple(eu), articles, star)
+
+
+@dataclass
+class _Record:
+    """The parts of a planet record that `star_items` reads."""
+
+    designation: str
+    values: dict
+
+    def text(self, name: str) -> str | None:
+        return self.designation if name == "designation" else None
+
+
+class TestStarItems:
+    """The item of a record drawn as its star, when it is about a star."""
+
+    RECORDS = (_Record("X b", {}), _Record("Y b", {}), _Record("Z b", {}))
+
+    def test_an_item_about_a_star(self):
+        items = [_item("Q1", ["X b"], star=True), _item("Q2", ["Y b"], star=True)]
+        assert star_items(self.RECORDS, items, [0, 1, 2], [0]) == {0: "Q1"}
+
+    def test_an_item_about_a_planet_stays(self):
+        assert star_items(self.RECORDS, [_item("Q1", ["X b"])], [0, 1, 2], [0]) == {}
+
+    def test_the_links_are_those_of_the_hosted_records(self):
+        """An item whose ids reach two numbered records links to neither. A
+        record with no host gets no number."""
+        items = [_item("Q1", ["X b", "Z b"], star=True)]
+        assert star_items(self.RECORDS, items, [0, 1, 2], [0]) == {}
+        assert star_items(self.RECORDS, items, [0, 1], [0]) == {0: "Q1"}
 
 
 # μ Ara: the archive's d is exoplanet.eu's c.

@@ -204,8 +204,6 @@ METADATA = TableDef(
         # The root of the ID's star system. Null for a root and for an ID in
         # no system.
         pa.field("system", pa.int64()),
-        # The planet records that the star also is, as "<host>/b/<number>".
-        pa.field("planets", pa.list_(pa.string())),
         pa.field("cross_ids", pa.list_(CROSS_ID)),
         # Bit n is set when data table n has a row for the ID.
         pa.field("mask", pa.uint32()),
