@@ -32,6 +32,10 @@ class DownloadError(Exception):
     """A provider hit an unrecoverable error and should not retry this run."""
 
 
+class DownloadSkipped(Exception):
+    """A provider has work left and did none. The runner records it as skipped."""
+
+
 def require_inputs(paths: Iterable[Path]) -> None:
     for path in paths:
         if not path.exists():
@@ -74,11 +78,16 @@ class Downloader(ABC):
     def __init__(self, client: httpx.Client) -> None:
         self.client = client
 
-    # Every provider gets the run's epoch; one may add keyword options of its
-    # own, which only a direct caller passes.
+    # The runner passes the run's `epoch` and `force` (the CLI's --force) to
+    # every provider. A provider may add keyword options of its own, which only
+    # a direct caller passes, so none may be called `force`.
     @abstractmethod
     def download(
-        self, limit: int | None = None, *, epoch: date | None = None
+        self,
+        limit: int | None = None,
+        *,
+        epoch: date | None = None,
+        force: bool = False,
     ) -> None: ...
 
     @property

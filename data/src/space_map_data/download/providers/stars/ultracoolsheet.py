@@ -27,12 +27,12 @@ import httpx
 
 from space_map_data.constants.providers import PROVIDERS
 from space_map_data.download.downloader import Downloader, DownloadError
+from space_map_data.download.zenodo import fetch_record
 from space_map_data.utils.paths import SOURCES_STARS_DIR
 
 logger = logging.getLogger(__name__)
 
 OUT_DIR = SOURCES_STARS_DIR / "ultracoolsheet"
-ZENODO_URL = "https://zenodo.org/api/records"
 # Version 2.1.0 of 2025-07-03.
 RECORD = 15802304
 SOURCE_FILE = "UltracoolSheet - Main.csv"
@@ -53,15 +53,9 @@ class UltracoolSheetDownloader(Downloader):
         return json.loads(self.metadata_file.read_text()).get("record") == RECORD
 
     def download(self, limit: int | None = None, **kwargs: object) -> None:
-        response = self.client.get(f"{ZENODO_URL}/{RECORD}", timeout=120.0)
-        if response.status_code != 200:
-            raise DownloadError(f"HTTP {response.status_code} for Zenodo {RECORD}")
-        try:
-            entry = {f["key"]: f for f in response.json()["files"]}[SOURCE_FILE]
-            url = entry["links"]["self"]
-            expected = entry["checksum"].removeprefix("md5:")
-        except (ValueError, KeyError, TypeError) as error:
-            raise DownloadError(f"Zenodo {RECORD}: unexpected record") from error
+        record = fetch_record(self.client, RECORD)
+        entry = record.file(SOURCE_FILE)
+        url, expected = entry.url, entry.md5
         content = self.client.get(url, timeout=600.0, follow_redirects=True)
         content.raise_for_status()
         found = hashlib.md5(content.content).hexdigest()
@@ -70,7 +64,7 @@ class UltracoolSheetDownloader(Downloader):
         part = self.out_dir / (MAIN_FILE + ".part")
         part.write_bytes(content.content)
         part.replace(self.out_dir / MAIN_FILE)
-        (self.out_dir / RECORD_FILE).write_bytes(response.content)
+        (self.out_dir / RECORD_FILE).write_bytes(record.raw)
         rows = sum(1 for _ in csv.DictReader(io.StringIO(content.text)))
         logger.info("UltracoolSheet %d: %d rows", RECORD, rows)
         self._save_metadata(url, rows, complete=True, record=RECORD)

@@ -49,7 +49,7 @@ import pyarrow.parquet as pq
 
 from space_map_data.constants.providers import PROVIDERS
 from space_map_data.download.downloader import DownloadError
-from space_map_data.download.providers.catalogues.fetch import md5_of
+from space_map_data.download.providers.catalogues.fetch import md5_check
 from space_map_data.download.providers.stars import gaia_bulk, gaia_source
 from space_map_data.download.providers.stars.gaia_bulk import (
     ARROW_TYPES,
@@ -59,14 +59,18 @@ from space_map_data.download.providers.stars.gaia_bulk import (
     ChunkedTableDownloader,
     Column,
 )
-from space_map_data.download.providers.three_d.resumable import download_resumable
+from space_map_data.download.providers.three_d.resumable import (
+    AS_STORED,
+    download_resumable,
+)
+from space_map_data.download.zenodo import ZENODO_URL, fetch_record
 from space_map_data.utils.arrays import find_sorted
 from space_map_data.utils.files import SYNC_BYTES, write_parquet
 
 logger = logging.getLogger(__name__)
 
 RECORD = 7945154
-RECORD_URL = f"https://zenodo.org/api/records/{RECORD}"
+RECORD_URL = f"{ZENODO_URL}/{RECORD}"
 TABLE_PATH = f"{gaia_source.RELEASE}/andrae2023_xgboost"
 CHUNK_PREFIX = "XgboostParameters_"
 DEPOSIT_DIR = "zenodo"
@@ -96,8 +100,6 @@ DATATYPES = {kind: name for name, kind in ARROW_TYPES.items()}
 SCHEMA = pa.schema([(name, kind) for name, (kind, _, _) in COLUMNS.items()])
 TABLE_COLUMNS = [name for name in SCHEMA.names if name != VETTED]
 WORKERS = 8
-# The Zenodo files as Zenodo stores them, for the MD5 check.
-_AS_STORED = {"Accept-Encoding": "identity"}
 
 
 def open_table(path: Path, names: list[str]) -> pcsv.CSVStreamingReader:
@@ -219,44 +221,25 @@ class GaiaXpMetallicityDownloader(ChunkedTableDownloader):
 
     def _fetch_deposit(self) -> dict[str, str]:
         """Fetch the deposit files that the disk lacks. Returns their MD5."""
-        response = self.client.get(RECORD_URL)
-        response.raise_for_status()
-        try:
-            files = {entry["key"]: entry for entry in response.json()["files"]}
-            wanted = {
-                name: (
-                    files[name]["links"]["self"],
-                    files[name]["checksum"].removeprefix("md5:"),
-                )
-                for name in (ALL_STARS, VETTED_RGB)
-            }
-        except (ValueError, KeyError, TypeError) as error:
-            raise DownloadError(
-                f"Zenodo {RECORD}: unexpected record, {error!r}"
-            ) from error
+        record = fetch_record(self.client, RECORD)
+        wanted = {name: record.file(name) for name in (ALL_STARS, VETTED_RGB)}
         self.deposit_dir.mkdir(exist_ok=True)
-        (self.deposit_dir / "record.json").write_bytes(response.content)
-        for name, (url, md5) in wanted.items():
+        (self.deposit_dir / "record.json").write_bytes(record.raw)
+        for name, file in wanted.items():
             dest = self.deposit_dir / name
             # A file takes its name only after its MD5 check.
             if dest.exists():
                 continue
-
-            def check(path: Path, md5: str = md5) -> None:
-                found = md5_of(path)
-                if found != md5:
-                    raise DownloadError(f"{path.name}: MD5 {found}, expected {md5}")
-
             if not download_resumable(
                 self.client,
-                url,
+                file.url,
                 dest,
-                headers=_AS_STORED,
-                check=check,
+                headers=AS_STORED,
+                check=md5_check(name, file.md5),
                 sync_bytes=SYNC_BYTES,
             ):
-                raise DownloadError(f"{url}: the fetch failed")
-        return {name: md5 for name, (_, md5) in wanted.items()}
+                raise DownloadError(f"{file.url}: the fetch failed")
+        return {name: file.md5 for name, file in wanted.items()}
 
     def _describe_columns(self) -> None:
         columns = [

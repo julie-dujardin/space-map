@@ -46,17 +46,17 @@ from space_map_data.download.downloader import (
     DownloadError,
     user_agent_without_bot,
 )
-from space_map_data.download.providers.catalogues.fetch import md5_of
+from space_map_data.download.providers.catalogues.fetch import md5_check
 from space_map_data.download.providers.three_d.resumable import (
     AS_STORED,
     download_resumable,
 )
+from space_map_data.download.zenodo import fetch_record
 from space_map_data.utils.files import SYNC_BYTES
 from space_map_data.utils.paths import SOURCES_CATALOGUES_DIR
 
 logger = logging.getLogger(__name__)
 
-ZENODO_URL = "https://zenodo.org/api/records"
 RECORD = "record.json"
 
 _HTML_NAMES = (".html", ".htm")
@@ -224,28 +224,13 @@ class CatalogueDownloader(Downloader):
         return items
 
     def _zenodo_fetches(self, zenodo: ZenodoFiles, directory: Path) -> list[Fetch]:
-        response = self.client.get(f"{ZENODO_URL}/{zenodo.record}")
-        if response.status_code in (403, 404, 410):
-            raise DownloadError(
-                f"HTTP {response.status_code} for Zenodo {zenodo.record}"
-            )
-        response.raise_for_status()
-        try:
-            files = {entry["key"]: entry for entry in response.json()["files"]}
-            wanted = zenodo.files or tuple(files)
-            items = [
-                Fetch(
-                    name,
-                    files[name]["links"]["self"],
-                    check=_md5_check(files[name]["checksum"].removeprefix("md5:")),
-                )
-                for name in wanted
-            ]
-        except (ValueError, KeyError, TypeError) as exc:
-            raise DownloadError(
-                f"Zenodo {zenodo.record}: unexpected record, {exc!r}"
-            ) from exc
-        (directory / RECORD).write_bytes(response.content)
+        record = fetch_record(self.client, zenodo.record)
+        files = [record.file(name) for name in zenodo.files or record.entries]
+        items = [
+            Fetch(file.name, file.url, check=md5_check(file.name, file.md5))
+            for file in files
+        ]
+        (directory / RECORD).write_bytes(record.raw)
         return items
 
 
@@ -314,15 +299,6 @@ def _records_check(name: str, expected: int) -> Callable[[Path], None]:
         # Some ReadMes do not count the headlines and the blank lines.
         if count_records(path, name, data_only=True) != expected:
             raise DownloadError(f"{name}: {found} records, the ReadMe lists {expected}")
-
-    return check
-
-
-def _md5_check(expected: str) -> Callable[[Path], None]:
-    def check(path: Path) -> None:
-        found = md5_of(path)
-        if found != expected:
-            raise DownloadError(f"MD5 {found}, Zenodo lists {expected}")
 
     return check
 

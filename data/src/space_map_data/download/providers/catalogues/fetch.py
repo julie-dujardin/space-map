@@ -1,5 +1,5 @@
 """Write the answer to one query to disk, count the answers of a QLever query,
-and hash a file."""
+hash a file, and check its MD5."""
 
 import gzip
 import hashlib
@@ -137,3 +137,14 @@ def md5_of(path: Path) -> str:
         while chunk := file.read(CHUNK_BYTES):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def md5_check(name: str, expected: str) -> Callable[[Path], None]:
+    """A check for `download_resumable`: the file must have this MD5."""
+
+    def check(path: Path) -> None:
+        found = md5_of(path)
+        if found != expected:
+            raise DownloadError(f"{name}: MD5 {found}, the host lists {expected}")
+
+    return check

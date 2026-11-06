@@ -8,7 +8,11 @@ from typing import Any
 
 import httpx
 
-from space_map_data.download.downloader import Downloader, tls_context
+from space_map_data.download.downloader import (
+    Downloader,
+    DownloadSkipped,
+    tls_context,
+)
 from space_map_data.download.providers.bjj_rings import BJJRingsDownloader
 from space_map_data.download.providers.catalogues.provider import (
     BlackHoleCataloguesDownloader,
@@ -25,6 +29,15 @@ from space_map_data.download.providers.catalogues.simbad import (
 )
 from space_map_data.download.providers.catalogues.wikidata_simbad import (
     WikidataSimbadIdsDownloader,
+)
+from space_map_data.download.providers.dust.maps import (
+    BayestarDustDownloader,
+    DecapsDustDownloader,
+    DharmawardenaDustDownloader,
+    EdenhoferDustDownloader,
+    ExploreDustDownloader,
+    GaiaExtinctionMapDownloader,
+    PlanckDustDownloader,
 )
 from space_map_data.download.providers.exoplanets.exoplanet_eu import (
     ExoplanetEUDownloader,
@@ -252,6 +265,13 @@ PROVIDERS_CLASSES = [
     # Ordered: the SIMBAD names come from Bucur's files.
     BucurConstellationsDownloader,
     SkycultureSimbadDownloader,
+    EdenhoferDustDownloader,
+    BayestarDustDownloader,
+    DecapsDustDownloader,
+    PlanckDustDownloader,
+    GaiaExtinctionMapDownloader,
+    ExploreDustDownloader,
+    DharmawardenaDustDownloader,
 ]
 SOURCES: dict[str, type[Downloader]] = {cls.name: cls for cls in PROVIDERS_CLASSES}
 
@@ -262,6 +282,7 @@ ALL_SOURCES = list(SOURCES)
 class ProviderResult:
     name: str
     ok: bool
+    # The failure, or why a skipped provider has work left.
     error: str | None = None
     skipped: bool = False
 
@@ -301,14 +322,19 @@ def download(
     ) as client:
         for name in selected:
             cls = SOURCES[name]
-            downloader = cls(client)
-            if not force and downloader.is_complete(limit):
-                logger.info("Skipping %s (already complete)", name)
-                results.append(ProviderResult(name, ok=True, skipped=True))
-                continue
             try:
-                downloader.download(limit=limit, epoch=epoch)
+                downloader = cls(client)
+                if not force and downloader.is_complete(limit):
+                    logger.info("Skipping %s (already complete)", name)
+                    results.append(ProviderResult(name, ok=True, skipped=True))
+                    continue
+                downloader.download(limit=limit, epoch=epoch, force=force)
                 results.append(ProviderResult(name, ok=True))
+            except DownloadSkipped as e:
+                logger.info("Skipping %s: %s", name, e)
+                results.append(
+                    ProviderResult(name, ok=True, skipped=True, error=str(e))
+                )
             except Exception as e:
                 logger.exception("Provider %s failed", name)
                 results.append(

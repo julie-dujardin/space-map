@@ -25,7 +25,6 @@ and the scripts of the record.
 import gzip
 import json
 import logging
-from collections.abc import Callable
 from dataclasses import asdict
 from pathlib import Path
 
@@ -38,19 +37,19 @@ from astropy.io import fits
 
 from space_map_data.constants.providers import PROVIDERS
 from space_map_data.download.downloader import Downloader, DownloadError
-from space_map_data.download.providers.catalogues.fetch import md5_of
+from space_map_data.download.providers.catalogues.fetch import md5_check
 from space_map_data.download.providers.stars.gaia_bulk import ARROW_TYPES, Column
 from space_map_data.download.providers.three_d.resumable import (
     AS_STORED,
     download_resumable,
 )
+from space_map_data.download.zenodo import ZENODO_URL, fetch_record
 from space_map_data.utils.files import SYNC_BYTES, flush_to_disk
 from space_map_data.utils.paths import SOURCES_STARS_DIR
 
 logger = logging.getLogger(__name__)
 
 OUT_DIR = SOURCES_STARS_DIR / "el-badry-2021"
-ZENODO_URL = "https://zenodo.org/api/records"
 RECORD = 4435257
 DOI_URL = "https://doi.org/10.5281/zenodo.4435257"
 SOURCE_FILE = "all_columns_catalog.fits.gz"
@@ -142,15 +141,9 @@ class ElBadryBinariesDownloader(Downloader):
         )
 
     def download(self, limit: int | None = None, **kwargs: object) -> None:
-        response = self.client.get(f"{ZENODO_URL}/{RECORD}", timeout=120.0)
-        if response.status_code != 200:
-            raise DownloadError(f"HTTP {response.status_code} for Zenodo {RECORD}")
-        try:
-            entry = {f["key"]: f for f in response.json()["files"]}[SOURCE_FILE]
-            url = entry["links"]["self"]
-            expected = entry["checksum"].removeprefix("md5:")
-        except (ValueError, KeyError, TypeError) as error:
-            raise DownloadError(f"Zenodo {RECORD}: unexpected record") from error
+        record = fetch_record(self.client, RECORD)
+        entry = record.file(SOURCE_FILE)
+        url, expected = entry.url, entry.md5
         source = self.out_dir / SOURCE_FILE
         # The file takes its name only after its MD5 check.
         if not source.exists() and not download_resumable(
@@ -158,7 +151,7 @@ class ElBadryBinariesDownloader(Downloader):
             url,
             source,
             headers=AS_STORED,
-            check=_md5_check(expected),
+            check=md5_check(SOURCE_FILE, expected),
             sync_bytes=SYNC_BYTES,
         ):
             raise DownloadError(f"{url}: the fetch failed")
@@ -166,7 +159,7 @@ class ElBadryBinariesDownloader(Downloader):
         (self.out_dir / COLUMNS_FILE).write_text(
             json.dumps([asdict(c) for c in pair_columns()], indent=2) + "\n"
         )
-        (self.out_dir / RECORD_FILE).write_bytes(response.content)
+        (self.out_dir / RECORD_FILE).write_bytes(record.raw)
         logger.info("El-Badry et al. 2021: %d pairs", rows)
         self._save_metadata(
             url,
@@ -259,12 +252,3 @@ def _pairs(block: np.ndarray, name: str) -> pa.Table:
         mask = np.isnan(values) if values.dtype.kind == "f" else None
         columns[field.name] = pa.array(values, field.type, mask=mask)
     return pa.table(columns, schema=PAIRS_SCHEMA)
-
-
-def _md5_check(expected: str) -> Callable[[Path], None]:
-    def check(path: Path) -> None:
-        found = md5_of(path)
-        if found != expected:
-            raise DownloadError(f"{SOURCE_FILE}: MD5 {found}, Zenodo lists {expected}")
-
-    return check

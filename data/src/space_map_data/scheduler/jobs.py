@@ -257,6 +257,22 @@ JOBS: list[Job] = [
         ),
         schedule=Every(timedelta(days=7)),
     ),
+    # Dust maps for the 3D Milky Way, 25 GB in all. They never expire. The
+    # scheduler's record limit stops a provider before its first fetch, so fill
+    # them from the CLI.
+    Job(
+        name="dust_maps",
+        sources=(
+            PROVIDERS.EDENHOFER_DUST,
+            PROVIDERS.BAYESTAR_DUST,
+            PROVIDERS.DECAPS_DUST,
+            PROVIDERS.PLANCK_DUST,
+            PROVIDERS.GAIA_EXTINCTION_MAP,
+            PROVIDERS.EXPLORE_DUST,
+            PROVIDERS.DHARMAWARDENA_DUST,
+        ),
+        schedule=Every(timedelta(days=7)),
+    ),
 ]
 
 

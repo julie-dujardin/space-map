@@ -18,11 +18,9 @@ from space_map_data.download.cds import CDS_URL
 from space_map_data.download.downloader import DownloadError
 from space_map_data.download.providers.catalogues import fetch, provider
 from space_map_data.download.providers.catalogues.fetch import post_lines_gz
-from space_map_data.download.providers.catalogues.provider import (
-    ZENODO_URL,
-    CatalogueDownloader,
-)
+from space_map_data.download.providers.catalogues.provider import CatalogueDownloader
 from space_map_data.download.providers.three_d import resumable
+from space_map_data.download.zenodo import ZENODO_URL
 
 README = """J/A+A/1/A1          A test catalogue                    (Author+, 2024)
 ================================================================================

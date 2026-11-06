@@ -579,8 +579,8 @@ class TextureSourcesDownloader(Downloader):
         HTML_CACHE_DIR.mkdir(parents=True, exist_ok=True)
         PARSED_DIR.mkdir(parents=True, exist_ok=True)
 
-    def _fetch_text(self, url: str, cache_path: Path, *, force: bool) -> str:
-        if cache_path.exists() and not force:
+    def _fetch_text(self, url: str, cache_path: Path, *, rescrape: bool) -> str:
+        if cache_path.exists() and not rescrape:
             return cache_path.read_text(encoding="utf-8")
         logger.info("GET %s", url)
         resp = self.client.get(url)
@@ -594,7 +594,7 @@ class TextureSourcesDownloader(Downloader):
         self,
         limit: int | None = None,
         *,
-        force: bool = False,
+        rescrape: bool = False,
         **kwargs: object,
     ) -> None:
         entries = load_entries(SOURCES_TEXTURES_DIR)
@@ -618,12 +618,14 @@ class TextureSourcesDownloader(Downloader):
 
             stem = _file_stem(file_name)
             out_json = PARSED_DIR / f"{stem}.json"
-            if out_json.exists() and not force:
+            if out_json.exists() and not rescrape:
                 logger.debug("Already parsed: %s", out_json.name)
                 continue
 
             try:
-                parsed = self._fetch_and_parse(site, source_url, stem, force=force)
+                parsed = self._fetch_and_parse(
+                    site, source_url, stem, rescrape=rescrape
+                )
             except Exception:
                 logger.exception("Failed to fetch/parse %s (%s)", source_url, site)
                 errors += 1
@@ -652,7 +654,7 @@ class TextureSourcesDownloader(Downloader):
         )
 
     def _fetch_and_parse(
-        self, site: str, source_url: str, stem: str, *, force: bool
+        self, site: str, source_url: str, stem: str, *, rescrape: bool
     ) -> dict:
         """Dispatch fetch + parse per site. SVS uses its JSON API; others scrape HTML."""
         if site == "nasa_svs":
@@ -661,14 +663,15 @@ class TextureSourcesDownloader(Downloader):
                 raise ValueError(f"could not extract SVS id from {source_url}")
             api_url = _svs_api_url(svs_id)
             cache_path = HTML_CACHE_DIR / f"{stem}.api.json"
-            payload = self._fetch_text(api_url, cache_path, force=force)
+            payload = self._fetch_text(api_url, cache_path, rescrape=rescrape)
             return _parse_nasa_svs(json.loads(payload), source_url)
 
         cache_path = HTML_CACHE_DIR / f"{stem}.html"
-        html = self._fetch_text(source_url, cache_path, force=force)
+        html = self._fetch_text(source_url, cache_path, rescrape=rescrape)
         return _HTML_PARSERS[site](html, source_url)
 
     def is_complete(self, limit: int | None) -> bool:
         # Always re-run; cheap since HTML is cached and per-entry JSONs are
-        # skipped when they exist. `force=True` forces a full re-scrape.
+        # skipped when they exist. `rescrape=True` forces a full re-scrape. The
+        # runner's `force` does not: it only skips this check, which never holds.
         return False
