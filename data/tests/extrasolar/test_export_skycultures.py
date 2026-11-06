@@ -10,8 +10,9 @@ import pytest
 from space_map_data.constants.stars import constellations
 from space_map_data.constants.stars import cultures as cultures_table
 from space_map_data.export.extrasolar import planets, render, skycultures
-from space_map_data.export.extrasolar.build import ExportRefused, export_extrasolar
+from space_map_data.export.extrasolar.build import export_extrasolar
 from space_map_data.export.extrasolar.reader import ExportReader, NodeInfo
+from space_map_data.export.swap import ExportRefused
 from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.extrasolar.ids import cell_of
 from space_map_data.extrasolar.registry import Registry

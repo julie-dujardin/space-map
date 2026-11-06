@@ -57,6 +57,7 @@ v1/
   textures/stars/metadata.json                    skybox source + per-face exports
   tiles/{id}/metadata.json                        tile-pyramid descriptor; the tiles are published apart from the export, see tiles.md
   x/…                                             extrasolar record tiles, render tree, sky cultures and planets, published apart from the export, see extrasolar.md
+  dust/…                                          the 3D dust nest, published beside x/, see dust.md
   rings/{id}/{channel}.webp                       channel = backscattered | forwardscattered | unlitside | transparency | color
   rings/{id}/metadata.json                        ring source + geometry + per-channel files
   models/{slug}/{tier}.glb                        tier = low | high — Meshopt geometry + WebP textures
@@ -90,6 +91,7 @@ v1/
 | [textures.md](textures.md) | Surface/cloud/specular/skybox textures, tiers, and metadata. |
 | [tiles.md](tiles.md) | Surface tile pyramids of all layers: grid, colour and height tiles, sources, descriptor. |
 | [extrasolar.md](extrasolar.md) | Objects outside the solar system, published apart under `v1/x/`: the container, record tiles and split tables, the star systems, the stars' interiors, the Milky Way render tree, the sky cultures, the planets and their systems, tokens, the lookup of an ID. |
+| [dust.md](dust.md) | The 3D dust nest, published apart under `v1/dust/`: the levels, the frame, the R8 encoding and the layers. |
 | [rings.md](rings.md) | Ring radial-profile channels and metadata. |
 | [models.md](models.md) | 3D spacecraft/satellite glTF bundles and metadata. |
 | [systems.md](systems.md) | `systems/global.json` lookups + per-system `systems/{barycenter_id}.json`. |

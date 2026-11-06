@@ -58,6 +58,11 @@ KIND_TILE = 1
 KIND_SPLIT = 2
 KIND_NODE = 3
 KIND_IDS = 4
+KIND_VOLUME = 5
+# The info block of a volume: uint16 width, height and depth, then uint8 index (the
+# level of a nest volume, the texture of a glow volume) and uint8 tier.
+VOLUME_INFO = struct.Struct("<HHHBB")
+TIER_CODES = {"high": 0, "low": 1}
 
 # Level 6 compresses about 6 times faster than level 9. The files are 0.4%
 # larger.
@@ -362,6 +367,14 @@ def encode(
             out += buf
             out += b"\0" * _pad(len(buf))
     return bytes(out)
+
+
+def volume_payload(
+    column: Column, size: tuple[int, int, int], index: int, tier: str
+) -> bytes:
+    """The payload of one volume file: a single column in the order of `texImage3D`."""
+    info = VOLUME_INFO.pack(*size, index, TIER_CODES[tier])
+    return encode(KIND_VOLUME, len(column.values), [column], info)
 
 
 def json_payload(content: dict) -> bytes:

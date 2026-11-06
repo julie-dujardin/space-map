@@ -39,7 +39,7 @@ All numbers are little-endian. The payload starts with a header of 32 bytes:
 |--------|----------|-------|
 | 0      | char[4]  | Magic `SMXS` |
 | 4      | uint16   | Format version (1) |
-| 6      | uint8    | Kind: `1` record tile, `2` split table, `3` render node, `4` render IDs |
+| 6      | uint8    | Kind: `1` record tile, `2` split table, `3` render node, `4` render IDs, `5` volume of the dust nest ([dust.md](dust.md)) |
 | 7      | uint8    | 0 |
 | 8      | char[16] | Token of the table or tree, 16 ASCII hex digits |
 | 24     | uint32   | Row count `n` |

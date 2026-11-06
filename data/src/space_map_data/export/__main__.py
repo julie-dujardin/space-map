@@ -19,11 +19,13 @@ from space_map_data.export.position.probes.attitude.orchestrator import (
 # After the orchestrator: credits imported first hits the import cycle
 # between export.ephemeris and export.objects.
 from space_map_data.export.credits import export_credits_only  # isort: skip
+from space_map_data.dust import DEFAULT_VARIANT, VARIANTS
 from space_map_data.export.about_data import export_about_data_only
 from space_map_data.export.extrasolar.build import export_extrasolar_only
 from space_map_data.export.seo_pages import export_seo_only
 from space_map_data.export.spacecraft import export_spacecraft_only
 from space_map_data.export.status import export_status_only
+from space_map_data.export.swap import ExportRefused
 from space_map_data.export.systems import export_systems_only
 from space_map_data.utils.db import engine_scope
 from space_map_data.utils.heap import limit_arenas
@@ -54,6 +56,7 @@ def cli():
             "seo",
             "extrasolar",
             "star-objects",
+            "dust",
         ),
         default=None,
         help="Run only the named tier (additive — leaves other outputs untouched)",
@@ -75,19 +78,38 @@ def cli():
         "--extrasolar-root",
         type=Path,
         default=EXTRASOLAR_DIR,
-        help=f"extrasolar: where v1/x/ goes (default: {EXTRASOLAR_DIR}, only for"
-        " the default registry)",
+        help="extrasolar and dust: the root of v1/x/ and v1/dust/ (default:"
+        f" {EXTRASOLAR_DIR}, only for the default registry)",
+    )
+    parser.add_argument(
+        "--dust-variant",
+        choices=VARIANTS,
+        default=DEFAULT_VARIANT,
+        help="dust: the regional variant of the nest",
     )
     args = parser.parse_args()
 
     with open(DATA_DIR / "logging.toml", "rb") as f:
         logging.config.dictConfig(tomllib.load(f))
 
-    # It reads the registry and the star items of the Wikidata cache in place,
-    # and no DB.
-    if args.only == "extrasolar":
-        export_extrasolar_only(args.workers, args.registry_root, args.extrasolar_root)
-        return
+    # A refusal is an expected stop, so it shows only its message.
+    try:
+        # It reads the registry and the star items of the Wikidata cache in place,
+        # and no DB.
+        if args.only == "extrasolar":
+            export_extrasolar_only(
+                args.workers, args.registry_root, args.extrasolar_root
+            )
+            return
+        # It reads the nest build, and no DB.
+        if args.only == "dust":
+            # Late, because the nest build pulls in h5py, scipy and astropy.
+            from space_map_data.export.dust import export_dust_only
+
+            export_dust_only(args.dust_variant, args.extrasolar_root)
+            return
+    except ExportRefused as error:
+        raise SystemExit(f"export refused: {error}") from None
     sync_all()
     if args.only == "star-objects":
         export_star_objects_only()

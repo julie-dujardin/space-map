@@ -19,11 +19,11 @@ from space_map_data.export.extrasolar import (
 )
 from space_map_data.export.extrasolar.build import (
     FAMILIES_FILE,
-    ExportRefused,
     export_extrasolar,
 )
 from space_map_data.export.extrasolar.container import Column
 from space_map_data.export.extrasolar.reader import ExportReader, NodeInfo
+from space_map_data.export.swap import ExportRefused
 from space_map_data.extrasolar import families, ids, placement
 from space_map_data.extrasolar.interiors import inputs
 from space_map_data.extrasolar.registry import Registry, RegistryBusy

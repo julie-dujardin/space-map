@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from space_map_data.constants.providers import BASE_LOCALE
 from space_map_data.export import sitemap
-from space_map_data.export.extrasolar.build import ExportRefused, export_extrasolar
+from space_map_data.export.extrasolar.build import export_extrasolar
 from space_map_data.export.groups.registry import GROUPS, GroupType
 from space_map_data.export.names import Names, ObjectNames
 from space_map_data.export.objects.stars import PlanetObject, StarObject
@@ -36,6 +36,7 @@ from space_map_data.export.sitemap import (
     available_planet_pages,
     bundle_entries,
 )
+from space_map_data.export.swap import ExportRefused
 from space_map_data.extrasolar.registry import ALIAS
 from space_map_data.models.feature import Feature
 from space_map_data.models.object import Object, ObjectType, OrbitalSource

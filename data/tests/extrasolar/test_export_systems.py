@@ -16,7 +16,7 @@ from space_map_data.export.extrasolar import (
     system_index,
     tiles,
 )
-from space_map_data.export.extrasolar.build import ExportRefused, export_extrasolar
+from space_map_data.export.extrasolar.build import export_extrasolar
 from space_map_data.export.extrasolar.reader import ExportReader, NodeInfo
 from space_map_data.export.extrasolar.systems import (
     Refs,
@@ -24,6 +24,7 @@ from space_map_data.export.extrasolar.systems import (
     refs_by_unit,
     unit_positions,
 )
+from space_map_data.export.swap import ExportRefused
 from space_map_data.extrasolar.ids import cell_of, encode, table_of
 from space_map_data.extrasolar.registry import Registry
 from space_map_data.extrasolar.sky import region_cells, region_of

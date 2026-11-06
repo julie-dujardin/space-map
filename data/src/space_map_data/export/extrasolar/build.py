@@ -49,6 +49,7 @@ import pyarrow as pa
 from space_map_data.constants.stars.families import FAMILIES, PARENTS, STAR_FAMILY_PAGES
 from space_map_data.download.providers.stars import el_badry, msc, orb6, sbx, wds
 from space_map_data.download.providers.stars.iau_names import PAGE_URL as IAU_URL
+from space_map_data.export import swap
 from space_map_data.export.extrasolar import (
     census,
     citations,
@@ -69,13 +70,13 @@ from space_map_data.export.extrasolar.tiles import (
     UnitJob,
 )
 from space_map_data.export.objects.stars import planet_host_pages
+from space_map_data.export.swap import ExportRefused
 from space_map_data.export.systems import TextureLayers
 from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.extrasolar.interiors import schema as interior_schema
 from space_map_data.extrasolar.interiors import table as interiors
 from space_map_data.extrasolar.registry import Registry, RegistryError
 from space_map_data.extrasolar.sky import REGION_COUNT, REGION_SHIFT
-from space_map_data.extrasolar.store import fsync_dir
 from space_map_data.extrasolar.tables import METADATA, TABLES
 from space_map_data.skycultures.licences import NON_COMMERCIAL
 from space_map_data.utils.paths import EXPORT_DIR, EXTRASOLAR_DIR, REGISTRY_ROOT
@@ -340,10 +341,6 @@ CREDITS = (
 )
 
 
-class ExportRefused(Exception):
-    pass
-
-
 @dataclass(frozen=True)
 class Layout:
     root: Path
@@ -366,7 +363,7 @@ class Layout:
 
     @property
     def lock(self) -> Path:
-        return self.root / ".lock"
+        return self.root / swap.LOCK_FILE
 
 
 @contextmanager
@@ -381,17 +378,6 @@ def _read_registry(root: Path) -> Generator[Registry]:
 
 
 @contextmanager
-def _locked(layout: Layout) -> Generator[None]:
-    layout.root.mkdir(parents=True, exist_ok=True)
-    with layout.lock.open("a+") as handle:
-        try:
-            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            raise ExportRefused(f"another export writes to {layout.root}") from None
-        yield
-
-
-@contextmanager
 def served(root: Path) -> Generator[None]:
     """Read access to the served export below `root`: an export that starts
     meanwhile refuses, and one that runs is waited for, so none swaps the
@@ -403,21 +389,6 @@ def served(root: Path) -> Generator[None]:
     with lock.open("a+") as handle:
         fcntl.flock(handle, fcntl.LOCK_SH)
         yield
-
-
-def _recover(layout: Layout) -> None:
-    """Undo what a stopped export left."""
-    if layout.old.exists():
-        if layout.live.exists():
-            logger.warning("removing the replaced export %s", layout.old)
-            shutil.rmtree(layout.old)
-        else:
-            logger.warning("restoring %s, which a stopped swap left", layout.old)
-            layout.old.rename(layout.live)
-    for path in (layout.staging, layout.scratch):
-        if path.exists():
-            logger.warning("removing what a failed export left: %s", path)
-            shutil.rmtree(path)
 
 
 @contextmanager
@@ -769,21 +740,6 @@ def _family_lists(brightest: dict[int, list[tiles.Listed]]) -> dict:
     }
 
 
-def _swap(layout: Layout) -> None:
-    replaced = layout.live.exists()
-    if replaced:
-        layout.live.rename(layout.old)
-    try:
-        layout.staging.rename(layout.live)
-    except BaseException:
-        if replaced:
-            layout.old.rename(layout.live)
-        raise
-    fsync_dir(layout.live.parent)
-    if replaced:
-        shutil.rmtree(layout.old)
-
-
 @dataclass
 class Built:
     tables: list[TableResult]
@@ -813,7 +769,7 @@ def _export(
     registry: Registry, layout: Layout, workers: int, cultures_dir: Path | None
 ) -> Built:
     """Build into staging, check, and swap. Removes staging on a failure."""
-    _recover(layout)
+    swap.recover(layout.live, layout.old, (layout.staging, layout.scratch))
     stale = skycultures.check(registry, cultures_dir or skycultures.CULTURES_DIR)
     if stale is not None:
         raise ExportRefused(stale)
@@ -919,7 +875,7 @@ def _export(
         (layout.staging / FAMILIES_FILE).write_text(
             json.dumps(_family_lists(family_stars.brightest), indent=1) + "\n"
         )
-        _swap(layout)
+        swap.swap(layout.live, layout.staging, layout.old)
     except BaseException:
         for path in (layout.staging, layout.scratch):
             if path.exists():
@@ -957,7 +913,7 @@ def export_extrasolar(
                 " them, then run space-map-extrasolar review <ingest>"
             )
         layout = Layout(out_root)
-        with _locked(layout):
+        with swap.locked(layout.root):
             result = _export(registry, layout, workers, cultures_dir)
     built, tree, cultures = result.tables, result.tree, result.cultures
     tile_files = {

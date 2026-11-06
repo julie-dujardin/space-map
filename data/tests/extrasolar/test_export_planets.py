@@ -12,11 +12,11 @@ import pytest
 from space_map_data.constants.planets.families import FAMILIES as PLANET_FAMILIES
 from space_map_data.export.extrasolar import build, orbits, planets, render
 from space_map_data.export.extrasolar.build import (
-    ExportRefused,
     export_extrasolar,
     export_extrasolar_only,
 )
 from space_map_data.export.extrasolar.reader import ExportReader, TokenMismatch
+from space_map_data.export.swap import ExportRefused
 from space_map_data.export.wikidata import StarEntity
 from space_map_data.extrasolar.exoplanets.catalogues import EU
 from space_map_data.extrasolar.registry import ALIAS, RETIRED, Registry
