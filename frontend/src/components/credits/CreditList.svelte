@@ -15,7 +15,7 @@
 		type ReferenceSection
 	} from '$lib/credits/credits-payload';
 	import { referenceRows, starPaperReferences } from '$lib/credits/star-sources';
-	import { IMAGERY_LAYERS, layerLabel, type ImageryLayer } from '$lib/credits/imagery-layers';
+	import { IMAGERY_LAYERS, rowQualifier, type ImageryLayer } from '$lib/credits/imagery-layers';
 	import { patchCredits, tileCredit } from '$lib/credits/tile-credit';
 	import PageContents, { type ContentsEntry } from '../nav/PageContents.svelte';
 	import { isPaperCredit, type ExtrasolarCredit } from '$lib/fetch/extrasolar/files';
@@ -70,6 +70,7 @@
 				surface: group.textures?.flatMap(withTileCredits),
 				clouds: group.clouds,
 				night: group.night,
+				glow: group.glow,
 				specular: group.specular,
 				topography: group.displacement?.flatMap(withTileCredits),
 				rings: group.rings
@@ -95,7 +96,7 @@
 						// for the same layer (e.g. Saturn's ring bundles).
 						key: `${credit.body_id}-${layer}-${i}`,
 						name: named(credit.body_id, credit.name),
-						qualifier: multi ? layerLabel(layer) : undefined,
+						qualifier: rowQualifier(multi ? layer : undefined, credit.artist_impression),
 						source: credit.source,
 						organisation: credit.organisation,
 						license: credit.license,

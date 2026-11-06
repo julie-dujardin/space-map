@@ -106,3 +106,17 @@ describe('updatePlanetshineUniforms', () => {
 		expect(dir.w).toBeCloseTo(SATURN_R / ORBIT, 9);
 	});
 });
+
+describe('the star of another system', () => {
+	it('lights the scene in place of the Sun, and shadows nothing', () => {
+		const bodies = scene();
+		const star = body('x-1', [SATURN[0], 5, 0], 100_000 * KM, ObjectType.EXTRASOLAR);
+		bodies.set('x-1', star);
+		const occluders = collectOccluders(bodies, []);
+		expect(occluders).not.toContain(star);
+		updateEclipseUniforms(bodies, occluders, SATURN, CAMERA, true, 'x-1');
+		const sun = getEclipseSceneUniforms();
+		expect(sun.uSunDir.value.toArray()).toEqual([0, 1, 0]);
+		expect(sun.uSunAngularRadius.value).toBeCloseTo(Math.asin((100_000 * KM) / 5), 12);
+	});
+});

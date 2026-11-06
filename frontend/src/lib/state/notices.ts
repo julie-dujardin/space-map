@@ -1,7 +1,7 @@
 import { toast } from 'svelte-sonner';
 import * as m from '$lib/paraglide/messages.js';
 import { formatJulianDate } from '$lib/format/date';
-import type { Notice, NoticeTopic, OutOfRangeNotice } from '$lib/scene/notice';
+import type { ArtistImpressionNotice, Notice, OutOfRangeNotice } from '$lib/scene/notice';
 
 function outOfRangeLines(notice: OutOfRangeNotice): string[] {
 	const lines: string[] = [];
@@ -23,8 +23,12 @@ function outOfRangeLines(notice: OutOfRangeNotice): string[] {
 	return lines;
 }
 
+/** The notices shown as toasts. The page shows an artist's impression in a box. */
+type ToastNotice = Exclude<Notice, ArtistImpressionNotice>;
+type ToastTopic = ToastNotice['topic'];
+
 /** Core notices as sticky toasts, keyed by topic so a repeat updates in place. */
-export function showNotice(notice: Notice): void {
+export function showNotice(notice: ToastNotice): void {
 	switch (notice.topic) {
 		case 'out-of-range':
 			toast.warning(m.out_of_range_title(), {
@@ -49,6 +53,6 @@ export function showNotice(notice: Notice): void {
 	}
 }
 
-export function dismissNotice(topic: NoticeTopic): void {
+export function dismissNotice(topic: ToastTopic): void {
 	toast.dismiss(topic);
 }

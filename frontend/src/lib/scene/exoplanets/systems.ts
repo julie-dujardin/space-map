@@ -51,6 +51,9 @@ export class ExoplanetSystems {
 	private readonly starSystem: FocusedStarSystem;
 	/** Drawn hosts by camera distance, nearest first. */
 	private drawn: number[] = [];
+	/** The star whose light falls on the drawn planets; null while none draws
+	 *  as a sphere. */
+	lightStar: string | null = null;
 	private drawnKey = '';
 
 	constructor(
@@ -74,6 +77,8 @@ export class ExoplanetSystems {
 		const star = this.starOf(frame.focused);
 		if (!store.index) {
 			if (star !== null) this.askIndex();
+			this.drawn = [];
+			this.publishDrawn(frame.focused);
 			this.setShares(new Map());
 			this.hold([]);
 			this.syncBodies(frame.focused);
@@ -92,10 +97,33 @@ export class ExoplanetSystems {
 		};
 		this.drawn = [...shares.keys()].sort((a, b) => distance(a) - distance(b));
 		this.setShares(shares);
+		this.publishDrawn(frame.focused);
 
 		store.use(new Set(key === undefined ? [] : [key]));
 		this.hold([...hosts, ...this.drawn]);
 		this.syncBodies(frame.focused);
+	}
+
+	/** Publish the system that draws, for the credits, and the star that
+	 *  lights it. Both hold while a system fades out. The light comes from the
+	 *  host of a focused planet that draws, else from the nearest drawn host
+	 *  with a planet drawn as a sphere. */
+	private publishDrawn(focused: PositionedBody | undefined): void {
+		const nearest = this.drawn[0];
+		const key =
+			nearest === undefined ? undefined : this.ctx.exoplanets.index?.host(nearest)?.system;
+		this.ctx.visibility.planetSystemInView = key === undefined ? null : extrasolarObjectId(key);
+		const focusedHost = focused?.exoplanet?.host;
+		const lit =
+			focusedHost !== undefined && focused?.data.mapped && this.drawn.includes(focusedHost)
+				? focusedHost
+				: this.drawn.find((host) =>
+						this.ctx.exoplanets
+							.held(host)
+							?.planets.get(host)
+							?.some((planet) => planet.data.mapped)
+					);
+		this.lightStar = lit === undefined ? null : extrasolarObjectId(lit);
 	}
 
 	/** The planetary system of a focused star: its own, or for a star on a

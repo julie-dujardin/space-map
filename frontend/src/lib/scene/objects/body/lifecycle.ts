@@ -71,7 +71,7 @@ export function buildMajorBodies(
 		const isVirtual =
 			isHalfPromoted ||
 			t === ObjectType.EXTRASOLAR ||
-			t === ObjectType.EXOPLANET ||
+			(t === ObjectType.EXOPLANET && !body.data.mapped) ||
 			t === ObjectType.BARYCENTER ||
 			t === ObjectType.LAGRANGE_POINT ||
 			t === ObjectType.COMET ||
@@ -121,7 +121,10 @@ export function buildMajorBodies(
 				attachCameraRelative(mesh, material as MeshStandardMaterial);
 				photometry = makePhotometryUniforms(body.data.lunarWeightScale);
 				attachSurfacePhotometry(material as MeshStandardMaterial, id, photometry);
-				if (!modelBearing) planetshine = attachPlanetshine(material as MeshStandardMaterial);
+				// Planetshine follows the Sun, which lights no planet of another star.
+				if (!modelBearing && t !== ObjectType.EXOPLANET) {
+					planetshine = attachPlanetshine(material as MeshStandardMaterial);
+				}
 			}
 			root.add(mesh);
 
@@ -197,7 +200,7 @@ export function buildMajorBodies(
 			atmosphere,
 			sunTint,
 			specularMap: null,
-			emissiveMap: null,
+			emissive: null,
 			displacementMap: null,
 			selfShadow: null,
 			eclipseShadow,

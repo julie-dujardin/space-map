@@ -34,17 +34,21 @@ export function creditedOrbitArchives(ctx: ContextManager): OrbitArchive[] {
 	return ORBIT_ARCHIVE_ORDER.filter((archive) => feedsView(ctx, archive));
 }
 
-/** Credits for the planetary system in view plus the focused body — the latter
- *  covers standalones like Bennu and Ceres, credited body-by-body. None from
- *  solar system scope outwards, where no system's imagery draws. */
+/** Credits for the planetary systems in view, of the Sun's and of another
+ *  star, and for the focused body. The focused body covers standalones such
+ *  as Bennu and Ceres, which are credited body by body. None while no system's
+ *  imagery draws. */
 export function scopedCredits<T extends { bodyId: string; systemId?: string | null }>(
 	ctx: ContextManager,
 	all: Iterable<T>
 ): T[] {
-	const systemId = ctx.visibility.systemInView;
-	if (!systemId) return [];
+	const solar = ctx.visibility.systemInView;
+	const planets = ctx.visibility.planetSystemInView;
+	if (!solar && !planets) return [];
 	const bodyId = ctx.visibility.focusedBodyId;
-	return [...all].filter((c) => c.bodyId === bodyId || c.systemId === systemId);
+	return [...all].filter(
+		(c) => c.bodyId === bodyId || (!!c.systemId && (c.systemId === solar || c.systemId === planets))
+	);
 }
 
 /** The focused body's mesh, until it shrinks to a halo. Reads the store's

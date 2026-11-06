@@ -80,7 +80,8 @@ export function planet(
 		computed: [],
 		limits: [],
 		families: [],
-		families_estimated: []
+		families_estimated: [],
+		tidally_locked: null
 	};
 }
 

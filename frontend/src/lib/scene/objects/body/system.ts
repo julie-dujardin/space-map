@@ -7,12 +7,19 @@ import { dataBase } from '$lib/fetch/data-base';
 import { fetchWithTimeout } from '$lib/fetch/fetch-timeout';
 import { pickTexture, type TextureDistribution } from '$lib/host';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
+import { sceneSettings } from '$lib/scene/settings.svelte';
 import { disposeRingNode, type RingMeta } from '../surface/rings';
 import { attachRingBundles } from '../surface/ring-attach';
 import { disposeNomenclatureLabels } from '../surface/nomenclature';
 import type { BodyObjects, TilesBlock } from '../../types';
 import { applyBodyOrientation } from './orientation-apply';
-import { loadSiblingLayers, type SiblingBundles, unloadSiblingLayers } from './sibling-layers';
+import {
+	loadSiblingLayers,
+	type SiblingBundles,
+	type SiblingLoadEnv,
+	unloadSiblingLayers
+} from './sibling-layers';
+import { extrasolarObjectId } from '$lib/fetch/extrasolar/ids';
 import {
 	applyRadiiToMesh,
 	applySurfaceColour,
@@ -21,12 +28,14 @@ import {
 	unloadBodyTexture
 } from './textures';
 
-interface SystemBodyMeta extends SiblingBundles {
+/** The maps of a body as a system file gives them. A planet of another star
+ *  carries the same keys in its record. */
+export interface SurfaceMaps extends SiblingBundles {
 	tiers?: string[];
-	/** Attribution block — matches `export/systems.py::texture_attribution`. */
-	/** Maps ranked below `texture`, best first — the fallbacks for a viewer
-	 *  that may not serve the best one. Each names its own bundle and tiers. */
-	alternates?: (NonNullable<SystemBodyMeta['texture']> & { id: string; tiers: string[] })[];
+	/** Maps ranked below `texture`, best first. A viewer that may not serve
+	 *  the best map falls back to them. Each names its own bundle and tiers. */
+	alternates?: (NonNullable<SurfaceMaps['texture']> & { id: string; tiers: string[] })[];
+	/** The credit block, as `export/systems.py::texture_attribution` writes it. */
 	texture?: {
 		source: string;
 		organisation: string;
@@ -39,7 +48,12 @@ interface SystemBodyMeta extends SiblingBundles {
 		/** Only on `cylindrical_monthly`: number of monthly frames (always 12 today). */
 		frames?: number;
 		tiles?: TilesBlock;
+		/** An artist's picture of a body no camera has resolved. */
+		artist_impression?: boolean;
 	};
+}
+
+interface SystemBodyMeta extends SurfaceMaps {
 	orientation?: {
 		pole_ra_0: number;
 		pole_ra_1: number;
@@ -126,6 +140,83 @@ export async function readLandingBodySpin(
 	if (landingBody) await readSpin(landingBody, ctx);
 }
 
+/** A body's map as {@link loadSystemData} draws it. */
+type PickedSurface = NonNullable<SurfaceMaps['texture']> & { id: string; tiers?: string[] };
+
+/**
+ * The best map of `maps` this embed may serve, which is not always the best
+ * one there is. The body's own bundle is named by the body; a fallback names
+ * itself. Undefined where none is reachable: the body keeps its fallback colour.
+ */
+export function surfaceOf(bodyId: string, maps: SurfaceMaps): PickedSurface | undefined {
+	const best = maps.texture && { ...maps.texture, id: bodyId, tiers: maps.tiers };
+	return pickTexture<PickedSurface>([best, ...(maps.alternates ?? [])]);
+}
+
+/** Whether a body draws a surface map: one is servable, it has tiers to load,
+ *  and surface maps are on. */
+export function drawsSurfaceMap(bodyId: string, maps: SurfaceMaps): boolean {
+	return !!surfaceOf(bodyId, maps)?.tiers?.length && sceneSettings().showSurfaceTexture;
+}
+
+/**
+ * Start the loads of a body's surface map at its base tier and of its sibling
+ * bundles. Per-frame LOD upgrades the map from there. A body that has a map
+ * already keeps it, so a repeat visit does not drop high to low.
+ */
+function loadSurfaceMaps(
+	bodyId: string,
+	systemId: string,
+	maps: SurfaceMaps,
+	surface: PickedSurface | undefined,
+	bo: BodyObjects,
+	env: SiblingLoadEnv
+): Promise<void>[] {
+	const started: Promise<void>[] = [];
+	if (surface?.tiers?.length) {
+		bo.availableTiers = surface.tiers;
+		bo.availableFrames = surface.frames;
+		bo.textureBundleId = surface.id === bodyId ? undefined : surface.id;
+		bo.surfaceTiles = surface.tiles;
+		bo.artistImpression = surface.artist_impression;
+		if (!bo.textureTier) {
+			const frame = textureFrameForJd(env.currentJd, bo.availableFrames);
+			started.push(loadBodyTextureTier(bo, 'low', frame, env.textureLoader));
+		}
+	}
+	// Specular, night lights, glow, DEM relief and the cloud overlay.
+	started.push(...loadSiblingLayers(bodyId, systemId, maps, bo, env));
+	return started;
+}
+
+/** The planet bodies whose maps were asked for. A body is built again when its
+ *  planet comes back, so each build asks once. */
+const planetMapsAsked = new WeakSet<BodyObjects>();
+
+/**
+ * Credit and load the maps of each planet of another star in `bodies` that
+ * has a sphere, from its record in the system file. Credits are scoped to the
+ * system's key star. A planet whose maps were asked for already is skipped.
+ * Returns the loads it started, or null for none.
+ */
+export function loadPlanetMaps(
+	bodies: readonly PositionedBody[],
+	env: SiblingLoadEnv & { bodyObjects: Map<string, BodyObjects> }
+): Promise<unknown> | null {
+	const started: Promise<void>[] = [];
+	for (const body of bodies) {
+		const anchor = body.exoplanet;
+		const bo = env.bodyObjects.get(body.data.id);
+		if (!anchor || !bo?.mesh || planetMapsAsked.has(bo)) continue;
+		planetMapsAsked.add(bo);
+		const systemId = extrasolarObjectId(anchor.system);
+		const surface = surfaceOf(body.data.id, anchor.planet);
+		if (surface) env.ctx?.credits.registerImagery('surface', body.data.id, systemId, surface);
+		started.push(...loadSurfaceMaps(body.data.id, systemId, anchor.planet, surface, bo, env));
+	}
+	return started.length ? Promise.allSettled(started) : null;
+}
+
 /**
  * Fetch and apply system metadata (textures, orientation, rings) to every
  * body in the system, keyed by barycenter ID (naif-3, naif-5, …).
@@ -144,13 +235,7 @@ export async function loadSystemData(
 
 	const promises: Promise<void>[] = [];
 	for (const [bodyId, bodyMeta] of Object.entries(meta)) {
-		// The best map this embed may serve, which is not always the best one
-		// there is. Credit follows the picture actually drawn; where none is
-		// reachable the body keeps its fallback colour, as an untextured one does.
-		// The body's own bundle is named by the body; a fallback names itself.
-		// Normalised to one shape so the pick doesn't care which it got.
-		const best = bodyMeta.texture && { ...bodyMeta.texture, id: bodyId, tiers: bodyMeta.tiers };
-		const surface = pickTexture([best, ...(bodyMeta.alternates ?? [])]);
+		const surface = surfaceOf(bodyId, bodyMeta);
 		if (surface) ctx?.credits.registerImagery('surface', bodyId, barycenterId, surface);
 		const bo = bodyObjects.get(bodyId);
 		if (!bo?.mesh) continue;
@@ -183,24 +268,12 @@ export async function loadSystemData(
 			applyRadiiToMesh(bo, bodyMeta.radii);
 		}
 
-		// Load the base tier once; per-frame LOD upgrades from there. Skip if
-		// already loaded so repeat visits don't downgrade high → low. A fallback
-		// map is its own bundle, so the id the tiers hang off is its, not the
-		// body's.
-		if (surface?.tiers?.length) {
-			bo.availableTiers = surface.tiers;
-			bo.availableFrames = surface.frames;
-			bo.textureBundleId = surface.id === bodyId ? undefined : surface.id;
-			bo.surfaceTiles = surface.tiles;
-			if (!bo.textureTier) {
-				const frame = textureFrameForJd(currentJd, bo.availableFrames);
-				promises.push(loadBodyTextureTier(bo, 'low', frame, textureLoader));
-			}
-		}
-
-		// Specular, night lights, DEM relief and the cloud overlay.
 		promises.push(
-			...loadSiblingLayers(bodyId, barycenterId, bodyMeta, bo, { textureLoader, currentJd, ctx })
+			...loadSurfaceMaps(bodyId, barycenterId, bodyMeta, surface, bo, {
+				textureLoader,
+				currentJd,
+				ctx
+			})
 		);
 
 		// Ring annuli, one node per bundle (Saturn has three).

@@ -12,14 +12,16 @@
 	import { planetCatalogueCredits } from '$lib/credits/star-sources';
 	import type { GroupDetailData } from '$lib/fetch/groups/details';
 	import type { MembersState } from '../state/members-state.svelte';
+	import type { LineupHero } from '../charts/lineup-hero.svelte';
 	import * as m from '$lib/paraglide/messages.js';
 
 	interface Props {
 		detail: GroupDetailData;
 		members: MembersState;
+		lineup: LineupHero;
 	}
 
-	let { detail, members }: Props = $props();
+	let { detail, members, lineup }: Props = $props();
 
 	let text = $derived(detail.localized?.exoplanets?.wikipedia);
 	// The count and the names come from the planet catalogues.
@@ -57,6 +59,7 @@
 	<SourcesFooter
 		global={null}
 		works={planetCatalogueCredits(credits)}
+		imagery={lineup.exoplanetsLineup ? lineup.imagery : []}
 		wikipediaLicensed={!!text?.extract}
 	/>
 </div>

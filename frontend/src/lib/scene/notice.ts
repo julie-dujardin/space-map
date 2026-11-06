@@ -1,7 +1,8 @@
 /**
- * Conditions the scene reports while it runs: the clock has left the data, or
- * it stopped at a probe's data wall. Raw dates and ids, never sentences — the
- * page around the map words them and decides how they are shown.
+ * Conditions the scene reports while it runs: the clock has left the data, it
+ * stopped at a probe's data wall, or a sphere in view wears an artist's
+ * impression. A notice holds raw dates and ids, not sentences. The page
+ * around the map words them and decides how to show them.
  */
 
 /** A coverage edge the clock has crossed, and where it lies. */
@@ -27,7 +28,19 @@ export interface CoveragePauseNotice {
 	jd: number;
 }
 
-export type Notice = OutOfRangeNotice | CoveragePauseNotice;
+/**
+ * A body drawn as a sphere wears an artist's impression, not a picture of it.
+ * Sent again when the body it speaks of changes, and dismissed once no such
+ * sphere is in view.
+ */
+export interface ArtistImpressionNotice {
+	topic: 'artist-impression';
+	/** The body: the focused one when it wears an impression, else the
+	 *  nearest that does. */
+	id: string;
+}
+
+export type Notice = OutOfRangeNotice | CoveragePauseNotice | ArtistImpressionNotice;
 export type NoticeTopic = Notice['topic'];
 
 /** Where the scene sends them. One live notice per topic: a repeat replaces

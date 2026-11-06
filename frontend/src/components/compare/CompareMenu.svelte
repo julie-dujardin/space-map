@@ -26,6 +26,7 @@
 	import { formatKm } from '$lib/format/distance';
 	import {
 		comparePresetGroups,
+		loadImpressionsPreset,
 		loadStarsPreset,
 		presetOn,
 		type ComparePreset
@@ -87,7 +88,8 @@
 	const enabled = isSearchEnabled();
 	const hasStars = extrasolarBase() !== '';
 	let starsPreset = $state<ComparePreset | null>(null);
-	const presetGroups = $derived(comparePresetGroups(starsPreset));
+	let impressionsPreset = $state<ComparePreset | null>(null);
+	const presetGroups = $derived(comparePresetGroups([starsPreset, impressionsPreset]));
 
 	let query = $state('');
 	let hits = $state<ObjectHit[]>([]);
@@ -115,6 +117,7 @@
 
 	onMount(() => {
 		if (!hasStars) return;
+		void loadImpressionsPreset().then((preset) => (impressionsPreset = preset));
 		loadStarsPreset()
 			.then((preset) => (starsPreset = preset))
 			.catch((err) => console.warn('[compare] stars preset failed:', err));

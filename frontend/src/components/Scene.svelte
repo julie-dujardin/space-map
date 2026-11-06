@@ -57,6 +57,8 @@
 			diameterM: number
 		) => void;
 		onConstellationSelect?: (slug: string, figure: string, name: string) => void;
+		/** The body an artist's impression is drawn on in view, or null for none. */
+		onImpression?: (id: string | null) => void;
 	}
 
 	let {
@@ -66,7 +68,8 @@
 		onArrival,
 		onUserPromotedChange,
 		onFeatureSelect,
-		onConstellationSelect
+		onConstellationSelect,
+		onImpression
 	}: Props = $props();
 
 	const appState = getContext<AppState>('appState');
@@ -136,8 +139,15 @@
 			map.on('constellationselect', ({ slug, figure, name }) =>
 				onConstellationSelect?.(slug, figure, name)
 			),
-			map.on('notice', showNotice),
-			map.on('noticedismiss', dismissNotice)
+			// The page shows the artist's impression in a box of its own.
+			map.on('notice', (notice) => {
+				if (notice.topic === 'artist-impression') onImpression?.(notice.id);
+				else showNotice(notice);
+			}),
+			map.on('noticedismiss', (topic) => {
+				if (topic === 'artist-impression') onImpression?.(null);
+				else dismissNotice(topic);
+			})
 		];
 		map.mount(container);
 
@@ -182,6 +192,7 @@
 			window.removeEventListener('popstate', onPopState);
 			for (const stop of off) stop();
 			map.unmount();
+			onImpression?.(null);
 		};
 	});
 

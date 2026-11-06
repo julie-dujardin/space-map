@@ -9,7 +9,7 @@
 	import * as m from '$lib/paraglide/messages.js';
 	import { fetchStarCatalogueCredits } from '$lib/credits/star-sources';
 	import { loadLayerCredits, type TextureSource } from '$lib/credits/texture-credits';
-	import { layerLabel, type ImageryLayer } from '$lib/credits/imagery-layers';
+	import { rowQualifier, type ImageryLayer } from '$lib/credits/imagery-layers';
 	import {
 		craftTier,
 		fetchBundleMeta,
@@ -79,9 +79,10 @@
 			const topography = b.displacement ? relief?.get(b.id) : undefined;
 			if (topography) layers.push({ layer: 'topography', credit: topography });
 			for (const { layer, credit } of layers) {
+				const note = rowQualifier(layers.length > 1 ? layer : undefined, credit.artistImpression);
 				rows.push({
 					href: credit.source,
-					label: layers.length > 1 ? `${b.name} (${layerLabel(layer)})` : b.name,
+					label: note ? `${b.name} (${note})` : b.name,
 					sub: credit.organisation,
 					license: credit.license
 				});

@@ -14,7 +14,12 @@
 import { SUN_ID } from '$lib/constants';
 import { familiesOf } from '$lib/fetch/extrasolar/families';
 import { fetchExtrasolarMetadata } from '$lib/fetch/extrasolar/files';
-import { extrasolarIdOf, isStarObjectId } from '$lib/fetch/extrasolar/ids';
+import { extrasolarIdOf, isStarObjectId, planetOfObjectId } from '$lib/fetch/extrasolar/ids';
+import { planetCatalogue } from '$lib/fetch/extrasolar/planets';
+import { localName } from '$lib/format/name';
+import { JUPITER_RADIUS_KM } from '$lib/math/units';
+import { lunarWeightScaleOf } from '$lib/scene/exoplanets/photometry';
+import { drawsSurfaceMap } from '$lib/scene/objects/body/system';
 import {
 	extrasolarLookup,
 	POINT_SOURCE_SLUG,
@@ -153,6 +158,31 @@ async function starObject(id: string, seed: { name: string }): Promise<CompareOb
 	};
 }
 
+/** A planet of another star, drawn as in the scene: only with a map it may
+ *  draw, at the archive's radius (an estimate too, which the row marks). Null
+ *  for any other planet. */
+async function mappedPlanet(
+	id: string,
+	at: { host: number; n: number },
+	seed: { name: string; type?: string }
+): Promise<CompareObject | null> {
+	const planet = (await planetCatalogue.planet(at.host, at.n).catch(() => null))?.planet;
+	const radiusRj = planet?.values.radius;
+	if (!planet || typeof radiusRj !== 'number' || !(radiusRj > 0)) return null;
+	if (!drawsSurfaceMap(id, planet)) return null;
+	return {
+		id,
+		name: seed.name || localName(planet),
+		type: seed.type,
+		radiusKm: Number((radiusRj * JUPITER_RADIUS_KM).toPrecision(RADIUS_DIGITS)),
+		geometry: {
+			texture: true,
+			lunarWeightScale: lunarWeightScaleOf(id),
+			sizeEstimated: planet.estimated.includes('radius')
+		}
+	};
+}
+
 /**
  * Everything known about one object's size and appearance. `seed` is what the
  * search hit already said, so a picked object can be drawn before its bundle
@@ -163,6 +193,9 @@ export async function resolveObject(
 	seed: { name: string; type?: string; diameter_km?: number }
 ): Promise<CompareObject | null> {
 	if (isStarObjectId(id)) return starObject(id, seed);
+	// A planet of another star has no bundle to draw from: its system file has its size and maps.
+	const planetAt = planetOfObjectId(id);
+	if (planetAt) return mappedPlanet(id, planetAt, seed);
 	const craft = await craftBundleFor(id);
 	if (craft) return { ...craft, name: seed.name || craft.name };
 

@@ -94,7 +94,7 @@ export class CreditsStore {
 	): void {
 		const key = [layer, bodyId, ...(bySource ? [meta.source] : [])].join('\u0000');
 		if (this.imagery.has(key)) return;
-		const { source, organisation, license, attribution, description } = meta;
+		const { source, organisation, license, attribution, description, artist_impression } = meta;
 		this.imagery.set(key, {
 			layer,
 			bodyId,
@@ -103,7 +103,8 @@ export class CreditsStore {
 			organisation,
 			license,
 			attribution,
-			description
+			description,
+			artist_impression
 		});
 		this.imageryVersion++;
 	}

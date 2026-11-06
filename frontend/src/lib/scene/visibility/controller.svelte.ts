@@ -73,6 +73,9 @@ export class VisibilityController {
 	activeSystemId: string | null = null;
 	/** Reactive mirror of `activeSystemId`, for the credits. */
 	systemInView = $state<string | null>(null);
+	/** Reactive: the key star of the planetary system of another star that
+	 *  draws, for the credits. Set by the planet systems each frame. */
+	planetSystemInView = $state<string | null>(null);
 	isZoomedIn = false;
 	/** The main zone and the satellite systems, faded to `activeSystemId`. */
 	readonly zones = new ZoneFades();
@@ -88,6 +91,9 @@ export class VisibilityController {
 	/** Reactive: the focused body draws with no halo, for the credits. Set by
 	 *  the visibility pass each frame. */
 	focusedAtFullSize = $state(false);
+	/** The body an artist's impression draws on with no halo: the focused one,
+	 *  else the nearest. Null for none. Set by the visibility pass each frame. */
+	impressionInView: string | null = null;
 	/** The starfield's share of the sky, 0 to 1. Set by the renderer each frame. */
 	starShare = 0;
 	/** The share of the stars the starfield draws on their own. Set by the

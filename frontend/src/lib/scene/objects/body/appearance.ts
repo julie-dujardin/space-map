@@ -14,7 +14,7 @@
 import { SRGBColorSpace, type MeshStandardMaterial, type Texture, type TextureLoader } from 'three';
 import type { BodyObjects } from '$lib/scene/types';
 import { MAX_ANISOTROPY } from '../surface/anisotropy';
-import { attachNightTexture, disposeNightLightsFromMaterial } from '../surface/night-lights';
+import { attachEmissiveTexture, detachEmissiveTexture } from '../surface/night-lights';
 import { mountCloudSphere } from '../surface/clouds';
 import { setShapeModelMap, setSurfaceMap } from './model-texture';
 import { untexturedSurfaceColour } from './surface-albedo';
@@ -38,10 +38,10 @@ export interface AppliedAppearance {
 	surfaceOwned?: boolean;
 	surfaceUrl?: string;
 	surfaceMap?: Texture;
+	/** The host's night picture stands on the emissive slot in place of the
+	 *  map's own layer, which `BodyObjects.emissive` keeps. */
 	nightUrl?: string;
 	nightMap?: Texture;
-	/** The map's own night lights, kept to put back. */
-	displacedNight?: Texture | null;
 	cloudsUrl?: string;
 	cloudsMap?: Texture;
 	/** The map's own cloud picture, and the tiers it was choosing among. */
@@ -125,13 +125,12 @@ function revert(bo: BodyObjects, appearance: BodyAppearance | undefined): void {
 	}
 
 	if (applied.nightUrl !== undefined && appearance?.night === undefined) {
-		const own = applied.displacedNight;
 		applied.nightMap?.dispose();
-		if (own) attachNightTexture(material, own);
-		else disposeNightLightsFromMaterial(material);
+		const own = bo.emissive;
+		if (own) attachEmissiveTexture(material, own.map, own.layer);
+		else detachEmissiveTexture(material);
 		applied.nightUrl = undefined;
 		applied.nightMap = undefined;
-		applied.displacedNight = undefined;
 	}
 
 	if (applied.cloudsUrl !== undefined && appearance?.clouds === undefined) {
@@ -201,8 +200,9 @@ async function applyToBody(
 			if (current() !== appearance) return void texture?.dispose();
 			const live = liveMaterial(bo);
 			if (texture && live) {
-				applied.displacedNight ??= live.emissiveMap;
-				attachNightTexture(live, texture);
+				// A picture of the host's from before goes out with it.
+				if (applied.nightMap !== texture) applied.nightMap?.dispose();
+				attachEmissiveTexture(live, texture, 'night');
 				applied.nightUrl = appearance.night;
 				applied.nightMap = texture;
 			}

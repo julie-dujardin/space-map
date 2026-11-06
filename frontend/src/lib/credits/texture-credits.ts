@@ -15,6 +15,8 @@ export interface TextureSource {
 	/** Landing page for that author's map set. */
 	source: string;
 	license?: string;
+	/** An artist's picture of a body no camera has resolved. */
+	artistImpression?: boolean;
 }
 
 /** The sibling bundles a sphere outside the scene can be drawn from. */
@@ -37,7 +39,8 @@ function load(fetchFn: typeof globalThis.fetch): Promise<LayerCredits> {
 						out[layer].set(t.body_id, {
 							organisation: t.organisation,
 							source: t.source,
-							license: t.license
+							license: t.license,
+							artistImpression: t.artist_impression
 						});
 					}
 				}

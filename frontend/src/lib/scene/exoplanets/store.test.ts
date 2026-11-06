@@ -254,3 +254,42 @@ describe('ExoplanetStore', () => {
 		expect(store.held(ids[19])).not.toBeNull();
 	});
 });
+
+describe('the drawn planetary system', () => {
+	const texture = {
+		source: 's',
+		organisation: 'NASA',
+		type: 'cylindrical',
+		artist_impression: true
+	};
+	/** Alpha Centauri with a map on Proxima b. */
+	const MAPPED: PlanetSystem = {
+		...ALPHA_CEN,
+		planets: ALPHA_CEN.planets.map((p) =>
+			p.host === PROXIMA && p.number === 1 ? { ...p, texture, tiers: ['low'] } : p
+		)
+	};
+
+	it('lights and credits the drawn planets until their system has faded out', async () => {
+		const { ctx, store, bodies } = setup({ ...FILES, 'planets/27424668.json.gz': MAPPED });
+		await store.loadIndex();
+		await store.ensureHost(PROXIMA);
+		await store.ensureHost(TOLIMAN);
+		const promotion = { syncSystemBodies: vi.fn() } as unknown as PromotionRegistry;
+		const systems = new ExoplanetSystems(ctx, promotion, () => {});
+		const camera = sceneOf(INDEX.hosts[0].position!);
+		const step = { jd: 0, camera, viewportPx: 1000, fovDeg: 60, dtMs: 100, outside: 1 };
+		// Toliman, a companion with no map, has the focus.
+		const companion = bodies.getBody(extrasolarObjectId(TOLIMAN));
+		for (let k = 0; k < 30; k++) systems.update({ ...step, focused: companion });
+		expect(ctx.visibility.planetSystemInView).toBe(extrasolarObjectId(PROXIMA));
+		expect(systems.lightStar).toBe(extrasolarObjectId(PROXIMA));
+		// The focus leaves: the system fades out, and keeps its light and credits till then.
+		systems.update({ ...step, focused: undefined });
+		expect(systems.lightStar).toBe(extrasolarObjectId(PROXIMA));
+		expect(ctx.visibility.planetSystemInView).toBe(extrasolarObjectId(PROXIMA));
+		for (let k = 0; k < 30; k++) systems.update({ ...step, focused: undefined });
+		expect(systems.lightStar).toBeNull();
+		expect(ctx.visibility.planetSystemInView).toBeNull();
+	});
+});

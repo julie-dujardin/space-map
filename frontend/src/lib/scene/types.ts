@@ -5,6 +5,7 @@ import type { CreditFields } from '$lib/credits/imagery-layers';
 import type { LabelAnnotation } from './label/annotations';
 import type { RingNode } from './objects/surface/rings';
 import type { CloudNode } from './objects/surface/clouds';
+import type { EmissiveLayer } from './objects/surface/night-lights';
 import type { AppliedAppearance } from './objects/body/appearance';
 import type { AtmosphereNode } from './objects/surface/atmosphere';
 import type { EclipseSelfUniforms } from './objects/surface/eclipse-shadow';
@@ -162,6 +163,8 @@ export interface BodyObjects {
 	/** Bumped on unload; an in-flight swap whose captured value is now stale
 	 *  discards its result instead of re-attaching a texture that's no longer wanted. */
 	textureLoadGen?: number;
+	/** The surface map this body draws is an artist's impression. */
+	artistImpression?: boolean;
 	/** Tile pyramid of the surface map this body draws, where it has one. */
 	surfaceTiles?: TilesBlock;
 	/** The tile windows drawn over the surface map while the camera is close. */
@@ -178,9 +181,10 @@ export interface BodyObjects {
 	atmosphere: AtmosphereNode | null;
 	/** Specular/roughness map. Stays at the low tier — binary mask doesn't benefit from LOD. */
 	specularMap: Texture | null;
-	/** Emissive night-lights map. Stays at the low tier — only sampled on the
-	 *  unlit side, so fine detail isn't worth the bandwidth. */
-	emissiveMap: Texture | null;
+	/** The map's own emissive layer and its map: night lights or a glow, one
+	 *  owner for the slot. Stays at the low tier. A host's night picture can
+	 *  stand on the material in its place. */
+	emissive: { layer: EmissiveLayer; map: Texture } | null;
 	/** The host's own pictures on this body, and the map's own that they
 	 *  displaced. Undefined on a body no host has re-dressed. */
 	appearance?: AppliedAppearance;

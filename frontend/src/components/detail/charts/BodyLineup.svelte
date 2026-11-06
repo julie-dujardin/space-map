@@ -60,6 +60,8 @@
 		flat?: boolean;
 		/** A star: a self-lit disc in place of a surface. */
 		photosphere?: Photosphere;
+		/** `radiusKm` is an estimate, not a figure the catalogue states. */
+		sizeEstimated?: boolean;
 		/** Not a member of the row, but a neighbouring size band's body drawn at
 		 *  the row's own scale against one edge — the step in scale, shown rather
 		 *  than stated. It takes no slot, no name and no hover. */
@@ -68,7 +70,7 @@
 </script>
 
 <script lang="ts">
-	import { getContext, untrack } from 'svelte';
+	import { getContext, onMount, untrack } from 'svelte';
 	import {
 		ACESFilmicToneMapping,
 		AmbientLight,
@@ -175,6 +177,7 @@
 	import Maximize2Icon from '@lucide/svelte/icons/maximize-2';
 	import { resolve } from '$app/paths';
 	import * as m from '$lib/paraglide/messages.js';
+	import { loadTextureCredits } from '$lib/credits/texture-credits';
 
 	/** The strip height a drawer row uses. */
 	const DEFAULT_HEIGHT = 204;
@@ -521,6 +524,17 @@
 
 	let hovered = $derived(layout.find((p) => p.id === hoveredId) ?? null);
 
+	/** The bodies whose map is an artist's impression, which the row marks. */
+	let impressions = $state<ReadonlySet<string>>(new Set());
+	onMount(() => {
+		loadTextureCredits().then((credits) => {
+			impressions = new Set(
+				[...credits].filter(([, credit]) => credit.artistImpression).map(([id]) => id)
+			);
+		});
+	});
+	let marksImpression = $derived(layout.some((p) => impressions.has(p.id)));
+
 	// `w-max` + `max-width` sizes the box to its content, capped at the canvas:
 	// auto width would shrink-to-fit the space right of `left` and squash it.
 	// `tipLeft` then clamps the center so the whole box stays inside the canvas.
@@ -591,7 +605,8 @@
 	 *  quoted across the whole mesh, booms included, which is what the row
 	 *  draws — its slot is the narrower body. */
 	function sizeText(b: Body): string {
-		return formatKm(b.diameterKm * (b.craft ? (b.meshSpanRatio ?? 1) : 1));
+		const text = formatKm(b.diameterKm * (b.craft ? (b.meshSpanRatio ?? 1) : 1));
+		return b.sizeEstimated ? `≈ ${text}` : text;
 	}
 
 	const scrub = createScrub({
@@ -1836,7 +1851,7 @@
 		<!-- The name sits under the body it belongs to. One left unnamed by the
 		     declutter is still named by hovering it, and by the caller's list.
 		     Over a bleeding canvas a body can run under it, hence the backing. -->
-		<div class="relative h-9" aria-hidden="true">
+		<div class="relative {marksImpression ? 'h-12' : 'h-9'}" aria-hidden="true">
 			{#each layout as p (p.id)}
 				{#if p.labelWidth >= LABEL_MIN_WIDTH}
 					<div
@@ -1846,9 +1861,17 @@
 						style="left: {p.cx}px; max-width: {p.labelWidth}px"
 					>
 						<div dir="auto" class="truncate text-[11px] font-medium">{p.name}</div>
-						<div class="truncate text-[11px] text-muted-foreground tabular-nums">
+						<div
+							class="truncate text-[11px] text-muted-foreground tabular-nums"
+							title={p.sizeEstimated ? m.tooltip_size_estimated() : undefined}
+						>
 							{sizeText(p)}
 						</div>
+						{#if impressions.has(p.id)}
+							<div class="truncate text-[10px] text-muted-foreground italic">
+								{m.artist_impression_qualifier()}
+							</div>
+						{/if}
 					</div>
 				{/if}
 			{/each}
@@ -1869,11 +1892,17 @@
 			{#if hovered.description}
 				<div class="text-muted-foreground text-[11px]">{hovered.description}</div>
 			{/if}
+			{#if impressions.has(hovered.id)}
+				<div class="text-muted-foreground text-[11px] italic">{m.artist_impression_title()}</div>
+			{/if}
 			<div class="text-muted-foreground text-[11px] tabular-nums">
 				{hovered.craft ? m.lineup_span() : m.diameter()}: {(bandRatio &&
 					sizeComparison(hovered.radiusKm)) ||
 					sizeText(hovered)}
 			</div>
+			{#if hovered.sizeEstimated}
+				<div class="text-muted-foreground text-[11px]">{m.tooltip_size_estimated()}</div>
+			{/if}
 		</div>
 	{/if}
 </div>

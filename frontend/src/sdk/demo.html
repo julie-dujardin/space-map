@@ -417,17 +417,27 @@
 			};
 			const day = (jd) => jdToDate(jd).toISOString().slice(0, 10);
 			map.on('notice', (notice) => {
-				if (notice.topic === 'coverage-pause') {
-					notices.set(
-						notice.topic,
-						`No more trajectory for ${notice.name} after ${day(notice.jd)}.`
-					);
-				} else {
-					const parts = [];
-					if (notice.focusedOutOfRange) parts.push('the focused object has no data here');
-					if (notice.satellites) parts.push('satellites are out of range');
-					if (notice.majorBodies) parts.push('some planets are out of range');
-					notices.set(notice.topic, `At this date, ${parts.join(', ')}.`);
+				switch (notice.topic) {
+					case 'coverage-pause':
+						notices.set(
+							notice.topic,
+							`No more trajectory for ${notice.name} after ${day(notice.jd)}.`
+						);
+						break;
+					case 'artist-impression':
+						notices.set(notice.topic, `The map of ${notice.id} is an artist's impression.`);
+						break;
+					case 'out-of-range': {
+						const parts = [];
+						if (notice.focusedOutOfRange) parts.push('the focused object has no data here');
+						if (notice.satellites) parts.push('satellites are out of range');
+						if (notice.majorBodies) parts.push('some planets are out of range');
+						notices.set(notice.topic, `At this date, ${parts.join(', ')}.`);
+						break;
+					}
+					default:
+						// A topic added after this page: shown by name.
+						notices.set(notice.topic, notice.topic);
 				}
 				showNotices();
 			});

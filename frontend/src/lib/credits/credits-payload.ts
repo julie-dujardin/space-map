@@ -20,11 +20,14 @@ export interface BodyCredit {
 	description?: string;
 	/** Surface and height maps only: the tile pyramid's own credit. */
 	tiles?: CreditFields;
+	/** An artist's picture of a body no camera has resolved. */
+	artist_impression?: boolean;
 }
 
 /**
- * Credit-worthy bodies grouped by planetary system. `id`/`name` are null for
- * the standalone bucket (bodies with no planetary system, e.g. Bennu, Ceres).
+ * Credit-worthy bodies grouped by planetary system: of the Sun's (`naif-<n>`)
+ * or of another star (`x-<host>`). `id`/`name` are null for the standalone
+ * bucket (bodies with no planetary system, e.g. Bennu, Ceres).
  */
 export interface SystemGroup {
 	id: string | null;
@@ -35,6 +38,7 @@ export interface SystemGroup {
 	rings?: BodyCredit[];
 	clouds?: BodyCredit[];
 	night?: BodyCredit[];
+	glow?: BodyCredit[];
 	specular?: BodyCredit[];
 	displacement?: BodyCredit[];
 }

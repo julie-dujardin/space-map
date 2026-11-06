@@ -129,6 +129,8 @@ export interface TextureAttribution {
 	/** Only on `cylindrical_monthly`: number of monthly frames (always 12 today). */
 	frames?: number;
 	tiles?: TilesBlock;
+	/** An artist's picture of a body no camera has resolved. */
+	artist_impression?: boolean;
 }
 
 /** One denormalized notable object for the detail-page strip + list — a
@@ -186,6 +188,9 @@ export interface NotableMemberEntry {
 	/** Scalar render radius (km) from the Wikidata radius — the render-size
 	 *  fallback for bodies with no PCK radii or SBDB diameter (most TNO dwarfs). */
 	radius_km?: number;
+	/** An exoplanet's diameter from its catalogue's estimated radius, when it
+	 *  has no measured one. */
+	estimated_diameter_km?: number;
 	/** IAU J2000 pole RA/Dec (deg); the lineup's true axial tilt. `source` names
 	 *  the publisher when it isn't the PCK — small-body members tilt on DAMIT
 	 *  lightcurve poles, which the footer credits separately. */

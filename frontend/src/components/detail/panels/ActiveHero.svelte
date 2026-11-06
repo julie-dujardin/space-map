@@ -79,7 +79,11 @@
 	let heroes = $derived<Record<DrawerTab, Snippet | undefined>>({
 		overview: load.loadError ? undefined : objectHeaderHero,
 		'solar-system': lineup.solarLineup ? solarLineupHero : undefined,
-		exoplanets: gallery.exoplanetsGallery ? exoplanetsHero : undefined,
+		exoplanets: lineup.exoplanetsLineup
+			? exoplanetsLineupHero
+			: gallery.exoplanetsGallery
+				? exoplanetsHero
+				: undefined,
 		targets: undefined,
 		// A comet has no map to draw a traverse on, and the panel below it
 		// already pictures the panoramas.
@@ -212,6 +216,18 @@
 			bodies={lineup.solarLineup.bodies}
 			ariaLabel={lineup.solarLineup.ariaLabel}
 			perPage={lineup.solarLineup.perPage}
+			compare
+		/>
+	{/if}
+{/snippet}
+
+<!-- The listed exoplanets with a map, to scale. -->
+{#snippet exoplanetsLineupHero()}
+	{#if lineup.exoplanetsLineup}
+		<BodyLineup
+			bodies={lineup.exoplanetsLineup.bodies}
+			ariaLabel={lineup.exoplanetsLineup.ariaLabel}
+			perPage={lineup.exoplanetsLineup.perPage}
 			compare
 		/>
 	{/if}

@@ -1,7 +1,7 @@
 /**
- * The texture bundles a body ships beside its surface map. All four are
- * fetched, credited and released the same way, so each declares only what is
- * its own — the load/credit/unload path is written once here.
+ * The texture bundles a body ships beside its surface map. The load, the
+ * credit and the release are the same for each, so they are written once here
+ * and each layer declares only what is its own.
  */
 import { type Mesh, type MeshStandardMaterial, type TextureLoader } from 'three';
 import { isLowEndDevice } from '$lib/device';
@@ -24,7 +24,12 @@ import {
 	type DisplacementMeta
 } from '../surface/displacement';
 import { attachEclipseShadowToBody } from '../surface/eclipse-shadow';
-import { attachNightLights, disposeNightLightsFromMaterial } from '../surface/night-lights';
+import {
+	attachEmissiveTexture,
+	detachEmissiveTexture,
+	loadEmissiveTexture,
+	type EmissiveLayer
+} from '../surface/night-lights';
 import { disposeReliefTiles, reliefTilesOf } from '../surface/relief-tiles';
 import { attachSelfShadowToBody, detachSelfShadow } from '../surface/self-shadow';
 import { attachSpecularMap, disposeSpecularFromMaterial } from '../surface/specular';
@@ -34,6 +39,7 @@ import { attachSunTransmittanceToBody } from '../surface/sun-transmittance';
 interface SiblingMetas {
 	specular: TextureBundleMeta;
 	night: TextureBundleMeta;
+	glow: TextureBundleMeta;
 	topography: DisplacementMeta;
 	clouds: CloudMeta;
 }
@@ -47,6 +53,7 @@ export interface SiblingBundles {
 	clouds?: CloudMeta;
 	specular?: TextureBundleMeta;
 	night?: TextureBundleMeta;
+	glow?: TextureBundleMeta;
 	/** Credited as `topography`; the export keeps the file-level name. */
 	displacement?: DisplacementMeta;
 }
@@ -70,6 +77,33 @@ interface LayerSpec<M extends TextureBundleMeta> {
 	/** `mesh` is null on a body downgraded back to a halo; only the cloud node
 	 *  still owns resources then. */
 	unload(bo: BodyObjects, mesh: Mesh | null): void;
+}
+
+/** A layer of the emissive slot. The slot has one owner: a second layer that
+ *  loads while another owns it is dropped. A host's night picture keeps the
+ *  material while it stands. */
+function emissiveLayer(layer: EmissiveLayer): LayerSpec<TextureBundleMeta> {
+	return {
+		meta: (bundles) => bundles[layer],
+		loaded: (bo) => bo.emissive?.layer === layer,
+		async load(bo, meta, mesh, env) {
+			const map = await loadEmissiveTexture(meta, 'low', env.textureLoader);
+			if (!map) return;
+			if (bo.emissive) return void map.dispose();
+			bo.emissive = { layer, map };
+			if (bo.appearance?.nightUrl === undefined) {
+				attachEmissiveTexture(mesh.material as MeshStandardMaterial, map, layer);
+			}
+		},
+		unload(bo, mesh) {
+			const own = bo.emissive;
+			if (!own) return;
+			const material = mesh?.material as MeshStandardMaterial | undefined;
+			if (material?.emissiveMap === own.map) detachEmissiveTexture(material);
+			own.map.dispose();
+			bo.emissive = null;
+		}
+	};
 }
 
 /** Record order is load order: the cheap single-frame masks before the DEM and
@@ -101,31 +135,12 @@ const SIBLING_LAYERS: { [L in SiblingLayer]: LayerSpec<SiblingMetas[L]> } = {
 		}
 	},
 
-	// City-light glow on the unlit hemisphere; reuses the eclipse-shadow sun
-	// direction, so the eclipse patch must already be attached.
-	night: {
-		meta: (bundles) => bundles.night,
-		loaded: (bo) => bo.emissiveMap !== null,
-		async load(bo, meta, mesh, env) {
-			const tex = await attachNightLights(
-				mesh.material as MeshStandardMaterial,
-				meta,
-				'low',
-				env.textureLoader
-			);
-			if (!tex) return;
-			if (bo.emissiveMap) {
-				tex.dispose();
-				return;
-			}
-			bo.emissiveMap = tex;
-		},
-		unload(bo, mesh) {
-			if (!mesh) return;
-			disposeNightLightsFromMaterial(mesh.material as MeshStandardMaterial);
-			bo.emissiveMap = null;
-		}
-	},
+	// City lights on the unlit hemisphere; the hook reuses the eclipse-shadow
+	// sun direction, so the eclipse patch must already be attached.
+	night: emissiveLayer('night'),
+
+	// Emissive light of the surface itself, on both sides of the body.
+	glow: emissiveLayer('glow'),
 
 	// True-scale vertex relief, plus the self-shadow march over the same field.
 	topography: {

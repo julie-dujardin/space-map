@@ -96,7 +96,8 @@ export class FocusController {
 			assignMapLayerToTrails: deps.assignMapLayerToTrails,
 			repositionAll: deps.repositionAll,
 			getFocusedId: () => this.focusedBody?.data.id,
-			onUserPromotedChange: deps.callbacks.onUserPromotedChange
+			onUserPromotedChange: deps.callbacks.onUserPromotedChange,
+			onSystemBodies: (bodies) => deps.systemData.loadPlanets(bodies)
 		});
 	}
 
@@ -121,12 +122,11 @@ export class FocusController {
 		this.pendingInitialView = null;
 	}
 
-	/** Quaternion for lat/lon framing around `body`; undefined for scene-frame.
-	 *  Excludes spacecraft/probes — fast attitude spin (e.g. Juno) would tie
-	 *  the view to rotation. */
+	/** Quaternion for lat/lon framing around `body`; undefined for scene-frame
+	 *  (see {@link framesInBodyAxes}). */
 	focusedBodyQuat(body?: PositionedBody): [number, number, number, number] | undefined {
 		const b = body ?? this.focusedBody;
-		if (!b || isModelBearing(b)) return undefined;
+		if (!b || !framesInBodyAxes(b)) return undefined;
 		const mesh = this.deps.bodyObjects.get(b.data.id)?.mesh;
 		if (!mesh) return undefined;
 		const q = mesh.quaternion;
@@ -533,9 +533,8 @@ export class FocusController {
 		const body = this.focusedBody;
 		if (!body) return;
 		const { camera, controls, callbacks } = this.deps;
-		// Spacecraft, stars and the planets of stars report in scene axes (see
-		// focusedBodyQuat). Other bodies are body-fixed, with identity until their spin loads.
-		const bodyFixed = !isModelBearing(body) && !isExtrasolar(body) && !isExoplanet(body);
+		// A body-fixed body has identity until its spin or pose lands.
+		const bodyFixed = framesInBodyAxes(body);
 		const quat = bodyFixed ? (this.focusedBodyQuat(body) ?? [0, 0, 0, 1]) : undefined;
 		const camOffset = sphericalToCartesian([0, 0, 0], latitude, longitude, zoom, quat);
 		camera.position.set(camOffset[0], camOffset[1], camOffset[2]);
@@ -572,6 +571,14 @@ export class FocusController {
 		this.deps.controls.update();
 		this.pendingInitialView = null;
 	}
+}
+
+/** The camera's lat/lon is in the axes of the body's mesh. Spacecraft spin too
+ *  fast for that, and stars and planets drawn as dots have no axes. A planet of
+ *  another star with a map uses the axes of its pose. */
+function framesInBodyAxes(b: PositionedBody): boolean {
+	if (isModelBearing(b) || isExtrasolar(b)) return false;
+	return !isExoplanet(b) || b.data.mapped === true;
 }
 
 /** A mesh quaternion with no spin on it yet. */

@@ -38,6 +38,7 @@ import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import type { Vec3 } from '$lib/scene/animation/math';
 import { emptyGroup, type OutOfRangeGroup } from '$lib/scene/out-of-range-notice';
 import { renderLandedProbe } from './landed-probe';
+import { posePlanet } from '$lib/scene/exoplanets/pose';
 import { setSpacecraftGlyph } from '$lib/scene/label/factory';
 import { setLabelAnnotation } from '$lib/scene/label/annotations';
 import { host } from '$lib/host';
@@ -358,7 +359,9 @@ export class Placer {
 			if (oc) oc.set(body.orbitCenter[0], body.orbitCenter[1], body.orbitCenter[2]);
 		}
 		if (body.orientation) turnBody(body, bo, jd);
-		else if (isModelBearing(body)) {
+		else if (body.exoplanet && bo.mesh) {
+			posePlanet(bo.mesh, d, body.exoplanet.planet, pos, parentPos);
+		} else if (isModelBearing(body)) {
 			// Sats/probes have no IAU data. Priority: debug override > CK attitude
 			// track (within coverage) > pointing spec > nadir at the parent. Sphere
 			// and overlay model share the attitude.

@@ -35,6 +35,13 @@ export type Anchor = InertialAnchor | SurfaceAnchor;
 // @public (undocumented)
 export type ArrowKey = 'previous' | 'next';
 
+// @public
+export interface ArtistImpressionNotice {
+	id: string;
+	// (undocumented)
+	topic: 'artist-impression';
+}
+
 // @public (undocumented)
 export class AttributionControl implements Control<SpaceMap> {
 	// (undocumented)
@@ -900,7 +907,7 @@ export function neighboursOf(
 ): Neighbours;
 
 // @public (undocumented)
-export type Notice = OutOfRangeNotice | CoveragePauseNotice;
+export type Notice = OutOfRangeNotice | CoveragePauseNotice | ArtistImpressionNotice;
 
 // @public (undocumented)
 export type NoticeTopic = Notice['topic'];

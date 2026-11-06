@@ -13,15 +13,16 @@ import { SUN_ID } from '$lib/constants';
 const FOCUS = new Vector3();
 
 /** Put the occluders of the frame in `out` and return it. An occluder is
- *  drawn, has a measured `radiusKm` and is not a star. The caller must clear
- *  `out` after use, so it does not keep disposed bodies alive. */
+ *  drawn, has a measured `radiusKm` and is not a star of any system. The
+ *  caller must clear `out` after use, so it does not keep disposed bodies alive. */
 export function collectOccluders(
 	bodyObjects: Map<string, BodyObjects>,
 	out: BodyObjects[]
 ): BodyObjects[] {
 	let n = 0;
 	for (const bo of bodyObjects.values()) {
-		if (bo.body.data.objectType === ObjectType.STAR) continue;
+		const t = bo.body.data.objectType;
+		if (t === ObjectType.STAR || t === ObjectType.EXTRASOLAR) continue;
 		const km = bo.body.data.radiusKm;
 		if (!Number.isFinite(km) || km <= 0) continue;
 		// A body that is not drawn casts no shadow.
@@ -33,22 +34,23 @@ export function collectOccluders(
 }
 
 /**
- * Fill the eclipse uniforms for the frame: the Sun, the occluder pool from
- * the `occluders` of {@link collectOccluders}, and the list of each receiver.
- * The scene set holds the occluders that can shadow the space within
- * `cameraDistance` of the focus. With `air` off, no occluder bends light into
- * its shadow.
+ * Fill the eclipse uniforms for the frame: the star that lights the scene
+ * (`lightId`, the Sun by default), the occluder pool from the `occluders` of
+ * {@link collectOccluders}, and the list of each receiver. The scene set holds
+ * the occluders that can shadow the space within `cameraDistance` of the
+ * focus. With `air` off, no occluder bends light into its shadow.
  */
 export function updateEclipseUniforms(
 	bodyObjects: Map<string, BodyObjects>,
 	occluders: readonly BodyObjects[],
 	focusTruePos: Vec3,
 	cameraDistance: number,
-	air: boolean
+	air: boolean,
+	lightId: string = SUN_ID
 ): void {
 	const eclipse = getEclipseSceneUniforms();
 	const pool = getOccluderPool();
-	const sunBo = bodyObjects.get(SUN_ID);
+	const sunBo = bodyObjects.get(lightId);
 	const sunPos = sunBo?.body.position;
 	if (!sunBo || !sunPos) {
 		eclipse.uSunAngularRadius.value = 0;

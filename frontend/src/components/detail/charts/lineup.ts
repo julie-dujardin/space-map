@@ -3,6 +3,7 @@ import { isExtrasolarObjectId } from '$lib/fetch/extrasolar/ids';
 import type { NotableMemberEntry } from '$lib/fetch/groups/details';
 import type { ModelIndexEntry } from '$lib/fetch/models';
 import type { ModelBundleMeta } from '$lib/scene/objects/body/model';
+import { lunarWeightScaleOf } from '$lib/scene/exoplanets/photometry';
 import { teffFromBpRp } from '$lib/scene/starfield/colour';
 import type { LineupBody } from './BodyLineup.svelte';
 import { SUN_TEFF } from './lineup-star';
@@ -20,16 +21,17 @@ export const RENDER_HINTS: Record<string, Pick<LineupGeometry, 'surfaceFrame' | 
 };
 
 /** The lineup geometry of a member. The size and flattening come from PCK
- *  `radii`, else the SBDB diameter, else the Wikidata radius. The tilt comes
+ *  `radii`, else the SBDB diameter, else the Wikidata radius, else an
+ *  exoplanet's estimated diameter, as the scene draws it. The tilt comes
  *  from the IAU `pole`. It also carries the render hints, the measured colour
  *  and albedo, and the law of the ground. `null` for a member with no size or
- *  for an exoplanet, so it also filters what the row can draw. */
+ *  for an exoplanet with no map, so it also filters what the row can draw. */
 export function geometryFromMember(m: NotableMemberEntry & { id: string }): LineupGeometry | null {
 	// A surface feature isn't a body — its `id` is the host it sits on, so it
 	// would draw (and key) as a duplicate of that host's sphere.
 	if (m.feature_id != null) return null;
-	// An exoplanet has no surface map and no colour to draw.
-	if (isExtrasolarObjectId(m.id)) return null;
+	// An exoplanet has no colour of its own, so it draws only with a map.
+	if (isExtrasolarObjectId(m.id) && m.texture !== true) return null;
 	const geom: LineupGeometry = { radiusKm: 0 };
 	if (m.radii) {
 		const eq = Math.max(m.radii.a, m.radii.b, m.radii.c);
@@ -39,6 +41,9 @@ export function geometryFromMember(m: NotableMemberEntry & { id: string }): Line
 		geom.radiusKm = m.diameter_km / 2;
 	} else if (m.radius_km != null) {
 		geom.radiusKm = m.radius_km;
+	} else if (m.estimated_diameter_km != null) {
+		geom.radiusKm = m.estimated_diameter_km / 2;
+		geom.sizeEstimated = true;
 	} else {
 		return null;
 	}
@@ -56,7 +61,7 @@ export function geometryFromMember(m: NotableMemberEntry & { id: string }): Line
 		...RENDER_HINTS[m.id],
 		color: m.color,
 		geometricAlbedo: m.geometric_albedo,
-		lunarWeightScale: m.lunar_weight_scale
+		lunarWeightScale: lunarWeightScaleOf(m.id, m.lunar_weight_scale)
 	};
 }
 

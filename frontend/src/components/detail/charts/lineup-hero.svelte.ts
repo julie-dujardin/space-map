@@ -11,8 +11,10 @@ import {
 } from './lineup';
 import { STRIP_CAPACITY } from '../members/MemberStrip.svelte';
 import type { LineupBody } from './BodyLineup.svelte';
+import { rowQualifier } from '$lib/credits/imagery-layers';
 import { loadTextureCredits, type TextureSource } from '$lib/credits/texture-credits';
 import { extrasolarBase } from '$lib/fetch/extrasolar/files';
+import { isExtrasolarObjectId } from '$lib/fetch/extrasolar/ids';
 import {
 	craftTier,
 	fetchBundleMeta,
@@ -114,6 +116,8 @@ export class LineupHero {
 	readonly hero: LineupHeroSpec | null;
 	// The Solar System tab's hero on the Planets page: the eight planets.
 	readonly solarLineup: LineupHeroSpec | null;
+	// The Exoplanets tab's hero on the Planets page: its listed exoplanets.
+	readonly exoplanetsLineup: LineupHeroSpec | null;
 	// The probes tab's own hero: the craft that went there, to scale against each
 	// other. Independent of `hero` — an asteroid collection draws both.
 	readonly probeLineup: LineupHeroSpec | null;
@@ -271,6 +275,17 @@ export class LineupHero {
 			};
 		});
 
+		this.exoplanetsLineup = $derived.by<LineupHeroSpec | null>(() => {
+			const members = d.notableMembers();
+			if (!d.cat().planets || !members?.length) return null;
+			const bodies = buildLineup(
+				members.filter((mm) => mm.id && isExtrasolarObjectId(mm.id)),
+				geometryFromMember,
+				{ names: d.memberNames(), descriptions: d.memberDescriptions() }
+			);
+			return bodies.length >= 2 ? { bodies, ariaLabel: m.tab_exoplanets(), perPage: 8 } : null;
+		});
+
 		this.probeLineup = $derived.by<LineupHeroSpec | null>(() => {
 			const bodies = buildLineup(d.probes() ?? [], craftGeometryFromMember, {
 				names: d.probeNames()
@@ -281,10 +296,9 @@ export class LineupHero {
 
 		// Spheres where the members are bodies, meshes where they are craft. Two
 		// spheres are the least that compares; one craft already pictures the page.
-		// The Planets page draws its spheres on the Solar System tab already.
 		this.membersLineup = $derived.by<LineupHeroSpec | null>(() => {
 			const members = d.notableMembers();
-			if (!members || members.length === 0 || d.cat().planets) return null;
+			if (!members || members.length === 0) return null;
 			if (d.starLineup()) return starRow;
 			if (spacecraftRow) return spacecraftRow;
 			const spheres = buildLineup(members, geometryFromMember, {
@@ -304,6 +318,7 @@ export class LineupHero {
 		const lineupBodies = $derived([
 			...(this.hero?.bodies ?? []),
 			...(this.solarLineup?.bodies ?? []),
+			...(this.exoplanetsLineup?.bodies ?? []),
 			...(this.membersLineup?.bodies ?? [])
 		]);
 
@@ -322,7 +337,11 @@ export class LineupHero {
 			};
 			for (const b of bodies) {
 				const tex = textures?.get(b.id);
-				add(tex && { key: tex.organisation, label: tex.organisation, url: tex.source });
+				if (tex) {
+					const note = rowQualifier(undefined, tex.artistImpression);
+					const label = note ? `${tex.organisation} (${note})` : tex.organisation;
+					add({ key: label, label, url: tex.source });
+				}
 				add(models.get(b.id));
 			}
 			return out;
@@ -347,7 +366,9 @@ export class LineupHero {
 		this.shapeWorks = $derived(hasLineup ? measuredShapeWorks(creditMembers) : []);
 
 		// The overview footer credits only a lineup that the overview draws.
-		const lineupOnTab = $derived(!!this.membersLineup || !!this.solarLineup);
+		const lineupOnTab = $derived(
+			!!this.membersLineup || !!this.solarLineup || !!this.exoplanetsLineup
+		);
 		const lineupOffOverview = $derived(this.isMoonLineup || (!this.hero && lineupOnTab));
 		this.overviewCredits = $derived(
 			lineupOffOverview

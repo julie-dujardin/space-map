@@ -404,6 +404,7 @@ export type { CirclePointsOptions } from '$lib/scene/extensions/geometry';
 export { distanceKm, offsetKm, subsolarPoint, sunlight } from '$lib/scene/extensions/ephemeris';
 export type {
 	CoverageEdge,
+	ArtistImpressionNotice,
 	CoveragePauseNotice,
 	Notice,
 	NoticeTopic,

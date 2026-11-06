@@ -7,6 +7,7 @@
  */
 
 import { LruPromiseCache } from '$lib/fetch/position/cache';
+import type { SurfaceMaps } from '$lib/scene/objects/body/system';
 import {
 	extrasolarAllowed,
 	extrasolarPath,
@@ -96,7 +97,9 @@ export interface PlanetHost {
 	catalogue_name: string | null;
 }
 
-export interface Planet {
+/** A planet's record in its system file. A planet with a map has the
+ *  texture keys of a body of a solar-system file. */
+export interface Planet extends SurfaceMaps {
 	host: number;
 	number: number;
 	/** The object bundles hold an entry for it, under its scene id. */
@@ -127,6 +130,8 @@ export interface Planet {
 	families: string[];
 	/** The families that need an estimate and are not in `families`. */
 	families_estimated: string[];
+	/** Null where a value it needs is missing. */
+	tidally_locked: boolean | null;
 }
 
 export interface PlanetSystem {

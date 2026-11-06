@@ -97,6 +97,8 @@ export function updateBodyVisibility(
 	suppressHeliocentricTrails: boolean
 ): number {
 	const layers = ctx.layers;
+	ctx.visibility.impressionInView = null;
+	let impressionDist = Infinity;
 	const hideOrbits = !layers.isVisible('orbits');
 	const systemShare = ctx.visibility.systemShare;
 	const insideShare = ctx.visibility.planetarySystemShare();
@@ -536,6 +538,13 @@ export function updateBodyVisibility(
 
 		const haloShare = ctx.visibility.haloThresholdShare(body.data.id, screenR < HALO_RADIUS_PX);
 		if (isFocused) ctx.visibility.focusedAtFullSize = drawn && haloShare === 0;
+		if (bo.artistImpression && bo.textureTier && drawn && haloShare === 0) {
+			const rank = isFocused ? -1 : dist;
+			if (rank < impressionDist) {
+				impressionDist = rank;
+				ctx.visibility.impressionInView = body.data.id;
+			}
+		}
 		if (trail) {
 			trail.userData.haloShare = haloShare;
 			if (haloShare === 0) trail.visible = false;

@@ -17,6 +17,7 @@ import type { SimClock } from '$lib/scene/state/clock.svelte';
 import { buildMajorBodies, disposeMaterial } from '$lib/scene/objects/body/lifecycle';
 import { buildTrails } from '$lib/scene/objects/body/bulk';
 import { loadBodyLabel, unloadBodyTexture } from '$lib/scene/objects/body/textures';
+import { unloadSiblingLayers } from '$lib/scene/objects/body/sibling-layers';
 import { unloadBodyModel } from '$lib/scene/objects/body/model';
 import { disposeNomenclatureLabels } from '$lib/scene/objects/surface/nomenclature';
 import type { PointCloudSystem } from '$lib/scene/pointclouds/system';
@@ -62,6 +63,8 @@ export interface PromotionDeps {
 	getFocusedId: () => string | undefined;
 	/** Optional callback fired when the clearable user-promoted count changes. */
 	onUserPromotedChange?: (count: number) => void;
+	/** Called with the bodies of the planetary systems of other stars, once built. */
+	onSystemBodies?: (bodies: readonly PositionedBody[]) => void;
 }
 
 /**
@@ -238,6 +241,7 @@ export class PromotionRegistry {
 			else if (body.orbitElements && !this.deps.bodyObjects.get(body.data.id)?.trail) built = true;
 		}
 		if (built) this.finalizeBuilds();
+		this.deps.onSystemBodies?.(bodies);
 	}
 
 	/** Build mesh, label, halo, and dirty markers for one body. Returns false
@@ -517,6 +521,7 @@ export class PromotionRegistry {
 			// textures, and feature labels — scene.remove alone would leak them.
 			unloadBodyModel(bo);
 			unloadBodyTexture(bo);
+			unloadSiblingLayers(bo);
 			disposeNomenclatureLabels(bo);
 			// The root holds the label group, the mesh and the star extras.
 			scene.remove(bo.root);

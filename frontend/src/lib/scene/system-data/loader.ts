@@ -1,9 +1,13 @@
 import type { Scene, TextureLoader, WebGLRenderer } from 'three';
-import { ObjectType } from '$lib/types/objects';
+import { ObjectType, type PositionedBody } from '$lib/types/objects';
 import type { BodyObjects } from '$lib/scene/types';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import type { SimClock } from '$lib/scene/state/clock.svelte';
-import { loadSystemData, unloadSystemTextures } from '$lib/scene/objects/body/system';
+import {
+	loadPlanetMaps,
+	loadSystemData,
+	unloadSystemTextures
+} from '$lib/scene/objects/body/system';
 import { isTopLevelParent } from '$lib/scene/state/bodies.svelte';
 
 /** Tracks which system's textures + orientation are resident, plus a
@@ -93,6 +97,20 @@ export class SystemDataLoader {
 				this.ctx.bodies.orientationVersion++;
 			})
 			.finally(() => this.loads--);
+	}
+
+	/** Load the maps of the planets of another star among `bodies`. A planet
+	 *  leaves with its body, so it has no unload here. */
+	loadPlanets(bodies: readonly PositionedBody[]): void {
+		const started = loadPlanetMaps(bodies, {
+			bodyObjects: this.bodyObjects,
+			textureLoader: this.textureLoader,
+			currentJd: this.clock.jd,
+			ctx: this.ctx
+		});
+		if (!started) return;
+		this.loads++;
+		started.then(() => this.onLoaded()).finally(() => this.loads--);
 	}
 
 	isLoading(): boolean {

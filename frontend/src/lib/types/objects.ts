@@ -127,6 +127,9 @@ export interface BodyData extends OrbitalElements {
 	/** Archive a probe's trajectory is credited to, from its chunk header.
 	 *  Every other source names one archive for all its bodies. */
 	orbitArchive?: OrbitArchive;
+	/** A planet of another star with a surface map and a radius: it draws a
+	 *  sphere, as a planet of the solar system does. */
+	mapped?: boolean;
 	/** The catalogue has no orbit for this object. It has a page and never a place. */
 	pageOnly?: true;
 	/**
@@ -425,12 +428,13 @@ export function effectiveRadiusKm(
 	);
 }
 
-/** A planet of another star, or an object of another star with no known
- *  size: the scene draws no disc for it, so nothing frames on its size. */
-export function isDiscless(data: Pick<BodyData, 'radiusKm' | 'objectType'>): boolean {
+/** A planet of another star with no map, or an object of another star with
+ *  no known size: the scene draws no disc for it, so nothing frames on its size. */
+export function isDiscless(data: Pick<BodyData, 'radiusKm' | 'objectType' | 'mapped'>): boolean {
 	const t = data.objectType;
 	const radiusKnown = Number.isFinite(data.radiusKm) && data.radiusKm > 0;
-	return t === ObjectType.EXOPLANET || (t === ObjectType.EXTRASOLAR && !radiusKnown);
+	if (t === ObjectType.EXOPLANET) return !data.mapped;
+	return t === ObjectType.EXTRASOLAR && !radiusKnown;
 }
 
 /** Returns true for any asteroid subtype. */

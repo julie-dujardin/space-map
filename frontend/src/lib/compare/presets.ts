@@ -9,7 +9,8 @@ import type { GlobalGroupData } from '$lib/fetch/groups/details';
 import { getLocale } from '$lib/host';
 import { ObjectType, type BodyData } from '$lib/types/objects';
 import { buildLineup, starGeometryFromMember } from '../../components/detail/charts/lineup';
-import { isStarObjectId } from '$lib/fetch/extrasolar/ids';
+import { isStarObjectId, planetOfObjectId } from '$lib/fetch/extrasolar/ids';
+import { loadTextureCredits } from '$lib/credits/texture-credits';
 import { resolveObject } from './geometry';
 import { ROCKETS } from './rockets';
 
@@ -391,10 +392,37 @@ async function readStarsPreset(): Promise<ComparePreset | null> {
 	return { slug: STARS_GROUP, group: 'stars', label: m.compare_preset_known_stars, ids };
 }
 
-/** The presets under their headings, in order. Stars have a heading only with
- *  their set. */
-export function comparePresetGroups(stars: ComparePreset | null) {
-	const presets = stars ? [...COMPARE_PRESETS, stars] : COMPARE_PRESETS;
+const IMPRESSIONS_SLUG = 'exoplanet-impressions';
+
+/** The planets of other stars whose map is an artist's impression, as the
+ *  credits list their maps. Null where there is none. */
+export function loadImpressionsPreset(): Promise<ComparePreset | null> {
+	impressionsPreset ??= readImpressionsPreset();
+	return impressionsPreset;
+}
+
+/** Kept across mounts, as the stars preset. */
+let impressionsPreset: Promise<ComparePreset | null> | undefined;
+
+async function readImpressionsPreset(): Promise<ComparePreset | null> {
+	const credits = await loadTextureCredits();
+	const ids = [...credits]
+		.filter(([id, credit]) => credit.artistImpression && planetOfObjectId(id))
+		.map(([id]) => id);
+	if (!ids.length) return null;
+	return {
+		slug: IMPRESSIONS_SLUG,
+		group: 'worlds',
+		label: m.compare_preset_exoplanet_impressions,
+		ids,
+		kinds: [ObjectType.EXOPLANET]
+	};
+}
+
+/** The presets under their headings, in order, with the sets read from the
+ *  export after the built-in ones. Stars have a heading only with their set. */
+export function comparePresetGroups(loaded: readonly (ComparePreset | null)[]) {
+	const presets = [...COMPARE_PRESETS, ...loaded.filter((p) => p !== null)];
 	return (
 		[
 			{ id: 'worlds', label: m.compare_preset_group_worlds },
@@ -437,10 +465,11 @@ function fits(preset: ComparePreset, body: BodyData): boolean {
 export async function compareSeed(body: BodyData): Promise<string[] | null> {
 	const star = isStarObjectId(body.id) || body.objectType === ObjectType.STAR;
 	const stars = star ? await loadStarsPreset().catch(() => null) : null;
-	const member = [...COMPARE_PRESETS, ...(stars ? [stars] : [])].find((p) =>
-		p.ids.includes(body.id)
-	);
-	const kin = stars ?? COMPARE_PRESETS.find((p) => fits(p, body));
+	const planet = body.objectType === ObjectType.EXOPLANET;
+	const impressions = planet ? await loadImpressionsPreset() : null;
+	const loaded = [stars, impressions].filter((p) => p !== null);
+	const member = [...COMPARE_PRESETS, ...loaded].find((p) => p.ids.includes(body.id));
+	const kin = stars ?? [...COMPARE_PRESETS, ...loaded].find((p) => fits(p, body));
 	const seed = member ? member.ids : kin ? [body.id, ...kin.ids] : null;
 	if (!seed) return null;
 	return (await resolveObject(body.id, { name: '' })) ? seed : null;

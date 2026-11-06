@@ -1,5 +1,10 @@
-import { Color, type MeshStandardMaterial, type Texture, type TextureLoader } from 'three';
-import { SRGBColorSpace } from 'three';
+import {
+	Color,
+	SRGBColorSpace,
+	type MeshStandardMaterial,
+	type Texture,
+	type TextureLoader
+} from 'three';
 import { versionedUrl } from '$lib/fetch/data-base';
 import { MAX_ANISOTROPY } from './anisotropy';
 import { getEclipseSceneUniforms } from './eclipse-shadow';
@@ -19,98 +24,105 @@ const TERMINATOR_HIGH = 0.1;
 
 const NIGHT_HOOK = Symbol('night-lights-hook');
 
-type PatchedMaterial = MeshStandardMaterial & { [NIGHT_HOOK]?: true };
+/** The material's night gate: 1 masks the emissive map to the unlit side. */
+type PatchedMaterial = MeshStandardMaterial & { [NIGHT_HOOK]?: { value: number } };
 
 /**
- * Load a body's night-lights map as an emissive map, gated by a shader patch
- * that multiplies emissive by an unlit-side factor (1 night, 0 day, smoothstep
- * at the terminator). Reuses eclipse-shadow's `uSunDir`, so
- * `attachEclipseShadowToBody` should run first. Idempotent: the hook installs
- * once per material; later calls just swap `emissiveMap`.
+ * The layers that draw on a material's emissive map, one at a time. Night
+ * lights show on the unlit side only. A glow shows on both sides at full
+ * strength.
  */
-export async function attachNightLights(
-	material: MeshStandardMaterial,
-	nightMeta: TextureBundleMeta,
+export type EmissiveLayer = 'night' | 'glow';
+
+/** Load an emissive bundle's map at `tier`. Null when it fails to load. */
+export async function loadEmissiveTexture(
+	meta: TextureBundleMeta,
 	tier: string,
 	textureLoader: TextureLoader
 ): Promise<Texture | null> {
-	const url = versionedUrl(`/v1/textures/${nightMeta.id}/${tier}.webp`, 'textures');
-	let texture: Texture;
+	const url = versionedUrl(`/v1/textures/${meta.id}/${tier}.webp`, 'textures');
 	try {
-		texture = await new Promise<Texture>((resolve, reject) => {
-			textureLoader.load(url, resolve, undefined, reject);
-		});
+		const texture = await textureLoader.loadAsync(url);
+		texture.colorSpace = SRGBColorSpace;
+		return texture;
 	} catch (err) {
-		console.warn(`Failed to load night-lights map ${url}:`, err);
+		console.warn(`Failed to load emissive map ${url}:`, err);
 		return null;
 	}
-	texture.colorSpace = SRGBColorSpace;
-	attachNightTexture(material, texture);
-	return texture;
 }
 
 /**
- * Put an already-loaded map on the unlit side, installing the shader hook the
- * first time. Split out from the loader so a host's own picture goes on the
- * same way the export's does.
+ * Put a loaded map on the material's emissive slot as `layer`. Night lights
+ * install the unlit-side shader hook once per material; the hook reuses
+ * eclipse-shadow's `uSunDir`, so `attachEclipseShadowToBody` must run first.
+ * A glow turns the gate of an installed hook off.
  */
-export function attachNightTexture(material: MeshStandardMaterial, texture: Texture): void {
+export function attachEmissiveTexture(
+	material: MeshStandardMaterial,
+	texture: Texture,
+	layer: EmissiveLayer
+): void {
 	texture.anisotropy = MAX_ANISOTROPY;
 	material.emissiveMap = texture;
 	// White so totalEmissiveRadiance passes the raw texture colour unchanged.
 	material.emissive = new Color(0xffffff);
-
 	const patched = material as PatchedMaterial;
-	if (!patched[NIGHT_HOOK]) {
-		patched[NIGHT_HOOK] = true;
-		const sunUniforms = getEclipseSceneUniforms();
-		chainShaderHook(material, 'nightLights', (shader) => {
-			// Shared uSunDir reference keeps a single source of truth for the sun direction.
-			shader.uniforms.uSunDir = sunUniforms.uSunDir;
-			shader.uniforms.uNightIntensity = { value: NIGHT_INTENSITY };
-
-			// World-space outward direction: unit-sphere `position` is already
-			// outward; mat3(modelMatrix) carries rotation + scale to world space.
-			shader.vertexShader = shader.vertexShader
-				.replace('#include <common>', '#include <common>\nvarying vec3 vNightOutwardWorld;')
-				.replace(
-					'#include <begin_vertex>',
-					'#include <begin_vertex>\nvNightOutwardWorld = mat3(modelMatrix) * position;'
-				);
-
-			shader.fragmentShader = shader.fragmentShader
-				.replace(
-					'#include <common>',
-					// uSunDir is declared by the chained eclipse-shadow hook; redeclaring fails compilation.
-					`#include <common>
-					uniform float uNightIntensity;
-					varying vec3 vNightOutwardWorld;`
-				)
-				.replace(
-					'#include <emissivemap_fragment>',
-					`#include <emissivemap_fragment>
-					#ifdef USE_EMISSIVEMAP
-						// Modulate by unlit-side factor: 1 night, 0 day.
-						vec3 nightOutward = normalize(vNightOutwardWorld);
-						float nightDot = dot(nightOutward, uSunDir);
-						float nightFactor = 1.0 - smoothstep(${TERMINATOR_LOW.toFixed(2)}, ${TERMINATOR_HIGH.toFixed(2)}, nightDot);
-						totalEmissiveRadiance *= nightFactor * uNightIntensity;
-					#endif`
-				);
-		});
-	}
+	if (layer === 'night' && !patched[NIGHT_HOOK]) installNightHook(patched);
+	const gate = patched[NIGHT_HOOK];
+	if (gate) gate.value = layer === 'night' ? 1 : 0;
 	material.needsUpdate = true;
 }
 
 /**
- * Release the night-lights texture and unset the emissive map. The shader
- * hook stays: gated on `USE_EMISSIVEMAP`, which three.js drops once
- * `emissiveMap` is null, so the patched chunk becomes a no-op.
+ * Unset the emissive map. The texture is the caller's to dispose. The shader
+ * hook stays: three.js drops `USE_EMISSIVEMAP` once the map is null, so the
+ * patched chunk is a no-op.
  */
-export function disposeNightLightsFromMaterial(material: MeshStandardMaterial): void {
+export function detachEmissiveTexture(material: MeshStandardMaterial): void {
 	if (!material.emissiveMap) return;
-	material.emissiveMap.dispose();
 	material.emissiveMap = null;
 	material.emissive.setRGB(0, 0, 0);
 	material.needsUpdate = true;
+}
+
+function installNightHook(material: PatchedMaterial): void {
+	const gate = { value: 1 };
+	material[NIGHT_HOOK] = gate;
+	const sunUniforms = getEclipseSceneUniforms();
+	chainShaderHook(material, 'nightLights', (shader) => {
+		// Shared uSunDir reference keeps a single source of truth for the sun direction.
+		shader.uniforms.uSunDir = sunUniforms.uSunDir;
+		shader.uniforms.uNightIntensity = { value: NIGHT_INTENSITY };
+		shader.uniforms.uNightGate = gate;
+
+		// World-space outward direction: unit-sphere `position` is already
+		// outward; mat3(modelMatrix) carries rotation + scale to world space.
+		shader.vertexShader = shader.vertexShader
+			.replace('#include <common>', '#include <common>\nvarying vec3 vNightOutwardWorld;')
+			.replace(
+				'#include <begin_vertex>',
+				'#include <begin_vertex>\nvNightOutwardWorld = mat3(modelMatrix) * position;'
+			);
+
+		shader.fragmentShader = shader.fragmentShader
+			.replace(
+				'#include <common>',
+				// uSunDir is declared by the chained eclipse-shadow hook; redeclaring fails compilation.
+				`#include <common>
+				uniform float uNightIntensity;
+				uniform float uNightGate;
+				varying vec3 vNightOutwardWorld;`
+			)
+			.replace(
+				'#include <emissivemap_fragment>',
+				`#include <emissivemap_fragment>
+				#ifdef USE_EMISSIVEMAP
+					// Modulate by unlit-side factor: 1 night, 0 day. A glow has the gate off.
+					vec3 nightOutward = normalize(vNightOutwardWorld);
+					float nightDot = dot(nightOutward, uSunDir);
+					float nightFactor = 1.0 - smoothstep(${TERMINATOR_LOW.toFixed(2)}, ${TERMINATOR_HIGH.toFixed(2)}, nightDot);
+					totalEmissiveRadiance *= mix(1.0, nightFactor * uNightIntensity, uNightGate);
+				#endif`
+			);
+	});
 }

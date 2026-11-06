@@ -22,9 +22,28 @@ describe('geometryFromMember', () => {
 		expect(geometryFromMember(base)?.texture).toBeUndefined();
 	});
 
-	it('leaves out an exoplanet, which a list sizes', () => {
+	it('leaves out an exoplanet with no map, which a list sizes', () => {
 		const planet = { name: 'HD 209458 b', id: 'x-20014192-b-1', diameter_km: 198700 };
 		expect(geometryFromMember(planet)).toBeNull();
+		expect(geometryFromMember({ ...planet, texture: false })).toBeNull();
+	});
+
+	it('draws an exoplanet with a map', () => {
+		const planet = { name: 'TRAPPIST-1 e', id: 'x-558442032-b-4', diameter_km: 11740 };
+		expect(geometryFromMember({ ...planet, texture: true })).toMatchObject({
+			radiusKm: 5870,
+			texture: true
+		});
+	});
+
+	it('sizes an exoplanet with no measured radius by its estimate', () => {
+		const planet = { name: 'Proxima Centauri b', id: 'x-27424668-b-1', texture: true };
+		expect(geometryFromMember(planet)).toBeNull();
+		expect(geometryFromMember({ ...planet, estimated_diameter_km: 13050 })).toMatchObject({
+			radiusKm: 6525,
+			sizeEstimated: true,
+			lunarWeightScale: 0
+		});
 	});
 });
 

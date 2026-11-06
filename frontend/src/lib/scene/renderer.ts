@@ -10,7 +10,6 @@ import {
 	PerspectiveCamera as PerspectiveCameraClass,
 	type PerspectiveCamera,
 	PlaneGeometry,
-	PointLight,
 	Raycaster,
 	Scene as SceneClass,
 	type Scene,
@@ -141,6 +140,7 @@ import { PositionDiagnostics } from './position/diagnostics';
 import { updateRingShaders } from './shaders/ring-uniforms';
 import { updateAtmosphereShaders } from './shaders/atmosphere-uniforms';
 import { collectOccluders, updateEclipseUniforms } from './shaders/eclipse-uniforms';
+import { StarLight } from './exoplanets/star-light';
 import { updatePlanetshineUniforms } from './shaders/planetshine-uniforms';
 import { evaluateEclipseFactor, evaluateEclipseLeak } from './objects/surface/eclipse-shadow';
 import { disposeReliefTiles } from './objects/surface/relief-tiles';
@@ -174,6 +174,7 @@ import {
 } from './focus/trip-view';
 import { ProbeCoverageWatch } from './probe-coverage-watch';
 import { OutOfRangeNotifier } from './out-of-range-notice';
+import { ImpressionNotifier } from './impression-notice';
 import { ExtensionRegistry } from './extensions/registry';
 import { resolvePose, type CameraPose } from './extensions/camera';
 import { passengerFor } from '$lib/fetch/position/probes/passenger';
@@ -287,6 +288,7 @@ export class SceneRenderer {
 	/** Null until scene setup; fetches each focused probe's coverage lazily. */
 	private coverageWatch: ProbeCoverageWatch | null = null;
 	private readonly outOfRange: OutOfRangeNotifier;
+	private readonly impressionNotice: ImpressionNotifier;
 	/** Markers, lines and anything else the host added. */
 	readonly extensions = new ExtensionRegistry();
 	/** Set while a host drives the camera: the map's own controls, focus
@@ -467,13 +469,8 @@ export class SceneRenderer {
 	private readonly shadowLight: DirectionalLight;
 	/** Both scenes' ambient fills; driven together by the high-ambient toggle. */
 	private readonly ambientLights: AmbientLight[];
-	/** The Sun's own light, looked up rather than kept: a host builds the map
-	 *  before its first load, when the scene has no Sun in it yet. */
-	private get sunPointLight(): PointLight | undefined {
-		return this.bodyObjects
-			.get(SUN_ID)
-			?.root.children.find((o): o is PointLight => o instanceof PointLight);
-	}
+	/** The Sun's own light, which a star of another system can hold. */
+	private readonly starLight = new StarLight();
 	/** Tight-far regime active (see TIGHT_FAR_ENGAGE / updateDepthFar). */
 	private tightFar = false;
 	/** Current proxy-Sun scale factor; 1 = Sun rendered at its true position. */
@@ -508,6 +505,7 @@ export class SceneRenderer {
 		this.seenJumps = clock.jumps;
 		this.callbacks = callbacks;
 		this.outOfRange = new OutOfRangeNotifier(callbacks.notices);
+		this.impressionNotice = new ImpressionNotifier(callbacks.notices);
 		this.labelContainer = labelContainer;
 
 		const boot = bootThree(canvas, labelContainer, ctx);
@@ -659,7 +657,10 @@ export class SceneRenderer {
 			this.textureLoader,
 			this.bodyObjects,
 			clock,
-			() => this.focusController.reapplyInitialViewIfPending()
+			() => {
+				this.focusController.reapplyInitialViewIfPending();
+				this.invalidate();
+			}
 		);
 
 		this.focusController = new FocusController(
@@ -1410,6 +1411,7 @@ export class SceneRenderer {
 			!controlsSettled,
 			this.tightFar
 		);
+		this.impressionNotice.update(this.ctx.visibility.impressionInView);
 		this.pointClouds.updateVisibility(renderedDtMs);
 
 		// Point visibility just changed above; the budget spreads over what shows.
@@ -1427,6 +1429,10 @@ export class SceneRenderer {
 			this.camera.position,
 			this.pxPerRad()
 		);
+		const starPointLight = this.starLight.seat(
+			this.bodyObjects,
+			this.exoplanetSystems.lightStar ?? SUN_ID
+		);
 		// The atmosphere update below culls each shell's list from the pool that updateEclipseUniforms fills.
 		const occluders = collectOccluders(this.bodyObjects, this._occluders);
 		updateEclipseUniforms(
@@ -1434,7 +1440,8 @@ export class SceneRenderer {
 			occluders,
 			this.focus.focusTruePos,
 			this.camera.position.length(),
-			sceneSettings().showAtmospheres
+			sceneSettings().showAtmospheres,
+			this.starLight.starId
 		);
 		updatePlanetshineUniforms(
 			this.bodyObjects,
@@ -1505,10 +1512,11 @@ export class SceneRenderer {
 			this.focus.focusTruePos,
 			this.ctx,
 			this.shadowLight,
-			this.sunPointLight,
+			starPointLight,
 			distance,
 			this._tmpV3,
-			sceneSettings().realisticLighting,
+			// The inverse square is tuned to the Sun, so another star keeps the flat light.
+			sceneSettings().realisticLighting && this.starLight.starId === SUN_ID,
 			this.sunIntensityScale
 		);
 		// After updateSunShadowLight: may re-seat the shadow light around a

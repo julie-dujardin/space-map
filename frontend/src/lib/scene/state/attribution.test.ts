@@ -15,7 +15,12 @@ import {
 function fakeCtx(
 	credits: CreditsStore,
 	systemInView: string | null,
-	visibility: { systemDrawn?: boolean; focusedBodyId?: string; focusedAtFullSize?: boolean } = {}
+	visibility: {
+		systemDrawn?: boolean;
+		focusedBodyId?: string;
+		focusedAtFullSize?: boolean;
+		planetSystemInView?: string;
+	} = {}
 ): ContextManager {
 	return {
 		credits,
@@ -136,6 +141,13 @@ describe('scopedCredits', () => {
 
 	it('drops it from solar system scope outwards, with the system still focused', () => {
 		expect(scopedCredits(fakeCtx(new CreditsStore(), null), [map])).toEqual([]);
+	});
+
+	it('credits a planetary system of another star while it draws beside the Sun', () => {
+		const planet = { bodyId: 'x-1-b-1', systemId: 'x-1' };
+		const ctx = fakeCtx(new CreditsStore(), 'naif-3', { planetSystemInView: 'x-1' });
+		expect(scopedCredits(ctx, [map, planet])).toEqual([map, planet]);
+		expect(scopedCredits(fakeCtx(new CreditsStore(), 'naif-3'), [planet])).toEqual([]);
 	});
 });
 

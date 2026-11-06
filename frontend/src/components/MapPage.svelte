@@ -95,6 +95,7 @@
 	} from '$lib/scene/camera/north-reference';
 	import AttributionBar from './attribution/AttributionBar.svelte';
 	import TimeControls from './time/TimeControls.svelte';
+	import ImpressionNotice from './ImpressionNotice.svelte';
 	import TimeMenuButton from './time/TimeMenuButton.svelte';
 	import SiteMenuButton from './nav/SiteMenuButton.svelte';
 	import SiteMenu from './nav/SiteMenu.svelte';
@@ -378,6 +379,8 @@
 	// That search overlay is opaque, so the map under it can stop drawing.
 	mapCover.hold(() => bgInert);
 	let userPromotedCount = $state(0);
+	/** The body an artist's impression is drawn on in view, for its warning. */
+	let impressionId = $state<string | null>(null);
 
 	// Resolved feature record for the currently URL-pinned featureId. Driven by
 	// the effect below; cleared when the URL has no feature or the lookup fails.
@@ -1244,10 +1247,31 @@
 					}}
 					onConstellationSelect={(slug, figure, name) => appState.setGroup(slug, name, { figure })}
 					onUserPromotedChange={(count) => (userPromotedCount = count)}
+					onImpression={(id) => (impressionId = id)}
 				/>
 			</div>
 			{#if !isMobileViewport}
 				<TimeControls {clock} panelOpen={sidebarOpen} onFitChange={(v) => (timeBarFits = v)} />
+			{/if}
+			{#if impressionId}
+				<!-- On a desktop its gap to the time bar matches the bar's gap to the
+				     screen edge. On a phone it sits beside the button column and rides up
+				     with the sheet, as the column does. -->
+				<div
+					inert={bgInert}
+					style:--panel-inset={!isMobileViewport && sidebarOpen
+						? 'calc(var(--detail-panel) + 0.75rem)'
+						: '0px'}
+					style:bottom={isMobileViewport
+						? `calc(${Math.min(panelHeightDvh, 12)}dvh + 1.5rem + var(--safe-bottom))`
+						: undefined}
+					class="fixed z-10 transition-[opacity,bottom] duration-300 ease-in-out
+						max-md:start-[calc(var(--safe-start)_+_1rem)] max-md:end-[calc(var(--safe-end)_+_4.5rem)]
+						md:center-clear-of-panel md:left-1/2 md:bottom-[calc(var(--safe-bottom)_+_5.5rem)] md:w-[min(44rem,calc(100vw_-_var(--panel-inset)_-_2rem))]
+						{isMobileViewport && panelHeightDvh > 12 ? 'pointer-events-none opacity-0' : ''}"
+				>
+					<ImpressionNotice id={impressionId} />
+				</div>
 			{/if}
 			<!-- Inert under the sidebar: Tab would open search behind it. -->
 			<div

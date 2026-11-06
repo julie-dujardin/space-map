@@ -17,7 +17,7 @@
 	import ExternalLinkIcon from '@lucide/svelte/icons/external-link';
 	import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 	import type { ImageryCredit, ModelCredit } from '$lib/scene/state/credits.svelte';
-	import { IMAGERY_LAYERS, layerLabel, type ImageryLayer } from '$lib/credits/imagery-layers';
+	import { IMAGERY_LAYERS, rowQualifier, type ImageryLayer } from '$lib/credits/imagery-layers';
 	import { orientationCredits } from '$lib/credits/orientation-sources';
 	import { archiveLabel, archiveUrl } from '$lib/credits/archive-labels';
 	import {
@@ -101,7 +101,10 @@
 				rows.push({
 					key: `${bodyId}-${layer}`,
 					label: bodyName(bodyId),
-					qualifier: multi ? layerLabel(layer) : undefined,
+					qualifier: rowQualifier(
+						multi ? layer : undefined,
+						group.some((g) => g.artist_impression)
+					),
 					source: group[0].source,
 					organisation: orgs.join(' & '),
 					// Only meaningful when every work shares it.

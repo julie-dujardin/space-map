@@ -8,13 +8,21 @@
 import * as m from '$lib/paraglide/messages.js';
 import type { TextureDistribution } from '$lib/host';
 
-export type ImageryLayer = 'surface' | 'clouds' | 'night' | 'specular' | 'topography' | 'rings';
+export type ImageryLayer =
+	| 'surface'
+	| 'clouds'
+	| 'night'
+	| 'glow'
+	| 'specular'
+	| 'topography'
+	| 'rings';
 
 /** Row order wherever layers of one body are listed together. */
 export const IMAGERY_LAYERS: readonly ImageryLayer[] = [
 	'surface',
 	'clouds',
 	'night',
+	'glow',
 	'specular',
 	'topography',
 	'rings'
@@ -25,6 +33,7 @@ const LAYER_LABELS: Record<ImageryLayer, () => string> = {
 	surface: m.attribution_type_surface,
 	clouds: m.attribution_type_clouds,
 	night: m.attribution_type_night,
+	glow: m.attribution_type_glow,
 	specular: m.attribution_type_specular,
 	topography: m.attribution_type_topography,
 	rings: m.attribution_type_rings
@@ -32,6 +41,16 @@ const LAYER_LABELS: Record<ImageryLayer, () => string> = {
 
 export function layerLabel(layer: ImageryLayer): string {
 	return LAYER_LABELS[layer]();
+}
+
+/** The note on a credit row: the layer, where the body has several, and the
+ *  mark of an artist's impression. Undefined for neither. */
+export function rowQualifier(
+	layer: ImageryLayer | undefined,
+	artistImpression: boolean | undefined
+): string | undefined {
+	const parts = [layer && layerLabel(layer), artistImpression && m.artist_impression_qualifier()];
+	return parts.filter(Boolean).join(', ') || undefined;
 }
 
 /** The credit fields every layer's metadata block carries. */
@@ -44,4 +63,6 @@ export interface CreditFields {
 	distribution?: TextureDistribution;
 	attribution?: string;
 	description?: string;
+	/** An artist's picture of a body no camera has resolved. */
+	artist_impression?: boolean;
 }

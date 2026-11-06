@@ -1,6 +1,6 @@
 import { MeshStandardMaterial, type Scene, type Texture, type TextureLoader } from 'three';
 import { kmToScene } from '$lib/math/units';
-import { isExtrasolar, type PositionedBody } from '$lib/types/objects';
+import { isExoplanet, isExtrasolar, type PositionedBody } from '$lib/types/objects';
 import { versionedUrl } from '$lib/fetch/data-base';
 import { getLocale, host, pickTexture } from '$lib/host';
 import { starPageName } from '$lib/fetch/extrasolar/star-name';
@@ -163,6 +163,8 @@ export async function loadBodyTexture(
 	ctx?: ContextManager
 ): Promise<void> {
 	if (bo.textureTier || bo.textureLoading) return;
+	// Its system file gives a planet of another star its maps (`loadPlanetMaps`).
+	if (isExoplanet(bo.body)) return;
 	// Texture/orientation/radii live in `detail.global`; the localized bundle
 	// only carries the display name.
 	const detail = await fetchObjectDetail(bo.body.data.id, false);
@@ -239,6 +241,7 @@ export async function loadBodyTexture(
 	if (!surface) return;
 	bo.textureBundleId = surface.id === bodyId ? undefined : surface.id;
 	bo.surfaceTiles = surface.tiles;
+	bo.artistImpression = surface.artist_impression;
 	bo.availableTiers ??= surface.tiers ?? [...TIER_NAMES];
 	bo.availableFrames = surface.frames;
 	await swapBodyTexture(bo, 'low', textureFrameForJd(currentJd, bo.availableFrames), textureLoader);

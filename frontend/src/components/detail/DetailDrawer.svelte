@@ -570,7 +570,7 @@
 
 {#snippet exoplanetsPanel()}
 	{#if planetsDetail}
-		<ExoplanetsPanel detail={planetsDetail} {members} />
+		<ExoplanetsPanel detail={planetsDetail} {members} {lineup} />
 	{/if}
 {/snippet}
 

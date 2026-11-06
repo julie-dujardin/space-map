@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import type { PlanetSystem } from '$lib/fetch/extrasolar/planets';
+import type { Planet, PlanetSystem } from '$lib/fetch/extrasolar/planets';
 import { orbitalElementsToPositionJD } from '$lib/math/orbit/position';
 import { elementsOffset } from '$lib/math/orbit/offset';
 import { AU_SCALE } from '$lib/math/units';
+import { sceneSettings } from '$lib/scene/settings.svelte';
 import { J2000_JD } from '$lib/time/jd';
-import { ObjectType } from '$lib/types/objects';
+import { isDiscless, ObjectType } from '$lib/types/objects';
 import { NO_ORBIT_AU, NO_ORBIT_FACTOR, makePlanetBodies, outerOrbitAU } from './bodies';
 import { ALPHA_CEN, elements, host, planet } from './__fixtures__/system';
 
@@ -85,5 +86,50 @@ describe('planet bodies', () => {
 			expect(body.data).toMatchObject({ a: 0.2 * NO_ORBIT_FACTOR, e: 0, i: 80, om: 10, n: 0 });
 		}
 		expect([a.data.ma, b.data.ma]).toEqual([0, 180]);
+	});
+});
+
+describe('a planet with a map', () => {
+	const texture = {
+		source: 's',
+		organisation: 'NASA',
+		type: 'cylindrical',
+		artist_impression: true
+	};
+	const withMap = (values: Planet['values']) =>
+		makePlanetBodies({
+			...ALPHA_CEN,
+			planets: [{ ...planet(27424668, 1, elements(0.05), values), texture, tiers: ['low'] }]
+		})[0].data;
+
+	it('draws a disc at its radius, an estimate too, under the Lambert law', () => {
+		const data = withMap({ radius: 0.0913 });
+		expect(data.mapped).toBe(true);
+		expect(data.lunarWeightScale).toBe(0);
+		expect(isDiscless(data)).toBe(false);
+	});
+
+	it('stays a dot with no radius', () => {
+		const data = withMap({});
+		expect(data.mapped).toBeUndefined();
+		expect(isDiscless(data)).toBe(true);
+	});
+
+	it('stays a dot with no map this embed may serve, or with maps off', () => {
+		const make = (extra: Partial<Planet>) =>
+			makePlanetBodies({
+				...ALPHA_CEN,
+				planets: [{ ...planet(27424668, 1, elements(0.05), { radius: 0.09 }), texture, ...extra }]
+			})[0].data;
+		expect(make({ tiers: [] }).mapped).toBeUndefined();
+		expect(
+			make({ tiers: ['low'], texture: { ...texture, distribution: 'site-only' } }).mapped
+		).toBe(undefined);
+		sceneSettings().showSurfaceTexture = false;
+		try {
+			expect(make({ tiers: ['low'] }).mapped).toBeUndefined();
+		} finally {
+			sceneSettings().showSurfaceTexture = true;
+		}
 	});
 });
