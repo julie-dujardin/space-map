@@ -8,8 +8,13 @@ Only English is asserted: the other locales fall back to it, so a missing
 translation still reads, while a missing key reads as nothing.
 """
 
+import json
+
+import pytest
+
 from space_map_data.constants.atmosphere.structure import ATMOSPHERE_STRUCTURE
 from space_map_data.constants.interior.bodies import INTERIOR_FACTS
+from space_map_data.constants.interior.stars import STAR_INTERIORS
 from space_map_data.utils.paths import PROJECT_ROOT
 
 MESSAGES = PROJECT_ROOT / "frontend" / "messages" / "en.json"
@@ -17,24 +22,24 @@ MESSAGES = PROJECT_ROOT / "frontend" / "messages" / "en.json"
 
 def _in_use() -> dict[str, set[str]]:
     """Values actually used, by message prefix — not the whole vocabulary; an
-    unused role needs no label yet."""
+    unused role needs no label yet. Layer notes are provenance metadata, which
+    the panel shows as no label."""
     used: dict[str, set[str]] = {
         "interior_layer": set(),
         "interior_state": set(),
-        "interior_note": set(),
         "material": set(),
         "species_name": set(),
         "atmosphere_layer": set(),
         "atmosphere_structure_note": set(),
         "atmosphere_datum": set(),
     }
-    for body in INTERIOR_FACTS.values():
+    for body in (*INTERIOR_FACTS.values(), *STAR_INTERIORS.values()):
+        for component in body.centre_composition:
+            used["material"].add(component.material)
         for layer in body.layers:
             used["interior_layer"].add(layer.role)
             if layer.state:
                 used["interior_state"].add(layer.state)
-            if layer.note:
-                used["interior_note"].add(layer.note)
             for component in layer.composition:
                 used["material"].add(component.material)
             if layer.detail:
@@ -51,3 +56,15 @@ def _in_use() -> dict[str, set[str]]:
             if layer.note:
                 used["atmosphere_structure_note"].add(layer.note)
     return used
+
+
+@pytest.mark.skipif(not MESSAGES.exists(), reason="frontend not checked out")
+def test_every_value_in_use_has_a_label():
+    messages = json.loads(MESSAGES.read_text(encoding="utf-8"))
+    missing = [
+        f"{prefix}_{value}"
+        for prefix, values in _in_use().items()
+        for value in sorted(values)
+        if f"{prefix}_{value}" not in messages
+    ]
+    assert not missing, f"no English label for: {', '.join(missing)}"

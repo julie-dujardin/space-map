@@ -107,10 +107,15 @@ def interior_from_mapping(object_id: str, mapping: dict) -> dict | None:
     try:
         refs = INTERIOR_SOURCES | _references(mapping.get("sources") or {})
         layers = tuple(_parse_layer(layer) for layer in mapping.get("layers") or ())
+        centre = _components(mapping.get("centre_composition"))
         body = _named(
             BodyInterior, {k: v for k, v in mapping.items() if k not in _BODY_OWN}
         )
-        return from_layers(object_id, BodyInterior(layers=layers, **body), refs)
+        return from_layers(
+            object_id,
+            BodyInterior(layers=layers, centre_composition=centre, **body),
+            refs,
+        )
     except (AttributeError, TypeError, ValueError) as exc:
         logger.warning(
             "%s: unusable hand-authored interior (%s); shipping without one",
@@ -120,9 +125,9 @@ def interior_from_mapping(object_id: str, mapping: dict) -> dict | None:
         return None
 
 
-# Handled before the generic pass: one is parsed into its own tuples, the other
-# is a table `BodyInterior` has no field for.
-_BODY_OWN = frozenset({"layers", "sources"})
+# Handled before the generic pass: `sources` is a table that `BodyInterior` has
+# no field for, and the others parse into their own tuples.
+_BODY_OWN = frozenset({"layers", "sources", "centre_composition"})
 
 
 def _references(table: dict) -> dict[str, InteriorReference]:
@@ -139,13 +144,14 @@ def _references(table: dict) -> dict[str, InteriorReference]:
     }
 
 
+def _components(entries: list | None) -> tuple[Component, ...]:
+    return tuple(Component(**_named(Component, c)) for c in entries or ())
+
+
 def _parse_layer(mapping: dict) -> Layer:
-    composition = tuple(
-        Component(**_named(Component, c)) for c in mapping.get("composition") or ()
-    )
     detail = mapping.get("detail")
     return Layer(
-        composition=composition,
+        composition=_components(mapping.get("composition")),
         detail=_parse_detail(detail) if detail else None,
         **_named(Layer, {k: v for k, v in mapping.items() if k not in _LAYER_OWN}),
     )
@@ -202,32 +208,33 @@ def from_layers(
         block["centre_temperature_range_k"] = [
             _sig(v) for v in facts.centre_temperature_range_k
         ]
+    if facts.centre_density_g_cm3 is not None:
+        block["centre_density_g_cm3"] = _sig(facts.centre_density_g_cm3)
+    if facts.centre_density_range_g_cm3 is not None:
+        block["centre_density_range_g_cm3"] = [
+            _sig(v) for v in facts.centre_density_range_g_cm3
+        ]
+    if facts.centre_composition:
+        block["centre_composition"] = _centre_composition(facts.centre_composition)
     composition: list[dict] = []
 
-    # A body whose source gives geometry but no masses — the Sun — has nothing
-    # to roll up. It still ships: the structure and the works behind it are
-    # worth a panel even with no bar.
-    if all(layer.mass_fraction is None for layer in facts.layers):
+    # A body with a layer of unknown mass has no roll-up: the Sun has no layer
+    # masses, and a star's paper gives the mass of its core only. The block
+    # still ships its structure and the works behind it.
+    masses = [
+        layer.mass_fraction for layer in facts.layers if layer.mass_fraction is not None
+    ]
+    if len(masses) < len(facts.layers):
         logger.info(
-            "%s: layer masses are unknown; shipping structure without a "
+            "%s: %d of %d layers have a mass; shipping structure without a "
             "composition bar",
             object_id,
+            len(masses),
+            len(facts.layers),
         )
     else:
         shares: dict[str, float] = {}
-        for layer in facts.layers:
-            mass = layer.mass_fraction
-            if mass is None:
-                # The constants forbid a half-massed body, so this is only
-                # reachable if that invariant breaks — say so rather than
-                # silently under-counting the bar.
-                logger.warning(
-                    "%s: %s layer has no mass among layers that do; the "
-                    "composition below is missing it",
-                    object_id,
-                    layer.role,
-                )
-                continue
+        for layer, mass in zip(facts.layers, masses, strict=True):
             for component in layer.composition:
                 shares[component.material] = shares.get(component.material, 0.0) + (
                     mass * component.fraction
@@ -402,6 +409,19 @@ def _layer(object_id: str, layer: Layer) -> dict:
     return out
 
 
+def _centre_composition(components: tuple[Component, ...]) -> list[dict]:
+    """The fractions at the centre as the source gives them: no sliver cut and
+    no renormalization, as a fraction that the source does not give is
+    unknown, not zero."""
+    out = []
+    for c in components:
+        entry: dict = {"material": c.material, "share": _sig(c.fraction)}
+        if c.fraction_range is not None:
+            entry["share_range"] = [_sig(v) for v in c.fraction_range]
+        out.append(entry)
+    return out
+
+
 def _layer_source_keys(
     facts: BodyInterior, composition: list[dict], layers: list[dict]
 ) -> list[str]:
@@ -416,6 +436,8 @@ def _layer_source_keys(
     if facts.structure_source is not None:
         keys.append(facts.structure_source)
     keys.extend(facts.centre_temperature_sources)
+    keys.extend(facts.centre_density_sources)
+    keys.extend(c.source for c in facts.centre_composition)
     shown = {c["material"] for c in composition}
     for layer, drawn in zip(facts.layers, layers):
         keys.append(layer.source)
@@ -531,14 +553,23 @@ def _validate(
         (),
         refs,
     )
-    _validate_temperature(
+    _validate_measure(
         object_id,
-        "centre",
+        "centre temperature",
         facts.centre_temperature_k,
         facts.centre_temperature_range_k,
         facts.centre_temperature_sources,
         refs,
     )
+    _validate_measure(
+        object_id,
+        "centre density",
+        facts.centre_density_g_cm3,
+        facts.centre_density_range_g_cm3,
+        facts.centre_density_sources,
+        refs,
+    )
+    _validate_centre_composition(object_id, facts.centre_composition, refs)
     for layer in facts.layers:
         if layer.role not in LAYER_ROLES:
             raise ValueError(f"{object_id}: unknown layer role {layer.role}")
@@ -568,9 +599,9 @@ def _validate(
         for component in layer.composition:
             if component.material not in MATERIALS:
                 raise ValueError(f"{object_id}: unknown material {component.material}")
-        _validate_temperature(
+        _validate_measure(
             object_id,
-            layer.role,
+            f"{layer.role} temperature",
             layer.outer_temperature_k,
             layer.outer_temperature_range_k,
             layer.temperature_sources,
@@ -610,35 +641,58 @@ def _validate_standing(
         raise ValueError(f"{object_id}: {where} standing {standing} has no evidence")
 
 
-def _validate_temperature(
+def _validate_measure(
     object_id: str,
-    where: str,
+    what: str,
     value: float | None,
     width: tuple[float, float] | None,
     sources: tuple[str, ...],
     refs: dict[str, InteriorReference],
 ) -> None:
-    """A boundary temperature has to be cited and has to be a temperature.
-
-    Uncited is the one that matters: a number with no work behind it would draw
-    exactly like the rest and credit nobody.
-    """
+    """A temperature or density has to be cited and above zero, and its range
+    has to hold it. A number with no source would credit nobody."""
     if value is None and width is None:
         if sources:
-            raise ValueError(f"{object_id}: {where} cites a temperature it has not got")
+            raise ValueError(f"{object_id}: {what} has sources and no value")
         return
     if not sources:
-        raise ValueError(f"{object_id}: {where} temperature has no source")
+        raise ValueError(f"{object_id}: {what} has no source")
     for key in sources:
         if key not in refs:
             raise ValueError(f"{object_id}: no such interior source {key}")
     if width is not None and not width[0] < width[1]:
-        raise ValueError(f"{object_id}: {where} temperature range is not ascending")
+        raise ValueError(f"{object_id}: {what} range is not ascending")
     if value is not None and width is not None and not width[0] <= value <= width[1]:
-        raise ValueError(f"{object_id}: {where} temperature sits outside its range")
-    for kelvin in (value, *(width or ())):
-        if kelvin is not None and kelvin <= 0.0:
-            raise ValueError(f"{object_id}: {where} temperature is not above zero")
+        raise ValueError(f"{object_id}: {what} sits outside its range")
+    for number in (value, *(width or ())):
+        if number is not None and number <= 0.0:
+            raise ValueError(f"{object_id}: {what} is not above zero")
+
+
+def _validate_centre_composition(
+    object_id: str,
+    components: tuple[Component, ...],
+    refs: dict[str, InteriorReference],
+) -> None:
+    """Each material once, each fraction in its range, at most 1 in all."""
+    materials = [c.material for c in components]
+    if len(set(materials)) < len(materials):
+        raise ValueError(f"{object_id}: a centre material repeats")
+    for c in components:
+        if c.material not in MATERIALS:
+            raise ValueError(f"{object_id}: unknown material {c.material}")
+        if c.source not in refs:
+            raise ValueError(f"{object_id}: no such interior source {c.source}")
+        if not 0.0 <= c.fraction <= 1.0:
+            raise ValueError(f"{object_id}: centre {c.material} is not a fraction")
+        if c.fraction_range is not None:
+            low, high = c.fraction_range
+            if not low <= c.fraction <= high or not low < high:
+                raise ValueError(
+                    f"{object_id}: centre {c.material} sits outside its range"
+                )
+    if sum(c.fraction for c in components) > 1.0 + 1e-9:
+        raise ValueError(f"{object_id}: the centre fractions sum past 1")
 
 
 def _sources(keys: list[str], refs: dict[str, InteriorReference]) -> list[dict]:

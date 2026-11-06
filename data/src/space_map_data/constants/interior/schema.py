@@ -348,9 +348,9 @@ class Layer(NamedTuple):
     # A layer's span is therefore this against the *next* layer's, and the
     # innermost one's inner end is `BodyInterior.centre_temperature_k`.
     #
-    # Left unset on the outermost layer: that boundary is the surface, and
-    # constants/temperature already measures it. Restating it here would give
-    # the same body two surface temperatures that could drift apart.
+    # On the outermost layer it is the surface temperature. A body leaves it
+    # unset there, as constants/temperature holds its surface. A star of
+    # stars.py sets it there to its paper's Teff.
     outer_temperature_k: float | None = None
     # Most of these are a spread across models or experiments rather than an
     # error bar on one, so the range is usually the whole claim and the value
@@ -375,13 +375,17 @@ class BodyInterior(NamedTuple):
     structure_standing: str = "established"
     structure_standing_as_of: str | None = None
     note: str | None = None
-    # The centre, which closes the innermost layer's span the way the datum
-    # closes the atmosphere's lowest one. Separate from any layer because it is
-    # a point rather than a boundary between two shells — and it is all a
-    # diffuse core has, there being no radius at which it starts.
+    # The centre is a point, not a shell, so its values are not on a layer.
+    # The centre temperature closes the span of the innermost layer.
     centre_temperature_k: float | None = None
     centre_temperature_range_k: tuple[float, float] | None = None
     centre_temperature_sources: tuple[str, ...] = ()
+    centre_density_g_cm3: float | None = None
+    centre_density_range_g_cm3: tuple[float, float] | None = None
+    centre_density_sources: tuple[str, ...] = ()
+    # Only the fractions that the source gives. The sum is below 1 where it
+    # gives one fraction and not the others.
+    centre_composition: tuple[Component, ...] = ()
 
 
 class ClassComposition(NamedTuple):

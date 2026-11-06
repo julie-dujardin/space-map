@@ -30,9 +30,10 @@ def _valued(name: str) -> tuple[pa.Field, ...]:
 
 
 # Masses in solar masses, the radius in solar radii, the envelope base as
-# fractions of the star's radius and mass, the centre temperature in K and
-# density in g/cm³, the centre abundances as mass fractions. `feh` is the [Fe/H] that the fit used.
-# `teff_source` and `luminosity_source` name the source of its Teff and L.
+# fractions of the star's radius and mass, the Teff and the centre
+# temperature in K, the centre density in g/cm³, the centre abundances as mass
+# fractions. `feh` is the [Fe/H] that the fit used. `teff_source` and
+# `luminosity_source` name the source of its Teff and L.
 INTERIOR = TableDef(
     number=None,
     slug=SLUG,
@@ -43,6 +44,7 @@ INTERIOR = TableDef(
         pa.field("stage", pa.string()),
         pa.field("feh", pa.float32()),
         pa.field("feh_source", pa.string()),
+        pa.field("teff", pa.float32()),
         pa.field("teff_source", pa.string()),
         pa.field("luminosity_source", pa.string()),
         *_valued("mass"),

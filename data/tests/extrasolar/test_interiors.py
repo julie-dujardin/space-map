@@ -814,6 +814,7 @@ class TestTable:
         assert counts["no Teff"] == 1
         first, assumed = rows.to_pylist()
         assert first["stage"] == "main_sequence"
+        assert first["teff"] == 5704.0
         assert first["feh_source"] == metallicity.PASTEL
         assert first["envelope_base_radius"] == pytest.approx(0.72, abs=0.01)
         assert first["radius_lower"] < first["radius"] < first["radius_upper"]
@@ -882,6 +883,8 @@ class TestTable:
         assert out["tier"].to_pylist() == [3, table.CURATED_TIER, table.CURATED_TIER]
         assert out["curated"].to_pylist() == [None, '{"layers": []}', "{}"]
         assert out["mass"].to_pylist()[1] is None
+        assert out["teff"].to_pylist() == [5704.0, None, None]
+        assert out["teff_source"].to_pylist()[1:] == [None, None]
 
     @pytest.mark.parametrize(
         "point, why",

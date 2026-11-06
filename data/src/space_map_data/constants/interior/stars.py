@@ -8,11 +8,16 @@ the star's `interior` row as tier 0, in the shape that `naif-10` takes.
 Each number is read in the cited paper. A radius in km is the paper's r/R
 times its R, so those layers are `derived`. A layer carries a composition
 only where the paper gives that layer's own abundances: the surface for a
-convective envelope, the centre for a mixed convective core. A layer whose
-top the paper does not give has no `outer_radius_km`.
+convective envelope. The abundances at the centre are in
+`centre_composition`, also for a mixed convective core, so that the panel
+shows them in one place for every star. A layer whose top the paper does
+not give has no `outer_radius_km`.
 
-No layer has a mass fraction. A paper that gives a core mass gives no mass
-for the other layers, and the layer masses are all or none.
+A layer has a mass fraction where the paper gives one. A paper gives the
+mass of the core and of no other layer, so the block has no composition bar.
+
+The outermost layer has the paper's Teff as its `outer_temperature_k`. No
+other table holds the surface temperature of these stars.
 """
 
 from space_map_data.constants.interior.schema import (
@@ -43,43 +48,63 @@ def _mix(source: str, x: float, y: float) -> tuple[Component, ...]:
     )
 
 
+def _one(
+    material: str,
+    fraction: float,
+    source: str,
+    fraction_range: tuple[float, float] | None = None,
+) -> tuple[Component]:
+    """The one centre fraction that the paper gives."""
+    return (Component(material, fraction, source, fraction_range),)
+
+
 # α Cen A and B: one calibration of the pair on the large and small spacings
 # of A (Thévenin et al. 2002, Table 1). B has no modes of its own in the fit,
-# so its layers are the model's, not seismic. Tcz is in MK, as Tc is.
+# so its layers are the model's, not seismic. Tcz is in MK, as Tc is. The
+# table gives no Teff of the models, so the Teff is the observed one that the
+# calibration fits.
 _THEVENIN = "thevenin_2002"
 _A_RADIUS = 1.230 * SOLAR_RADIUS_KM
 _B_RADIUS = 0.857 * SOLAR_RADIUS_KM
 
 # Procyon A: the raOvD model at β = 1.0, the subgrid of highest evidence
 # (Guenther et al. 2014, Table 4). The table gives Zs/Xs but not Xs and Ys,
-# so the envelope has no composition.
+# so the envelope has no composition. Mcc/M is 0.123 ± 0.008. The table's
+# ±0.04 dex on log Teff is wider than the Teff box of the grid (Sect. 2), so
+# the Teff has no range.
 _GUENTHER = "guenther_2014"
 _PROCYON_RADIUS = 10**0.312 * SOLAR_RADIUS_KM
+_PROCYON_TEFF = 10**3.820
 
 # Sirius A: model d, the adopted one (Kervella et al. 2003, Table 3 and
 # Sect. 5). Xs = (1 − Ys) / (1 + (Z/X)s) from Ys = 0.200 and (Z/X)s = 0.0099.
 # The paper names a convective core but gives no size, so it has no layer.
+# The Teff is that of model d, without a range.
 _KERVELLA = "kervella_2003"
 _SIRIUS_RADIUS = 1.7105 * SOLAR_RADIUS_KM
 _SIRIUS_XS = round((1.0 - 0.200) / (1.0 + 0.0099), 4)
 
-# μ Ara: Table 7 for R; the core of the αov = 0.005 model of Table 6, the
-# upper limit that the paper sets on overshoot (Soriano & Vauclair 2010).
-# The paper gives no base of the convective envelope, and the core's YC
+# μ Ara: Table 7 for R and Teff; the core of the αov = 0.005 model of Table 6,
+# the upper limit that the paper sets on overshoot (Soriano & Vauclair 2010).
+# The paper gives no base of the convective envelope, and the central YC
 # without its X.
 _SORIANO = "soriano_2010"
 _MU_ARA_RADIUS = 1.36 * SOLAR_RADIUS_KM
 
 # ν Eri: the αov = 0 model of Table 1 (Pamyatnykh et al. 2004), which the
 # paper's bound αov < 0.12 favours. X = 0.7 and Z = 0.015 are the models'
-# initial values. Z in the core is that Z.
+# initial values. The table gives the core's Xc and Mmix/M, the mass of the
+# mixed core.
 _PAMYATNYKH = "pamyatnykh_2004"
 _NU_ERI_RADIUS = 6.279 * SOLAR_RADIUS_KM
+_NU_ERI_TEFF = 10**4.3553
 
 # β CMa: the 13.5 M☉ model of Table 3 (Mazumdar et al. 2006), the paper's
 # adopted mass. No model fits without core overshoot, so the core is there,
-# but the table gives no size.
+# but the table gives no size. The range of Xc is that of the five models of
+# the table.
 _MAZUMDAR = "mazumdar_2006"
+_BETA_CMA_TEFF = 10**4.373
 
 STAR_INTERIORS: dict[StarKey, BodyInterior] = {
     # α Cen A, HD 128620.
@@ -96,6 +121,9 @@ STAR_INTERIORS: dict[StarKey, BodyInterior] = {
                 derived=True,
                 state="plasma",
                 evidence="seismic",
+                outer_temperature_k=5790.0,
+                outer_temperature_range_k=(5760.0, 5820.0),
+                temperature_sources=(_THEVENIN,),
             ),
             Layer(
                 role="radiative_zone",
@@ -113,7 +141,7 @@ STAR_INTERIORS: dict[StarKey, BodyInterior] = {
             Layer(
                 role="convective_core",
                 mass_fraction=None,
-                composition=_mix(_THEVENIN, 0.182, 0.785),
+                composition=(),
                 source=_THEVENIN,
                 outer_radius_km=0.052 * _A_RADIUS,
                 derived=True,
@@ -126,6 +154,9 @@ STAR_INTERIORS: dict[StarKey, BodyInterior] = {
         ),
         centre_temperature_k=19.00e6,
         centre_temperature_sources=(_THEVENIN,),
+        centre_density_g_cm3=177.1,
+        centre_density_sources=(_THEVENIN,),
+        centre_composition=_mix(_THEVENIN, 0.182, 0.785),
     ),
     # α Cen B, HD 128621.
     _hip(71681): BodyInterior(
@@ -141,6 +172,9 @@ STAR_INTERIORS: dict[StarKey, BodyInterior] = {
                 derived=True,
                 state="plasma",
                 evidence="thermal_model",
+                outer_temperature_k=5260.0,
+                outer_temperature_range_k=(5210.0, 5310.0),
+                temperature_sources=(_THEVENIN,),
             ),
             Layer(
                 role="radiative_zone",
@@ -157,6 +191,9 @@ STAR_INTERIORS: dict[StarKey, BodyInterior] = {
         ),
         centre_temperature_k=13.89e6,
         centre_temperature_sources=(_THEVENIN,),
+        centre_density_g_cm3=117.1,
+        centre_density_sources=(_THEVENIN,),
+        centre_composition=_mix(_THEVENIN, 0.428, 0.539),
     ),
     # Procyon A, HD 61421.
     _hip(37279): BodyInterior(
@@ -172,6 +209,8 @@ STAR_INTERIORS: dict[StarKey, BodyInterior] = {
                 derived=True,
                 state="plasma",
                 evidence="seismic",
+                outer_temperature_k=_PROCYON_TEFF,
+                temperature_sources=(_GUENTHER,),
             ),
             Layer(
                 role="radiative_zone",
@@ -185,7 +224,8 @@ STAR_INTERIORS: dict[StarKey, BodyInterior] = {
             ),
             Layer(
                 role="convective_core",
-                mass_fraction=None,
+                mass_fraction=0.123,
+                mass_fraction_range=(0.115, 0.131),
                 composition=(),
                 source=_GUENTHER,
                 outer_radius_km=0.073 * _PROCYON_RADIUS,
@@ -209,6 +249,8 @@ STAR_INTERIORS: dict[StarKey, BodyInterior] = {
                 derived=True,
                 state="plasma",
                 evidence="thermal_model",
+                outer_temperature_k=9936.0,
+                temperature_sources=(_KERVELLA,),
             ),
             Layer(
                 role="radiative_zone",
@@ -223,6 +265,7 @@ STAR_INTERIORS: dict[StarKey, BodyInterior] = {
         ),
         centre_temperature_k=22.46e6,
         centre_temperature_sources=(_KERVELLA,),
+        centre_composition=_one(HYDROGEN, 0.590, _KERVELLA),
     ),
     # μ Ara, HD 160691.
     _hip(86796): BodyInterior(
@@ -238,6 +281,9 @@ STAR_INTERIORS: dict[StarKey, BodyInterior] = {
                 derived=True,
                 state="plasma",
                 evidence="seismic",
+                outer_temperature_k=5820.0,
+                outer_temperature_range_k=(5770.0, 5870.0),
+                temperature_sources=(_SORIANO,),
             ),
             Layer(
                 role="radiative_zone",
@@ -258,6 +304,7 @@ STAR_INTERIORS: dict[StarKey, BodyInterior] = {
                 evidence="seismic",
             ),
         ),
+        centre_composition=_one(HELIUM, 0.9482, _SORIANO),
     ),
     # ν Eri, HD 29248.
     _hip(21444): BodyInterior(
@@ -273,11 +320,13 @@ STAR_INTERIORS: dict[StarKey, BodyInterior] = {
                 derived=True,
                 state="plasma",
                 evidence="seismic",
+                outer_temperature_k=_NU_ERI_TEFF,
+                temperature_sources=(_PAMYATNYKH,),
             ),
             Layer(
                 role="convective_core",
-                mass_fraction=None,
-                composition=_mix(_PAMYATNYKH, 0.2414, 0.7436),
+                mass_fraction=0.189,
+                composition=(),
                 source=_PAMYATNYKH,
                 outer_radius_km=0.117 * _NU_ERI_RADIUS,
                 derived=True,
@@ -285,6 +334,7 @@ STAR_INTERIORS: dict[StarKey, BodyInterior] = {
                 evidence="seismic",
             ),
         ),
+        centre_composition=_one(HYDROGEN, 0.2414, _PAMYATNYKH),
     ),
     # β CMa, HD 44743.
     _hip(30324): BodyInterior(
@@ -301,16 +351,18 @@ STAR_INTERIORS: dict[StarKey, BodyInterior] = {
                 derived=True,
                 state="plasma",
                 evidence="seismic",
+                outer_temperature_k=_BETA_CMA_TEFF,
+                temperature_sources=(_MAZUMDAR,),
             ),
-            # Xc of the model, Z = Z0, Y by difference.
             Layer(
                 role="convective_core",
                 mass_fraction=None,
-                composition=_mix(_MAZUMDAR, 0.128, 0.851),
+                composition=(),
                 source=_MAZUMDAR,
                 state="plasma",
                 evidence="seismic",
             ),
         ),
+        centre_composition=_one(HYDROGEN, 0.128, _MAZUMDAR, (0.105, 0.134)),
     ),
 }

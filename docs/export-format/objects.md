@@ -109,7 +109,14 @@ interface GlobalObjectData {
     note?: string;                    // "subsurface_ocean", "hydrated_rock"; only the ocean note is rendered, the rest is provenance metadata
     centre_temperature_k?: number;    // at r=0; closes the innermost layer's span. Present where a body has a published centre rather than a boundary — the Sun and the four giants, whose dilute cores have no radius to hang a boundary on
     centre_temperature_range_k?: [number, number]; // usually the whole claim, the value above being absent: Jupiter's 15000–36000 K is classical adiabat against post-Juno model, not an error bar
-    composition?: Array<{             // whole-body roll-up, descending; omitted where layer masses are unknown (the Sun)
+    centre_density_g_cm3?: number;    // at r=0, g/cm³; the stars of the Interior table (extrasolar.md) whose paper gives it
+    centre_density_range_g_cm3?: [number, number];
+    centre_composition?: Array<{      // mass fractions at r=0, as the source gives them: no sliver cut, no renormalization. A fraction the source does not give is absent, so the sum can be below 1 (Sirius A has hydrogen only)
+      material: string;
+      share: number;
+      share_range?: [number, number];
+    }>;
+    composition?: Array<{             // whole-body roll-up, descending; omitted where a layer has no mass (the Sun, the stars of the Interior table)
       material: string;               // "metal" | "sulfide" | "silicate" | "water" | "volatile" | "organic" | "hydrogen" | "helium" | "heavy_elements"
       share: number;                  // normalized over the materials listed
     }>;
@@ -121,7 +128,7 @@ interface GlobalObjectData {
       outer_radius_km: number;        // the source's own R, which is not the body's exported mean radius — normalize the disc to the outermost layer
       area_fraction?: number;         // share of the globe the layer covers, on the layers that are patches rather than shells. Earth's ocean 0.709, continental crust 0.412, oceanic crust 0.588; Titan's seas 0.011. Layers carrying one are still ordered by radius, but they overlap in depth — Earth's two crusts meet at a coastline, not at a boundary
       base_radius_km?: number;        // where the layer stops, on the layers whose floor is not the next one's top: under Earth's ocean is the sea floor, not the continental crust that follows it. Always present with `area_fraction`, and the two close the arithmetic — area × thickness × 4πR² comes back to the published volume
-      mass_fraction?: number;         // of the whole body; absent where a source gives geometry but no mass (the Sun)
+      mass_fraction?: number;         // of the whole body; absent where a source gives geometry but no mass (the Sun). A star of the Interior table can have it on its core alone
       mass_fraction_range?: [number, number]; // the published width, where there is one
       state?: string;                 // "solid" | "liquid" | "partial_melt" | "fluid" | "plasma"; absent where nobody knows
       phase?: string;                 // "ice_i" | "ice_iii" | "ice_v" | "ice_vi" | "ice_vii" — which crystal structure a solid took, where the pressure picks one and the source names it; the high-pressure ice mantles of Ganymede, Callisto and Titan today
@@ -129,7 +136,7 @@ interface GlobalObjectData {
       note?: string;                  // "core_size_disputed", "shell_thickness_modelled", …; provenance metadata, except "continental_crust_only" which renames the layer
       derived?: true;                 // the mass is our arithmetic on the source's radii and densities, not a number it quotes
       diffuse?: true;                 // no boundary to draw: `outer_radius_km` is where it fades out, not where it ends
-      outer_temperature_k?: number;   // at `outer_radius_km` — geotherms are published at boundaries (Moho, 660 km, CMB, ICB), not averaged over shells. A layer's span is this against the next layer's; the innermost one's inner end is `centre_temperature_k`. Never on the outermost layer: that boundary is the surface, and `temperatures` measures it
+      outer_temperature_k?: number;   // at `outer_radius_km` — geotherms are published at boundaries (Moho, 660 km, CMB, ICB), not averaged over shells. A layer's span is this against the next layer's; the innermost one's inner end is `centre_temperature_k`. On the outermost layer it is the surface: a body leaves it out there, as `temperatures` measures it; a star of the Interior table (extrasolar.md) has its paper's Teff there
       outer_temperature_range_k?: [number, number]; // usually the whole claim, the value above being absent — most of these are a spread across models or experiments rather than an error bar on one
       composition: Array<{            // of this layer, same materials and same sliver cut as the roll-up
         material: string;
@@ -746,8 +753,10 @@ against `centre_temperature_*` on the body — the same contract the atmosphere
 layers use, where each is described by its top and the lowest closes against the
 datum. Twenty readings across seventeen bodies carry one today; everything else
 has none, and a layer with no number should draw none rather than interpolate.
-The outermost layer never carries one: its boundary is the surface, which
-`temperatures` already measures.
+A body's outermost layer never carries one: its boundary is the surface, which
+`temperatures` already measures. A star of the Interior table has no
+`temperatures`, so its outermost layer carries the paper's Teff, and a client
+takes that for the surface.
 
 The roll-up is a mass balance over layers rather than an elemental one — water
 bound in a phyllosilicate counts as water, not as oxygen shared out among the

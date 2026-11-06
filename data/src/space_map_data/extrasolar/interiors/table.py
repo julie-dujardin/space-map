@@ -11,6 +11,8 @@ outside the grid, or with no tier, Teff or luminosity, has no row. Nor has a
 star whose Teff or L is too wide to place it on the HR diagram
 (`inputs.MAX_SIGMA_LOG_TEFF`, `inputs.MAX_SIGMA_LOG_L`). A curated star must
 have its home in Point source and must not be an `inputs.EXCLUDED` point.
+A fitted row has the Teff that the fit used. A curated row has none: its
+block has the paper's Teff on its outermost layer.
 
 The core masses and the centre abundances are ranges only. On the main
 sequence the age is weak, and a single value would hide that.
@@ -111,6 +113,7 @@ _FRACTIONS = frozenset(
 # radius and the centre temperature and density. Rounded values compress
 # better.
 DECIMALS = {
+    "teff": 0,
     "feh": 2,
     "mass": 3,
     "convective_core_mass": 3,
@@ -230,6 +233,7 @@ def rows(table: pa.Table, tables: grid.Tables) -> tuple[pa.Table, Counter]:
         "stage": stages[np.minimum(result.stage[keep], len(grid.STAGES))],
         "feh": _rounded("feh", given.feh[at]),
         "feh_source": given.feh_source[at],
+        "teff": _rounded("teff", 10.0 ** given.log_teff[at]),
         "teff_source": given.teff_source[at],
         "luminosity_source": given.luminosity_source[at],
     }

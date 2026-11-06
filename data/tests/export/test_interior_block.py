@@ -7,6 +7,7 @@ from space_map_data.constants.interior.bodies import INTERIOR_FACTS
 from space_map_data.constants.interior.references import INTERIOR_SOURCES
 from space_map_data.constants.interior.schema import BodyInterior, Component, Layer
 from space_map_data.export.objects.interior import (
+    from_layers,
     interior_block,
     interior_from_mapping,
 )
@@ -145,6 +146,82 @@ class TestBoundaryTemperatures:
         panel has to name."""
         urls = {source["url"] for source in block("naif-199")["sources"]}
         assert "https://doi.org/10.1002/jgre.20091" in urls
+
+
+def _star(**fields) -> BodyInterior:
+    """A two-zone star of Thévenin 2002, with `fields` on top."""
+    layers = (
+        Layer("convective_zone", None, (), "thevenin_2002", 1000.0),
+        Layer("convective_core", 0.1, (), "thevenin_2002", 100.0),
+    )
+    return BodyInterior("fluid", layers, "thevenin_2002")._replace(**fields)
+
+
+class TestCentre:
+    """The centre density and composition, and a star's partial layer masses."""
+
+    def test_a_partial_layer_mass_ships_without_a_bar(self, caplog):
+        """The core's mass is the paper's; a bar over half the star would
+        under-count it without looking wrong."""
+        with caplog.at_level("INFO"):
+            result = from_layers("test-star", _star())
+        assert "composition" not in result
+        assert result["layers"][1]["mass_fraction"] == 0.1
+        assert "1 of 2 layers have a mass" in caplog.text
+        assert not [r for r in caplog.records if r.levelname == "WARNING"]
+
+    def test_one_fraction_ships_alone(self):
+        """No renormalization: Sirius's Xc of 0.59 is not a centre of pure
+        hydrogen."""
+        result = from_layers(
+            "test-star",
+            _star(
+                centre_composition=(
+                    Component("hydrogen", 0.59, "kervella_2003", (0.5, 0.6)),
+                )
+            ),
+        )
+        assert result["centre_composition"] == [
+            {"material": "hydrogen", "share": 0.59, "share_range": [0.5, 0.6]}
+        ]
+
+    def test_the_centre_density_is_credited(self):
+        result = from_layers(
+            "test-star",
+            _star(centre_density_g_cm3=150.0, centre_density_sources=("bahcall_2005",)),
+        )
+        assert result["centre_density_g_cm3"] == 150.0
+        urls = {source["url"] for source in result["sources"]}
+        assert INTERIOR_SOURCES["bahcall_2005"].url in urls
+
+    @pytest.mark.parametrize(
+        "fields",
+        [
+            {"centre_density_g_cm3": 150.0},
+            {
+                "centre_density_range_g_cm3": (2.0, 1.0),
+                "centre_density_sources": ("thevenin_2002",),
+            },
+            {
+                "centre_composition": (
+                    Component("hydrogen", 0.7, "thevenin_2002"),
+                    Component("helium", 0.7, "thevenin_2002"),
+                )
+            },
+            {"centre_composition": (Component("hydrogen", 0.7, "nobody"),)},
+        ],
+        ids=["uncited-density", "backwards-range", "past-one", "unknown-source"],
+    )
+    def test_a_bad_centre_is_refused(self, fields):
+        with pytest.raises(ValueError):
+            from_layers("test-star", _star(**fields))
+
+    def test_a_mapping_carries_a_centre_composition(self):
+        result = mapped(
+            centre_composition=[{"material": "metal", "fraction": 0.9, "source": "a"}]
+        )
+        assert result is not None
+        assert result["centre_composition"] == [{"material": "metal", "share": 0.9}]
 
 
 class TestRoutes:

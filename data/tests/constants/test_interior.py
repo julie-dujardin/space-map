@@ -34,6 +34,8 @@ def _source_keys() -> set[str]:
         if body.structure_source:
             keys.add(body.structure_source)
         keys |= set(body.centre_temperature_sources)
+        keys |= set(body.centre_density_sources)
+        keys |= {c.source for c in body.centre_composition}
         for layer in body.layers:
             keys.add(layer.source)
             if layer.density_source:
