@@ -40,6 +40,7 @@ space-map-search = "space_map_data.search.__main__:cli"
 space-map-panoramas = "space_map_data.panoramas.__main__:cli"
 space-map-extrasolar = "space_map_data.extrasolar.__main__:cli"
 space-map-dust = "space_map_data.dust.__main__:cli"
+space-map-glow = "space_map_data.glow.__main__:cli"
 
 [build-system]
 requires = ["hatchling"]

@@ -57,6 +57,7 @@ def cli():
             "extrasolar",
             "star-objects",
             "dust",
+            "glow",
         ),
         default=None,
         help="Run only the named tier (additive — leaves other outputs untouched)",
@@ -78,14 +79,20 @@ def cli():
         "--extrasolar-root",
         type=Path,
         default=EXTRASOLAR_DIR,
-        help="extrasolar and dust: the root of v1/x/ and v1/dust/ (default:"
-        f" {EXTRASOLAR_DIR}, only for the default registry)",
+        help="extrasolar, dust and glow: the root of v1/x/, v1/dust/ and v1/glow/"
+        f" (default: {EXTRASOLAR_DIR}, only for the default registry)",
     )
     parser.add_argument(
         "--dust-variant",
         choices=VARIANTS,
         default=DEFAULT_VARIANT,
         help="dust: the regional variant of the nest",
+    )
+    parser.add_argument(
+        "--glow-build",
+        type=Path,
+        default=None,
+        help="glow: the grid's build (default: glow-build)",
     )
     args = parser.parse_args()
 
@@ -107,6 +114,14 @@ def cli():
             from space_map_data.export.dust import export_dust_only
 
             export_dust_only(args.dust_variant, args.extrasolar_root)
+            return
+        # It reads the builds and the tokens of the tree and the nest, and no DB.
+        if args.only == "glow":
+            # Late, because the nest build pulls in h5py, scipy and astropy.
+            from space_map_data.export.glow import export_glow_only
+            from space_map_data.glow.build import BUILD_DIR as GLOW_BUILD_DIR
+
+            export_glow_only(args.extrasolar_root, args.glow_build or GLOW_BUILD_DIR)
             return
     except ExportRefused as error:
         raise SystemExit(f"export refused: {error}") from None
