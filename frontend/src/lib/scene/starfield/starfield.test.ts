@@ -25,6 +25,8 @@ import { PickRegistry } from '$lib/scene/interaction/pick-registry';
 import { encode } from '$lib/fetch/extrasolar/__fixtures__/writer';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import type { StarAnchor } from '$lib/types/objects';
+import { dustBounds } from '$lib/scene/dust/extinction';
+import type { StarDust } from '$lib/scene/dust/star-dust';
 import { PC_SCENE, treeToScene, type Vec3 } from './tree';
 
 const TOKEN = '0123456789abcdef';
@@ -1031,5 +1033,152 @@ describe('picking a star', () => {
 			.map((d) => (d.material as ShaderMaterial).uniforms.uPickBase.value as number);
 		system.dispose();
 		for (const base of bases) expect(system.pickedStar(base)).toBeNull();
+	});
+});
+
+describe('CPU rays of the dust on a device with no sky map', () => {
+	/** The part of `StarDust` that the starfield calls. */
+	class FakeDust {
+		nodeMode = true;
+		epoch = 1;
+		share = 1;
+		readonly update = vi.fn();
+		readonly apply = vi.fn();
+		readonly dispose = vi.fn();
+		credits = () => [];
+		busy = () => false;
+		sample = () => ({
+			places: [],
+			sun: new Float64Array(),
+			bound: new Float64Array()
+		});
+		shiftOf = () => 2;
+		pointShift = () => 1.5;
+	}
+
+	async function drawnWith(dust: FakeDust) {
+		buildTree([10, 500, 10, 10, 10, 10, 10, 1000]);
+		const { camera, focus } = setup();
+		dust.nodeMode = false;
+		const system = new StarfieldSystem(
+			fakeCtx(),
+			new Scene(),
+			{ points: 1e6, bytes: 1e9, fetches: 8 },
+			() => {},
+			new PickRegistry(),
+			dust as unknown as StarDust
+		);
+		await settle(system, camera, focus);
+		const step = () => {
+			clock += 200;
+			system.update(camera, focus, 1, 1, clock);
+		};
+		const shifts = () =>
+			system.group.children
+				.filter((c): c is Points => c instanceof Points)
+				.map((c) => (c.material as ShaderMaterial).uniforms.uDustNode.value as number);
+		return { system, step, shifts };
+	}
+
+	/** A clock that runs 1 ms on each read: a frame has time for two nodes. */
+	function slowClock(): void {
+		let t = 0;
+		vi.spyOn(performance, 'now').mockImplementation(() => t++);
+	}
+
+	it('gives every row the bound of its colour and magnitude', async () => {
+		const { system } = await drawnWith(new FakeDust());
+		const drawn = system.group.children.filter((c): c is Points => c instanceof Points);
+		expect(drawn.length).toBeGreaterThan(0);
+		// The fixture rows have BP-RP 0 and absolute G 10.
+		const [expected] = dustBounds([0], [10], new Uint8Array(1));
+		for (const { geometry } of drawn) {
+			const bound = geometry.getAttribute('dustBound');
+			expect(bound.normalized).toBe(true);
+			expect(bound.count).toBe(geometry.getAttribute('mag').count);
+			expect(Array.from(bound.array as Uint8Array).every((byte) => byte === expected)).toBe(true);
+		}
+		system.dispose();
+	});
+
+	it('gives the Sun’s point the stars’ own uniforms, but its own gain', async () => {
+		const { system } = await drawnWith(new FakeDust());
+		const point = new Points(new BufferGeometry(), makeStarMaterial(starUniforms()));
+		const { uniforms } = point.material as ShaderMaterial;
+		const gain = uniforms.uGain;
+		system.updateLocalStar(point, false);
+		const node = system.group.children.find((c): c is Points => c instanceof Points)!;
+		const stars = (node.material as ShaderMaterial).uniforms;
+		const shared = [
+			'uLimit',
+			'uPixelRatio',
+			'uDustCam',
+			'uDustSun',
+			'uDustAxes',
+			'uDustOrigin',
+			'uDustShare'
+		];
+		for (const name of shared) expect(uniforms[name]).toBe(stars[name]);
+		expect(uniforms.uGain).toBe(gain);
+		expect(uniforms.uGain).not.toBe(stars.uGain);
+		system.dispose();
+	});
+
+	it('takes the shifts away when node mode ends, so a map does not count them twice', async () => {
+		const dust = new FakeDust();
+		const { system, step, shifts } = await drawnWith(dust);
+		const point = new Points(new BufferGeometry(), makeStarMaterial(starUniforms()));
+		const local = () => (point.material as ShaderMaterial).uniforms.uDustNode.value as number;
+		dust.nodeMode = true;
+		step();
+		system.updateLocalStar(point, false);
+		expect(shifts()).toEqual([2, 2, 2]);
+		expect(local()).toBe(1.5);
+
+		dust.nodeMode = false;
+		step();
+		system.updateLocalStar(point, false);
+		expect(shifts()).toEqual([0, 0, 0]);
+		expect(local()).toBe(0);
+
+		// Back in node mode every node works out its shift again.
+		dust.nodeMode = true;
+		step();
+		system.updateLocalStar(point, false);
+		expect(shifts()).toEqual([2, 2, 2]);
+		expect(local()).toBe(1.5);
+		system.dispose();
+	});
+
+	it('lets the loop rest when node mode ends with rays left', async () => {
+		const dust = new FakeDust();
+		const { system, step } = await drawnWith(dust);
+		dust.nodeMode = true;
+		step();
+		expect(system.busy()).toBe(false);
+		dust.epoch++;
+		slowClock();
+		step();
+		expect(system.busy()).toBe(true);
+		dust.nodeMode = false;
+		vi.restoreAllMocks();
+		step();
+		expect(system.busy()).toBe(false);
+		system.dispose();
+	});
+
+	it('goes on from the node where the last frame ran out of time', async () => {
+		const dust = new FakeDust();
+		const { system, step, shifts } = await drawnWith(dust);
+		dust.nodeMode = true;
+		// The epoch moves on each frame, as it does under a moving camera.
+		slowClock();
+		dust.epoch++;
+		step();
+		expect(shifts().filter((shift) => shift > 0)).toHaveLength(2);
+		dust.epoch++;
+		step();
+		expect(shifts()).toEqual([2, 2, 2]);
+		system.dispose();
 	});
 });

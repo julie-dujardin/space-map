@@ -11,8 +11,10 @@ import { DataArrayTexture } from 'three';
 import { DataTexture } from 'three';
 import { Group } from 'three';
 import { InstancedMesh } from 'three';
+import { IUniform } from 'three';
 import type { Line } from 'three';
 import { Material } from 'three';
+import { Matrix3 } from 'three';
 import { Mesh } from 'three';
 import { MeshStandardMaterial } from 'three';
 import { Object3D } from 'three';
@@ -28,6 +30,7 @@ import { TextureDataType } from 'three';
 import { Vector2 } from 'three';
 import { Vector3 } from 'three';
 import { Vector4 } from 'three';
+import type { WebGLRenderer } from 'three';
 
 // @public (undocumented)
 export type Anchor = InertialAnchor | SurfaceAnchor;

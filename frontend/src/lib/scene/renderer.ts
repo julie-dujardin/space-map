@@ -61,11 +61,13 @@ import {
 import { isReversedDepth } from './setup/depth-mode';
 import {
 	currentRenderTier,
+	dustPlan,
 	renderPixelRatio,
 	starBudget,
 	type RenderTierPreset
 } from './render-tier';
 import { ConstellationSystem } from './constellations/constellations';
+import { StarDust } from './dust/star-dust';
 import { StarfieldSystem } from './starfield/starfield';
 import { extrasolarObjectId } from '$lib/fetch/extrasolar/ids';
 import { ExoplanetSystems } from '$lib/scene/exoplanets/systems';
@@ -639,7 +641,8 @@ export class SceneRenderer {
 			this.scene,
 			starBudget(),
 			this.invalidate,
-			this.pointClouds.pickRegistry
+			this.pointClouds.pickRegistry,
+			new StarDust(this.renderer, dustPlan(), this.invalidate)
 		);
 		this.constellations = new ConstellationSystem(
 			ctx,
@@ -3537,6 +3540,7 @@ export class SceneRenderer {
 		}
 		this.pointClouds.setPointBudget(this.tier.pointBudget);
 		this.starfield.setBudget(starBudget());
+		this.starfield.dust?.setPlan(dustPlan());
 	}
 
 	resize(width: number, height: number): void {

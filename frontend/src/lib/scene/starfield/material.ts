@@ -3,19 +3,24 @@
  * from its absolute magnitude and its distance to the camera, so one node
  * draws right from anywhere. A star at the limit magnitude draws nothing and
  * brightens over the first magnitude above it, so a node that loads at the
- * limit does not pop in.
+ * limit does not pop in. Dust (`scene/dust`) changes the magnitude and colour
+ * before the limit test, so a star that dust hides also leaves the pick pass.
  */
 
 import {
 	AddEquation,
 	CustomBlending,
+	Matrix3,
 	NoBlending,
 	OneFactor,
 	OneMinusDstColorFactor,
 	ShaderMaterial,
 	Vector3,
-	type IUniform
+	type IUniform,
+	type Texture
 } from 'three';
+import { BOUND_MAX, DUST_COLOUR_GLSL, K_G } from '$lib/scene/dust/extinction';
+import { DUST_COLUMN_GLSL } from '$lib/scene/dust/lookup';
 import { clampToFarGlsl, isReversedDepth } from '$lib/scene/setup/depth-mode';
 import { PC_SCENE } from './tree';
 
@@ -27,13 +32,28 @@ export interface StarUniforms {
 	uPixelRatio: IUniform<number>;
 	/** Gain on every star. It follows the sky's dimming in daylight. */
 	uGain: IUniform<number>;
+	/** Sky map from `uDustOrigin`, read relative to that origin. */
+	uDustCam: IUniform<Texture | null>;
+	/** Sky map from the Sun. */
+	uDustSun: IUniform<Texture | null>;
+	/** Tree axes to nest axes. */
+	uDustAxes: IUniform<Matrix3>;
+	/** Origin of `uDustCam`, in pc on nest axes. */
+	uDustOrigin: IUniform<Vector3>;
+	/** Share of the sky maps' effect. At 0 a star reads no texture. */
+	uDustShare: IUniform<number>;
 }
 
 export function starUniforms(): StarUniforms {
 	return {
 		uLimit: { value: 7 },
 		uPixelRatio: { value: 1 },
-		uGain: { value: 1 }
+		uGain: { value: 1 },
+		uDustCam: { value: null },
+		uDustSun: { value: null },
+		uDustAxes: { value: new Matrix3() },
+		uDustOrigin: { value: new Vector3() },
+		uDustShare: { value: 0 }
 	};
 }
 
@@ -65,16 +85,34 @@ uniform float uFloor;
 uniform float uDistancePc;
 uniform vec3 uTint;
 uniform ivec4 uHidden[${HIDDEN_VECTORS}];
+uniform highp sampler2DArray uDustCam;
+uniform highp sampler2DArray uDustSun;
+uniform highp mat3 uDustAxes;
+uniform highp vec3 uDustOrigin;
+uniform highp float uDustShare;
+uniform highp float uDustNode;
+uniform highp vec3 uStarBase;
 attribute float mag;
 attribute vec3 starColour;
+attribute float dustBound;
 varying vec3 vColour;
 ${pick ? 'uniform highp uint uPickBase;\nflat varying highp uint vPick;' : ''}
+${DUST_COLUMN_GLSL}
+${DUST_COLOUR_GLSL}
 
 void main() {
 	${pick ? 'vPick = uPickBase + uint(gl_VertexID);' : ''}
 	vec4 mv = modelViewMatrix * vec4(position, 1.0);
 	float pc = uDistancePc > 0.0 ? uDistancePc : length(mv.xyz) / ${PC_SCENE.toFixed(4)};
-	float m = mag + 5.0 * log2(max(pc, 1e-9)) * 0.30103 - 5.0;
+	// The catalogue magnitude holds the Sun's dust. A star takes the change.
+	highp float dust = uDustNode;
+	if (uDustShare > 0.0 && mv.z < 0.0) {
+		highp vec3 star = uDustAxes * (uStarBase + position);
+		dust += uDustShare * (dustColumn(uDustCam, uDustOrigin, star - uDustOrigin) - dustColumn(uDustSun, vec3(0.0), star));
+	}
+	// A gain past what the star's colour and brightness allow is an error of the nest.
+	dust = max(dust, -dustBound * ${BOUND_MAX.toFixed(1)});
+	float m = mag + 5.0 * log2(max(pc, 1e-9)) * 0.30103 - 5.0 + ${K_G.toFixed(3)} * dust;
 	float above = max(uLimit - m, uFloor);
 	ivec4 vertex = ivec4(gl_VertexID);
 	bool hidden = ${Array.from({ length: HIDDEN_VECTORS }, (_, k) => `any(equal(vertex, uHidden[${k}]))`).join(' || ')};
@@ -90,7 +128,7 @@ void main() {
 	float energy = ${CORE_AT_LIMIT.toFixed(3)} * exp2(above * ${(0.4 * CONTRAST * Math.log2(10)).toFixed(5)});
 	float core = min(energy, 1.0);
 	float size = ${DOT_PX.toFixed(2)} * sqrt(max(energy, 1.0));
-	vColour = starColour * uTint * core * fade * uGain;
+	vColour = dustColour(starColour, dust) * uTint * core * fade * uGain;
 	gl_Position = projectionMatrix * mv;
 	// Past the far plane a star stays on it, behind everything else.
 	${clampToFarGlsl()}
@@ -151,6 +189,10 @@ export function makeStarMaterial(shared: StarUniforms, floor = NO_FLOOR): Shader
 			// A local star's proxy must retain its true photometric distance.
 			uDistancePc: { value: 0 },
 			uTint: { value: new Vector3(1, 1, 1) },
+			// The change of dust column of a node with no sky map.
+			uDustNode: { value: 0 },
+			// Tree position that `position` starts from.
+			uStarBase: { value: new Vector3() },
 			// Rows drawn on their own, -1 for none.
 			uHidden: { value: new Int32Array(HIDDEN_ROWS).fill(-1) }
 		},

@@ -15,6 +15,7 @@ import {
 	Vector3
 } from 'three';
 import { SUN_LIGHT_INTENSITY } from '$lib/scene/lighting';
+import { dustBounds } from '$lib/scene/dust/extinction';
 import { starColours } from '../starfield/colour';
 import { makeStarMaterial, starUniforms } from '../starfield/material';
 import { POINT_CLOUD_RENDER_ORDER } from './pointcloud';
@@ -169,6 +170,8 @@ function makeStarPoint(): Points {
 	geometry.setAttribute('mag', new Float32BufferAttribute([SUN_ABS_G], 1));
 	const colour = starColours(new Float32Array([SUN_BP_RP]), new Uint8Array(3));
 	geometry.setAttribute('starColour', new BufferAttribute(colour, 3, true));
+	const bound = dustBounds([SUN_BP_RP], [SUN_ABS_G], new Uint8Array(1));
+	geometry.setAttribute('dustBound', new BufferAttribute(bound, 1, true));
 	const material = makeStarMaterial(starUniforms());
 	material.uniforms.uFade.value = 1;
 	const points = new Points(geometry, material);

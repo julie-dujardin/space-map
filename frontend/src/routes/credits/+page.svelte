@@ -7,6 +7,7 @@
 	import type { Credits } from '$lib/credits/credits-payload';
 	import type { ExtrasolarCredit } from '$lib/fetch/extrasolar/files';
 	import { fetchStarCatalogueCredits } from '$lib/credits/star-sources';
+	import { fetchNestCredits } from '$lib/scene/dust/nest';
 
 	interface Props {
 		data: { credits: Promise<Credits> };
@@ -14,8 +15,10 @@
 
 	let { data }: Props = $props();
 	const credits = streamed<Credits>(() => data.credits);
-	// The star catalogues credit themselves in the extrasolar export's metadata.
-	const starCredits = fetchStarCatalogueCredits();
+	// The star catalogues and the dust credit themselves in their exports' metadata.
+	const starCredits = Promise.all([fetchStarCatalogueCredits(), fetchNestCredits()]).then((lists) =>
+		lists.flat()
+	);
 	const stars = streamed<ExtrasolarCredit[]>(() => starCredits);
 </script>
 

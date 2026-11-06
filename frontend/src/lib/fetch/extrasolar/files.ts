@@ -170,8 +170,8 @@ export function extrasolarPath(pattern: string, fields: Record<string, string | 
 	});
 }
 
-export function extrasolarUrl(path: string, token: string): string {
-	return `${extrasolarBase()}/v1/x/${path}?v=${token}`;
+export function extrasolarUrl(path: string, token: string, prefix = 'x'): string {
+	return `${extrasolarBase()}/v1/${prefix}/${path}?v=${token}`;
 }
 
 let metadataBase: string | null = null;
@@ -226,6 +226,9 @@ function reportStale(): void {
 export interface ExtrasolarFetchOptions {
 	signal?: AbortSignal;
 	priority?: RequestPriority;
+	/** The directory under `/v1/` that holds the file. Another export in the
+	 *  same tree, such as `dust`, shares the token check and the stale prompt. */
+	prefix?: string;
 }
 
 /**
@@ -237,7 +240,7 @@ export async function fetchExtrasolarFile(
 	token: string,
 	options: ExtrasolarFetchOptions = {}
 ): Promise<Container> {
-	const url = extrasolarUrl(path, token);
+	const url = extrasolarUrl(path, token, options.prefix);
 	const res = await fetchWithTimeout(url, { signal: options.signal, priority: options.priority });
 	if (!res.ok) throw new Error(`${url} returned ${res.status}`);
 	// The server sends no Content-Encoding. The payload is decoded here, into its own buffer.
@@ -258,7 +261,7 @@ export async function fetchExtrasolarJson<T extends { token: string }>(
 	token: string,
 	options: ExtrasolarFetchOptions = {}
 ): Promise<T> {
-	const url = extrasolarUrl(path, token);
+	const url = extrasolarUrl(path, token, options.prefix);
 	const res = await fetchWithTimeout(url, { signal: options.signal, priority: options.priority });
 	if (!res.ok) throw new Error(`${url} returned ${res.status}`);
 	const value = await gunzipJson<T>(res);

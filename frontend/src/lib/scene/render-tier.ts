@@ -1,4 +1,5 @@
 import { isCoarsePointer, isLowEndDevice } from '$lib/device';
+import type { DustPlan } from '$lib/scene/dust/star-dust';
 import { sceneSettings } from '$lib/scene/settings.svelte';
 
 /**
@@ -46,6 +47,9 @@ export interface RenderTierPreset {
 	starBytes: number;
 	/** Star node fetches at once. */
 	starFetches: number;
+	/** How stars read the dust. `high` nest: 26 MB on the wire, 64 MiB on the
+	 *  GPU. `low`: 3.6 MB, 8 MiB. */
+	dust: DustPlan;
 }
 
 const MB = 1024 * 1024;
@@ -66,7 +70,8 @@ export const RENDER_TIER_PRESETS: Record<RenderTier, RenderTierPreset> = {
 		maxSkyboxFace: 2048,
 		starPoints: 1_200_000,
 		starBytes: 80 * MB,
-		starFetches: 3
+		starFetches: 3,
+		dust: { mode: 'node', nest: 'low', passes: 1 }
 	},
 	medium: {
 		maxPixelRatio: 1.5,
@@ -83,7 +88,8 @@ export const RENDER_TIER_PRESETS: Record<RenderTier, RenderTierPreset> = {
 		maxSkyboxFace: 2048,
 		starPoints: 1_600_000,
 		starBytes: 160 * MB,
-		starFetches: 4
+		starFetches: 4,
+		dust: { mode: 'map', nest: 'low', passes: 4 }
 	},
 	high: {
 		maxPixelRatio: 2,
@@ -100,7 +106,8 @@ export const RENDER_TIER_PRESETS: Record<RenderTier, RenderTierPreset> = {
 		maxSkyboxFace: Infinity,
 		starPoints: 2_500_000,
 		starBytes: 400 * MB,
-		starFetches: 6
+		starFetches: 6,
+		dust: { mode: 'map', nest: 'high', passes: 8 }
 	}
 };
 
@@ -153,4 +160,9 @@ export function starBudget(): { points: number; bytes: number; fetches: number }
 	const tier = currentRenderTier();
 	const bytes = isLowEndDevice() ? Math.min(tier.starBytes, 64 * MB) : tier.starBytes;
 	return { points: tier.starPoints, bytes, fetches: tier.starFetches };
+}
+
+/** How stars read the dust: the fill tier, and no sky map where memory is short. */
+export function dustPlan(): DustPlan {
+	return isLowEndDevice() ? RENDER_TIER_PRESETS.low.dust : currentRenderTier().dust;
 }

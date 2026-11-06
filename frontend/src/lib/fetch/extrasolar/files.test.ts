@@ -76,6 +76,18 @@ describe('extrasolar files', () => {
 		off();
 	});
 
+	it('reads another export of the tree by its prefix, with the same token check', async () => {
+		configureHost({ extrasolarUrl: '/data' });
+		const fetch = serveFixture();
+		const container = await fetchExtrasolarFile('levels/0.bin.gz', TOKEN, { prefix: 'dust' });
+		expect(container.rows).toBe(5);
+		expect(fetch.mock.calls[0][0]).toBe(`/data/v1/dust/levels/0.bin.gz?v=${TOKEN}`);
+		expect(extrasolarUrl('a.bin.gz', TOKEN, 'dust')).toBe(`/data/v1/dust/a.bin.gz?v=${TOKEN}`);
+		await expect(
+			fetchExtrasolarFile('levels/0.bin.gz', 'eeeeeeeeeeeeeeee', { prefix: 'dust' })
+		).rejects.toThrow(ExtrasolarStaleError);
+	});
+
 	it('decodes a JSON file and checks its token field', async () => {
 		configureHost({ extrasolarUrl: '/data' });
 		const body = gzipSync(JSON.stringify({ token: TOKEN, hosts: [] }));

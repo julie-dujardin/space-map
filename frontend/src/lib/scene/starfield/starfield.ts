@@ -62,6 +62,9 @@ import { eagerMinorsDone } from '$lib/scene/setup/load-gates';
 import { SwitchFade } from '$lib/scene/visibility/switch-fade';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { AU_SCALE, kmToScene } from '$lib/math/units';
+import { dustBounds } from '$lib/scene/dust/extinction';
+import type { StarDust } from '$lib/scene/dust/star-dust';
+import type { NodeSample } from '$lib/scene/dust/node-shift';
 import { makeStarSurfaceMaterial, updateStarTransition } from '../objects/sun';
 import { PREFETCH_AU, RELEASE_AU, starsTakeSky } from './band';
 import { photosphereColour, starColours } from './colour';
@@ -115,6 +118,8 @@ const ADDS_PER_FRAME = 4;
 const BOOT_GATE_MS = 10_000;
 /** A magnitude no star reaches, for an exact star with none. */
 const NO_MAGNITUDE = 99;
+/** Time (ms) one frame may spend on CPU rays through the dust. */
+const DUST_RAYS_MS = 2;
 /** First of the transparent objects, because the stars are behind everything. */
 export const STAR_RENDER_ORDER = -1;
 /** Pick ranges: a node's rows, and the point of each exact star. */
@@ -162,6 +167,18 @@ interface ExactStar {
 	points: Points;
 	surface: Mesh<SphereGeometry, ShaderMaterial> | null;
 	pick: PickRange | null;
+	dust: DustShift;
+}
+
+/** A change of dust column from CPU rays, and the origin it is for. */
+interface DustShift {
+	shift: number;
+	epoch: number;
+}
+
+/** A node also keeps the stars its shift is the mean of. */
+interface NodeDust extends DustShift {
+	sample: NodeSample | null;
 }
 
 interface StarNode {
@@ -188,6 +205,7 @@ interface StarNode {
 	/** Kept while the node is cached. */
 	pick: PickRange | null;
 	ids: { column: Float64Array; bytes: number } | null;
+	dust: NodeDust;
 }
 
 /** Whether the stars can draw. `unknown` until the tree's metadata is in. */
@@ -209,6 +227,16 @@ export interface StarfieldStats {
 
 const _view = new Vector3();
 
+/** The Sun in tree coordinates. */
+const SUN_TREE: Vec3 = [0, 0, 0];
+
+/** Bring a point's shift up to the origin in use. */
+function shiftPoint(dust: StarDust, state: DustShift, at: Vec3): void {
+	if (state.epoch === dust.epoch) return;
+	state.shift = dust.pointShift(at);
+	state.epoch = dust.epoch;
+}
+
 export class StarfieldSystem {
 	/** Tree coordinates to the floating-origin scene. */
 	readonly group = new Group();
@@ -218,6 +246,8 @@ export class StarfieldSystem {
 	private readonly exactGain = { value: 0 };
 	private tree: ExtrasolarTree | null = null;
 	private credits: ExtrasolarCredit[] = [];
+	private dustCredits: readonly ExtrasolarCredit[] = NO_CREDITS;
+	private mergedCredits: readonly ExtrasolarCredit[] = NO_CREDITS;
 	private root: StarNode | null = null;
 	private readonly nodes = new Map<string, StarNode>();
 	private readonly drawn = new Set<StarNode>();
@@ -254,6 +284,16 @@ export class StarfieldSystem {
 	private readonly matrix: number[] = [];
 	/** Stars drawn on their own at their record's place, by ID. */
 	private readonly exact = new Map<number, ExactStar>();
+	/** CPU rays left to run, after a frame's time ran out. */
+	private dustRaysLeft = false;
+	/** CPU rays ran in the last frame, so that leaving node mode can clear them. */
+	private dustRaysRan = false;
+	/** Where the next frame's rays start, so a frame that runs out of time
+	 *  does not send the next one back to the same nodes. */
+	private dustCursor = 0;
+	private readonly dustQueue: StarNode[] = [];
+	/** The Sun's point, seen from the origin in use. */
+	private readonly sunDust: DustShift = { shift: 0, epoch: -1 };
 
 	constructor(
 		private readonly ctx: ContextManager,
@@ -261,7 +301,9 @@ export class StarfieldSystem {
 		private budget: StarfieldBudget,
 		/** Called when something arrives that the next frame should draw. */
 		private readonly onChange: () => void,
-		private readonly pickRegistry: PickRegistry
+		private readonly pickRegistry: PickRegistry,
+		/** Dust in front of the stars. Null draws them as the catalogue has them. */
+		readonly dust: StarDust | null = null
 	) {
 		this.group.name = 'starfield';
 		this.exactGroup.name = 'starfield-exact';
@@ -332,7 +374,7 @@ export class StarfieldSystem {
 			surface.renderOrder = STAR_RENDER_ORDER - 1;
 			this.exactGroup.add(surface);
 		}
-		return { star, points, surface, pick: null };
+		return { star, points, surface, pick: null, dust: { shift: 0, epoch: -1 } };
 	}
 
 	private dropExact(exact: ExactStar): void {
@@ -511,9 +553,13 @@ export class StarfieldSystem {
 	/** Local stars share exposure, but stay visible independently of the sky layer. */
 	updateLocalStar(points: Points, focused: boolean): void {
 		const uniforms = (points.material as ShaderMaterial).uniforms;
-		uniforms.uLimit.value = this.uniforms.uLimit.value;
-		uniforms.uPixelRatio.value = this.uniforms.uPixelRatio.value;
+		// The point reads the stars' own uniforms, as an exact star does. Its gain
+		// stays its own: it draws inside the solar system, where the stars' gain is 0.
+		if (uniforms.uLimit !== this.uniforms.uLimit) {
+			Object.assign(uniforms, this.uniforms, { uGain: uniforms.uGain });
+		}
 		uniforms.uFloor.value = focused ? FOCUS_FLOOR_MAG : NO_FLOOR;
+		uniforms.uDustNode.value = this.sunDust.shift * (this.dust?.share ?? 0);
 	}
 
 	/** Whether the stars can draw, so that the camera may leave the solar system. */
@@ -523,7 +569,7 @@ export class StarfieldSystem {
 
 	/** True while a frame would change what draws. */
 	busy(): boolean {
-		if (this.loading > 0) return true;
+		if (this.loading > 0 || this.dustRaysLeft || this.dust?.busy()) return true;
 		if (this.sky.fading || this.exactFade.fading || this.outsideFade.fading) return true;
 		if (this.drawn.size === 0) return false;
 		if (Math.abs(this.uniforms.uLimit.value - this.allowedLimit) > 0.01) return true;
@@ -603,7 +649,91 @@ export class StarfieldSystem {
 		const drawing =
 			(this.group.visible && this.drawn.size > 0) ||
 			(this.exactGroup.visible && this.exact.size > 0);
-		this.ctx.credits.setStars(drawing ? this.credits : NO_CREDITS);
+		this.updateDust(cam, drawing, nowMs, dtMs);
+		this.ctx.credits.setStars(drawing ? this.sceneCredits() : NO_CREDITS);
+	}
+
+	/** Stars and the dust in front of them draw together. A store takes this on
+	 *  each frame, so the array changes only when the dust's credits do. */
+	private sceneCredits(): readonly ExtrasolarCredit[] {
+		const dust = this.dust?.credits() ?? NO_CREDITS;
+		if (dust !== this.dustCredits) {
+			this.dustCredits = dust;
+			this.mergedCredits = [...this.credits, ...dust];
+		}
+		return dust.length === 0 ? this.credits : this.mergedCredits;
+	}
+
+	private updateDust(cam: Vec3, drawing: boolean, nowMs: number, dtMs: number): void {
+		const dust = this.dust;
+		if (!dust) return;
+		dust.update(cam, this.active, drawing, nowMs, dtMs);
+		dust.apply(this.uniforms);
+		if (dust.nodeMode) {
+			this.runDustRays(dust);
+			this.dustRaysRan = true;
+		} else if (this.dustRaysRan) {
+			this.dropDustRays();
+		}
+		for (const node of this.drawn) {
+			if (!node.points) continue;
+			(node.points.material as ShaderMaterial).uniforms.uDustNode.value =
+				node.dust.shift * dust.share;
+		}
+		for (const { points, dust: state } of this.exact.values()) {
+			(points.material as ShaderMaterial).uniforms.uDustNode.value = state.shift * dust.share;
+		}
+	}
+
+	/** Bring each drawn node's shift up to the origin in use, in the time one
+	 *  frame may spend. */
+	private runDustRays(dust: StarDust): void {
+		const deadline = performance.now() + DUST_RAYS_MS;
+		this.dustRaysLeft = false;
+		for (const { points, dust: state } of this.exact.values()) {
+			const at = points.position;
+			shiftPoint(dust, state, [at.x, at.y, at.z]);
+		}
+		shiftPoint(dust, this.sunDust, SUN_TREE);
+		const queue = this.dustQueue;
+		queue.length = 0;
+		for (const node of this.drawn) queue.push(node);
+		for (let k = 0; k < queue.length; k++) {
+			const at = (this.dustCursor + k) % queue.length;
+			const node = queue[at];
+			const state = node.dust;
+			if (state.epoch === dust.epoch || !node.data) continue;
+			if (performance.now() > deadline) {
+				this.dustRaysLeft = true;
+				this.dustCursor = at;
+				return;
+			}
+			const { geometry, info } = node.data;
+			const offsets = geometry.getAttribute('position').array as Float32Array;
+			const bounds = geometry.getAttribute('dustBound').array as Uint8Array;
+			state.sample ??= dust.sample(offsets, bounds, info.centre);
+			if (state.sample) state.shift = dust.shiftOf(state.sample);
+			state.epoch = dust.epoch;
+		}
+		this.dustCursor = 0;
+	}
+
+	/** Node mode ended. A shift is for the origin it was made at, and the maps
+	 *  count the same change, so none may stay. */
+	private dropDustRays(): void {
+		this.dustRaysRan = false;
+		this.dustRaysLeft = false;
+		this.dustCursor = 0;
+		this.sunDust.shift = 0;
+		this.sunDust.epoch = -1;
+		for (const node of this.nodes.values()) {
+			node.dust.shift = 0;
+			node.dust.epoch = -1;
+		}
+		for (const exact of this.exact.values()) {
+			exact.dust.shift = 0;
+			exact.dust.epoch = -1;
+		}
 	}
 
 	/** Put an exact star where its orbit has it now. */
@@ -612,6 +742,7 @@ export class StarfieldSystem {
 		if (!at) return;
 		points.position.set(...at);
 		points.updateMatrix();
+		((points.material as ShaderMaterial).uniforms.uStarBase.value as Vector3).set(...at);
 		if (!surface) return;
 		surface.position.copy(points.position);
 		surface.updateMatrix();
@@ -658,6 +789,7 @@ export class StarfieldSystem {
 		}
 		this.nodes.clear();
 		this.setExactStars([]);
+		this.dust?.dispose();
 		this.group.removeFromParent();
 		this.exactGroup.removeFromParent();
 	}
@@ -747,7 +879,8 @@ export class StarfieldSystem {
 			fade: 0,
 			hidden: new Map(),
 			pick: null,
-			ids: null
+			ids: null,
+			dust: { sample: null, shift: 0, epoch: -1 }
 		};
 		this.nodes.set(name, node);
 		return node;
@@ -857,12 +990,17 @@ export class StarfieldSystem {
 			position[3 * i + 1] = y[i];
 			position[3 * i + 2] = z[i];
 		}
-		const colour = starColours(container.float32('colour'), new Uint8Array(3 * rows));
+		const bpRp = container.float32('colour');
+		const mag = container.float32('mag');
+		const colour = starColours(bpRp, new Uint8Array(3 * rows));
+		const bound = dustBounds(bpRp, mag, new Uint8Array(rows));
 		const geometry = new BufferGeometry();
 		geometry.setAttribute('position', new BufferAttribute(position, 3));
-		geometry.setAttribute('mag', new BufferAttribute(container.float32('mag'), 1));
+		geometry.setAttribute('mag', new BufferAttribute(mag, 1));
 		geometry.setAttribute('starColour', new BufferAttribute(colour, 3, true));
-		const bytes = container.buffer.byteLength + position.byteLength + colour.byteLength;
+		geometry.setAttribute('dustBound', new BufferAttribute(bound, 1, true));
+		const bytes =
+			container.buffer.byteLength + position.byteLength + colour.byteLength + bound.byteLength;
 		node.data = { container, info, geometry, bytes };
 		node.state = 'loaded';
 		node.centre = info.centre;
@@ -958,7 +1096,9 @@ export class StarfieldSystem {
 
 	private draw(node: StarNode): void {
 		const data = node.data!;
-		const points = new Points(data.geometry, makeStarMaterial(this.uniforms));
+		const material = makeStarMaterial(this.uniforms);
+		(material.uniforms.uStarBase.value as Vector3).set(...data.info.centre);
+		const points = new Points(data.geometry, material);
 		points.position.set(...data.info.centre);
 		points.updateMatrix();
 		points.matrixAutoUpdate = false;
@@ -980,12 +1120,17 @@ export class StarfieldSystem {
 		// No magnitude in the record: it draws at the limit.
 		const mag = star.absMag ?? NO_MAGNITUDE;
 		geometry.setAttribute('mag', new BufferAttribute(new Float32Array([mag]), 1));
-		const colour = starColours(new Float32Array([star.colour ?? NaN]), new Uint8Array(3));
+		const bpRp = new Float32Array([star.colour ?? NaN]);
+		const colour = starColours(bpRp, new Uint8Array(3));
 		geometry.setAttribute('starColour', new BufferAttribute(colour, 3, true));
+		const bound = dustBounds(bpRp, [mag], new Uint8Array(1));
+		geometry.setAttribute('dustBound', new BufferAttribute(bound, 1, true));
 		const material = makeStarMaterial({ ...this.uniforms, uGain: this.exactGain }, FOCUS_FLOOR_MAG);
 		material.uniforms.uFade.value = 1;
 		const points = new Points(geometry, material);
-		points.position.set(...(star.drawnAt ? sceneToTree(...star.drawnAt) : star.tree!));
+		const at = star.drawnAt ? sceneToTree(...star.drawnAt) : star.tree!;
+		points.position.set(...at);
+		(material.uniforms.uStarBase.value as Vector3).set(...at);
 		points.updateMatrix();
 		points.matrixAutoUpdate = false;
 		points.frustumCulled = false;

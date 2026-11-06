@@ -18,6 +18,7 @@ export const KIND_TILE = 1;
 export const KIND_SPLIT = 2;
 export const KIND_NODE = 3;
 export const KIND_IDS = 4;
+export const KIND_VOLUME = 5;
 
 const HEADER_SIZE = 32;
 const TOKEN_AT = 8;
