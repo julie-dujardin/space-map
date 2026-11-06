@@ -1,6 +1,6 @@
 # Catalogue light grid (`v1/glow/`)
 
-The light of the Milky Way render tree as a 3D grid, so a client can draw as a glow the stars it does not draw as points. `space-map-glow` builds it from the exported tree and dust nest, and `space-map-export --only glow` writes it. The files sit beside the star tree in the same stored export, under the same base URL, `PUBLIC_EXTRASOLAR_URL`. It holds catalogue light only: no model and no mock stars.
+The light of the Milky Way render tree as a 3D grid, so a client can draw as a glow the stars it does not draw as points, and the model light the catalogue lacks, so the glow holds the whole Galaxy. `space-map-glow` builds the grid from the exported tree and dust nest, `space-map-galaxy` builds the model against that grid, and `space-map-export --only glow` writes both. The files sit beside the star tree in the same stored export, under the same base URL, `PUBLIC_EXTRASOLAR_URL`. The model is smooth light from published structure, labelled as model: no mock stars.
 
 ## Directory structure
 
@@ -10,7 +10,12 @@ v1/glow/
   high/a.bin.gz          the first texture of tier high
   high/b.bin.gz          the second texture of tier high
   low/a.bin.gz, b.bin.gz the same for tier low
+  high/model-inner.bin.gz the model's inner box, tier high
+  high/model-outer.bin.gz the model's outer box, tier high
+  low/model-inner.bin.gz, model-outer.bin.gz the same for tier low
 ```
+
+A build with no model writes the grid alone and no `model` key; a client then draws the catalogue only.
 
 ## Volume files
 
@@ -95,8 +100,35 @@ j    = L · rgb / (r + g + b of rgb) / texture_scale
 - `table`: `magnitudes`, `place`, `place_soft`, and `colour` as the share of R, G and B, every 0.5 mag.
 - `tiers`: for each tier `size`, `shells`, `scale_pc`, `reach_pc`, `mebibytes`, and `files` with `path` and `bytes`.
 - `stars`: `rows`, `light` and `observed` per channel, `past_the_cap_rows`, `past_the_cap_light` and `no_colour_rows`.
-- `credits`: empty. The tree and the nest credit the grid's sources in their own metadata.
+- `model`: the model light, below. Absent when the export holds none.
+- `credits`: the papers and datasets of the model, with the fields of a dust source; empty when the export holds no model. The tree and the nest credit the grid's sources in their own metadata. The nest also lists the papers of the rest layer's shape, which the model reads too.
 
 ## Which stars
 
 Every row of the tree, once. The Sun has no row: the app draws it on its own path. An exact star keeps its row in the grid: the app hides the row at run time, and a voxel cannot, so a star that is focused and fainter than the cut counts twice. Its light is one star's. A row with no Gaia astrometry that sits within 1.5″ and 0.75 mag of a Gaia row repeats that star, and is left out.
+
+## Model light (`model`)
+
+`j_glow = j_cat(fainter than M_cut) + residual`, where `residual = max(0, j_model - j_cat,total)`, voxel by voxel: the model's light less the light of all stars of this grid, where the model holds more. The residual has no cut: it holds stars the catalogue does not have, which never draw as points. One token covers grid and model, because the residual is defined against this grid.
+
+The model has two boxes on nest axes, about `model.centre_pc`, the Galactic centre at (R0, 0, -z0). A sample reads the inner box where it holds the point, else the outer one, else nothing: one fetch.
+
+| Box | Half extent | `high` | `low` | Height map |
+|---|---|---|---|---|
+| inner | 24 x 24 x 3 kpc | 512 x 512 x 32, 16 MiB | 256 x 256 x 16, 2 MiB | asinh, 150 pc |
+| outer | 64 kpc cube | 128³, 4 MiB | 64³, 0.5 MiB | linear |
+
+Each file is kind `5`, info block uint16 width, height, depth, uint8 texture (`2` inner, `3` outer), uint8 tier; one column `texels`, `uint16`, the bits of one half float per texel, x fastest. Upload as `R16F`, `RED`, `HALF_FLOAT`, `LINEAR`, `CLAMP_TO_EDGE`. A texel is R + G + B display flux density per pc³, in flux of M = 0 at 10 pc, with no dust, times `model.texture_scale`.
+
+Texture coordinates of a position `p` (pc, nest axes), with `d = p - centre_pc` and `half` the box's `half_extent_pc`:
+
+```
+u = 0.5 + 0.5 d.x / half.x
+v = 0.5 + 0.5 d.y / half.y
+w = 0.5 + 0.5 asinh(d.z / z_scale) / asinh(half.z / z_scale)   (inner)
+w = 0.5 + 0.5 d.z / half.z                                      (outer)
+```
+
+The colour comes from `model.colour`: `rgb` rows sum to 1. Rows `0 .. radii·heights - 1` are a grid in cylindrical radius from the centre (`radius_step_pc`, `radii` nodes from 0) and height from the plane (`height_step_pc`, `heights` nodes from 0), read bilinearly with both clamped, row `j·radii + i`. Past `reach_pc` from the centre (spherical) a row per shell holds instead: `radii·heights + k`, with `k` the number of `shells_pc` edges below the radius. The light times that row is `j` per channel.
+
+`model.far_side_arms` is the contrast of the young arms past the Galactic centre in this build: 1 draws the published geometry, 0 their mean over azimuth. `catalogue_fade_pc` is `null`, or the distances from the Sun over which a client fades the grid's light to 0, as the residual was built. `components` gives each component's G flux and BP - RP. `boxes` and `tiers` give the sizes and paths.

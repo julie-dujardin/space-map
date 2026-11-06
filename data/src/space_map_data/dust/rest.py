@@ -1,8 +1,9 @@
 """The rest layer: a flagged model for the dust past the observed maps.
 
 It copies the method of Drimmel et al. 2003. Each sightline holds the Planck total
-minus the observed column, clipped at zero, along an exponential disc. A later
-phase replaces this layer.
+minus the observed column, clipped at zero, along a dust disc with arms. The disc
+shares the young light's arms, warp and flare (`galaxy.geometry`), so lanes sit on
+the arms of the model light.
 """
 
 import json
@@ -21,6 +22,7 @@ from space_map_data.dust.parallel import forked_map
 from space_map_data.dust.resample import fill
 from space_map_data.dust.sky import SKY_DIR
 from space_map_data.dust.sources import BUILD_DIR, atomic_npy
+from space_map_data.galaxy import geometry
 
 logger = logging.getLogger(__name__)
 
@@ -28,31 +30,14 @@ SHAPE_DIR = BUILD_DIR / "rest-shape"
 SHAPE_POINTS = 4
 RAY_DEPTH = 8
 SIGHTLINE_DEPTH = 7
-# Drimmel & Spergel 2001, Table 1 and section 3, with the Sun at R = 8 kpc.
-R_SUN = 8000.0
-Z_SUN = 15.0
-SCALE_LENGTH = 2260.0
-SCALE_HEIGHT = 134.4
-FLARE = 14.8e-3
-FLARE_RADIUS = 4400.0
 # A sightline may hold up to this many times the Planck total scaled to the whole
 # shape. Off the plane the shape has no room, and the remainder there is noise.
 MAX_OVER_PLANCK_SCALE = 3.0
 RAY_CHUNK = 20000
 
 
-def disc_shape(x, y, z) -> np.ndarray:
-    """The disc density, 1 at the solar circle on the plane."""
-    radius = np.hypot(x - R_SUN, y)
-    height = SCALE_HEIGHT + FLARE * np.maximum(radius - FLARE_RADIUS, 0.0)
-    inner = 0.5 * R_SUN
-    radial = np.exp(-(np.maximum(radius, inner) - R_SUN) / SCALE_LENGTH)
-    hole = np.exp(-(((np.minimum(radius - inner, 0.0)) / (0.25 * R_SUN)) ** 2))
-    return radial * hole / np.cosh((z + Z_SUN) / height) ** 2
-
-
 def _shape_sampler(x, y, z):
-    return disc_shape(x, y, z), np.ones(len(x), np.float32)
+    return geometry.dust_shape(x, y, z), np.ones(len(x), np.float32)
 
 
 def build_shape(workers: int) -> None:

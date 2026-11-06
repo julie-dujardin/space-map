@@ -15,6 +15,7 @@ from space_map_data.export import swap
 from space_map_data.export.extrasolar import container
 from space_map_data.export.extrasolar.render import NODE_INFO
 from space_map_data.extrasolar.placement import GAIA_ASTROMETRY
+from space_map_data.galaxy.credits import PAPERS
 from space_map_data.glow import build, deposit, duplicates, form, gates, sky_map, tree
 from space_map_data.glow.grid import SkyGrid
 
@@ -208,6 +209,12 @@ def small(tmp_path, monkeypatch):
         "low": SkyGrid(4, 6, 20.0, 400_000.0),
     }
     monkeypatch.setattr(build, "GRIDS", grids)
+    # No model build: the grid goes alone, and the real model build stays unread.
+    monkeypatch.setattr(
+        glow_export.export_glow,
+        "__defaults__",
+        (build.BUILD_DIR, tmp_path / "no-model"),
+    )
     directory = tmp_path / "build"
     directory.mkdir()
     _small_build(directory)
@@ -443,6 +450,95 @@ class TestBuildSteps:
         assert (report["tree"], report["ingest"]) == ("tree", 4)
 
 
+def _model_build(directory, glow_dir) -> None:
+    """A model build of tiny boxes that belongs to the grid in `glow_dir`."""
+    from space_map_data.dust.encode import file_digest
+    from space_map_data.extrasolar.store import write_json
+    from space_map_data.galaxy import build as model_build
+
+    directory.mkdir()
+    digests, shapes = {}, {}
+    rng = np.random.default_rng(5)
+    for box in model_build.BOXES:
+        for tier in model_build.CAT_TIERS:
+            bits = rng.integers(0, 30000, (4, 3, 2)).astype(np.uint16)
+            path = directory / model_build.bits_name(box, tier)
+            np.save(path, bits)
+            digests[path.name] = file_digest(path)
+            shapes[path.name] = list(bits.shape)
+    write_json(directory / model_build.TABLE_FILE, {"rgb": [[1 / 3] * 3]})
+    write_json(
+        directory / "calibration.json",
+        {"flux": {"bulge": 1.0}, "bp_rp": {"bulge": 1.1}, "fit": {"lian_scale": 0.75}},
+    )
+    write_json(
+        directory / model_build.ENCODING_FILE,
+        {
+            "scale": 1024.0,
+            "digests": digests,
+            "shapes": shapes,
+            "centre_pc": [8277.0, 0.0, -20.8],
+            "boxes": {
+                "inner": {"half_extent_pc": [400.0, 300.0, 200.0], "z_scale_pc": 50.0},
+                "outer": {"half_extent_pc": [900.0, 900.0, 900.0], "z_scale_pc": 0.0},
+            },
+            "glow": model_build.glow_inputs(glow_dir),
+            "far_side": 1.0,
+            "catalogue_fade_pc": [2000.0, 4000.0],
+            "table": file_digest(directory / model_build.TABLE_FILE),
+            "calibration": file_digest(directory / "calibration.json"),
+        },
+    )
+
+
+class TestExportWithModel:
+    def test_the_model_goes_with_the_grid_under_one_token(self, small, tmp_path):
+        model = tmp_path / "model"
+        _model_build(model, small)
+        root = _root(tmp_path / "out")
+        metadata = glow_export.export_glow(root, small, model)
+        entry = metadata["model"]["tiers"]["high"]["inner"]
+        payload = container.read(root / "v1" / "glow" / entry["path"])
+        assert payload.kind == container.KIND_VOLUME
+        assert payload.token == metadata["token"]
+        bits = np.load(model / "bits.inner.high.npy")
+        assert np.array_equal(
+            payload.numpy("texels"), bits.transpose(2, 1, 0).reshape(-1)
+        )
+        assert metadata["model"]["catalogue_fade_pc"] == [2000.0, 4000.0]
+        assert [c["key"] for c in metadata["credits"]] == list(PAPERS)
+
+    def test_the_boxes_and_sizes_are_those_the_model_encoded(self, small, tmp_path):
+        model = tmp_path / "model"
+        _model_build(model, small)
+        metadata = glow_export.export_glow(_root(tmp_path / "out"), small, model)
+        block = metadata["model"]
+        assert block["tiers"]["low"]["outer"]["size"] == [4, 3, 2]
+        assert block["centre_pc"] == [8277.0, 0.0, -20.8]
+        assert block["boxes"]["inner"] == {
+            "half_extent_pc": [400.0, 300.0, 200.0],
+            "z_map": "asinh",
+            "z_scale_pc": 50.0,
+        }
+        assert block["boxes"]["outer"]["z_map"] == "linear"
+
+    def test_a_model_on_a_changed_calibration_is_refused(self, small, tmp_path):
+        model = tmp_path / "model"
+        _model_build(model, small)
+        (model / "calibration.json").write_text("{}")
+        with pytest.raises(swap.ExportRefused, match="calibration"):
+            glow_export.export_glow(_root(tmp_path / "out"), small, model)
+
+    def test_a_model_of_another_grid_is_refused(self, small, tmp_path):
+        model = tmp_path / "model"
+        _model_build(model, small)
+        raw = json.loads((model / "encoding.json").read_text())
+        raw["glow"]["tree"] = "another"
+        (model / "encoding.json").write_text(json.dumps(raw))
+        with pytest.raises(swap.ExportRefused):
+            glow_export.export_glow(_root(tmp_path / "out"), small, model)
+
+
 class TestExportCommand:
     """`space-map-export --only glow` reads the builds it is given, and ends on a
     stale input with the refusal's message."""
@@ -458,11 +554,30 @@ class TestExportCommand:
         export_main.cli()
 
     def test_the_grid_comes_from_the_named_build(self, small, tmp_path, monkeypatch):
-        self.run(monkeypatch, small, _root(tmp_path / "out"))
+        self.run(
+            monkeypatch,
+            small,
+            _root(tmp_path / "out"),
+            "--model-build",
+            str(tmp_path / "no-model"),
+        )
         assert (tmp_path / "out" / "v1" / "glow" / "metadata.json").exists()
 
     def test_a_stale_grid_is_refused(self, small, tmp_path, monkeypatch):
         np.save(small / build.bits_name("high"), np.zeros(3))
+        model = str(tmp_path / "no-model")
         with pytest.raises(SystemExit, match="export refused: .*is not the file of"):
-            self.run(monkeypatch, small, _root(tmp_path / "out"))
+            self.run(
+                monkeypatch, small, _root(tmp_path / "out"), "--model-build", model
+            )
+        assert not (tmp_path / "out" / "v1" / "glow").exists()
+
+    def test_a_stale_model_is_refused(self, small, tmp_path, monkeypatch):
+        model = tmp_path / "model"
+        _model_build(model, small)
+        (model / "calibration.json").write_text("{}")
+        with pytest.raises(SystemExit, match="export refused: .*calibration"):
+            self.run(
+                monkeypatch, small, _root(tmp_path / "out"), "--model-build", str(model)
+            )
         assert not (tmp_path / "out" / "v1" / "glow").exists()

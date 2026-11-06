@@ -55,8 +55,8 @@ The hardware filter works on codes, before the decode, and the decode is convex.
 - `calibration`: the factor from each cumulative disc map to A0 at 550 nm, fitted in the overlap with the Edenhofer maps.
 - `handovers`: the bands in pc where one layer fades into the next. `local_pc` and `regional_pc` are distances from the Sun. The cube bands of `vergely` are box faces and heights.
 - `levels`: for each level `level`, `half_extent_pc`, `floor`, `top`, then `high` and `low`, each with `path`, `size` and `bytes`.
-- `layers`: the four layers, `local`, `regional`, `disc` and `rest`, with `sources`, `distribution` and `model`. `model` is true on `rest`: that layer is a placeholder, with no observed 3D position. `share_of_sun_column_by_level` is its share in the part of the Sun-view column that each level serves. `shape` and `unplaced_share_of_remainder` describe it.
-- `credits`: every source with `key`, `name`, `citation`, `source`, `license`, `distribution`, and `attribution` where the source asks for a text.
+- `layers`: the four layers, `local`, `regional`, `disc` and `rest`, with `sources`, `distribution` and `model`. `model` is true on `rest`: that layer has no observed 3D position. Its shape is the model Galaxy's dust disc, which shares the young light's arms, warp and flare (`space_map_data.galaxy.geometry`). `share_of_sun_column_by_level` is its share in the part of the Sun-view column that each level serves. `shape` and `unplaced_share_of_remainder` describe it.
+- `credits`: every source with `key`, `name`, `citation`, `source`, `license`, `distribution`, and `attribution` where the source asks for a text; then the papers of the rest layer's shape, with no `license`.
 
 ## Layers
 
@@ -65,4 +65,4 @@ The hardware filter works on codes, before the decode, and the decode is convex.
 | `local` | to 1,050 pc, fades out to 1,240 pc | Edenhofer 2024 mean × 2.680. Its integrated inner 69 pc column is spread along each ray. |
 | `regional` | to 1,500 pc, fades out to 1,950 pc | The Edenhofer 2 kpc map. In `vergely`, the Vergely 2022 v2 cubes lie over it, to ±3 kpc and ±5 kpc, at \|z\| < 400 pc. |
 | `disc` | in the reliable range of each sightline, from `DM_reliable_min` to `DM_reliable_max`, each faded over 0.5 mag | Bayestar19 and DECaPS, as density per distance bin. A radial spoke is expected here: a distance bin is far longer than a pixel is wide. |
-| `rest` | the share that the others leave | The Planck total minus the observed column, along an exponential disc. |
+| `rest` | the share that the others leave | The Planck total minus the observed column, along Drimmel & Spergel's dust disc and arms on the young arms of Reid et al. 2019 and Drimmel et al. 2025. |

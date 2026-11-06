@@ -64,6 +64,10 @@ def bits_name(tier: str) -> str:
     return f"bits.{tier}.npy"
 
 
+def channels_name(tier: str) -> str:
+    return f"channels.{tier}.npy"
+
+
 def build_sun_map(build: Path, workers: int) -> None:
     """The column to each star, as the shader reads it from the Sun's map."""
     with served(EXTRASOLAR_DIR):
@@ -115,9 +119,22 @@ def densities(grid: SkyGrid, cube: np.ndarray, neutral: float) -> np.ndarray:
     return values.astype(np.float32)
 
 
+def channel_densities(grid: SkyGrid, cube: np.ndarray) -> np.ndarray:
+    """The light of all stars of each voxel per channel, as flux density per pc^3,
+    with the ring. The model's residual subtracts it."""
+    light = cube.sum(axis=-2)
+    volumes = grid.volumes()
+    used = volumes > 0
+    light[used] /= volumes[used, None]
+    light[~used] = 0.0
+    grid.fill_ring(light)
+    return light.astype(np.float32)
+
+
 def build_deposit(build: Path, workers: int) -> None:
-    """One pass over the tree: the values of each tier, the sample and the sums. The
-    export is held off for the pass, and the tokens are those it ran on."""
+    """One pass over the tree: the values of each tier, their light per channel, the
+    sample and the sums. The export is held off for the pass, and the tokens are
+    those it ran on."""
     with served(EXTRASOLAR_DIR):
         token = tree_token()
         nest = sky_map.nest_metadata()
@@ -141,6 +158,7 @@ def build_deposit(build: Path, workers: int) -> None:
         off = float(np.abs(summed / result.totals.light - 1).max())
         logger.info("%s: light in the grid against the stars: %.3g", tier, off)
         atomic_npy(build / values_name(tier), densities(grid, cube, table.neutral_tint))
+        atomic_npy(build / channels_name(tier), channel_densities(grid, cube))
     write_json(
         build / TOTALS,
         {

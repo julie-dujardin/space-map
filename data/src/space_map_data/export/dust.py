@@ -32,23 +32,26 @@ from space_map_data.dust.nest import (
     REGIONAL_FADE,
     galactic_to_icrs,
 )
-from space_map_data.dust.rest import (
-    FLARE,
-    FLARE_RADIUS,
-    MAX_OVER_PLANCK_SCALE,
-    R_SUN,
-    SCALE_HEIGHT,
-    SCALE_LENGTH,
-    Z_SUN,
-)
+from space_map_data.dust.rest import MAX_OVER_PLANCK_SCALE
 from space_map_data.dust.sources import source_terms
 from space_map_data.export import swap
 from space_map_data.export.extrasolar import container
 from space_map_data.export.extrasolar.skycultures import UNDECIDED, combined
+from space_map_data.galaxy import geometry
+from space_map_data.galaxy.credits import paper_credits
 from space_map_data.utils.paths import EXTRASOLAR_DIR
 
 logger = logging.getLogger(__name__)
 
+# The papers behind the rest layer's shape.
+REST_SHAPE_PAPERS = (
+    "drimmel-spergel-2001",
+    "reid-2019",
+    "drimmel-2025",
+    "chen-2019",
+    "gravity-2022",
+    "bennett-bovy-2019",
+)
 # Each source names the download directory that records its terms.
 SOURCES = {
     "edenhofer-2024": {
@@ -95,7 +98,7 @@ LAYERS = {
         ("local", "Edenhofer 2024", ("edenhofer-2024", "zgr23")),
         ("regional", "Edenhofer 2 kpc map", ("edenhofer-2024", "zgr23")),
         ("disc", "Bayestar19, DECaPS", ("bayestar19", "decaps-2025")),
-        ("rest", "Planck total on an exponential disc", ("planck-2013",)),
+        ("rest", "Planck total on the model's dust disc and arms", ("planck-2013",)),
     ),
     "vergely": (
         ("local", "Edenhofer 2024", ("edenhofer-2024", "zgr23")),
@@ -105,7 +108,7 @@ LAYERS = {
             ("vergely-2022", "edenhofer-2024", "zgr23"),
         ),
         ("disc", "Bayestar19, DECaPS", ("bayestar19", "decaps-2025")),
-        ("rest", "Planck total on an exponential disc", ("planck-2013",)),
+        ("rest", "Planck total on the model's dust disc and arms", ("planck-2013",)),
     ),
 }
 
@@ -176,13 +179,12 @@ def _metadata(
     layers[-1]["unplaced_share_of_remainder"] = round(recorded.unplaced_share, 4)
     layers[-1]["share_of_sun_column_by_level"] = recorded.rest_share
     layers[-1]["shape"] = {
-        "reference": "Drimmel & Spergel 2001, Table 1",
-        "scale_length_pc": SCALE_LENGTH,
-        "scale_height_pc": SCALE_HEIGHT,
-        "flare_per_pc": FLARE,
-        "flare_radius_pc": FLARE_RADIUS,
-        "sun_radius_pc": R_SUN,
-        "sun_height_pc": Z_SUN,
+        "reference": "Drimmel & Spergel 2001, Table 1, on the young arms of Reid et al. 2019 and Drimmel et al. 2025, the warp of Chen et al. 2019 and the flare of Reid et al. 2019",
+        "scale_length_pc": geometry.DUST_SCALE_LENGTH_PC,
+        "scale_height_pc": geometry.DUST_SCALE_HEIGHT_PC,
+        "sun_radius_pc": geometry.R0,
+        "sun_height_pc": geometry.Z0,
+        "far_side_arms": geometry.FAR_SIDE_ARMS,
         "max_over_planck_scale": MAX_OVER_PLANCK_SCALE,
     }
     handovers = {"local_pc": LOCAL_FADE, "regional_pc": REGIONAL_FADE}
@@ -210,7 +212,7 @@ def _metadata(
         "handovers": handovers,
         "levels": levels,
         "layers": layers,
-        "credits": sources,
+        "credits": [*sources, *paper_credits(REST_SHAPE_PAPERS)],
     }
 
 

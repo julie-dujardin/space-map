@@ -94,6 +94,12 @@ def cli():
         default=None,
         help="glow: the grid's build (default: glow-build)",
     )
+    parser.add_argument(
+        "--model-build",
+        type=Path,
+        default=None,
+        help="glow: the model build that goes with the grid (default: model-build)",
+    )
     args = parser.parse_args()
 
     with open(DATA_DIR / "logging.toml", "rb") as f:
@@ -119,9 +125,14 @@ def cli():
         if args.only == "glow":
             # Late, because the nest build pulls in h5py, scipy and astropy.
             from space_map_data.export.glow import export_glow_only
+            from space_map_data.galaxy.build import BUILD_DIR as MODEL_BUILD_DIR
             from space_map_data.glow.build import BUILD_DIR as GLOW_BUILD_DIR
 
-            export_glow_only(args.extrasolar_root, args.glow_build or GLOW_BUILD_DIR)
+            export_glow_only(
+                args.extrasolar_root,
+                args.glow_build or GLOW_BUILD_DIR,
+                args.model_build or MODEL_BUILD_DIR,
+            )
             return
     except ExportRefused as error:
         raise SystemExit(f"export refused: {error}") from None

@@ -10,12 +10,12 @@ from space_map_data.dust import disc, march, merge, nest, resample
 from space_map_data.dust.encode import Encoding, block_mean, compensate, filtered_mean
 from space_map_data.dust.layers import inner_density
 from space_map_data.dust.nest import Level, cube_weights, local_weight, regional_weight
-from space_map_data.dust.rest import disc_shape
 from space_map_data.export import dust as dust_export
 from space_map_data.export import swap
 from space_map_data.export.dust import volume_payload
 from space_map_data.export.extrasolar import container
 from space_map_data.export.extrasolar.container import VOLUME_INFO
+from space_map_data.galaxy import geometry
 
 SMALL = Level(0, (10.0, 10.0, 5.0), (8, 8, 4))
 
@@ -396,19 +396,23 @@ class TestMarch:
 
 
 class TestRestShape:
-    def test_shape_is_one_at_the_solar_circle(self):
-        value = disc_shape(np.array([0.0]), np.array([0.0]), np.array([-15.0]))
-        assert value[0] == pytest.approx(1.0)
+    def test_shape_is_one_on_the_plane_at_the_suns_radius_off_the_arms(self):
+        beta = np.linspace(-np.pi, np.pi, 3600, endpoint=False)
+        R = np.full(len(beta), geometry.R0)
+        gap = beta[np.argmin(geometry.arm_field(R, beta))]
+        x = np.array([geometry.R0 - geometry.R0 * np.cos(gap)])
+        y = np.array([geometry.R0 * np.sin(gap)])
+        assert geometry.arm_field(np.array([geometry.R0]), np.array([gap]))[0] < 1e-3
+        value = geometry.dust_shape(x, y, np.array([-geometry.Z0]))
+        assert value[0] == pytest.approx(1.0, rel=1e-3)
 
     def test_shape_falls_with_radius_and_height(self):
-        at = disc_shape(
-            np.array([0.0, -5000.0, 0.0]), np.zeros(3), np.array([-15.0, -15.0, 485.0])
+        at = geometry.dust_shape(
+            np.array([2 * geometry.R0, 2 * geometry.R0 + 5000.0, 2 * geometry.R0]),
+            np.zeros(3),
+            np.array([-geometry.Z0, -geometry.Z0, 485.0]),
         )
         assert at[1] < at[0] and at[2] < at[0]
-
-    def test_shape_has_a_hole_at_the_centre(self):
-        at = disc_shape(np.array([4000.0, 8000.0]), np.zeros(2), np.full(2, -15.0))
-        assert at[1] < at[0]
 
 
 class TestVolumeFile:
