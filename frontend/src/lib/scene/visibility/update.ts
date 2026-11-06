@@ -35,7 +35,9 @@ import {
 	nomenclatureBodyId
 } from '../objects/surface/nomenclature';
 import { f64dist, type Vec3 } from '../animation/math';
-import { AU_SCALE } from '$lib/math/units';
+import { behindGround } from './horizon';
+import { reliefRadiiKm } from './camera-limits';
+import { AU_SCALE, kmToScene } from '$lib/math/units';
 import { modelUnitScene, type OccluderSphere } from '../objects/body/model';
 import { updateStarTransition } from '../objects/sun';
 import { PC_SCENE } from '../starfield/tree';
@@ -586,6 +588,29 @@ export function updateBodyVisibility(
 					id === focusedBodyId ? focusedPrimaryId : null
 				)
 			) {
+				bo.label.visible = false;
+			}
+		}
+	}
+
+	// The ground the camera is over hides what lies past its curve. The screen
+	// cones above read the body as its reference ellipsoid, which a camera near
+	// the ground, or a lander kilometres under it, does not sit on.
+	const groundBo = nomFocusedBodyId ? bodyObjects.get(nomFocusedBodyId) : undefined;
+	const ground = groundBo?.body.position;
+	if (groundBo && ground) {
+		const relief = reliefRadiiKm(groundBo);
+		const top = relief
+			? kmToScene(relief.max)
+			: Math.max(groundBo.radiusScene, ...(groundBo.semiAxesScene ?? []));
+		const cx = camTrue[0] - ground[0];
+		const cy = camTrue[1] - ground[1];
+		const cz = camTrue[2] - ground[2];
+		for (const bo of bodyObjects.values()) {
+			const at = bo.body.position;
+			const id = bo.body.data.id;
+			if (!bo.label?.visible || !at || id === nomFocusedBodyId || id === focusedBodyId) continue;
+			if (behindGround(at[0] - ground[0], at[1] - ground[1], at[2] - ground[2], cx, cy, cz, top)) {
 				bo.label.visible = false;
 			}
 		}

@@ -1,8 +1,9 @@
 import { ObjectType, effectiveRadiusKm, type PositionedBody } from '$lib/types/objects';
-import { kmToScene } from '$lib/math/units';
+import { kmToScene, sceneToKm } from '$lib/math/units';
 import type { PerspectiveCamera, Quaternion } from 'three';
 import { Vector3 } from 'three';
 import type { Vec3 } from '$lib/scene/animation/math';
+import type { BodyObjects } from '$lib/scene/types';
 import { cartesianToSpherical, clampLongitude, sphericalToCartesian } from '$lib/math/spherical';
 
 /** Default surface clearance in km, by object type. */
@@ -51,6 +52,28 @@ export interface SurfaceClampContext {
 
 const _dirBF = new Vector3();
 const _corner = new Vector3();
+
+/** Nearest and farthest the drawn relief comes to the body's centre, in km.
+ *  Undefined for a body drawn without one. */
+export function reliefRadiiKm(bo: BodyObjects): { min: number; max: number } | undefined {
+	const meta = bo.displacementMeta;
+	if (!meta) return undefined;
+	const low = meta.bias_km;
+	const high = meta.bias_km + meta.scale_km;
+	if (meta.absolute_radius) return { min: low, max: high };
+	const axes = bo.semiAxesScene?.map(sceneToKm);
+	return {
+		min: smallestRadiusKm(bo) + Math.min(low, 0),
+		max: (axes ? Math.max(...axes) : effectiveRadiusKm(bo.body.data)) + Math.max(high, 0)
+	};
+}
+
+/** The body's smallest radius, in km: its shortest semi-axis where it has
+ *  three, else its quoted radius. */
+export function smallestRadiusKm(bo: BodyObjects): number {
+	const axes = bo.semiAxesScene;
+	return axes ? sceneToKm(Math.min(...axes)) : effectiveRadiusKm(bo.body.data);
+}
 
 /** Surface clearance in km for a body. Spacecraft/debris span ~0.3 m to ~100 m;
  *  a fixed clearance would block close approach to tiny craft, so fall back to a

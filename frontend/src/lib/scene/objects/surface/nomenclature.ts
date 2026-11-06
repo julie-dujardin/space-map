@@ -17,6 +17,7 @@
  * {@link DEFAULT_FEATURE_DIAMETER_M}.
  */
 
+import { behindGround } from '$lib/scene/visibility/horizon';
 import { Group, Quaternion, Vector3, type Camera, type Object3D, type SphereGeometry } from 'three';
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
@@ -396,13 +397,9 @@ export function updateNomenclatureVisibility(
 		const lx = _labelWorld.x - _bodyWorld.x;
 		const ly = _labelWorld.y - _bodyWorld.y;
 		const lz = _labelWorld.z - _bodyWorld.z;
-		// Perspective horizon reject, stricter than a plain hemisphere check
-		// (which lets points just behind the perspective limb leak through).
-		// Applies to the active feature too — CSS2D doesn't depth-test, so its
-		// label would otherwise bleed through the planet from the far side.
-		const dot = lx * cdx + ly * cdy + lz * cdz;
-		const lenSqL = lx * lx + ly * ly + lz * lz;
-		if (dot <= lenSqL) {
+		// Past the curve, the active feature too: CSS2D doesn't depth-test, so
+		// its label would otherwise bleed through the planet from the far side.
+		if (behindGround(lx, ly, lz, cdx, cdy, cdz)) {
 			lbl.visible = false;
 			sxA[i] = NaN;
 			syA[i] = NaN;

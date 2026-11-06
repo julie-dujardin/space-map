@@ -2,11 +2,11 @@ import { Vector3, type PerspectiveCamera } from 'three';
 import type { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import type { BodyObjects } from '$lib/scene/types';
 import { EARTH_ID } from '$lib/constants';
+import { behindGround } from '$lib/scene/visibility/horizon';
 
 const _tmp = new Vector3();
 
-/** Hide the marker on Earth's far hemisphere: tangent-plane test reduces to
- *  `earthToMarker · earthToCamera > R²`. Camera inside Earth keeps it visible. */
+/** Hide the marker past Earth's curve. */
 export function updateUserLocationOcclusion(
 	marker: CSS2DObject | null,
 	bodyObjects: Map<string, BodyObjects>,
@@ -25,8 +25,5 @@ export function updateUserLocationOcclusion(
 	const cx = camera.position.x - ep.x;
 	const cy = camera.position.y - ep.y;
 	const cz = camera.position.z - ep.z;
-	const r = earth.radiusScene;
-	const r2 = r * r;
-	const camDist2 = cx * cx + cy * cy + cz * cz;
-	marker.visible = camDist2 <= r2 || ex * cx + ey * cy + ez * cz > r2;
+	marker.visible = !behindGround(ex, ey, ez, cx, cy, cz);
 }
