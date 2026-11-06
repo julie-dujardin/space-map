@@ -452,7 +452,7 @@ class TestBuildSteps:
 
 def _model_build(directory, glow_dir) -> None:
     """A model build of tiny boxes that belongs to the grid in `glow_dir`."""
-    from space_map_data.dust.encode import file_digest
+    from space_map_data.dust.sources import file_digest
     from space_map_data.extrasolar.store import write_json
     from space_map_data.galaxy import build as model_build
 

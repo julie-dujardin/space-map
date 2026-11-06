@@ -10,9 +10,10 @@ import numpy as np
 import pytest
 from astropy.io import fits
 
-from space_map_data.dust import encode, gates, sources
+from space_map_data.dust import encode, far, gates, sources
 from space_map_data.dust.encode import (
     Encoding,
+    FarRecord,
     Recorded,
     StaleCodes,
     read_encodings,
@@ -20,11 +21,23 @@ from space_map_data.dust.encode import (
 )
 from space_map_data.dust.nest import Level
 from space_map_data.dust.parallel import forked_map, forked_stream
+from space_map_data.dust.rest import FIELD_FILE
 from space_map_data.export import dust as dust_export
 from space_map_data.export import swap
 from space_map_data.export.extrasolar import build, container
+from space_map_data.galaxy.volumes import Box
 
 SMALL = Level(0, (10.0, 10.0, 5.0), (4, 4, 2))
+SMALL_FAR = {"high": Box((24000.0, 24000.0, 3000.0), (4, 4, 2), 150.0)}
+SMALL_FAR["low"] = SMALL_FAR["high"].halved()
+
+
+def _field(base: float) -> np.ndarray:
+    """A rest field with one base, no near factor and a window of 1 kpc."""
+    n = 12 * 4**7
+    return np.stack(
+        (np.full(n, base), np.ones(n), np.zeros(n), np.full(n, 1000.0))
+    ).astype("f4")
 
 
 def _square(x: int) -> int:
@@ -89,6 +102,10 @@ class TestEncodingDigests:
         encoded.mkdir()
         monkeypatch.setattr(encode, "LEVELS", (SMALL, Level(1, SMALL.half, (4, 4, 2))))
         monkeypatch.setattr(encode, "merged_dir", lambda _variant: merged)
+        monkeypatch.setattr(far, "merged_dir", lambda _variant: merged)
+        monkeypatch.setattr(far, "FAR_TIERS", SMALL_FAR)
+        np.save(merged / FIELD_FILE, _field(1e-3))
+        far.build_far("open", 1)
         monkeypatch.setattr(encode, "encoded_dir", lambda _variant: encoded)
         monkeypatch.setattr(encode, "CALIBRATION_FILE", tmp_path / "calibration.json")
         encode.CALIBRATION_FILE.write_text(json.dumps({"gains": {"bayestar": 3.0}}))
@@ -107,6 +124,22 @@ class TestEncodingDigests:
         encodings = read_encodings("open")
         assert set(encodings) == {0, 1}
         assert (encoded / "l0.high.npy").exists()
+
+    def test_the_far_volume_is_encoded_and_recorded(self, built):
+        merged, encoded, _ = built
+        record = read_recorded("open").far
+        density = np.load(merged / far.DENSITY_FILE)
+        assert record.encoding == Encoding(far.FLOOR, float(density.max()))
+        assert record.half == (24000.0, 24000.0, 3000.0)
+        assert record.z_scale == 150.0
+        assert read_recorded("open").shapes["far.low.npy"] == (2, 2, 1)
+        assert np.load(encoded / "far.high.npy").dtype == np.uint8
+
+    def test_a_far_volume_of_another_rest_field_is_refused(self, built):
+        merged, _, floors = built
+        np.save(merged / FIELD_FILE, _field(2e-3))
+        with pytest.raises(far.StaleFar):
+            encode.build_encoded("open", floors, 1)
 
     def test_the_figures_of_the_build_are_recorded(self, built):
         recorded = read_recorded("open")
@@ -263,14 +296,15 @@ class TestSwap:
 
 
 def _recorded() -> Recorded:
-    """The record of one small level and one tier."""
+    """The record of one small level, a small far volume and one tier."""
     return Recorded(
         {0: Encoding(1e-6, 1.0)},
         {0: SMALL.half},
-        {"l0.high.npy": SMALL.shape},
+        {"l0.high.npy": SMALL.shape, "far.high.npy": (4, 4, 2)},
         {},
         {},
         0.0,
+        FarRecord(Encoding(1e-6, 1e-3), (8277.0, 0.0, -21.0), (24e3, 24e3, 3e3), 150.0),
     )
 
 
@@ -282,6 +316,7 @@ class TestDustExport:
         encoded = tmp_path / "encoded"
         encoded.mkdir()
         np.save(encoded / "l0.high.npy", np.zeros((4, 4, 2), np.uint8))
+        np.save(encoded / "far.high.npy", np.zeros((4, 4, 2), np.uint8))
         monkeypatch.setattr(dust_export, "TIERS", ("high",))
         monkeypatch.setattr(dust_export, "encoded_dir", lambda _variant: encoded)
         monkeypatch.setattr(dust_export, "_distribution", lambda _variant: "open")
@@ -306,9 +341,24 @@ class TestDustExport:
         terms = {key: {"distribution": "open"} for key in keys}
         monkeypatch.setattr(dust_export, "_sources", lambda _variant: ([], terms))
         written = container.Written("high/l0.bin.gz", b"", 32, 10)
+        far_written = container.Written("high/far.bin.gz", b"", 32, 7)
         metadata = dust_export._metadata(
-            "open", {(0, "high"): written}, "token", _recorded(), "open"
+            "open",
+            {(0, "high"): written, (far.FAR_INDEX, "high"): far_written},
+            "token",
+            _recorded(),
+            "open",
         )
+        assert metadata["far"] == {
+            "centre_pc": [8277.0, 0.0, -21.0],
+            "half_extent_pc": [24e3, 24e3, 3e3],
+            "z_map": "asinh",
+            "z_scale_pc": 150.0,
+            "floor": 1e-6,
+            "top": 1e-3,
+            "read": "where level 0 does not hold the point",
+            "high": {"path": "high/far.bin.gz", "size": [4, 4, 2], "bytes": 7},
+        }
         assert metadata["levels"] == [
             {
                 "level": 0,
@@ -329,6 +379,7 @@ class TestDustExport:
             "v1",
             "v1/dust",
             "v1/dust/high",
+            "v1/dust/high/far.bin.gz",
             "v1/dust/high/l0.bin.gz",
             "v1/dust/metadata.json",
         ]

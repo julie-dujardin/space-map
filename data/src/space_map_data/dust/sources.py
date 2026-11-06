@@ -3,6 +3,7 @@
 A step reads these copies, so a build does not read the NAS at each run.
 """
 
+import hashlib
 import json
 import logging
 import os
@@ -24,6 +25,7 @@ K550 = 2.6797492504119873
 # The ZGR23 curve at 550 nm over the curve at 541.4 nm, the wavelength of Gaia TGE.
 TGE_TO_550 = 2.680 / 2.770
 NSIDE_EDENHOFER = 256
+DIGEST_BLOCK = 1 << 20
 
 
 def atomic_npy(path: Path, array: np.ndarray) -> None:
@@ -32,6 +34,14 @@ def atomic_npy(path: Path, array: np.ndarray) -> None:
     temporary = path.with_suffix(".tmp.npy")
     np.save(temporary, array)
     os.replace(temporary, path)
+
+
+def file_digest(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        while block := handle.read(DIGEST_BLOCK):
+            digest.update(block)
+    return digest.hexdigest()
 
 
 def copy_key(source: Path) -> dict:

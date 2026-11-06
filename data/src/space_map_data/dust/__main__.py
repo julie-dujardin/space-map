@@ -10,6 +10,7 @@ from space_map_data.dust import (
     VARIANTS,
     disc,
     encode,
+    far,
     gates,
     layers,
     merge,
@@ -47,6 +48,7 @@ STEPS = {
 VARIANT_STEPS = {
     "rest": rest.build_rest,
     "merge": lambda variant, _workers: merge.build_density(variant),
+    "far": far.build_far,
     "encode": lambda variant, workers: encode.build_encoded(
         variant, encode.FLOORS, workers
     ),
@@ -61,6 +63,9 @@ VARIANT_STEPS = {
     ),
     "gate-seams": lambda variant, workers: gates.write_gate(
         variant, "seams", gates.seam_gate(variant, workers)
+    ),
+    "gate-far": lambda variant, workers: gates.write_gate(
+        variant, "far", gates.far_gate(variant, workers)
     ),
 }
 

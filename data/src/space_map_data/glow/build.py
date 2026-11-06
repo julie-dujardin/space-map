@@ -8,8 +8,7 @@ from pathlib import Path
 
 import numpy as np
 
-from space_map_data.dust.encode import file_digest
-from space_map_data.dust.sources import atomic_npy
+from space_map_data.dust.sources import atomic_npy, file_digest
 from space_map_data.export.extrasolar.build import served
 from space_map_data.export.extrasolar.render import TREE
 from space_map_data.export.swap import ExportRefused

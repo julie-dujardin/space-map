@@ -1,4 +1,4 @@
-"""R8 codes for the mean density of a level.
+"""R8 codes for the mean density of a level and of the far volume.
 
 The code is logarithmic, so steps stay relative over the whole range. One
 (floor, top) serves both tiers, so `low` can be the first mip of `high`.
@@ -8,32 +8,31 @@ so a filtered fetch of plain codes reads low. `compensate` moves the codes to
 cancel this. A fetch with no filter then reads a little high.
 
 `encoding.json` holds the digest and shape of every codes file, the extent of each
-level, and what the export needs from the rest of the build. A read refuses codes
-that belong to another run, and the export reads nothing else from the build, so
-its metadata cannot come from another run than its codes.
+level and of the far volume, and what the export needs from the rest of the build.
+A read refuses codes that belong to another run, and the export reads nothing else
+from the build, so its metadata cannot come from another run than its codes.
 """
 
-import hashlib
 import json
 from dataclasses import asdict, dataclass
-from pathlib import Path
 
 import numpy as np
 
+from space_map_data.dust import far
 from space_map_data.dust.disc import CALIBRATION_FILE
 from space_map_data.dust.merge import merged_dir
 from space_map_data.dust.nest import LEVELS
 from space_map_data.dust.parallel import forked_map
-from space_map_data.dust.sources import BUILD_DIR, atomic_npy
+from space_map_data.dust.sources import BUILD_DIR, atomic_npy, file_digest
 from space_map_data.export.swap import ExportRefused
 from space_map_data.extrasolar.store import write_json
+from space_map_data.galaxy import volumes
 
 ENCODED_DIR = BUILD_DIR / "encoded"
 TIERS = ("high", "low")
 FLOORS = {0: 1e-6, 1: 1e-6, 2: 1e-6, 3: 1e-6}
 COMPENSATE_STEPS = 3
 ENCODING_FILE = "encoding.json"
-DIGEST_BLOCK = 1 << 20
 
 
 class StaleCodes(ExportRefused):
@@ -61,6 +60,17 @@ class Encoding:
 
 
 @dataclass(frozen=True)
+class FarRecord:
+    """The far volume's encoding and box about `centre` (pc, nest axes), asinh in
+    height with `z_scale` (pc)."""
+
+    encoding: Encoding
+    centre: tuple[float, ...]
+    half: tuple[float, ...]
+    z_scale: float
+
+
+@dataclass(frozen=True)
 class Recorded:
     """What `encoding.json` holds."""
 
@@ -74,6 +84,7 @@ class Recorded:
     rest_share: dict[str, float]
     # The share of the Planck remainder that the nest leaves unplaced.
     unplaced_share: float
+    far: FarRecord
 
 
 def block_mean(density: np.ndarray) -> np.ndarray:
@@ -132,12 +143,19 @@ def codes_name(index: int, tier: str) -> str:
     return f"l{index}.{tier}.npy"
 
 
-def file_digest(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        while block := handle.read(DIGEST_BLOCK):
-            digest.update(block)
-    return digest.hexdigest()
+def far_codes_name(tier: str) -> str:
+    return f"far.{tier}.npy"
+
+
+def _encode_far(variant: str) -> Encoding:
+    """Codes of the far volume in both tiers. A level's floor, its own top."""
+    density = far.read_built(variant)
+    encoding = Encoding(far.FLOOR, float(density.max()))
+    for tier in TIERS:
+        grid = far.low_tier(density) if tier == "low" else density
+        codes = compensate(grid, encoding)
+        atomic_npy(encoded_dir(variant) / far_codes_name(tier), codes)
+    return encoding
 
 
 def build_encoded(variant: str, floors: dict[int, float], workers: int) -> None:
@@ -154,7 +172,9 @@ def build_encoded(variant: str, floors: dict[int, float], workers: int) -> None:
         for tier in TIERS
     ]
     forked_map(_encode_job, jobs, min(workers, 4))
+    far_encoding = _encode_far(variant)
     names = [codes_name(level.index, tier) for level in LEVELS for tier in TIERS]
+    names += [far_codes_name(tier) for tier in TIERS]
     merged = merged_dir(variant)
     write_json(
         directory / ENCODING_FILE,
@@ -163,6 +183,12 @@ def build_encoded(variant: str, floors: dict[int, float], workers: int) -> None:
                 str(level.index): asdict(encodings[level.index])
                 | {"half_extent_pc": list(level.half)}
                 for level in LEVELS
+            },
+            "far": asdict(far_encoding)
+            | {
+                "centre_pc": list(volumes.CENTRE),
+                "half_extent_pc": list(far.FAR_TIERS["high"].half),
+                "z_scale_pc": far.FAR_TIERS["high"].z_scale,
             },
             "codes": {name: file_digest(directory / name) for name in names},
             "shapes": {
@@ -189,6 +215,7 @@ def read_recorded(variant: str) -> Recorded:
                 " written for: run encode again"
             )
     levels = {int(index): values for index, values in raw["levels"].items()}
+    box = raw["far"]
     return Recorded(
         {index: Encoding(v["floor"], v["top"]) for index, v in levels.items()},
         {index: tuple(v["half_extent_pc"]) for index, v in levels.items()},
@@ -196,6 +223,12 @@ def read_recorded(variant: str) -> Recorded:
         raw["gains"],
         raw["rest_share"],
         raw["unplaced_share"],
+        FarRecord(
+            Encoding(box["floor"], box["top"]),
+            tuple(box["centre_pc"]),
+            tuple(box["half_extent_pc"]),
+            box["z_scale_pc"],
+        ),
     )
 
 

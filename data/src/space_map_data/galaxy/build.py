@@ -13,8 +13,7 @@ from pathlib import Path
 
 import numpy as np
 
-from space_map_data.dust.encode import file_digest
-from space_map_data.dust.sources import atomic_npy
+from space_map_data.dust.sources import atomic_npy, file_digest
 from space_map_data.extrasolar.store import write_json
 from space_map_data.galaxy import calibrate, residual, volumes
 from space_map_data.galaxy.model import Model

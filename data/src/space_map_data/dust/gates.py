@@ -9,9 +9,15 @@ from cdshealpix import nested
 from scipy.ndimage import gaussian_filter1d
 from scipy.signal import find_peaks, peak_widths
 
-from space_map_data.dust import nest
+from space_map_data.dust import far, nest
 from space_map_data.dust.disc import ratio_stats
-from space_map_data.dust.encode import block_mean, encoded_dir, read_encodings
+from space_map_data.dust.encode import (
+    block_mean,
+    encoded_dir,
+    far_codes_name,
+    read_encodings,
+    read_recorded,
+)
 from space_map_data.dust.layers import DEPTH_EDENHOFER, Spherical
 from space_map_data.dust.march import (
     CodeStack,
@@ -19,12 +25,15 @@ from space_map_data.dust.march import (
     Stack,
     finest_level,
     integrate,
+    linear_fetch,
     march,
+    trilinear,
 )
 from space_map_data.dust.merge import merged_dir
 from space_map_data.dust.nest import LEVELS
 from space_map_data.dust.parallel import forked_map
 from space_map_data.dust.resample import pixels
+from space_map_data.dust.rest import FIELD_FILE
 from space_map_data.dust.sky import SKY_DIR
 from space_map_data.dust.sources import BUILD_DIR, K550, atomic_npy
 
@@ -495,6 +504,133 @@ def seam_gate(variant: str, workers: int) -> dict:
         }
     report["level_faces"] = faces
     return report
+
+
+# A point this far inside a face of level 0 and one this far outside it meet at
+# the face, and the far gate compares them there. Inside, both volumes hold it.
+FAR_FACE_OFFSET_PC = 10.0
+FAR_INSIDE_PC = 100.0
+FAR_SUN_STEP_PC = 50.0
+FAR_SUN_REACH_PC = 34_000.0
+
+
+def _face_points(axis: int, sign: float, offset: float) -> np.ndarray:
+    """Points on a face of level 0 moved `offset` pc outward, over the face."""
+    half = LEVELS[0].half
+    grids = [
+        np.linspace(-half[a] + 1.0, half[a] - 1.0, 100 if a == 2 else 400)
+        for a in range(3)
+        if a != axis
+    ]
+    a, b = np.meshgrid(*grids, indexing="ij")
+    points = np.zeros((a.size, 3))
+    points[:, [i for i in range(3) if i != axis]] = np.column_stack(
+        (a.ravel(), b.ravel())
+    )
+    points[:, axis] = sign * (half[axis] + offset)
+    return points
+
+
+def _far_sun_chunk(shared, directions: np.ndarray, _start: int) -> np.ndarray:
+    read, centre, half = shared
+    added = np.zeros(len(directions))
+    for s in np.arange(FAR_SUN_STEP_PC / 2, FAR_SUN_REACH_PC, FAR_SUN_STEP_PC):
+        points = directions * s
+        outside = ~np.all(np.abs(points) <= np.array(LEVELS[0].half), axis=1)
+        outside &= np.all(np.abs(points - centre) <= half, axis=1)
+        if outside.any():
+            added[outside] += read(points[outside]) * FAR_SUN_STEP_PC
+    return added
+
+
+def far_gate(variant: str, workers: int) -> dict:
+    """The far volume against level 0 at each face of level 0, both on shipped
+    codes with the LINEAR fetch, and the column it adds to the Sun view.
+
+    Across a face the field itself changes, so each step is also given over the
+    change of the exact field between the same two points."""
+    recorded = read_recorded(variant)
+    record = recorded.far
+    directory = encoded_dir(variant)
+    level0 = np.load(directory / "l0.high.npy")
+    far_codes = np.load(directory / far_codes_name("high"))
+    field = np.load(merged_dir(variant) / FIELD_FILE)
+    centre, half = np.array(record.centre), np.array(record.half)
+
+    def read_far(points: np.ndarray) -> np.ndarray:
+        at = far.uvw(points, centre, half, record.z_scale)
+        return record.encoding.decode(linear_fetch(far_codes, at))
+
+    def read_level0(points: np.ndarray) -> np.ndarray:
+        return recorded.levels[0].decode(trilinear(LEVELS[0], level0, points))
+
+    faces = {}
+    for name, axis, sign in (
+        ("x+", 0, 1.0),
+        ("y+", 1, 1.0),
+        ("y-", 1, -1.0),
+        ("z+", 2, 1.0),
+        ("z-", 2, -1.0),
+    ):
+        inner = _face_points(axis, sign, -FAR_FACE_OFFSET_PC)
+        outer = _face_points(axis, sign, FAR_FACE_OFFSET_PC)
+        deeper = _face_points(axis, sign, -FAR_INSIDE_PC)
+        kept = np.all(np.abs(outer - centre) <= half, axis=1)
+        inner, outer, deeper = inner[kept], outer[kept], deeper[kept]
+        level_in, far_out = read_level0(inner), read_far(outer)
+        across = _sum_ratio(far_out, level_in)
+        change = _sum_ratio(
+            far.far_density(field, outer)[:, 0], far.far_density(field, inner)[:, 0]
+        )
+        dense = level_in > 10 * far.FLOOR
+        faces[name] = {
+            "points": int(dense.sum()),
+            "level0_inside_mean_mag_per_pc": float(level_in.mean()),
+            "far_outside_over_level0_inside": across,
+            "exact_field_outside_over_inside": change,
+            "step": round(across / change, 4) if across and change else None,
+            "per_point": ratio_stats(far_out[dense] / level_in[dense]),
+            "far_over_level0_100_pc_inside": _sum_ratio(
+                read_far(deeper), read_level0(deeper)
+            ),
+        }
+    directions, latitude = rays(7)
+    added = np.concatenate(
+        _over_chunks(_far_sun_chunk, (read_far, centre, half), directions, workers)
+    )
+    out = GATE_DIR / variant
+    atomic_npy(out / "far.sun_added.npy", added.astype("f4"))
+    nest_column = np.load(out / "sky.nest.npy")
+    planck = np.load(SKY_DIR / "planck.total.npy").reshape(-1, 4).mean(axis=1)
+    sun = {}
+    b = np.abs(latitude)
+    for low, high in LATITUDE_BANDS:
+        band = (b >= low) & (b < high)
+        sun[f"{low}-{high}"] = {
+            "added_median_mag": round(float(np.median(added[band])), 5),
+            "added_p99_mag": round(float(np.percentile(added[band], 99)), 4),
+            "added_over_nest": ratio_stats(added[band] / nest_column[band]),
+            "nest_and_far_over_planck": ratio_stats(
+                (nest_column[band] + added[band]) / planck[band]
+            ),
+        }
+    # Past level 0, level 1 still holds 2 < |z| < 3 kpc near the Sun.
+    g = np.linspace(-LEVELS[1].half[0], LEVELS[1].half[0], 61)
+    z = np.concatenate(
+        (np.linspace(2001.0, 3000.0, 11), -np.linspace(2001.0, 3000.0, 11))
+    )
+    slab = np.stack(np.meshgrid(g, g, z, indexing="ij"), -1).reshape(-1, 3)
+    return {
+        "faces": faces,
+        "sun": sun,
+        "level1_slab_max_mag_per_pc": float(read_far(slab).max()),
+    }
+
+
+def _sum_ratio(a: np.ndarray, b: np.ndarray) -> float | None:
+    if b.sum() <= 0:
+        return None
+    return round(float(a.sum() / b.sum()), 4)
 
 
 def write_gate(variant: str, name: str, report: dict) -> None:

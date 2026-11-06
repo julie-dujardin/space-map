@@ -1,9 +1,10 @@
 """Export the dust nest to `v1/dust/`, beside the star tree.
 
 The star tree's export replaces `v1/x/` whole, so the nest has a directory of its
-own. Each level and tier is one volume file in the extrasolar container, and
-`metadata.json` holds the rest. Levels, extents and sizes come from the build's
-`encoding.json`, so the metadata describes the codes as they were encoded. A
+own. Each level and tier is one volume file in the extrasolar container, as is the
+far volume of each tier, and `metadata.json` holds the rest. Levels, boxes and
+sizes come from the build's `encoding.json`, so the metadata describes the codes
+as they were encoded. A
 variant whose tier is `undecided` may not reach the served root.
 """
 
@@ -22,8 +23,10 @@ from space_map_data.dust.encode import (
     Recorded,
     codes_name,
     encoded_dir,
+    far_codes_name,
     read_recorded,
 )
+from space_map_data.dust.far import FAR_INDEX
 from space_map_data.dust.nest import (
     CUBE_25_FADE,
     CUBE_50_FADE,
@@ -32,7 +35,12 @@ from space_map_data.dust.nest import (
     REGIONAL_FADE,
     galactic_to_icrs,
 )
-from space_map_data.dust.rest import MAX_OVER_PLANCK_SCALE
+from space_map_data.dust.rest import (
+    BASE_SIGMA_DEG,
+    MAX_NEAR_FACTOR,
+    MAX_OVER_PLANCK_SCALE,
+    NEAR_ROOM,
+)
 from space_map_data.dust.sources import source_terms
 from space_map_data.export import swap
 from space_map_data.export.extrasolar import container
@@ -166,6 +174,23 @@ def _metadata(
                 "bytes": written.size,
             }
         levels.append(entry)
+    far = recorded.far
+    far_entry = {
+        "centre_pc": list(far.centre),
+        "half_extent_pc": list(far.half),
+        "z_map": "asinh",
+        "z_scale_pc": far.z_scale,
+        "floor": far.encoding.floor,
+        "top": far.encoding.top,
+        "read": "where level 0 does not hold the point",
+    }
+    for tier in TIERS:
+        written = files[(FAR_INDEX, tier)]
+        far_entry[tier] = {
+            "path": written.path,
+            "size": list(recorded.shapes[far_codes_name(tier)]),
+            "bytes": written.size,
+        }
     layers: list[dict] = []
     for key, name, used in LAYERS[variant]:
         layer = {
@@ -186,6 +211,11 @@ def _metadata(
         "sun_height_pc": geometry.Z0,
         "far_side_arms": geometry.FAR_SIDE_ARMS,
         "max_over_planck_scale": MAX_OVER_PLANCK_SCALE,
+    }
+    layers[-1]["scale"] = {
+        "base_sigma_deg": list(BASE_SIGMA_DEG),
+        "near_room_share": list(NEAR_ROOM),
+        "max_near_factor": MAX_NEAR_FACTOR,
     }
     handovers = {"local_pc": LOCAL_FADE, "regional_pc": REGIONAL_FADE}
     if variant == "vergely":
@@ -211,6 +241,7 @@ def _metadata(
         "calibration": recorded.gains,
         "handovers": handovers,
         "levels": levels,
+        "far": far_entry,
         "layers": layers,
         "credits": [*sources, *paper_credits(REST_SHAPE_PAPERS)],
     }
@@ -243,6 +274,11 @@ def _write(variant: str, root: Path, distribution: str) -> dict:
                 payload = volume_payload(codes, index, tier)
                 path = f"{tier}/l{index}.bin.gz"
                 files[(index, tier)] = container.write(staging, path, payload)
+        for tier in TIERS:
+            codes = np.load(encoded_dir(variant) / far_codes_name(tier))
+            payload = volume_payload(codes, FAR_INDEX, tier)
+            path = f"{tier}/far.bin.gz"
+            files[(FAR_INDEX, tier)] = container.write(staging, path, payload)
         return files
 
     def metadata_of(
@@ -261,6 +297,7 @@ def export_dust_only(variant: str, root: Path = EXTRASOLAR_DIR) -> None:
     metadata = export_dust(variant, root)
     sizes = {
         tier: sum(entry[tier]["bytes"] for entry in metadata["levels"])
+        + metadata["far"][tier]["bytes"]
         for tier in TIERS
     }
     logger.info(
