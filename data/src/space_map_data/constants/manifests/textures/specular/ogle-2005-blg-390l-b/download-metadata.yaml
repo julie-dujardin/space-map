@@ -1,0 +1,10 @@
+bodies:
+- body: x-35994506447-b-1
+  body_name: ogle-2005-blg-390l-b
+  source: https://eyes.nasa.gov/apps/exo/
+  organisation: NASA
+  license: Public domain
+  attribution: "Artist's impression by NASA/JPL-Caltech: the specular map of OGLE-2005-BLG-390L b in NASA Eyes on Exoplanets."
+  file: ogle-2005-blg-390l-b-specular-artist-impression-nasa-eyes.jpg
+  type: cylindrical_specular
+  artist_impression: true

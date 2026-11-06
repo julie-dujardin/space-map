@@ -14,7 +14,7 @@ interface AboutData {
   // other languages: language → id of the row → its name, only where it
   // differs from the row's `name`.
   names: Record<string, Record<string, string>>;
-  worlds: number;                  // bodies with a map, a ring or a shape model; shapes from light curves do not count
+  worlds: number;                  // bodies with a map, a ring or a shape model; shapes from light curves and artist's impressions do not count
   objects: ObjectKind[];           // the kinds in the order of the page
   rings: Array<{ id: string; name: string; rings: Ring[] }>;   // worlds in the order of the page, bundles innermost first
   models: {
@@ -32,7 +32,7 @@ interface AboutData {
     id: string | null;             // system barycentre, "naif-4"; null for the bodies in no planetary system
     name: string | null;           // English name of the planet of the system
     primary_id?: string;           // that planet, "naif-499"
-    worlds: Array<{
+    worlds: Array<{                // no body whose maps are artist's impressions (textures.md)
       id: string;                  // object id
       name: string;                // English name
       radius_km?: number;          // mean radius of the equator; absent when the size of the body is unknown
@@ -94,7 +94,7 @@ interface CraftModel extends Model {
 
 interface Map extends Credit {
   id: string;                      // bundle id, "naif-499_displacement"
-  layer: "surface" | "clouds" | "night" | "specular" | "topography";
+  layer: "surface" | "clouds" | "night" | "glow" | "specular" | "topography";
   alternate?: true;                // a map that ranks below the best map of its body
   frames?: number;                 // monthly maps and cloud overlays with more than one frame
   tiers: Array<{                   // the whole-globe images, coarsest first

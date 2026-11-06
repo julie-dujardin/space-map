@@ -87,6 +87,7 @@ from space_map_data.export.position.frames import MOON_ORBIT_ATTR, moon_orbit_ca
 from space_map_data.export.quantities import UnitConverter
 from space_map_data.export.small_body_color import resolve_major_body_color
 from space_map_data.export.systems import (
+    TextureLayers,
     alternate_blocks,
     clouds_block,
     displacement_block,
@@ -239,10 +240,7 @@ def build_chunk_object_data(
     radii: dict[int, dict],
     gms: dict[int, float],
     nut_prec: dict[int, dict[str, list[float]]],
-    texture_metadata: dict[str, dict],
-    alternate_metadata: dict[str, list[dict]],
-    clouds_metadata: dict[str, dict],
-    displacement_metadata: dict[str, dict],
+    layers: TextureLayers,
     model_sources: dict[str, dict],
     probe_kernel_sources: dict[int, str | None],
     probe_ephemeris_accuracy: dict[int, float],
@@ -299,10 +297,7 @@ def build_chunk_object_data(
             radii,
             gms,
             nut_prec,
-            texture_metadata,
-            alternate_metadata,
-            clouds_metadata,
-            displacement_metadata,
+            layers,
             model_sources,
             probe_kernel_sources,
             probe_ephemeris_accuracy,
@@ -536,10 +531,7 @@ def _build_global(
     radii: dict[int, dict],
     gms: dict[int, float],
     nut_prec: dict[int, dict[str, list[float]]],
-    texture_metadata: dict[str, dict],
-    alternate_metadata: dict[str, list[dict]],
-    clouds_metadata: dict[str, dict],
-    displacement_metadata: dict[str, dict],
+    layers: TextureLayers,
     model_sources: dict[str, dict],
     probe_kernel_sources: dict[int, str | None],
     probe_ephemeris_accuracy: dict[int, float],
@@ -558,10 +550,10 @@ def _build_global(
     }
     if obj.map_texture_available:
         data["map_texture_available"] = True
-        meta = texture_metadata.get(obj.id)
+        meta = layers.textures.get(obj.id)
         if meta is not None:
             data["texture"] = texture_attribution(meta)
-            alternates = alternate_blocks(alternate_metadata.get(obj.id))
+            alternates = alternate_blocks(layers.alternates.get(obj.id))
             if alternates:
                 data["alternates"] = alternates
         else:
@@ -576,10 +568,10 @@ def _build_global(
     quality = render_quality(obj, radii)
     if quality is not None:
         data["render_quality"] = quality
-    clouds_meta = clouds_metadata.get(obj.id)
+    clouds_meta = layers.clouds.get(obj.id)
     if clouds_meta is not None:
         data["clouds"] = clouds_block(clouds_meta)
-    disp_meta = displacement_metadata.get(obj.id)
+    disp_meta = layers.displacement.get(obj.id)
     if disp_meta is not None:
         data["displacement"] = displacement_block(disp_meta)
     if obj.has_rings:

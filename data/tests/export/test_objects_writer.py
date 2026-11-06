@@ -25,6 +25,7 @@ from space_map_data.export.objects.writer import (
 from space_map_data.models.object import ModelProvenance, ObjectType
 from space_map_data.models.object.sbdb import SBDB
 from tests.conftest import EntityStub, make_object
+from tests.export.conftest import layers_of
 
 
 def _entity_snak(qid: str) -> dict:
@@ -407,10 +408,6 @@ class TestPlanetFamilies:
             "radii",
             "gms",
             "nut_prec",
-            "texture_metadata",
-            "alternate_metadata",
-            "clouds_metadata",
-            "displacement_metadata",
             "model_sources",
             "probe_kernel_sources",
             "probe_ephemeris_accuracy",
@@ -428,6 +425,7 @@ class TestPlanetFamilies:
             {},
             entities,
             MagicMock(),
+            layers=layers_of(),
             nomenclature_body_ids=set(),
             planet_families=planet_families,
             **empty,

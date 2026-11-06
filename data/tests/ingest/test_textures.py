@@ -147,6 +147,40 @@ class TestRefreshMetadataFromYaml:
         meta = json.loads((out_dir / "metadata.json").read_text())
         assert meta["distribution"] == "site-only"
 
+    def test_the_artist_impression_flag_reaches_an_existing_bundle(self, tmp_path):
+        out_dir = tmp_path / "x-5-b-1"
+        self._seed(out_dir, organisation="USGS")
+        entry = {**self._ENTRY, "artist_impression": True}
+        refresh_metadata_from_yaml(out_dir, entry, "planet.jpg")
+        meta = json.loads((out_dir / "metadata.json").read_text())
+        assert meta["artist_impression"] is True
+
+
+class TestProcessGlow:
+    """A `cylindrical_glow` entry exports a `_glow` sibling bundle, as night
+    lights export `_night`."""
+
+    def test_writes_the_glow_bundle_with_its_flag(self, tmp_path, monkeypatch):
+        entry = {
+            "body": "x-5-b-1",
+            "source": "https://eyes.nasa.gov/apps/exo/",
+            "organisation": "NASA",
+            "file": "planet-glow.jpg",
+            "type": "cylindrical_glow",
+            "artist_impression": True,
+        }
+        proc = TestProcessMonthly._make_processor(monkeypatch, tmp_path, entry)
+        _make_gradient(256, 128).save(config.RAW_DIR / entry["file"])
+
+        proc._process_emissive(entry, force=True)
+
+        bundle = config.PROCESSED_DIR / "x-5-b-1_glow"
+        meta = json.loads((bundle / "metadata.json").read_text())
+        assert meta["id"] == "x-5-b-1_glow"
+        assert meta["type"] == "cylindrical_glow"
+        assert meta["artist_impression"] is True
+        assert (bundle / "low.webp").exists()
+
 
 class TestAnyExportOverCap:
     """any_export_over_cap triggers auto-reprocess when a bundle is stale."""
@@ -654,6 +688,18 @@ class TestProcessClouds:
         proc._process_clouds()
         second_ts = json.loads((out_dir / "metadata.json").read_text())["processed_at"]
         assert first_ts == second_ts
+
+    def test_a_static_layer_takes_the_flag_of_its_sidecar(self, tmp_path, monkeypatch):
+        proc, src_dir = self._make_processor(monkeypatch, tmp_path)
+        (src_dir / "metadata.json").write_text(
+            json.dumps({"source_url": "https://e.test", "artist_impression": True})
+        )
+        Image.new("RGBA", (256, 128), (200, 200, 200, 128)).save(src_dir / "c.png")
+        proc._process_clouds(force=True)
+        bundle = config.PROCESSED_DIR / f"{self.EARTH_BODY_ID}_clouds"
+        meta = json.loads((bundle / "metadata.json").read_text())
+        assert meta["frames"] == ["static"]
+        assert meta["artist_impression"] is True
 
     def test_no_snapshots_warns_and_skips(self, tmp_path, monkeypatch, caplog):
         caplog.set_level("WARNING")

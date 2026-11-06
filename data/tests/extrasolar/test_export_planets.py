@@ -181,6 +181,46 @@ class TestPlanetFiles:
         assert lucky["elements"].pop("phase") == expected.pop("phase")
         assert lucky["elements"] == pytest.approx(expected)
 
+    def test_a_planet_with_a_map_and_a_lock(self, tmp_path, out, monkeypatch):
+        """A planet with a map has the texture keys of a body, keyed by its
+        page id. A hot Jupiter with a radius on a circular orbit is locked;
+        with no radius the lock is unknown."""
+        rows = [PLANETS[0] | {"radius": 1.0, "eccentricity": 0.0}, *PLANETS[1:]]
+        built = write_registry(tmp_path / "reg", STARS, planets=rows)
+        page = f"x-{built.ids[0]}-b-1"
+        textures = tmp_path / "main" / "textures"
+        for bundle, kind in (
+            (page, "cylindrical"),
+            (f"{page}_glow", "cylindrical_glow"),
+        ):
+            (textures / bundle).mkdir(parents=True)
+            meta = {
+                "id": bundle,
+                "source": "https://eyes.nasa.gov/apps/exo/",
+                "organisation": "NASA",
+                "type": kind,
+                "artist_impression": True,
+                "exports": {"low": {"file": "low.webp", "width": 2048}},
+            }
+            (textures / bundle / "metadata.json").write_text(json.dumps(meta))
+        monkeypatch.setattr(build, "TEXTURES_ROOT", tmp_path / "main")
+        report = export_extrasolar(built.root, out, workers=1)
+        reader = ExportReader(out / "v1" / "x")
+        mapped = reader.planet(built.ids[0], 1)
+        assert mapped is not None
+        assert mapped["tiers"] == ["low"]
+        assert mapped["texture"]["artist_impression"] is True
+        assert mapped["glow"]["id"] == f"{page}_glow"
+        assert mapped["glow"]["artist_impression"] is True
+        assert mapped["tidally_locked"] is True
+        assert "tidally_locked" in mapped["computed"]
+        other = reader.planet(built.ids[0], 2)
+        assert other is not None
+        assert "texture" not in other
+        assert other["tidally_locked"] is None
+        assert "tidally_locked" not in other["computed"]
+        assert report["planets"]["planets with a map"] == 1
+
     def test_the_star_that_a_record_also_is(self, tmp_path, out):
         rows = [*PLANETS[:1], {**PLANETS[1], "star": 77}, *PLANETS[2:]]
         built, _, reader = _export(tmp_path, out, rows)

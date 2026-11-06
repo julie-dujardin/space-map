@@ -14,7 +14,8 @@ plot of all of them.
 
 A list puts the planets with a Wikipedia article first, most sitelinks
 first, then the other planets, nearest host first. An exoplanet entry has the
-diameter of its measured radius and the year of its discovery.
+diameter of its measured radius, else that of its estimated radius in a field
+of its own, and the year of its discovery.
 
 Each page has a discovery timeline: its exoplanets by the year of their
 discovery. The Solar System planets stay out of it. Five of them have no
@@ -161,6 +162,8 @@ class _Planet:
     body: NotableObject | None = None
     # The diameter of a measured radius, else None.
     diameter_km: float | None = None
+    # The diameter of an estimated radius, else None.
+    estimated_diameter_km: float | None = None
     # The discovery year, as YYYY.
     first_obs: str | None = None
     # A card can show its radius.
@@ -272,6 +275,12 @@ def measured_diameter_km(record: dict) -> float | None:
     return _round(diameter) if how == MEASURED else None
 
 
+def estimated_diameter_km(record: dict) -> float | None:
+    """The diameter of the planet record's radius, when it is an estimate."""
+    diameter, how = _plotted(record, "radius", JUPITER_DIAMETER_KM)
+    return _round(diameter) if how == ESTIMATED else None
+
+
 def _planet(
     record: dict,
     object_id: str,
@@ -300,6 +309,7 @@ def _planet(
         host=record.get("host"),
         body=body,
         diameter_km=measured_diameter_km(record),
+        estimated_diameter_km=estimated_diameter_km(record),
         first_obs=None if year is None else str(year),
         precise_radius=body is not None or _precise_radius(record),
         estimated=tuple(record["families_estimated"]),
@@ -406,6 +416,7 @@ def _member(
         wikidata_qid=planet.qid,
         names=_names(planet, names),
         diameter_km=planet.diameter_km,
+        estimated_diameter_km=planet.estimated_diameter_km,
         first_obs=planet.first_obs,
         extrasolar=True,
         sitelinks_count=sitelinks,

@@ -5,9 +5,10 @@ They live in the object bundles, under `x-<id>` like the `/x/<id>` pages and
 `x-<host>-b-<n>` like the `/x/<host>/b/<n>` ones, so these pages read their
 text as a body page does. They hold metadata only: names, descriptions,
 references and discovery dates from Wikidata, Wikipedia extracts, Commons
-images, and the works that the literature table cites for a value. The record
-tiles and the planet files of the extrasolar export hold the values, under
-their own terms.
+images, and the works that the literature table cites for a value. A planet
+with a map also has its texture keys (`TextureLayers.entry_blocks`). The
+record tiles and the planet files of the extrasolar export hold the values,
+under their own terms.
 
 The registry's Metadata rows say which stars and systems have an entry
 (`object`), and give their English name, class, QID and literature key. A
@@ -67,6 +68,7 @@ from space_map_data.export.objects.wikipedia import (
 )
 from space_map_data.export.objects.writer import ChunkObjectData, hash_bucket
 from space_map_data.export.sidecar_io import write_atomic
+from space_map_data.export.systems import TextureLayers
 from space_map_data.export.wikidata import (
     WikidataEntity,
     WikidataEntityCache,
@@ -88,8 +90,8 @@ TYPE = "star"
 PLANET_TYPE = "exoplanet"
 # The type of the entry of a star system node, by its class.
 SYSTEM_TYPES = {cls: cls.replace(" ", "_") for cls in NODE_CLASSES}
-# The id of a planet's entry, as its scene id.
-PLANET_ID = re.compile(r"^x-\d+-b-\d+$")
+# The id of a planet's entry, as its scene id, with its host's page id and ID.
+PLANET_ID = re.compile(r"^(?P<host_id>x-(?P<host>\d+))-b-\d+$")
 # The prefixes of SIMBAD's identifiers that Wikidata copies into some aliases:
 # "NAME Proxima Centauri b", "* 51 Peg b", "V* V645 Cen".
 _SIMBAD_PREFIX = re.compile(r"^(NAME|V\*|\*\*|\*|Cl\*) +")
@@ -118,6 +120,11 @@ SPECTRAL_CLASSES = frozenset(
         "Q231982",  # hypergiant
     }
 )
+
+
+def planet_id(host: int, number: int) -> str:
+    """The page id of planet ``number`` of ``host`` (`PLANET_ID`)."""
+    return f"{PREFIX}{host}-b-{number}"
 
 
 @dataclass(frozen=True)
@@ -161,7 +168,7 @@ class PlanetObject:
 
     @property
     def obj_id(self) -> str:
-        return f"{PREFIX}{self.host}-b-{self.number}"
+        return planet_id(self.host, self.number)
 
     @property
     def host_id(self) -> str:
@@ -566,10 +573,11 @@ def star_entries(
     entities: WikidataEntityCache,
     planets: Sequence[PlanetObject] = (),
     homes: Mapping[str, dict] | None = None,
+    textures: TextureLayers | None = None,
 ) -> tuple[dict[str, dict], dict[str, dict[str, dict]]]:
     """The global entries and the localized ones by language, of the stars
     and the planets. `homes` gives the page of a constellation that a star
-    lies in, by group slug."""
+    lies in, by group slug, and `textures` the maps of the planets."""
     # References to an object with an entry link to its page, so every page is
     # known before the first entry. A star's page takes the references to an
     # item that a star and a planet both hold.
@@ -643,7 +651,7 @@ def star_entries(
             PLANET_TYPE,
             planet.qid,
             reads[planet.obj_id],
-        )
+        ) | (textures.entry_blocks(planet.obj_id) if textures else {})
     if missing:
         logger.warning("%d star and planet items have no downloaded entity", missing)
     if shared:
@@ -685,13 +693,16 @@ def inject_star_objects(
     entities: WikidataEntityCache,
     stars: Sequence[StarObject],
     planets: Sequence[PlanetObject],
+    textures: TextureLayers,
 ) -> None:
     """Fold the entries of ``stars`` and ``planets`` into the object-bundle
     accumulators."""
     # The group export imports this module.
     from space_map_data.export.groups.sky_pages import home_figures
 
-    global_data, localized = star_entries(stars, entities, planets, home_figures())
+    global_data, localized = star_entries(
+        stars, entities, planets, home_figures(), textures
+    )
     data.global_data.update(global_data)
     for lang, entries in localized.items():
         data.localized_data[lang].update(entries)
@@ -737,7 +748,11 @@ def export_star_objects_only(
     stars, planets = read_extrasolar_objects()
     planets = available_planet_pages(extrasolar_dir).served(planets)
     global_data, localized = star_entries(
-        stars, WikidataEntityCache(), planets, home_figures(extrasolar_dir)
+        stars,
+        WikidataEntityCache(),
+        planets,
+        home_figures(extrasolar_dir),
+        TextureLayers.load(out_dir),
     )
     counts = orjson.loads((out_dir / "metadata.json").read_bytes())["object_bundles"]
     tiers: Mapping[str, Mapping[str, dict]] = {"global": global_data, **localized}

@@ -92,6 +92,7 @@ from space_map_data.export.notable import (
 from space_map_data.export.objects.fragments import build_comet_families
 from space_map_data.export.objects.missions import build_probe_missions
 from space_map_data.export.objects.stars import (
+    PLANET_ID,
     PlanetObject,
     StarObject,
     available_extrasolar_objects,
@@ -385,6 +386,7 @@ def run_groups_tier(
         load_orientation,
         load_planet_elements,
         load_ring_metadata,
+        load_texture_metadata,
     )
     from space_map_data.utils.paths import DOWNLOAD_DIR
 
@@ -445,7 +447,12 @@ def run_groups_tier(
         split_comets = _split_comet_groups(session, names)
         launch_vehicle_stats = build_launch_vehicle_stats(session)
         launch_site_stats = build_launch_site_stats(session)
-        textured_ids = textured_object_ids(session)
+        # A planet of another star has no Object row: its map is in the bundles.
+        textured_ids = textured_object_ids(session) | {
+            body_id
+            for body_id in load_texture_metadata(out_dir)
+            if PLANET_ID.match(body_id)
+        }
         moon_discovery = build_moon_discovery(session)
         solar_system_map = build_solar_system_map(
             session,
@@ -680,7 +687,7 @@ def export_groups_only(engine: Engine) -> None:
     from space_map_data.export.localization import write_group_messages
     from space_map_data.export.sitemap import available_planet_pages
     from space_map_data.export.systems import (
-        load_displacement_metadata,
+        TextureLayers,
         load_gms,
         load_model_metadata,
         load_radii,
@@ -693,7 +700,7 @@ def export_groups_only(engine: Engine) -> None:
     wikidata_entities = WikidataEntityCache()
     radii = load_radii(DOWNLOAD_DIR)
     gms = load_gms(DOWNLOAD_DIR)
-    displacement_metadata = load_displacement_metadata(out_dir)
+    displacement_metadata = TextureLayers.load(out_dir).displacement
     star_objects, planet_objects = available_extrasolar_objects()
     group_bundles = run_groups_tier(
         engine,

@@ -1,0 +1,13 @@
+# Emissive glow of an artist's impression. The renderer draws it on the lit and
+# the unlit side, at full intensity.
+bodies:
+- body: x-20654054-b-1
+  body_name: tres-2-b
+  source: https://eyes.nasa.gov/apps/exo/
+  organisation: NASA
+  license: Public domain
+  attribution: "Artist's impression by NASA/JPL-Caltech: the glow of the TrES-2 b model in NASA Eyes on Exoplanets, unwrapped to a map."
+  description: "Emissive glow of an artist's impression, drawn on both sides of the planet."
+  file: tres-2-b-glow-artist-impression-nasa-eyes.jpg
+  type: cylindrical_glow
+  artist_impression: true

@@ -67,13 +67,14 @@ from space_map_data.export.extrasolar.tiles import (
     UnitJob,
 )
 from space_map_data.export.objects.stars import planet_host_pages
+from space_map_data.export.systems import TextureLayers
 from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.extrasolar.registry import Registry, RegistryError
 from space_map_data.extrasolar.sky import REGION_COUNT, REGION_SHIFT
 from space_map_data.extrasolar.store import fsync_dir
 from space_map_data.extrasolar.tables import METADATA, TABLES
 from space_map_data.skycultures.licences import NON_COMMERCIAL
-from space_map_data.utils.paths import EXTRASOLAR_DIR, REGISTRY_ROOT
+from space_map_data.utils.paths import EXPORT_DIR, EXTRASOLAR_DIR, REGISTRY_ROOT
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +82,8 @@ METADATA_FILE = "metadata.json"
 # The brightest stars of each family, for the family pages of the main
 # export. Clients do not read it, so it is not in METADATA_FILE.
 FAMILIES_FILE = "families.json"
+# The `v1` of the main export, whose texture bundles hold the planets' maps.
+TEXTURES_ROOT = EXPORT_DIR / "v1"
 
 
 def families_file(root: Path) -> Path:
@@ -832,6 +835,7 @@ def _export(
             lambda task, jobs, label: _run(workers, task, jobs, label),
             layout.live,
             planet_host_pages(registry, wikidata),
+            TextureLayers.load(TEXTURES_ROOT),
         )
         shutil.rmtree(layout.scratch)
         if planet_files is not None:

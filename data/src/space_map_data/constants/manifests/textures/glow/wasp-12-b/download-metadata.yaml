@@ -1,0 +1,13 @@
+# Emissive glow of an artist's impression. The renderer draws it on the lit and
+# the unlit side, at full intensity.
+bodies:
+- body: x-23025959-b-1
+  body_name: wasp-12-b
+  source: https://science.nasa.gov/resource/wasp-12b-3d-model/
+  organisation: NASA
+  license: Public domain
+  attribution: "Artist's impression by NASA/JPL-Caltech: the glow of the WASP-12 b 3D model on NASA Science, unwrapped to a map."
+  description: "Emissive glow of an artist's impression, drawn on both sides of the planet."
+  file: wasp-12-b-glow-artist-impression-nasa-science.jpg
+  type: cylindrical_glow
+  artist_impression: true

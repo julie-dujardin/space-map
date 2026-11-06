@@ -658,6 +658,7 @@ A host:
 | `radius`, `radius_source` | number, string | solar radii: `host_radius`, else `radius_gspphot` (`gaia-dr3`) |
 | `mass` | number | solar masses, `host_mass` |
 | `metallicity` | number | dex, `host_metallicity` |
+| `age` | number | Gyr, `host_age` |
 | `spectral_type` | string | `host_spectral_type` |
 | `bp_rp` | number | Gaia BP − RP, when Gaia measured both |
 | `catalogue`, `catalogue_name` | string | `host_star_source`, and the star's name in that catalogue (`host_name`) |
@@ -685,10 +686,20 @@ A planet:
 | `sources` | object | the source of each group: `status`, `discovery`, `orbit`, `sky`, `mass`, `radius`, `physical`, `atmosphere`, `stellar`, `binary` → `nasa-exoplanet-archive`, `exoplanet-eu`, `open-exoplanet-catalogue`, or `gaia-dr3` for `sky` |
 | `assumed` | list | the values that are defaults, not published: `eccentricity` (0, also an exact 0 with no error), `omega` (90°), `inclination` (a transiting planet of the same host, else 90°), `node` (one angle per system, from a hash of the ID of its key), `periastron_time` (J2000.0: the position on the orbit is unknown) |
 | `estimated` | list | values that a catalogue estimates (the archive's "Calculated Value", a mass–radius relation, exoplanet.eu's "Theoretical") |
-| `computed` | list | `period` or `semi_major_axis` from Kepler's third law, or `semi_major_axis` from an angular separation and the distance |
+| `computed` | list | `period` or `semi_major_axis` from Kepler's third law, or `semi_major_axis` from an angular separation and the distance; `tidally_locked` when that field is not null |
 | `limits` | list | `<name><` for an upper limit, `<name>>` for a lower limit |
 | `families` | list | the published families of the planet, as slugs in the order of `families` of `planets` in `metadata.json`, with their parents (Families, below); empty when none |
 | `families_estimated` | list | the families that need an estimate and are not in `families` |
+| `tidally_locked` | bool | true when the planet is tidally locked to its host (Tidal lock, below); null when `semi_major_axis`, `mass`, `radius` or a star mass is missing, or `eccentricity` is outside [0, 1) |
+| `tiers`, `texture`, `alternates`, `clouds`, `night`, `glow`, `specular`, `displacement` | | only for a planet with a map: the keys of a body of `systems/{bary}.json` in the main export ([systems.md](systems.md), [textures.md](textures.md)), from the texture bundles `textures/x-{host}-b-{number}*` there. Each block of an artist's impression has `artist_impression: true` |
+
+### Tidal lock
+
+`tidally_locked` compares the despinning time of Gladman et al. 1996 (Icarus 122, 166) with the age of the host, and the spin of a despun planet with its orbit:
+
+    t_lock = ω a⁶ I Q / (3 G M*² k₂ R⁵),  I = 0.4 m R²
+
+with ω = 2π / 12 h, the planet's `semi_major_axis` a, `mass` m and `radius` R, and the star mass M* of the planet's fit (`star_mass`), else the host's `mass`. A planet under 1.6 R⊕ is rocky (Q = 100, k₂ = 0.3), else it has an envelope (Q = 10⁵, k₂ = 0.5). It is despun when t_lock is shorter than the host's `age`, else than 1 Gyr. A despun planet spins pseudo-synchronously, at Ω_ps / n = (1 + 15/2 e² + 45/8 e⁴ + 5/16 e⁶) / ((1 + 3e² + 3/8 e⁴)(1 − e²)^{3/2}) times its mean motion (Hut 1981, A&A 99, 126, eq. 42), with e its `eccentricity`. It is locked when Ω_ps / n is within 5% of 1, about e < 0.09. An assumed eccentricity is 0. Estimated values count. The constants are in `export/extrasolar/tidal_lock.py`. The renderer may turn a locked planet so that longitude 0 faces its star; an unlocked one has no defined rotation.
 
 `values` has the columns of the planets table with a value, by these names and units: `discovery_method`, `discovery_year`, `discovery_facility`; `period` (d), `semi_major_axis` (AU), `eccentricity`, `inclination` (deg), `omega` (deg), `periastron_time` and `transit_time` (JD, as published, mostly BJD), `time_system` (the archive's system of the transit time: `BJD`, `BJD-TDB`, `HJD`, `JD`, …); `node` (deg), `node_inclination` (deg) and `node_solution` (Gaia's `nss_solution_type`); `mass` (Jupiter masses), `mass_kind` (`true`, `minimum`, `estimate`); `radius` (Jupiter radii); `equilibrium_temperature` (K), `insolation` (Earth's), `density` (g/cm³); `molecules` (a list); `star_mass` (solar), `star_radius` (solar), `star_teff` (K), `star_metallicity` (dex), the star of the fits; `binary_type` (`S-type` or `P-type`). A measured value `x` can have `x_error_upper` and `x_error_lower`, both positive. The defaults of `assumed` are in `values` too. `eccentricity` is as published, also when it is outside [0, 1).
 

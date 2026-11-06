@@ -8,14 +8,11 @@ import orjson
 import pytest
 
 from space_map_data.export.systems import (
+    TextureLayers,
     _tiers_from_meta,
     clouds_block,
     displacement_block,
-    load_clouds_metadata,
-    load_displacement_metadata,
-    load_night_metadata,
     load_orientation,
-    load_specular_metadata,
     load_texture_metadata,
     night_block,
     patch_object_bundles,
@@ -23,6 +20,7 @@ from space_map_data.export.systems import (
     texture_attribution,
     tiles_block,
 )
+from tests.export.conftest import layers_of
 
 
 class TestTextureAttribution:
@@ -168,7 +166,7 @@ class TestCloudsBlock:
 
 
 class TestLoadCloudsMetadata:
-    """load_clouds_metadata strips the `_clouds` suffix and isolates the bundle."""
+    """The clouds layer strips the `_clouds` suffix and isolates the bundle."""
 
     def _seed(self, out_dir, body_dir_name: str, meta: dict) -> None:
         body = out_dir / "textures" / body_dir_name
@@ -181,16 +179,16 @@ class TestLoadCloudsMetadata:
             "naif-399_clouds",
             {"id": "naif-399_clouds", "type": "clouds_overlay"},
         )
-        result = load_clouds_metadata(tmp_path)
+        result = TextureLayers.load(tmp_path).clouds
         assert set(result.keys()) == {"naif-399"}
         assert result["naif-399"]["id"] == "naif-399_clouds"
 
     def test_ignores_regular_texture_directories(self, tmp_path):
         self._seed(tmp_path, "naif-499", {"id": "naif-499", "type": "cylindrical"})
-        assert load_clouds_metadata(tmp_path) == {}
+        assert TextureLayers.load(tmp_path).clouds == {}
 
     def test_missing_textures_dir_returns_empty(self, tmp_path):
-        assert load_clouds_metadata(tmp_path) == {}
+        assert TextureLayers.load(tmp_path).clouds == {}
 
 
 class TestLoadTextureMetadataFiltersClouds:
@@ -310,14 +308,11 @@ class TestTilesBlock:
         assert block["frames"] == 12
 
     @pytest.mark.parametrize(
-        ("suffix", "load", "build"),
-        [
-            ("_night", load_night_metadata, night_block),
-            ("_specular", load_specular_metadata, specular_block),
-        ],
+        ("layer", "build"),
+        [("night", night_block), ("glow", night_block), ("specular", specular_block)],
     )
-    def test_sibling_layers_carry_their_pyramid(self, tmp_path, suffix, load, build):
-        bundle = f"naif-399{suffix}"
+    def test_sibling_layers_carry_their_pyramid(self, tmp_path, layer, build):
+        bundle = f"naif-399_{layer}"
         self._write(
             tmp_path,
             "textures",
@@ -331,7 +326,8 @@ class TestTilesBlock:
             },
         )
         self._write(tmp_path, "tiles", bundle, {**self.DESCRIPTOR, "id": bundle})
-        assert build(load(tmp_path)["naif-399"])["tiles"]["id"] == bundle
+        meta = getattr(TextureLayers.load(tmp_path), layer)["naif-399"]
+        assert build(meta)["tiles"]["id"] == bundle
 
     def test_displacement_pyramid_states_its_own_height_scale(self, tmp_path):
         self._write(
@@ -360,7 +356,7 @@ class TestTilesBlock:
             },
         )
 
-        meta = load_displacement_metadata(tmp_path)["naif-499"]
+        meta = TextureLayers.load(tmp_path).displacement["naif-499"]
         block = displacement_block(meta)
         assert (block["bias_km"], block["scale_km"]) == (-8.2, 29.4)
         assert block["tiles"]["id"] == "naif-499_displacement"
@@ -408,9 +404,10 @@ class TestPatchObjectBundles:
 
         rewritten = patch_object_bundles(
             tmp_path,
-            {"spkid-20000004": {**self.TEXTURE, "tiles": tiles}},
-            {},
-            {"spkid-20000004": self.HEIGHTS},
+            layers_of(
+                {"spkid-20000004": {**self.TEXTURE, "tiles": tiles}},
+                displacement={"spkid-20000004": self.HEIGHTS},
+            ),
         )
 
         data = self._read(path)["spkid-20000004"]
@@ -428,7 +425,7 @@ class TestPatchObjectBundles:
         path = self._bundle(tmp_path, "a1", {"spkid-20000004": body})
         before = path.stat().st_mtime_ns
         assert (
-            patch_object_bundles(tmp_path, {"spkid-20000004": self.TEXTURE}, {}, {})
+            patch_object_bundles(tmp_path, layers_of({"spkid-20000004": self.TEXTURE}))
             == 0
         )
         assert path.stat().st_mtime_ns == before
@@ -440,7 +437,7 @@ class TestPatchObjectBundles:
             "alternates": [{"id": "spkid-20000004_alt-old"}],
         }
         path = self._bundle(tmp_path, "a1", {"spkid-20000004": body})
-        assert patch_object_bundles(tmp_path, {}, {}, {}) == 1
+        assert patch_object_bundles(tmp_path, layers_of()) == 1
         assert self._read(path)["spkid-20000004"] == {"id": "spkid-20000004"}
 
     def test_body_without_the_texture_flag_gets_no_texture_block(self, tmp_path):
@@ -449,10 +446,31 @@ class TestPatchObjectBundles:
             tmp_path, "a1", {"spkid-20000004": {"id": "spkid-20000004"}}
         )
         assert (
-            patch_object_bundles(tmp_path, {"spkid-20000004": self.TEXTURE}, {}, {})
+            patch_object_bundles(tmp_path, layers_of({"spkid-20000004": self.TEXTURE}))
             == 0
         )
         assert "texture" not in self._read(path)["spkid-20000004"]
+
+    def test_a_planet_entry_gets_every_texture_key(self, tmp_path):
+        """As the star-objects export writes them. The block of a map that is
+        gone is dropped."""
+        planet = "x-5-b-1"
+        glow = {
+            "id": f"{planet}_glow",
+            "source": "https://eyes.nasa.gov/apps/exo/",
+            "organisation": "NASA",
+            "type": "cylindrical_glow",
+            "exports": {"low": {}},
+        }
+        texture = {**self.TEXTURE, "id": planet, "exports": {"low": {}}}
+        layers = layers_of({planet: texture}, glow={planet: glow})
+        stale = {"id": planet, "name": "P", "specular": {"id": f"{planet}_specular"}}
+        path = self._bundle(tmp_path, "a1", {planet: stale})
+
+        assert patch_object_bundles(tmp_path, layers) == 1
+        blocks = layers.entry_blocks(planet)
+        assert set(blocks) == {"map_texture_available", "tiers", "texture", "glow"}
+        assert self._read(path)[planet] == {"id": planet, "name": "P", **blocks}
 
 
 class TestNightBlock:
@@ -491,7 +509,7 @@ class TestNightBlock:
 
 
 class TestLoadNightMetadata:
-    """load_night_metadata strips the `_night` suffix and isolates the bundle."""
+    """The night layer strips the `_night` suffix and isolates the bundle."""
 
     def _seed(self, out_dir, body_dir_name: str, meta: dict) -> None:
         body = out_dir / "textures" / body_dir_name
@@ -504,16 +522,88 @@ class TestLoadNightMetadata:
             "naif-399_night",
             {"id": "naif-399_night", "type": "cylindrical_night_lights"},
         )
-        result = load_night_metadata(tmp_path)
+        result = TextureLayers.load(tmp_path).night
         assert set(result.keys()) == {"naif-399"}
         assert result["naif-399"]["id"] == "naif-399_night"
 
     def test_ignores_regular_texture_directories(self, tmp_path):
         self._seed(tmp_path, "naif-499", {"id": "naif-499", "type": "cylindrical"})
-        assert load_night_metadata(tmp_path) == {}
+        assert TextureLayers.load(tmp_path).night == {}
 
     def test_missing_textures_dir_returns_empty(self, tmp_path):
-        assert load_night_metadata(tmp_path) == {}
+        assert TextureLayers.load(tmp_path).night == {}
+
+
+class TestTextureLayers:
+    """The texture keys of an exoplanet with an artist's impression, read by
+    page id from the bundles."""
+
+    PLANET = "x-558442032-b-4"
+
+    def _seed(self, out_dir, bundle: str, type_: str, **extra) -> None:
+        body = out_dir / "textures" / bundle
+        body.mkdir(parents=True)
+        meta = {
+            "id": bundle,
+            "source": "https://eyes.nasa.gov/apps/exo/",
+            "organisation": "NASA",
+            "license": "Public domain",
+            "type": type_,
+            "artist_impression": True,
+            "exports": {"low": {"size_bytes": 1}},
+            **extra,
+        }
+        (body / "metadata.json").write_text(json.dumps(meta))
+
+    def test_blocks_hold_the_map_and_its_siblings(self, tmp_path):
+        self._seed(tmp_path, self.PLANET, "cylindrical")
+        self._seed(tmp_path, f"{self.PLANET}_alt-eyes", "cylindrical")
+        self._seed(tmp_path, f"{self.PLANET}_glow", "cylindrical_glow")
+        self._seed(tmp_path, f"{self.PLANET}_specular", "cylindrical_specular")
+        self._seed(
+            tmp_path,
+            f"{self.PLANET}_clouds",
+            "clouds_overlay",
+            tiers=["low"],
+            frames=["static"],
+        )
+        blocks = TextureLayers.load(tmp_path).blocks(self.PLANET)
+        assert set(blocks) == {
+            "tiers",
+            "texture",
+            "alternates",
+            "clouds",
+            "specular",
+            "glow",
+        }
+        assert blocks["tiers"] == ["low"]
+        assert blocks["alternates"][0]["id"] == f"{self.PLANET}_alt-eyes"
+        assert blocks["glow"]["id"] == f"{self.PLANET}_glow"
+        assert blocks["glow"]["type"] == "cylindrical_glow"
+        assert blocks["clouds"]["frames"] == ["static"]
+        for key in ("texture", "clouds", "specular", "glow"):
+            assert blocks[key]["artist_impression"] is True
+        assert blocks["alternates"][0]["artist_impression"] is True
+
+    def test_the_fields_are_the_layers(self):
+        names = [name for name, _ in layers_of().items()]
+        assert names == ["textures", "alternates", *TextureLayers.SIBLINGS]
+
+    def test_a_body_with_no_bundle_has_no_blocks(self, tmp_path):
+        self._seed(tmp_path, self.PLANET, "cylindrical")
+        assert TextureLayers.load(tmp_path).blocks("x-1-b-1") == {}
+
+    def test_the_glow_is_no_surface_map(self, tmp_path):
+        self._seed(tmp_path, self.PLANET, "cylindrical")
+        self._seed(tmp_path, f"{self.PLANET}_glow", "cylindrical_glow")
+        assert set(load_texture_metadata(tmp_path)) == {self.PLANET}
+        assert set(TextureLayers.load(tmp_path).glow) == {self.PLANET}
+
+    def test_a_real_map_carries_no_flag(self):
+        meta = {"source": "s", "organisation": "NASA", "type": "cylindrical"}
+        assert "artist_impression" not in texture_attribution(meta)
+        flagged = texture_attribution(meta | {"artist_impression": None})
+        assert "artist_impression" not in flagged
 
 
 class TestLoadOrientation:

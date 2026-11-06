@@ -66,6 +66,7 @@ def refresh_metadata_from_yaml(out_dir: Path, entry: dict, src_file_name: str) -
         "organisation": entry["organisation"],
         "license": entry.get("license"),
         "distribution": entry.get("distribution"),
+        "artist_impression": entry.get("artist_impression"),
         "attribution": attribution,
         "description": entry.get("description"),
         "type": entry["type"],
@@ -108,6 +109,7 @@ def stale_metadata_reason(existing: dict, entry: dict) -> str | None:
         "cylindrical_monthly",
         "cylindrical_specular",
         "cylindrical_night_lights",
+        "cylindrical_glow",
         "cylindrical_displacement",
     ):
         cur_align = existing.get("alignment") or DEFAULT_ALIGNMENT

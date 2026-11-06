@@ -51,6 +51,7 @@ from space_map_data.export.objects.stars import (
     PlanetObject,
     StarObject,
     has_description,
+    planet_id,
 )
 from space_map_data.export.objects.writer import hash_bucket
 from space_map_data.export.wikidata import WikidataEntityCache
@@ -442,14 +443,47 @@ def available_planet_pages(extrasolar_dir: Path = EXTRASOLAR_DIR) -> PlanetPages
                 served_names[page_id] = Names(host["name"], host["names"])
         for p in system["planets"]:
             planets.append((p["host"], p["number"], p["name"]))
-            page_id = f"{STAR_PREFIX}{p['host']}-b-{p['number']}"
-            served_names[page_id] = Names(p["name"], p["names"])
+            served_names[planet_id(p["host"], p["number"])] = Names(
+                p["name"], p["names"]
+            )
     return PlanetPages(
         sorted(planets, key=lambda p: p[:2]),
         dict(sorted(hosts.items())),
         frozenset(iau_hosts),
         served_names,
     )
+
+
+def planet_page_names(
+    hosts: Collection[int], extrasolar_dir: Path = EXTRASOLAR_DIR
+) -> dict[str, Names | None]:
+    """The names of the pages of the served *hosts* and of their planets, by
+    page id, from their system files alone. None for a page whose file gives
+    it no name."""
+    root = extrasolar_dir / "v1" / "x"
+    if not (root / "metadata.json").exists():
+        logger.warning("No planet pages: no extrasolar export at %s", root)
+        return {}
+    reader = ExportReader(root)
+    if "planets" not in reader.metadata:
+        logger.warning("No planet pages: the extrasolar export has no planets")
+        return {}
+    index = reader.planet_hosts()
+    out: dict[str, Names | None] = {}
+    for key in sorted({index[host]["system"] for host in hosts if host in index}):
+        system = reader.system(key)
+        for host in system["hosts"]:
+            if host["planets"]:
+                out[f"{STAR_PREFIX}{host['id']}"] = _page_names(host)
+        for planet in system["planets"]:
+            out[planet_id(planet["host"], planet["number"])] = _page_names(planet)
+    return out
+
+
+def _page_names(record: dict) -> Names | None:
+    if record.get("name") is None:
+        return None
+    return Names(record["name"], record.get("names", {}))
 
 
 def _planet_paths(

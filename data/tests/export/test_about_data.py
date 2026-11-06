@@ -25,6 +25,7 @@ from space_map_data.export.about_data import (
 from space_map_data.export.names import ObjectNames
 from space_map_data.models.object import ObjectType
 from tests.conftest import EntityStub, labelled, make_object
+from tests.export.conftest import layers_of
 
 MARS_KM = 3396.19
 
@@ -485,12 +486,7 @@ class TestBuild:
             ObjectNames(EntityStub(), session),
             tmp_path,
             radii,
-            textures,
-            {},
-            {},
-            {},
-            {},
-            {},
+            layers_of(textures),
             rings or {},
             models or {},
             tmp_path / "space-map-extrasolar",
@@ -532,6 +528,64 @@ class TestBuild:
             for system in payload["systems"]
         ] == [("Mars", ["Mars", "Phobos"]), (None, ["Ceres"])]
         assert payload["systems"][0]["primary_id"] == "naif-499"
+
+    def test_an_artists_impression_is_no_mapped_world(self, session, tmp_path, caplog):
+        """Its maps and its sibling layers stay off the page and out of the
+        count, and an exoplanet with no Object row gives no warning."""
+        session.add_all(
+            [
+                make_object(id="naif-499", name="Mars", naif_id=499),
+                make_object(id="naif-599", name="Jupiter", naif_id=599),
+            ]
+        )
+        session.commit()
+        drawn = self._texture("naif-599") | {"artist_impression": True}
+        planet = self._texture("x-5-b-1") | {"artist_impression": True}
+        glow = _meta("x-5-b-1_glow", type="cylindrical_glow", artist_impression=True)
+        layers = layers_of(
+            {
+                "naif-499": self._texture("naif-499"),
+                "naif-599": drawn,
+                "x-5-b-1": planet,
+            },
+            glow={"x-5-b-1": glow},
+        )
+        payload = build_about_data(
+            session,
+            ObjectNames(EntityStub(), session),
+            tmp_path,
+            {},
+            layers,
+            {},
+            {},
+            tmp_path / "space-map-extrasolar",
+            tmp_path,
+        )
+        worlds = [w["id"] for system in payload["systems"] for w in system["worlds"]]
+        assert worlds == ["naif-499"]
+        assert payload["worlds"] == 1
+        assert "no matching Object row" not in caplog.text
+
+    def test_an_exoplanet_is_no_world_of_the_page(self, session, tmp_path, caplog):
+        """Also with maps that carry no flag: it has no Object row."""
+        layers = layers_of(
+            {"x-6-b-1": self._texture("x-6-b-1")},
+            specular={"x-6-b-1": _meta("x-6-b-1_specular")},
+        )
+        payload = build_about_data(
+            session,
+            ObjectNames(EntityStub(), session),
+            tmp_path,
+            {},
+            layers,
+            {},
+            {},
+            tmp_path / "space-map-extrasolar",
+            tmp_path,
+        )
+        assert payload["systems"] == []
+        assert payload["worlds"] == 0
+        assert "no matching Object row" not in caplog.text
 
     def test_radius_gives_the_ground_scale(self, session, tmp_path):
         session.add(make_object(id="naif-499", name="Mars", naif_id=499))
@@ -649,12 +703,7 @@ class TestNames:
             names,
             tmp_path,
             {},
-            {"naif-499": TestBuild._texture("naif-499")},
-            {},
-            {},
-            {},
-            {},
-            {},
+            layers_of({"naif-499": TestBuild._texture("naif-499")}),
             {},
             {},
             tmp_path / "space-map-extrasolar",

@@ -22,7 +22,7 @@ from space_map_data.utils.paths import DB_FILE, EXPORT_DIR, EXPORT_METADATA_DIR
 
 TEXTURES_META = EXPORT_METADATA_DIR / "v1" / "textures"
 
-SUFFIXES = ["_displacement", "_specular", "_night", "_clouds"]
+SUFFIXES = ["_displacement", "_specular", "_night", "_glow", "_clouds"]
 TIERS = ["low", "medium", "high"]
 
 _bundle_count = json.loads((EXPORT_DIR / "v1" / "metadata.json").read_text())[

@@ -15,6 +15,10 @@
 # to `textures/<body>/`; the rest need a `variant` slug and export beside it as
 # `textures/<body>_alt-<variant>/`, so a viewer that may not serve the best one
 # still has a map to draw. `skip: true` is the other thing: never process it.
+#
+# `artist_impression: true` marks a map that an artist made, not one made from
+# images of the body. The site shows a notice with it, and /about does not
+# count the body as a mapped world. Put it on each layer of the body.
 bodies:
 - body: naif-199
   body_name: mercury
@@ -1274,3 +1278,207 @@ bodies:
   attribution: "Hydra false-colour map by Askaniy Anpilogov, from New Horizons imagery (NASA/JHUAPL/SwRI)."
   file: hydra_false_color_map_by_askaniy_dfbor0b.png
   type: cylindrical
+
+# Artist's impressions of exoplanets by NASA. Each map is centred on longitude
+# 0, which is the substellar point of a tidally locked planet.
+- body: x-18059543-b-4
+  body_name: 55-cnc-e
+  source: https://eyes.nasa.gov/apps/exo/
+  organisation: NASA
+  license: Public domain
+  attribution: "Artist's impression by NASA/JPL-Caltech: the 55 Cancri e model in NASA Eyes on Exoplanets, unwrapped to a map."
+  file: 55-cnc-e-artist-impression-nasa-eyes.jpg
+  type: cylindrical
+  artist_impression: true
+- body: x-3778651312-b-1
+  body_name: koi-55-b
+  source: https://eyes.nasa.gov/apps/exo/
+  organisation: NASA
+  license: Public domain
+  attribution: "Artist's impression by NASA/JPL-Caltech: the KOI-55 b model in NASA Eyes on Exoplanets, unwrapped to a map."
+  file: koi-55-b-artist-impression-nasa-eyes.jpg
+  type: cylindrical
+  artist_impression: true
+- body: x-1634188199-b-3
+  body_name: psr-b1257-12-b
+  source: https://eyes.nasa.gov/apps/exo/
+  organisation: NASA
+  license: Public domain
+  attribution: "Artist's impression by NASA/JPL-Caltech: the PSR B1257+12 b model in NASA Eyes on Exoplanets, unwrapped to a map."
+  file: psr-b1257-12-b-artist-impression-nasa-eyes.jpg
+  type: cylindrical
+  artist_impression: true
+- body: x-29135516-b-1
+  body_name: au-mic-b
+  source: https://eyes.nasa.gov/apps/exo/
+  organisation: NASA
+  license: Public domain
+  attribution: "Artist's impression by NASA/JPL-Caltech: the AU Microscopii b model in NASA Eyes on Exoplanets, unwrapped to a map."
+  file: au-mic-b-artist-impression-nasa-eyes.jpg
+  type: cylindrical
+  artist_impression: true
+- body: x-20654054-b-1
+  body_name: tres-2-b
+  source: https://eyes.nasa.gov/apps/exo/
+  organisation: NASA
+  license: Public domain
+  attribution: "Artist's impression by NASA/JPL-Caltech: the TrES-2 b model in NASA Eyes on Exoplanets, unwrapped to a map."
+  file: tres-2-b-artist-impression-nasa-eyes.jpg
+  type: cylindrical
+  artist_impression: true
+- body: x-23025959-b-1
+  body_name: wasp-12-b
+  source: https://science.nasa.gov/resource/wasp-12b-3d-model/
+  organisation: NASA
+  license: Public domain
+  attribution: "Artist's impression by NASA/JPL-Caltech: the WASP-12 b 3D model on NASA Science, unwrapped to a map."
+  file: wasp-12-b-artist-impression-nasa-science.jpg
+  type: cylindrical
+  artist_impression: true
+- body: x-27424668-b-1
+  body_name: proxima-cen-b
+  source: https://science.nasa.gov/resource/proxima-b-3d-model/
+  organisation: NASA
+  license: Public domain
+  attribution: "Artist's impression by NASA/JPL-Caltech: the Proxima Centauri b 3D model on NASA Science, unwrapped to a map."
+  file: proxima-cen-b-artist-impression-nasa-science.jpg
+  type: cylindrical
+  artist_impression: true
+  preference: 10
+- body: x-27424668-b-1
+  body_name: proxima-cen-b
+  source: https://eyes.nasa.gov/apps/exo/
+  organisation: NASA
+  license: Public domain
+  attribution: "Artist's impression by NASA/JPL-Caltech: the map of Proxima Centauri b in NASA Eyes on Exoplanets."
+  file: proxima-cen-b-artist-impression-nasa-eyes.jpg
+  type: cylindrical
+  artist_impression: true
+  preference: 5
+  variant: eyes
+- body: x-23566666-b-1
+  body_name: gj-504-b
+  source: https://eyes.nasa.gov/apps/exo/
+  organisation: NASA
+  license: Public domain
+  attribution: "Artist's impression by NASA/JPL-Caltech: the map of GJ 504 b in NASA Eyes on Exoplanets."
+  file: gj-504-b-artist-impression-nasa-eyes.jpg
+  type: cylindrical
+  artist_impression: true
+- body: x-20572559-b-1
+  body_name: hat-p-11-b
+  source: https://eyes.nasa.gov/apps/exo/
+  organisation: NASA
+  license: Public domain
+  attribution: "Artist's impression by NASA/JPL-Caltech: the map of HAT-P-11 b in NASA Eyes on Exoplanets."
+  file: hat-p-11-b-artist-impression-nasa-eyes.jpg
+  type: cylindrical
+  artist_impression: true
+- body: x-20100951-b-1
+  body_name: hd-189733-b
+  source: https://eyes.nasa.gov/apps/exo/
+  organisation: NASA
+  license: Public domain
+  attribution: "Artist's impression by NASA/JPL-Caltech: the map of HD 189733 b in NASA Eyes on Exoplanets."
+  file: hd-189733-b-artist-impression-nasa-eyes.jpg
+  type: cylindrical
+  artist_impression: true
+- body: x-557518831-b-1
+  body_name: kepler-22-b
+  source: https://eyes.nasa.gov/apps/exo/
+  organisation: NASA
+  license: Public domain
+  attribution: "Artist's impression by NASA/JPL-Caltech: the map of Kepler-22 b in NASA Eyes on Exoplanets."
+  file: kepler-22-b-artist-impression-nasa-eyes.jpg
+  type: cylindrical
+  artist_impression: true
+- body: x-1094301805-b-1
+  body_name: kepler-452-b
+  source: https://eyes.nasa.gov/apps/exo/
+  organisation: NASA
+  license: Public domain
+  attribution: "Artist's impression by NASA/JPL-Caltech: the map of Kepler-452 b in NASA Eyes on Exoplanets."
+  file: kepler-452-b-artist-impression-nasa-eyes.jpg
+  type: cylindrical
+  artist_impression: true
+- body: x-35994506447-b-1
+  body_name: ogle-2005-blg-390l-b
+  source: https://eyes.nasa.gov/apps/exo/
+  organisation: NASA
+  license: Public domain
+  attribution: "Artist's impression by NASA/JPL-Caltech: the map of OGLE-2005-BLG-390L b in NASA Eyes on Exoplanets."
+  file: ogle-2005-blg-390l-b-artist-impression-nasa-eyes.jpg
+  type: cylindrical
+  artist_impression: true
+- body: x-21067347-b-3
+  body_name: yz-cet-d
+  source: https://eyes.nasa.gov/apps/exo/
+  organisation: NASA
+  license: Public domain
+  attribution: "Artist's impression by NASA/JPL-Caltech: the map of YZ Ceti d in NASA Eyes on Exoplanets."
+  file: yz-cet-d-artist-impression-nasa-eyes.jpg
+  type: cylindrical
+  artist_impression: true
+- body: x-558442032-b-1
+  body_name: trappist-1-b
+  source: https://eyes.nasa.gov/apps/exo/
+  organisation: NASA
+  license: Public domain
+  attribution: "Artist's impression by NASA/JPL-Caltech: the map of TRAPPIST-1 b in NASA Eyes on Exoplanets."
+  file: trappist-1-b-artist-impression-nasa-eyes.jpg
+  type: cylindrical
+  artist_impression: true
+- body: x-558442032-b-2
+  body_name: trappist-1-c
+  source: https://eyes.nasa.gov/apps/exo/
+  organisation: NASA
+  license: Public domain
+  attribution: "Artist's impression by NASA/JPL-Caltech: the map of TRAPPIST-1 c in NASA Eyes on Exoplanets."
+  file: trappist-1-c-artist-impression-nasa-eyes.jpg
+  type: cylindrical
+  artist_impression: true
+- body: x-558442032-b-3
+  body_name: trappist-1-d
+  source: https://eyes.nasa.gov/apps/exo/
+  organisation: NASA
+  license: Public domain
+  attribution: "Artist's impression by NASA/JPL-Caltech: the map of TRAPPIST-1 d in NASA Eyes on Exoplanets."
+  file: trappist-1-d-artist-impression-nasa-eyes.jpg
+  type: cylindrical
+  artist_impression: true
+- body: x-558442032-b-4
+  body_name: trappist-1-e
+  source: https://eyes.nasa.gov/apps/exo/
+  organisation: NASA
+  license: Public domain
+  attribution: "Artist's impression by NASA/JPL-Caltech: the map of TRAPPIST-1 e in NASA Eyes on Exoplanets."
+  file: trappist-1-e-artist-impression-nasa-eyes.jpg
+  type: cylindrical
+  artist_impression: true
+- body: x-558442032-b-5
+  body_name: trappist-1-f
+  source: https://eyes.nasa.gov/apps/exo/
+  organisation: NASA
+  license: Public domain
+  attribution: "Artist's impression by NASA/JPL-Caltech: the map of TRAPPIST-1 f in NASA Eyes on Exoplanets."
+  file: trappist-1-f-artist-impression-nasa-eyes.jpg
+  type: cylindrical
+  artist_impression: true
+- body: x-558442032-b-6
+  body_name: trappist-1-g
+  source: https://eyes.nasa.gov/apps/exo/
+  organisation: NASA
+  license: Public domain
+  attribution: "Artist's impression by NASA/JPL-Caltech: the map of TRAPPIST-1 g in NASA Eyes on Exoplanets."
+  file: trappist-1-g-artist-impression-nasa-eyes.jpg
+  type: cylindrical
+  artist_impression: true
+- body: x-558442032-b-7
+  body_name: trappist-1-h
+  source: https://eyes.nasa.gov/apps/exo/
+  organisation: NASA
+  license: Public domain
+  attribution: "Artist's impression by NASA/JPL-Caltech: the map of TRAPPIST-1 h in NASA Eyes on Exoplanets."
+  file: trappist-1-h-artist-impression-nasa-eyes.jpg
+  type: cylindrical
+  artist_impression: true

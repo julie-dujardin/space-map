@@ -1,0 +1,10 @@
+bodies:
+- body: x-557518831-b-1
+  body_name: kepler-22-b
+  source: https://eyes.nasa.gov/apps/exo/
+  organisation: NASA
+  license: Public domain
+  attribution: "Artist's impression by NASA/JPL-Caltech: the specular map of Kepler-22 b in NASA Eyes on Exoplanets."
+  file: kepler-22-b-specular-artist-impression-nasa-eyes.jpg
+  type: cylindrical_specular
+  artist_impression: true

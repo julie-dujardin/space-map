@@ -7,7 +7,10 @@ planetary system.
 import csv
 import logging
 from collections import Counter
+from collections.abc import Callable, Iterator
+from dataclasses import dataclass, fields
 from pathlib import Path
+from typing import ClassVar
 
 import orjson
 from sqlalchemy.orm import Session
@@ -36,12 +39,6 @@ logger = logging.getLogger(__name__)
 
 _TOP_LEVEL_NAIF_IDS = {0, 10}  # SSB and Sun
 
-# Sibling texture-bundle dirs, named `<host id><suffix>`, holding overlays for
-# the host body rather than its own surface texture.
-_CLOUDS_SUFFIX = "_clouds"
-_SPECULAR_SUFFIX = "_specular"  # e.g. Earth's ocean mask
-_NIGHT_SUFFIX = "_night"  # e.g. NASA Black Marble
-_DISPLACEMENT_SUFFIX = "_displacement"  # e.g. the Moon's LRO LOLA topography
 # `textures/stars/`: the cubemap skybox bundle behind the whole scene, not tied
 # to any NAIF body.
 _SKYBOX_DIR = "stars"
@@ -165,6 +162,9 @@ def texture_attribution(meta: dict) -> dict:
     # decide whether an embed may ask for the picture at all.
     if meta.get("distribution") is not None:
         result["distribution"] = meta["distribution"]
+    # An artist made the map. The site says so beside it.
+    if meta.get("artist_impression"):
+        result["artist_impression"] = True
     if meta.get("attribution") is not None:
         result["attribution"] = meta["attribution"]
     if meta.get("description") is not None:
@@ -224,6 +224,8 @@ def tiles_block(meta: dict) -> dict:
     for key in ("frames", "license", "distribution", "attribution"):
         if meta.get(key) is not None:
             block[key] = meta[key]
+    if meta.get("artist_impression"):
+        block["artist_impression"] = True
     if meta.get("patches"):
         block["patches"] = [
             {key: patch[key] for key in _PATCH_KEYS if patch.get(key) is not None}
@@ -266,7 +268,7 @@ def _tiers_from_meta(meta: dict) -> list[str]:
 
 def load_texture_metadata(out_dir: Path) -> dict[str, dict]:
     """{object_id: metadata_dict} for surface textures; sibling overlay bundles
-    are filtered out (use the dedicated loaders for those).
+    are filtered out (`TextureLayers.load` reads those).
 
     Body ids come from ``out_dir/textures``, but metadata.json is read from
     the mirror dir — ingest writes those two paths separately.
@@ -279,9 +281,7 @@ def load_texture_metadata(out_dir: Path) -> dict[str, dict]:
         if (
             not body_dir.is_dir()
             or ALT_INFIX in body_dir.name
-            or body_dir.name.endswith(
-                (_CLOUDS_SUFFIX, _SPECULAR_SUFFIX, _NIGHT_SUFFIX, _DISPLACEMENT_SUFFIX)
-            )
+            or body_dir.name.endswith(tuple(suffix for suffix, _ in _SIBLINGS.values()))
         ):
             continue
         meta_file = mirror_path(body_dir / "metadata.json")
@@ -319,23 +319,22 @@ def load_alternate_metadata(out_dir: Path) -> dict[str, list[dict]]:
     return result
 
 
-def load_clouds_metadata(out_dir: Path) -> dict[str, dict]:
-    """{host_object_id: metadata_dict} for cloud overlays, keyed by the surface
-    body's id (``_clouds`` suffix stripped). The full export id stays in the
-    metadata's own ``id`` field for URL composition.
-    """
+def _load_sibling(out_dir: Path, suffix: str, label: str) -> dict[str, dict]:
+    """{host body id: metadata} for the ``<host id><suffix>`` sibling bundles.
+    The bundle id stays in the metadata's own ``id`` for URL composition."""
     textures_dir = out_dir / "textures"
     result: dict[str, dict] = {}
     if not textures_dir.exists():
         return result
     for body_dir in textures_dir.iterdir():
-        if not body_dir.is_dir() or not body_dir.name.endswith(_CLOUDS_SUFFIX):
+        if not body_dir.is_dir() or not body_dir.name.endswith(suffix):
             continue
         meta_file = mirror_path(body_dir / "metadata.json")
         if meta_file.exists():
-            host_id = body_dir.name.removesuffix(_CLOUDS_SUFFIX)
-            result[host_id] = orjson.loads(meta_file.read_bytes())
-    logger.info("Loaded cloud-overlay metadata for %d bodies", len(result))
+            result[body_dir.name.removesuffix(suffix)] = _with_tiles(
+                out_dir, body_dir.name, orjson.loads(meta_file.read_bytes())
+            )
+    logger.info("Loaded %s metadata for %d bodies", label, len(result))
     return result
 
 
@@ -365,29 +364,11 @@ def clouds_block(meta: dict) -> dict:
         block["license"] = meta["license"]
     if meta.get("attribution") is not None:
         block["attribution"] = meta["attribution"]
+    if meta.get("artist_impression"):
+        block["artist_impression"] = True
     if meta.get("description") is not None:
         block["description"] = meta["description"]
     return block
-
-
-def load_specular_metadata(out_dir: Path) -> dict[str, dict]:
-    """{host_object_id: metadata_dict} for specular maps, keyed by the surface
-    body's id (``_specular`` suffix stripped)."""
-    textures_dir = out_dir / "textures"
-    result: dict[str, dict] = {}
-    if not textures_dir.exists():
-        return result
-    for body_dir in textures_dir.iterdir():
-        if not body_dir.is_dir() or not body_dir.name.endswith(_SPECULAR_SUFFIX):
-            continue
-        meta_file = mirror_path(body_dir / "metadata.json")
-        if meta_file.exists():
-            host_id = body_dir.name.removesuffix(_SPECULAR_SUFFIX)
-            result[host_id] = _with_tiles(
-                out_dir, body_dir.name, orjson.loads(meta_file.read_bytes())
-            )
-    logger.info("Loaded specular metadata for %d bodies", len(result))
-    return result
 
 
 def specular_block(meta: dict) -> dict:
@@ -406,6 +387,8 @@ def specular_block(meta: dict) -> dict:
         block["license"] = meta["license"]
     if meta.get("attribution") is not None:
         block["attribution"] = meta["attribution"]
+    if meta.get("artist_impression"):
+        block["artist_impression"] = True
     if meta.get("description") is not None:
         block["description"] = meta["description"]
     if meta.get("tiles") is not None:
@@ -413,30 +396,11 @@ def specular_block(meta: dict) -> dict:
     return block
 
 
-def load_night_metadata(out_dir: Path) -> dict[str, dict]:
-    """{host_object_id: metadata_dict} for night-lights maps, keyed by the
-    surface body's id (``_night`` suffix stripped)."""
-    textures_dir = out_dir / "textures"
-    result: dict[str, dict] = {}
-    if not textures_dir.exists():
-        return result
-    for body_dir in textures_dir.iterdir():
-        if not body_dir.is_dir() or not body_dir.name.endswith(_NIGHT_SUFFIX):
-            continue
-        meta_file = mirror_path(body_dir / "metadata.json")
-        if meta_file.exists():
-            host_id = body_dir.name.removesuffix(_NIGHT_SUFFIX)
-            result[host_id] = _with_tiles(
-                out_dir, body_dir.name, orjson.loads(meta_file.read_bytes())
-            )
-    logger.info("Loaded night-lights metadata for %d bodies", len(result))
-    return result
-
-
 def night_block(meta: dict) -> dict:
-    """Per-body ``night`` block for systems/{bary}.json.
+    """Per-body ``night`` or ``glow`` block for systems/{bary}.json. The
+    renderer draws night lights on the unlit side and a glow on both sides.
 
-    URLs: ``/v1/textures/{night.id}/{tier}.webp`` (single-frame).
+    URLs: ``/v1/textures/{block.id}/{tier}.webp`` (single-frame).
     """
     block: dict = {
         "id": meta["id"],
@@ -449,31 +413,13 @@ def night_block(meta: dict) -> dict:
         block["license"] = meta["license"]
     if meta.get("attribution") is not None:
         block["attribution"] = meta["attribution"]
+    if meta.get("artist_impression"):
+        block["artist_impression"] = True
     if meta.get("description") is not None:
         block["description"] = meta["description"]
     if meta.get("tiles") is not None:
         block["tiles"] = tiles_block(meta["tiles"])
     return block
-
-
-def load_displacement_metadata(out_dir: Path) -> dict[str, dict]:
-    """{host_object_id: metadata_dict} for displacement maps, keyed by the
-    surface body's id (``_displacement`` suffix stripped)."""
-    textures_dir = out_dir / "textures"
-    result: dict[str, dict] = {}
-    if not textures_dir.exists():
-        return result
-    for body_dir in textures_dir.iterdir():
-        if not body_dir.is_dir() or not body_dir.name.endswith(_DISPLACEMENT_SUFFIX):
-            continue
-        meta_file = mirror_path(body_dir / "metadata.json")
-        if meta_file.exists():
-            host_id = body_dir.name.removesuffix(_DISPLACEMENT_SUFFIX)
-            result[host_id] = _with_tiles(
-                out_dir, body_dir.name, orjson.loads(meta_file.read_bytes())
-            )
-    logger.info("Loaded displacement metadata for %d bodies", len(result))
-    return result
 
 
 def displacement_block(meta: dict) -> dict:
@@ -496,11 +442,110 @@ def displacement_block(meta: dict) -> dict:
         block["license"] = meta["license"]
     if meta.get("attribution") is not None:
         block["attribution"] = meta["attribution"]
+    if meta.get("artist_impression"):
+        block["artist_impression"] = True
     if meta.get("description") is not None:
         block["description"] = meta["description"]
     if meta.get("tiles") is not None:
         block["tiles"] = tiles_block(meta["tiles"])
     return block
+
+
+# The sibling layers, in the order of the credits page: the suffix of their
+# bundles (`<host id><suffix>`) and their block builder.
+_SIBLINGS: dict[str, tuple[str, Callable[[dict], dict]]] = {
+    "clouds": ("_clouds", clouds_block),
+    "night": ("_night", night_block),  # e.g. NASA Black Marble
+    "glow": ("_glow", night_block),  # e.g. the lava of an artist's impression
+    "specular": ("_specular", specular_block),  # e.g. Earth's ocean mask
+    "displacement": ("_displacement", displacement_block),  # e.g. LRO LOLA
+}
+
+
+@dataclass(frozen=True, kw_only=True)
+class TextureLayers:
+    """Every texture bundle of the export, by body id, as ingest wrote them.
+
+    The extrasolar objects have no Object rows, so their maps are read from
+    here by page id (`x-<host>-b-<n>`) and not through the DB. The fields
+    are in the order of the credits page.
+    """
+
+    textures: dict[str, dict]
+    alternates: dict[str, list[dict]]
+    clouds: dict[str, dict]
+    night: dict[str, dict]
+    glow: dict[str, dict]
+    specular: dict[str, dict]
+    displacement: dict[str, dict]
+
+    SIBLINGS: ClassVar[tuple[str, ...]] = tuple(_SIBLINGS)
+    # Every texture key of a planet object entry (`entry_blocks`).
+    ENTRY_KEYS: ClassVar[tuple[str, ...]] = (
+        "map_texture_available",
+        "tiers",
+        "texture",
+        "alternates",
+        *SIBLINGS,
+    )
+
+    @classmethod
+    def load(cls, out_dir: Path) -> TextureLayers:
+        return cls(
+            textures=load_texture_metadata(out_dir),
+            alternates=load_alternate_metadata(out_dir),
+            **{
+                layer: _load_sibling(out_dir, suffix, layer)
+                for layer, (suffix, _) in _SIBLINGS.items()
+            },
+        )
+
+    def items(self) -> Iterator[tuple[str, dict]]:
+        """Each layer's name and its metadata by body id, in field order."""
+        for f in fields(self):
+            yield f.name, getattr(self, f.name)
+
+    def map(self, fn: Callable[[str, dict], dict]) -> TextureLayers:
+        """The layers with ``fn(name, metadata by body id)`` in each field."""
+        return TextureLayers(**{name: fn(name, metas) for name, metas in self.items()})
+
+    def body_ids(self) -> set[str]:
+        """Every body with a bundle in any layer."""
+        return set().union(*(metas for _, metas in self.items()))
+
+    def surface_blocks(self, body_id: str) -> dict:
+        """`tiers`, `texture` and `alternates` of a body's surface map, as in
+        a system file. Empty for a body with no surface map."""
+        meta = self.textures.get(body_id)
+        if meta is None:
+            return {}
+        out: dict = {
+            "tiers": _tiers_from_meta(meta),
+            "texture": texture_attribution(meta),
+        }
+        if alternates := alternate_blocks(self.alternates.get(body_id)):
+            out["alternates"] = alternates
+        return out
+
+    def sibling_blocks(self, body_id: str) -> dict:
+        """The block of each sibling layer of a body, as in a system file."""
+        return {
+            layer: block(meta)
+            for layer, (_, block) in _SIBLINGS.items()
+            if (meta := getattr(self, layer).get(body_id)) is not None
+        }
+
+    def blocks(self, body_id: str) -> dict:
+        """Every texture key of a body, as in a system file."""
+        return self.surface_blocks(body_id) | self.sibling_blocks(body_id)
+
+    def entry_blocks(self, body_id: str) -> dict:
+        """The texture keys of a planet object entry: `blocks` and
+        `map_texture_available`."""
+        out = self.blocks(body_id)
+        if "texture" in out:
+            out["map_texture_available"] = True
+        return out
 
 
 def load_skybox_metadata(out_dir: Path) -> dict | None:
@@ -723,13 +768,8 @@ def write_system_metadata(
     orientation: dict[int, dict],
     radii: dict[int, dict],
     nut_prec: dict[int, dict[str, list[float]]],
-    texture_metadata: dict[str, dict],
-    alternate_metadata: dict[str, list[dict]],
+    layers: TextureLayers,
     ring_metadata: dict[str, list[dict]],
-    clouds_metadata: dict[str, dict],
-    specular_metadata: dict[str, dict],
-    night_metadata: dict[str, dict],
-    displacement_metadata: dict[str, dict],
 ) -> None:
     """Generate one metadata file per planetary system.
 
@@ -787,13 +827,8 @@ def write_system_metadata(
             entry: dict = {}
 
             if obj.map_texture_available:
-                meta = texture_metadata.get(obj.id)
-                if meta is not None:
-                    entry["tiers"] = _tiers_from_meta(meta)
-                    entry["texture"] = texture_attribution(meta)
-                    alternates = alternate_blocks(alternate_metadata.get(obj.id))
-                    if alternates:
-                        entry["alternates"] = alternates
+                if surface := layers.surface_blocks(obj.id):
+                    entry.update(surface)
                 else:
                     logger.warning(
                         "Texture metadata missing for %s (system %s), skipping tiers",
@@ -845,21 +880,7 @@ def write_system_metadata(
                         sys_id,
                     )
 
-            clouds_meta = clouds_metadata.get(obj.id)
-            if clouds_meta is not None:
-                entry["clouds"] = clouds_block(clouds_meta)
-
-            spec_meta = specular_metadata.get(obj.id)
-            if spec_meta is not None:
-                entry["specular"] = specular_block(spec_meta)
-
-            night_meta = night_metadata.get(obj.id)
-            if night_meta is not None:
-                entry["night"] = night_block(night_meta)
-
-            disp_meta = displacement_metadata.get(obj.id)
-            if disp_meta is not None:
-                entry["displacement"] = displacement_block(disp_meta)
+            entry.update(layers.sibling_blocks(obj.id))
 
             if entry:
                 bodies[obj.id] = entry
@@ -869,40 +890,48 @@ def write_system_metadata(
             logger.info("System metadata %s: %d bodies", sys_id, len(bodies))
 
 
-def patch_object_bundles(
-    out_dir: Path,
-    texture_metadata: dict[str, dict],
-    alternate_metadata: dict[str, list[dict]],
-    displacement_metadata: dict[str, dict],
-) -> int:
-    """Restate the surface-map blocks on the global object bundles, in place.
+def _restate(data: dict, blocks: dict, keys: tuple[str, ...]) -> bool:
+    """Set each of ``keys`` on ``data`` as in ``blocks``, and drop it when
+    ``blocks`` has none. Returns whether ``data`` changed."""
+    changed = False
+    for key in keys:
+        if data.get(key) == blocks.get(key):
+            continue
+        if key in blocks:
+            data[key] = blocks[key]
+        else:
+            del data[key]
+        changed = True
+    return changed
+
+
+def patch_object_bundles(out_dir: Path, layers: TextureLayers) -> int:
+    """Restate the texture blocks on the global object bundles, in place.
 
     The bundles mirror the system files, and for a small body outside every
-    system they are the only copy the renderer reads. Returns how many bundle
-    files changed.
+    system they are the only copy the renderer reads. A planet entry gets
+    every texture key, from the builder of the star-objects export. Returns
+    how many bundle files changed.
     """
+    # The star-objects export imports this module.
+    from space_map_data.export.objects.stars import PLANET_ID
 
     def patch(body_id: str, data: dict) -> bool:
+        if PLANET_ID.match(body_id):
+            return _restate(
+                data, layers.entry_blocks(body_id), TextureLayers.ENTRY_KEYS
+            )
         blocks: dict[str, object] = {}
-        meta = texture_metadata.get(body_id)
+        meta = layers.textures.get(body_id)
         if data.get("map_texture_available") and meta is not None:
             blocks["texture"] = texture_attribution(meta)
-            alternates = alternate_blocks(alternate_metadata.get(body_id))
+            alternates = alternate_blocks(layers.alternates.get(body_id))
             if alternates:
                 blocks["alternates"] = alternates
-        disp_meta = displacement_metadata.get(body_id)
+        disp_meta = layers.displacement.get(body_id)
         if disp_meta is not None:
             blocks["displacement"] = displacement_block(disp_meta)
-        changed = False
-        for key in ("texture", "alternates", "displacement"):
-            if data.get(key) == blocks.get(key):
-                continue
-            if key in blocks:
-                data[key] = blocks[key]
-            else:
-                del data[key]
-            changed = True
-        return changed
+        return _restate(data, blocks, ("texture", "alternates", "displacement"))
 
     return patch_global_bundles(out_dir, patch)
 
@@ -914,11 +943,10 @@ def export_systems_only(engine) -> None:
     These files restate what the texture, ring and overlay bundles already say
     about themselves, so a credit or rights edit in the manifests, or a new
     tile pyramid, reaches the frontend without re-running the whole export.
+    The planet records of the extrasolar export are not restated here.
     """
     out_dir = EXPORT_DIR / "v1"
-    texture_metadata = load_texture_metadata(out_dir)
-    alternate_metadata = load_alternate_metadata(out_dir)
-    displacement_metadata = load_displacement_metadata(out_dir)
+    layers = TextureLayers.load(out_dir)
     with Session(engine) as session:
         write_system_metadata(
             session,
@@ -926,13 +954,8 @@ def export_systems_only(engine) -> None:
             load_orientation(DOWNLOAD_DIR),
             load_radii(DOWNLOAD_DIR),
             load_nut_prec(DOWNLOAD_DIR),
-            texture_metadata,
-            alternate_metadata,
+            layers,
             load_ring_metadata(out_dir),
-            load_clouds_metadata(out_dir),
-            load_specular_metadata(out_dir),
-            load_night_metadata(out_dir),
-            displacement_metadata,
         )
         write_systems_global(
             out_dir,
@@ -940,9 +963,7 @@ def export_systems_only(engine) -> None:
             load_nut_prec_angles(DOWNLOAD_DIR),
             load_nut_prec_phase_degrees(DOWNLOAD_DIR),
         )
-    rewritten = patch_object_bundles(
-        out_dir, texture_metadata, alternate_metadata, displacement_metadata
-    )
+    rewritten = patch_object_bundles(out_dir, layers)
     if rewritten:
         refresh_versions(out_dir, "objects")
-    logger.info("Restated surface-map blocks on %d object bundle files", rewritten)
+    logger.info("Restated texture blocks on %d object bundle files", rewritten)

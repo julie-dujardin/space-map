@@ -74,6 +74,8 @@ class NotableObject:
     teff: float | None = None
     bp_rp: float | None = None
     radius_km: float | None = None  # Wikidata P2120 fallback when no radii/diameter
+    # An exoplanet's diameter from its catalogue's estimated radius.
+    estimated_diameter_km: float | None = None
     pole: dict | None = None  # IAU J2000 pole {ra, dec} deg, for the lineup's true tilt
     albedo: float | None = None  # SBDB geometric albedo; small bodies only
     spec: str | None = (
@@ -348,6 +350,8 @@ def notable_entries(
             entry["bp_rp"] = member.bp_rp
         if member.radius_km is not None:
             entry["radius_km"] = member.radius_km
+        if member.estimated_diameter_km is not None:
+            entry["estimated_diameter_km"] = member.estimated_diameter_km
         if member.pole is not None:
             entry["pole"] = member.pole
         if member.albedo is not None:

@@ -1114,7 +1114,12 @@ The global entry holds:
   values of the record, by column group: `{"distance": [{"short": "Smith
   2006", "title": "…", "url": "https://doi.org/…"}]}`. A value from a paper
   has the source `literature` in its `*_source` column; the star page cites
-  the work beside it.
+  the work beside it;
+- on a planet with a map, `map_texture_available: true` and the texture keys
+  of a body of `systems/{bary}.json`: `tiers`, `texture`, `alternates`,
+  `clouds`, `night`, `glow`, `specular`, `displacement`
+  ([textures.md](textures.md)), as its system file record has them. An artist's impression has `artist_impression: true`
+  in each block.
 
 The localized entry holds `name` where the name in that language (see
 "Names") differs from the global `name`, which is also the `name` of the

@@ -145,12 +145,9 @@ from space_map_data.export.solar_planets import page_families, solar_planet_reco
 from space_map_data.export.spacecraft import write_spacecraft
 from space_map_data.export.status import write_status
 from space_map_data.export.systems import (
-    load_alternate_metadata,
-    load_clouds_metadata,
-    load_displacement_metadata,
+    TextureLayers,
     load_gms,
     load_model_metadata,
-    load_night_metadata,
     load_nut_prec,
     load_nut_prec_angles,
     load_nut_prec_phase_degrees,
@@ -159,8 +156,6 @@ from space_map_data.export.systems import (
     load_radii,
     load_ring_metadata,
     load_skybox_metadata,
-    load_specular_metadata,
-    load_texture_metadata,
     skybox_block,
     write_system_metadata,
     write_systems_global,
@@ -1191,13 +1186,8 @@ def _export(engine: Engine, names_session: Session, limit_per_zone: int) -> None
     nut_prec = load_nut_prec(DOWNLOAD_DIR)
     nut_prec_angles = load_nut_prec_angles(DOWNLOAD_DIR)
     nut_prec_phase_degrees = load_nut_prec_phase_degrees(DOWNLOAD_DIR)
-    texture_metadata = load_texture_metadata(out_dir)
-    alternate_metadata = load_alternate_metadata(out_dir)
+    texture_layers = TextureLayers.load(out_dir)
     ring_metadata = load_ring_metadata(out_dir)
-    clouds_metadata = load_clouds_metadata(out_dir)
-    specular_metadata = load_specular_metadata(out_dir)
-    night_metadata = load_night_metadata(out_dir)
-    displacement_metadata = load_displacement_metadata(out_dir)
     skybox_metadata = load_skybox_metadata(out_dir)
     model_metadata = load_model_metadata(out_dir)
     # {object_id: slug} for shape-model bundles — lets notable-member lineups
@@ -1227,10 +1217,7 @@ def _export(engine: Engine, names_session: Session, limit_per_zone: int) -> None
         radii=radii,
         gms=gms,
         nut_prec=nut_prec,
-        texture_metadata=texture_metadata,
-        alternate_metadata=alternate_metadata,
-        clouds_metadata=clouds_metadata,
-        displacement_metadata=displacement_metadata,
+        texture_layers=texture_layers,
         model_sources=model_sources,
         probe_kernel_sources=probe_kernel_sources,
         probe_ephemeris_accuracy=probe_ephemeris_accuracy,
@@ -1310,24 +1297,16 @@ def _export(engine: Engine, names_session: Session, limit_per_zone: int) -> None
             orientation,
             radii,
             nut_prec,
-            texture_metadata,
-            alternate_metadata,
+            texture_layers,
             ring_metadata,
-            clouds_metadata,
-            specular_metadata,
-            night_metadata,
-            displacement_metadata,
         )
         write_credits(
             session,
             names,
             out_dir,
-            texture_metadata,
+            texture_layers,
+            planet_pages.served_names,
             ring_metadata,
-            clouds_metadata,
-            night_metadata,
-            specular_metadata,
-            displacement_metadata,
             skybox_metadata,
             model_metadata,
         )
@@ -1380,7 +1359,7 @@ def _export(engine: Engine, names_session: Session, limit_per_zone: int) -> None
                 j2000_poles(
                     orientation, nut_prec, nut_prec_angles, nut_prec_phase_degrees
                 ),
-                displacement_metadata,
+                texture_layers.displacement,
                 model_slugs,
             )
             attach_featured_satellites(session, agg.all_objects, names)
@@ -1410,7 +1389,11 @@ def _export(engine: Engine, names_session: Session, limit_per_zone: int) -> None
         # would report these as missing if they had not arrived yet.
         inject_manual_objects(agg.all_objects, wikidata_entities)
         inject_star_objects(
-            agg.all_objects, wikidata_entities, star_objects, planet_objects
+            agg.all_objects,
+            wikidata_entities,
+            star_objects,
+            planet_objects,
+            texture_layers,
         )
         # Hand-edited per-spacecraft pointing config; injects `pointing` into
         # matching object entries for the frontend's focused-model attitude.
@@ -1460,7 +1443,7 @@ def _export(engine: Engine, names_session: Session, limit_per_zone: int) -> None
             wikidata_entities,
             radii,
             gms,
-            displacement_metadata,
+            texture_layers.displacement,
             model_metadata,
             star_objects,
             planet_objects,
@@ -1497,12 +1480,7 @@ def _export(engine: Engine, names_session: Session, limit_per_zone: int) -> None
             names,
             out_dir,
             radii,
-            texture_metadata,
-            alternate_metadata,
-            clouds_metadata,
-            night_metadata,
-            specular_metadata,
-            displacement_metadata,
+            texture_layers,
             ring_metadata,
             model_metadata,
         )

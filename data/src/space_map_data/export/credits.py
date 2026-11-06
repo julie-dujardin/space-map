@@ -6,6 +6,7 @@ under `ephemeris_source`.
 """
 
 import logging
+from collections.abc import Mapping
 from pathlib import Path
 
 import orjson
@@ -29,19 +30,17 @@ from space_map_data.constants.traverses.references import TRAVERSE_SOURCES
 from space_map_data.export.ephemeris import EPHEMERIS_ARCHIVES
 from space_map_data.export.names import Names, ObjectNames, by_language
 from space_map_data.export.objects.sources import Reference
+from space_map_data.export.objects.stars import PLANET_ID
+from space_map_data.export.sitemap import planet_page_names
 from space_map_data.export.system_groups import (
     load_system_lookup,
     resolve_system_id,
 )
 from space_map_data.export.systems import (
-    load_clouds_metadata,
-    load_displacement_metadata,
+    TextureLayers,
     load_model_metadata,
-    load_night_metadata,
     load_ring_metadata,
     load_skybox_metadata,
-    load_specular_metadata,
-    load_texture_metadata,
     texture_attribution,
     tiles_block,
 )
@@ -72,6 +71,8 @@ def _sibling_credit_entry(body_id: str, name: str, meta: dict) -> dict:
         entry["license"] = meta["license"]
     if meta.get("attribution") is not None:
         entry["attribution"] = meta["attribution"]
+    if meta.get("artist_impression"):
+        entry["artist_impression"] = True
     if meta.get("description") is not None:
         entry["description"] = meta["description"]
     return entry
@@ -321,39 +322,81 @@ def _merge_ring_sources(body_id: str, name: str, metas: list[dict]) -> list[dict
     return out
 
 
+# The credited layers of a body, in the order of the page.
+_CREDITED_LAYERS = ("textures", *TextureLayers.SIBLINGS)
+
+
+def _layer_entry(layer: str, body_id: str, name: str, meta: dict) -> dict:
+    """The credit of one map of a body."""
+    if layer == "textures":
+        return {"body_id": body_id, "name": name, **texture_attribution(meta)}
+    entry = _sibling_credit_entry(body_id, name, meta)
+    if layer == "displacement" and meta.get("tiles") is not None:
+        entry["tiles"] = tiles_block(meta["tiles"])
+    return entry
+
+
+def _place_planet(
+    planet_id: str,
+    host_id: str,
+    pages: Mapping[str, Names | None],
+    named: dict[str, Names],
+) -> tuple[str, str] | None:
+    """The name of an exoplanet with a map and its host's page id, which is
+    the bucket of its credits. Adds both names to ``named``. None for a planet
+    with no page. A page with no name takes a name that exists: the planet
+    page's, else the page id."""
+    if planet_id not in pages:
+        logger.warning(
+            "Texture metadata for %s is of no served planet; skipping", planet_id
+        )
+        return None
+    planet = pages[planet_id]
+    if planet is None:
+        logger.warning("Planet page %s has no name; credited by its id", planet_id)
+        planet = Names(planet_id)
+    if host_id not in named:
+        host = pages.get(host_id)
+        if host is None:
+            logger.warning(
+                "Host page %s has no name; its credits take the name of %s",
+                host_id,
+                planet_id,
+            )
+            host = planet
+        named[host_id] = host
+    named[planet_id] = planet
+    return planet.name, host_id
+
+
 def write_credits(
     session: Session,
     names: ObjectNames,
     out_dir: Path,
-    texture_metadata: dict[str, dict],
+    layers: TextureLayers,
+    planet_pages: Mapping[str, Names | None],
     ring_metadata: dict[str, list[dict]],
-    clouds_metadata: dict[str, dict],
-    night_metadata: dict[str, dict],
-    specular_metadata: dict[str, dict],
-    displacement_metadata: dict[str, dict],
     skybox_metadata: dict | None,
     model_metadata: dict[str, dict],
 ) -> None:
     """Emit `v1/credits.json` summarising every credit-worthy data source.
 
     Groups bodies by host planetary system so the frontend renders sections
-    instead of a flat list; a final null-id group collects standalones
+    instead of a flat list. The exoplanets with a map follow, one section per
+    host star (`x-<host>`), and a final null-id group collects standalones
     (sun-orbiting asteroids and dwarf planets). The skybox has no host body,
     so it rides at the top level alongside `systems`. The entries have the
-    English names of the pages (`export.names`), and `names` holds the other
-    languages.
+    English names of the pages (`export.names`, and ``planet_pages`` for the
+    exoplanets and their hosts, None for a page with no name), and `names`
+    holds the other languages.
     """
     # Model metadata is keyed by slug, not object_id, so it's excluded from
     # the body_ids set (it would just produce empty rows on the DB lookup).
-    body_ids = (
-        set(texture_metadata)
-        | set(ring_metadata)
-        | set(RING_CATALOGS)
-        | set(clouds_metadata)
-        | set(night_metadata)
-        | set(specular_metadata)
-        | set(displacement_metadata)
-    )
+    body_ids = {
+        body_id
+        for body_id in layers.body_ids().union(ring_metadata, RING_CATALOGS)
+        if not PLANET_ID.match(body_id)
+    }
     objects = session.query(Object).filter(Object.id.in_(body_ids)).all()
     by_id = {obj.id: obj for obj in objects}
     named: dict[str, Names] = {obj.id: names.of(obj) for obj in objects}
@@ -362,27 +405,40 @@ def write_credits(
         load_system_lookup(session, names)
     )
 
-    textures_grouped: dict[str | None, list[dict]] = {}
-    for body_id, meta in texture_metadata.items():
+    planets: dict[str, tuple[str, str] | None] = {}
+
+    def placed(body_id: str, kind: str) -> tuple[str, str | None] | None:
+        """The name of a body and the id of its bucket: its system, or the
+        host page of an exoplanet. None for a body that is not shown."""
+        if (match := PLANET_ID.match(body_id)) is not None:
+            if body_id not in planets:
+                planets[body_id] = _place_planet(
+                    body_id, match["host_id"], planet_pages, named
+                )
+            return planets[body_id]
         obj = by_id.get(body_id)
         if obj is None:
-            # Orphan texture directory — its body was removed from the DB but
-            # the .webp tree lingered. Skip rather than silently credit an
-            # unknown target.
             logger.warning(
-                "Texture metadata for %s has no matching Object row; skipping",
+                "%s metadata for %s has no matching Object row; skipping",
+                kind,
                 body_id,
             )
-            continue
-        entry = {
-            "body_id": body_id,
-            "name": named[body_id].name,
-            **texture_attribution(meta),
-        }
-        sys_id = resolve_system_id(obj, bary_by_id, child_to_bary)
-        textures_grouped.setdefault(sys_id, []).append(entry)
+            return None
+        return named[body_id].name, resolve_system_id(obj, bary_by_id, child_to_bary)
 
-    rings_grouped: dict[str | None, list[dict]] = {}
+    # By layer, then by bucket id.
+    grouped: dict[str, dict[str | None, list[dict]]] = {
+        layer: {} for layer in ("textures", "rings", *TextureLayers.SIBLINGS)
+    }
+    for layer in _CREDITED_LAYERS:
+        # Sorted, so that a host page with no name takes the same name each run.
+        for body_id, meta in sorted(getattr(layers, layer).items()):
+            if (found := placed(body_id, layer.capitalize())) is not None:
+                name, bucket_id = found
+                grouped[layer].setdefault(bucket_id, []).append(
+                    _layer_entry(layer, body_id, name, meta)
+                )
+
     # A body may appear here for its render bundles, its catalogue, or both:
     # Saturn's Phoebe ring is catalogued and never drawn.
     for body_id in sorted(set(ring_metadata) | set(RING_CATALOGS)):
@@ -392,131 +448,38 @@ def write_credits(
                 *metas,
                 {"sources": [_catalog_source(s) for s in catalog.sources]},
             ]
-        obj = by_id.get(body_id)
-        if obj is None:
-            logger.warning(
-                "Ring metadata for %s has no matching Object row; skipping",
-                body_id,
+        if (found := placed(body_id, "Ring")) is not None:
+            name, bucket_id = found
+            grouped["rings"].setdefault(bucket_id, []).extend(
+                _merge_ring_sources(body_id, name, metas)
             )
-            continue
-        sys_id = resolve_system_id(obj, bary_by_id, child_to_bary)
-        for entry in _merge_ring_sources(body_id, named[body_id].name, metas):
-            rings_grouped.setdefault(sys_id, []).append(entry)
 
-    clouds_grouped: dict[str | None, list[dict]] = {}
-    for body_id, meta in clouds_metadata.items():
-        obj = by_id.get(body_id)
-        if obj is None:
-            logger.warning(
-                "Cloud metadata for %s has no matching Object row; skipping",
-                body_id,
-            )
-            continue
-        sys_id = resolve_system_id(obj, bary_by_id, child_to_bary)
-        clouds_grouped.setdefault(sys_id, []).append(
-            _sibling_credit_entry(body_id, named[body_id].name, meta)
-        )
+    for by_bucket in grouped.values():
+        for entries in by_bucket.values():
+            entries.sort(key=lambda e: e["name"].lower())
 
-    night_grouped: dict[str | None, list[dict]] = {}
-    for body_id, meta in night_metadata.items():
-        obj = by_id.get(body_id)
-        if obj is None:
-            logger.warning(
-                "Night-lights metadata for %s has no matching Object row; skipping",
-                body_id,
-            )
-            continue
-        sys_id = resolve_system_id(obj, bary_by_id, child_to_bary)
-        night_grouped.setdefault(sys_id, []).append(
-            _sibling_credit_entry(body_id, named[body_id].name, meta)
-        )
+    def bucket(bucket_id: str | None, name: str | None) -> dict:
+        out: dict = {"id": bucket_id, "name": name}
+        for layer, by_bucket in grouped.items():
+            if bucket_id in by_bucket:
+                out[layer] = by_bucket[bucket_id]
+        return out
 
-    specular_grouped: dict[str | None, list[dict]] = {}
-    for body_id, meta in specular_metadata.items():
-        obj = by_id.get(body_id)
-        if obj is None:
-            logger.warning(
-                "Specular metadata for %s has no matching Object row; skipping",
-                body_id,
-            )
-            continue
-        sys_id = resolve_system_id(obj, bary_by_id, child_to_bary)
-        specular_grouped.setdefault(sys_id, []).append(
-            _sibling_credit_entry(body_id, named[body_id].name, meta)
-        )
-
-    displacement_grouped: dict[str | None, list[dict]] = {}
-    for body_id, meta in displacement_metadata.items():
-        obj = by_id.get(body_id)
-        if obj is None:
-            logger.warning(
-                "Displacement metadata for %s has no matching Object row; skipping",
-                body_id,
-            )
-            continue
-        sys_id = resolve_system_id(obj, bary_by_id, child_to_bary)
-        entry = _sibling_credit_entry(body_id, named[body_id].name, meta)
-        if meta.get("tiles") is not None:
-            entry["tiles"] = tiles_block(meta["tiles"])
-        displacement_grouped.setdefault(sys_id, []).append(entry)
-
-    for entries in textures_grouped.values():
-        entries.sort(key=lambda e: e["name"].lower())
-    for entries in rings_grouped.values():
-        entries.sort(key=lambda e: e["name"].lower())
-    for entries in clouds_grouped.values():
-        entries.sort(key=lambda e: e["name"].lower())
-    for entries in night_grouped.values():
-        entries.sort(key=lambda e: e["name"].lower())
-    for entries in specular_grouped.values():
-        entries.sort(key=lambda e: e["name"].lower())
-    for entries in displacement_grouped.values():
-        entries.sort(key=lambda e: e["name"].lower())
-
-    # Systems first, in Mercury → Pluto order; standalones last.
-    sys_ids: set[str | None] = (
-        set(textures_grouped)
-        | set(rings_grouped)
-        | set(clouds_grouped)
-        | set(night_grouped)
-        | set(specular_grouped)
-        | set(displacement_grouped)
-    )
+    # Systems first, in Mercury → Pluto order; the exoplanets by host name,
+    # then the standalones last.
+    bucket_ids: set[str | None] = set().union(*grouped.values())
+    hosts = {found[1] for found in planets.values() if found is not None}
     systems_out: list[dict] = []
     for sys_id in sorted(
-        (s for s in sys_ids if s is not None),
+        (s for s in bucket_ids - hosts if s is not None),
         key=lambda s: system_order_by_id.get(s, 9999),
     ):
         named[sys_id] = system_name_by_id[sys_id]
-        bucket: dict = {"id": sys_id, "name": named[sys_id].name}
-        if sys_id in textures_grouped:
-            bucket["textures"] = textures_grouped[sys_id]
-        if sys_id in rings_grouped:
-            bucket["rings"] = rings_grouped[sys_id]
-        if sys_id in clouds_grouped:
-            bucket["clouds"] = clouds_grouped[sys_id]
-        if sys_id in night_grouped:
-            bucket["night"] = night_grouped[sys_id]
-        if sys_id in specular_grouped:
-            bucket["specular"] = specular_grouped[sys_id]
-        if sys_id in displacement_grouped:
-            bucket["displacement"] = displacement_grouped[sys_id]
-        systems_out.append(bucket)
-    if None in sys_ids:
-        bucket = {"id": None, "name": None}
-        if None in textures_grouped:
-            bucket["textures"] = textures_grouped[None]
-        if None in rings_grouped:
-            bucket["rings"] = rings_grouped[None]
-        if None in clouds_grouped:
-            bucket["clouds"] = clouds_grouped[None]
-        if None in night_grouped:
-            bucket["night"] = night_grouped[None]
-        if None in specular_grouped:
-            bucket["specular"] = specular_grouped[None]
-        if None in displacement_grouped:
-            bucket["displacement"] = displacement_grouped[None]
-        systems_out.append(bucket)
+        systems_out.append(bucket(sys_id, named[sys_id].name))
+    for host_id in sorted(hosts, key=lambda h: named[h].name.lower()):
+        systems_out.append(bucket(host_id, named[host_id].name))
+    if None in bucket_ids:
+        systems_out.append(bucket(None, None))
 
     models_out = _build_models_credits(model_metadata)
     model_contributors_out = _build_model_contributors(model_metadata)
@@ -562,19 +525,19 @@ def write_credits(
     (out_dir / "credits.json").write_bytes(
         orjson.dumps(payload, option=orjson.OPT_INDENT_2)
     )
-    n_textures = sum(len(g) for g in textures_grouped.values())
-    n_rings = sum(len(g) for g in rings_grouped.values())
-    n_clouds = sum(len(g) for g in clouds_grouped.values())
-    n_night = sum(len(g) for g in night_grouped.values())
-    n_displacement = sum(len(g) for g in displacement_grouped.values())
+    counts = {
+        layer: sum(len(bucket.get(layer, [])) for bucket in systems_out)
+        for layer in grouped
+    }
     logger.info(
-        "Wrote credits.json (%d systems, %d textured / %d ringed / %d clouded / %d night-lit / %d topo bodies, %d model source%s%s)",
+        "Wrote credits.json (%d systems, %d textured / %d ringed / %d clouded / %d night-lit / %d glowing / %d topo bodies, %d model source%s%s)",
         len(systems_out),
-        n_textures,
-        n_rings,
-        n_clouds,
-        n_night,
-        n_displacement,
+        counts["textures"],
+        counts["rings"],
+        counts["clouds"],
+        counts["night"],
+        counts["glow"],
+        counts["displacement"],
         len(models_out),
         "" if len(models_out) == 1 else "s",
         ", + skybox" if skybox_metadata is not None else "",
@@ -588,17 +551,20 @@ def export_credits_only(engine) -> None:
     say, so a credit edit reaches the page without re-running the whole export.
     """
     out_dir = EXPORT_DIR / "v1"
+    layers = TextureLayers.load(out_dir)
+    hosts = {
+        int(match["host"])
+        for body_id in layers.body_ids()
+        if (match := PLANET_ID.match(body_id)) is not None
+    }
     with Session(engine) as session:
         write_credits(
             session,
             ObjectNames(WikidataEntityCache(), session),
             out_dir,
-            load_texture_metadata(out_dir),
+            layers,
+            planet_page_names(hosts),
             load_ring_metadata(out_dir),
-            load_clouds_metadata(out_dir),
-            load_night_metadata(out_dir),
-            load_specular_metadata(out_dir),
-            load_displacement_metadata(out_dir),
             load_skybox_metadata(out_dir),
             load_model_metadata(out_dir),
         )

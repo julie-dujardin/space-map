@@ -35,6 +35,7 @@ from space_map_data.export.position.format import (
 from space_map_data.export.position.format import VERSION as BINARY_VERSION
 from space_map_data.export.position.layout import position_zone_dir
 from space_map_data.export.quantities import UnitConverter
+from space_map_data.export.systems import TextureLayers
 from space_map_data.export.wikidata import WikidataEntity, WikidataEntityCache
 from space_map_data.models.object import Object, OrbitalSource
 
@@ -60,10 +61,7 @@ class ObjectDataContext:
     radii: dict[int, dict]
     gms: dict[int, float]
     nut_prec: dict[int, dict[str, list[float]]]
-    texture_metadata: dict[str, dict]
-    alternate_metadata: dict[str, list[dict]]
-    clouds_metadata: dict[str, dict]
-    displacement_metadata: dict[str, dict]
+    texture_layers: TextureLayers
     # shape-model slug -> provenance block (technique/archive/mission link).
     model_sources: dict[str, dict]
     probe_kernel_sources: dict[int, str | None]
@@ -154,10 +152,7 @@ def build_zone_object_data(
         radii=ctx.radii,
         gms=ctx.gms,
         nut_prec=ctx.nut_prec,
-        texture_metadata=ctx.texture_metadata,
-        alternate_metadata=ctx.alternate_metadata,
-        clouds_metadata=ctx.clouds_metadata,
-        displacement_metadata=ctx.displacement_metadata,
+        layers=ctx.texture_layers,
         model_sources=ctx.model_sources,
         probe_kernel_sources=ctx.probe_kernel_sources,
         probe_ephemeris_accuracy=ctx.probe_ephemeris_accuracy,

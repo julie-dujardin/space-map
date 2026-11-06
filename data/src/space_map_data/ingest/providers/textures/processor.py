@@ -108,6 +108,14 @@ _TILED_SIBLINGS = {
     "cylindrical_displacement": config.DISPLACEMENT_SUFFIX,
     "cylindrical_specular": config.SPECULAR_SUFFIX,
     "cylindrical_night_lights": config.NIGHT_SUFFIX,
+    "cylindrical_glow": config.GLOW_SUFFIX,
+}
+
+# The emissive sibling layers, by entry type. Only the renderer tells them
+# apart: night lights glow on the unlit side, a glow on both.
+_EMISSIVE_SIBLINGS = {
+    "cylindrical_night_lights": config.NIGHT_SUFFIX,
+    "cylindrical_glow": config.GLOW_SUFFIX,
 }
 
 
@@ -149,10 +157,10 @@ def _source_digest(path: Path, cached: dict | None) -> dict:
 
 
 def _refresh_cloud_credits(meta_path: Path, download_meta: dict) -> None:
-    """Patch download-sourced credit fields (license, attribution) onto an
-    existing cloud metadata.json on skip — so credit edits ship without
-    re-encoding every frame. Clouds don't flow through the shared
-    ``refresh_metadata_from_yaml`` (their metadata shape differs)."""
+    """Patch the fields from the download sidecar (license, attribution,
+    artist_impression) onto an existing cloud metadata.json on skip, so a
+    credit edit ships with no re-encode. Clouds have their own metadata
+    shape, so ``refresh_metadata_from_yaml`` does not cover them."""
     try:
         current = json.loads(meta_path.read_text())
     except OSError, json.JSONDecodeError:
@@ -160,6 +168,7 @@ def _refresh_cloud_credits(meta_path: Path, download_meta: dict) -> None:
     desired = {
         "license": download_meta.get("license"),
         "attribution": download_meta.get("attribution"),
+        "artist_impression": download_meta.get("artist_impression"),
     }
     if all(current.get(k) == v for k, v in desired.items()):
         return
@@ -329,6 +338,7 @@ class TextureProcessor:
             "organisation": entry["organisation"],
             "license": entry.get("license"),
             "distribution": entry.get("distribution"),
+            "artist_impression": entry.get("artist_impression"),
             "attribution": attribution,
             "description": entry.get("description"),
             "type": entry["type"],
@@ -365,8 +375,8 @@ class TextureProcessor:
             if entry.get("type") == "cylindrical_specular":
                 self._process_specular(entry, force=force)
                 continue
-            if entry.get("type") == "cylindrical_night_lights":
-                self._process_night_lights(entry, force=force)
+            if entry.get("type") in _EMISSIVE_SIBLINGS:
+                self._process_emissive(entry, force=force)
                 continue
             if entry.get("type") == "cylindrical_displacement":
                 self._process_displacement(entry, force=force)
@@ -585,6 +595,7 @@ class TextureProcessor:
             "organisation": entry["organisation"],
             "license": entry.get("license"),
             "distribution": entry.get("distribution"),
+            "artist_impression": entry.get("artist_impression"),
             "attribution": entry.get("attribution")
             or scraped_attribution(layer_files(base_specs[0])[0][0]),
             "description": entry.get("description"),
@@ -1096,25 +1107,22 @@ class TextureProcessor:
         )
         return out_dir
 
-    def _process_night_lights(self, entry: dict, force: bool = False) -> Path:
-        """Process a `cylindrical_night_lights` entry — emissive sibling.
+    def _process_emissive(self, entry: dict, force: bool = False) -> Path:
+        """Process a `cylindrical_night_lights` or `cylindrical_glow` entry.
 
-        Output goes to ``{body}_night/`` — a sibling of the surface texture,
-        same single-frame shape as ``_specular``. The image is treated as a
-        plain RGB cylindrical map; the renderer samples it as an emissive
-        contribution multiplied by the body's unlit fraction.
+        Output goes to ``{body}_night/`` or ``{body}_glow/``, a sibling of the
+        surface texture with the single-frame shape of ``_specular``. The
+        image is a plain RGB cylindrical map.
         """
         src = entry["_source_dir"] / entry["file"]
         if not src.exists():
-            log.warning("night-lights source missing: %s", entry["file"])
+            log.warning("emissive source missing: %s", entry["file"])
             return config.PROCESSED_DIR
 
-        object_id = f"{entry['body']}{config.NIGHT_SUFFIX}"
+        object_id = f"{entry['body']}{_EMISSIVE_SIBLINGS[entry['type']]}"
         out_dir = config.PROCESSED_DIR / object_id
 
-        # Helpers key off entry["body"]; override to the suffixed export id so
-        # the on-disk metadata.json's `id` matches the directory — same trick
-        # `_process_specular` and `_process_clouds` use.
+        # The helpers key off entry["body"], and the metadata `id` is the bundle.
         entry = {**entry, "body": object_id}
 
         if not force and self._try_skip(
@@ -1139,7 +1147,7 @@ class TextureProcessor:
             extra_fields={"alignment": entry_alignment(entry)},
         )
         log.info(
-            "processed night-lights %s → %s (%d exports)",
+            "processed emissive %s → %s (%d exports)",
             src.name,
             object_id,
             len(exports),
@@ -1160,9 +1168,7 @@ class TextureProcessor:
         object_id = f"{entry['body']}{config.DISPLACEMENT_SUFFIX}"
         out_dir = config.PROCESSED_DIR / object_id
 
-        # Helpers key off entry["body"]; override to the suffixed export id so
-        # the on-disk metadata.json's `id` matches the directory — same trick
-        # `_process_specular` and `_process_night_lights` use.
+        # The helpers key off entry["body"], and the metadata `id` is the bundle.
         entry = {**entry, "body": object_id}
 
         if not force and self._try_skip(
@@ -1414,9 +1420,9 @@ class TextureProcessor:
     def _process_clouds(self, force: bool = False) -> None:
         """Dispatch each entry in ``CLOUD_SOURCES`` to the timeseries or static path.
 
-        Per-body cloud sources live under ``CLOUDS_DIR/<name>/``; the name
-        maps to a NAIF body id, and the processed bundle lands at
-        ``PROCESSED_DIR/<body_id>_clouds/``. Directories with image files at
+        Per-body cloud sources live under ``CLOUDS_DIR/<name>/``. The name
+        maps to a body id, NAIF or an exoplanet page id, and the processed
+        bundle lands at ``PROCESSED_DIR/<body_id>_clouds/``. Directories with image files at
         the top level are treated as a single static texture (e.g. Venus);
         directories holding a date tree of snapshots go through the
         timeseries path (e.g. Earth).
@@ -1681,6 +1687,7 @@ class TextureProcessor:
             "license": download_meta.get("license"),
             "attribution": download_meta.get("attribution"),
             "description": description,
+            "artist_impression": download_meta.get("artist_impression"),
             "type": "clouds_overlay",
             "tiers": tiers,
             "frames": ["static"],

@@ -9,7 +9,7 @@ import pyarrow as pa
 import pytest
 from cdshealpix import nested
 
-from space_map_data.export.extrasolar import skycultures
+from space_map_data.export.extrasolar import build, skycultures
 from space_map_data.extrasolar import engine, sky
 from space_map_data.extrasolar.engine import IngestResult, IngestRun, Source
 from space_map_data.extrasolar.exoplanets import catalogues
@@ -151,6 +151,12 @@ def _no_git(monkeypatch):
 def _no_sky_cultures(monkeypatch, tmp_path):
     """An export reads no matched sky cultures unless a test gives some."""
     monkeypatch.setattr(skycultures, "CULTURES_DIR", tmp_path / "no-skycultures")
+
+
+@pytest.fixture(autouse=True)
+def _no_planet_maps(monkeypatch, tmp_path):
+    """An export reads no texture bundles unless a test gives some."""
+    monkeypatch.setattr(build, "TEXTURES_ROOT", tmp_path / "no-textures")
 
 
 @pytest.fixture(autouse=True)

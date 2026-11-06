@@ -1,5 +1,7 @@
 """The credits bibliography — one row per work across the eight lists."""
 
+import orjson
+
 from space_map_data.constants.activity.references import ACTIVITY_SOURCES
 from space_map_data.constants.interior.references import INTERIOR_SOURCES
 from space_map_data.constants.radiation.references import RADIATION_SOURCES
@@ -14,7 +16,11 @@ from space_map_data.export.credits import (
     _merge_references,
     _orientation_references,
     _star_references,
+    write_credits,
 )
+from space_map_data.export.names import Names, ObjectNames
+from tests.conftest import EntityStub
+from tests.export.conftest import layers_of
 
 
 def _sections() -> dict[str, list[dict]]:
@@ -149,3 +155,67 @@ class TestModelContributors:
         credit = {"name": "EOX IT Services, coastline from OpenStreetMap", "url": "u"}
         out = _build_model_contributors({"a": _bundle(credit)})
         assert out[0]["name"] == credit["name"]
+
+
+class TestExtrasolarBuckets:
+    """An exoplanet's maps are credited under its host star, with the flag of
+    an artist's impression."""
+
+    @staticmethod
+    def _meta(bundle: str, type_: str) -> dict:
+        return {
+            "id": bundle,
+            "source": "https://eyes.nasa.gov/apps/exo/",
+            "organisation": "NASA",
+            "license": "Public domain",
+            "attribution": "Artist's impression by NASA/JPL-Caltech.",
+            "type": type_,
+            "artist_impression": True,
+        }
+
+    def _credits(self, session, tmp_path, layers, pages) -> dict:
+        names = ObjectNames(EntityStub(), session)
+        write_credits(session, names, tmp_path, layers, pages, {}, None, {})
+        return orjson.loads((tmp_path / "credits.json").read_bytes())
+
+    def test_one_bucket_per_host(self, session, tmp_path, caplog):
+        """A host with no entry has a page too. A planet that is not served
+        is left out."""
+        pages = {
+            "x-5": Names("Host"),
+            "x-5-b-1": Names("Host b", {"ja": "ホスト b"}),
+            "x-5-b-2": Names("Host c"),
+        }
+        layers = layers_of(
+            {
+                "x-5-b-1": self._meta("x-5-b-1", "cylindrical"),
+                "x-5-b-2": self._meta("x-5-b-2", "cylindrical"),
+                "x-9-b-1": self._meta("x-9-b-1", "cylindrical"),
+            },
+            glow={"x-5-b-1": self._meta("x-5-b-1_glow", "cylindrical_glow")},
+        )
+        payload = self._credits(session, tmp_path, layers, pages)
+        (bucket,) = payload["systems"]
+        assert (bucket["id"], bucket["name"]) == ("x-5", "Host")
+        assert [e["body_id"] for e in bucket["textures"]] == ["x-5-b-1", "x-5-b-2"]
+        assert bucket["textures"][0]["artist_impression"] is True
+        assert bucket["textures"][0]["name"] == "Host b"
+        (glow,) = bucket["glow"]
+        assert (glow["body_id"], glow["artist_impression"]) == ("x-5-b-1", True)
+        assert payload["names"]["ja"] == {"x-5-b-1": "ホスト b"}
+        assert "x-9-b-1 is of no served planet" in caplog.text
+
+    def test_a_page_with_no_name_keeps_its_credit(self, session, tmp_path, caplog):
+        """The host takes its planet's name, and a planet its page id."""
+        pages = {"x-5": None, "x-5-b-1": Names("Host b"), "x-6-b-1": None}
+        layers = layers_of(
+            {
+                "x-5-b-1": self._meta("x-5-b-1", "cylindrical"),
+                "x-6-b-1": self._meta("x-6-b-1", "cylindrical"),
+            }
+        )
+        payload = self._credits(session, tmp_path, layers, pages)
+        buckets = [(b["id"], b["name"]) for b in payload["systems"]]
+        assert buckets == [("x-5", "Host b"), ("x-6", "x-6-b-1")]
+        assert "Host page x-5 has no name" in caplog.text
+        assert "Planet page x-6-b-1 has no name" in caplog.text

@@ -63,6 +63,7 @@ interface NotableEntry {
   mass_kg?: number;                 // body mass from PCK GM (major bodies only — e.g. category planet/moon members)
   radii?: { a: number; b: number; c: number }; // triaxial PCK radii km, body-fixed X/Y/Z (equatorial a, polar c); major bodies, Ceres/Pluto + PCK moons
   radius_km?: number;               // scalar render radius (Wikidata P2120); lineup size fallback when no radii/diameter (most TNO dwarfs)
+  estimated_diameter_km?: number;   // exoplanets: diameter of the catalogue's estimated radius, when it has no measured one (4 significant digits)
   pole?: { ra: number; dec: number; source?: "lightcurve" | "occultation" }; // IAU J2000 pole RA/Dec (deg); the lineup's true axial tilt. `source` is present only when the pole isn't the PCK's — small-body members tilt on DAMIT lightcurve poles, which the footer credits to DAMIT rather than to the IAU/NAIF
   albedo?: number;                  // SBDB geometric albedo (small bodies only); see `color`
   spec?: string;                    // SBDB taxonomic type, SMASS else Tholen (small bodies only); see `color`
@@ -490,7 +491,8 @@ interface GlobalGroupData {
   // differs. An exoplanet (`id` = `x-<host>-b-<n>`) takes its Wikidata entity
   // and pictures from its object entry, and without one it has no thumbnail.
   // It has `diameter_km` when its radius is measured (no estimate, no limit,
-  // no assumed value) and `first_obs` when it has a discovery year. A Solar
+  // no assumed value), else `estimated_diameter_km` when its radius is an
+  // estimate, and `first_obs` when it has a discovery year. A Solar
   // System planet (`id` = `naif-<n>99`) is the entry of the `cat-planets`
   // lineup. `galleries` has a shelf for each listed planet that has
   // pictures. `child_groups` (localized) lists the families it contains that

@@ -25,23 +25,25 @@ EARTH_CLOUDS_DIR = CLOUDS_DIR / "earth"
 # renderer doesn't hold one picture across it.
 CLOUDS_SLOT_HOURS = 3
 
-# Maps cloud subdirectory name → NAIF body id. Each entry's processed bundle
-# lands at `PROCESSED_DIR / f"{body_id}_clouds"`.
+# Maps cloud subdirectory name → body id, NAIF or an exoplanet page id. Each
+# entry's processed bundle lands at `PROCESSED_DIR / f"{body_id}_clouds"`.
 # Titan is deliberately absent: its haze is drawn by the atmosphere shell, so
 # an opaque overlay on top of it doubles the same layer.
 CLOUD_SOURCES: dict[str, str] = {
     "earth": "naif-399",
     "venus": "naif-299",
+    "55-cnc-e": "x-18059543-b-4",
 }
 
 # User-facing organisation + description for static cloud bundles. The
 # downloaded sidecar's `description` is a rendering hint, not credit copy,
-# so we override it here. Keyed by NAIF body id.
+# so we override it here. Keyed by body id.
 CLOUDS_STATIC_META: dict[str, tuple[str, str]] = {
     "naif-299": (
         "Björn Jónsson",
         "Ultraviolet cloud map mosaicked from Galileo SSI flyby imagery.",
     ),
+    "x-18059543-b-4": ("NASA", "Cloud layer of an artist's impression."),
 }
 
 
@@ -63,6 +65,9 @@ SPECULAR_SUFFIX = "_specular"
 # Earth). Same shape as `_specular`: single-frame, served from
 # `{body}{NIGHT_SUFFIX}/{tier}.webp`.
 NIGHT_SUFFIX = "_night"
+# Sibling bundle for an emissive map that glows on the lit side too, such as
+# the lava of an artist's impression. Same shape as `_night`.
+GLOW_SUFFIX = "_glow"
 # Sibling bundle for a displacement/height map (LRO LOLA, USGS DEMs). The
 # renderer drives `displacementMap` from it, scaled by the km range in metadata.
 DISPLACEMENT_SUFFIX = "_displacement"

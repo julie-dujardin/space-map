@@ -10,10 +10,12 @@ Files, JSON in gzip:
   and its outer orbit; and every alias number, with the planet it leads to,
   which can be on another host when the old host merged;
 - planets/{system}.json.gz: the hosts and the planets of one system, with
-  each planet's orbit in the scene's frame (`orbits`), its catalogue values
-  and its families (`families`, `families_estimated`). A host and a planet
-  have the names of their pages (`name`, `names`, from `export.names`), and
-  a brown dwarf the star that it also is (`star`).
+  each planet's orbit in the scene's frame (`orbits`), its catalogue values,
+  its families (`families`, `families_estimated`) and whether it is tidally
+  locked (`tidally_locked`). A host and a planet have the names of their pages
+  (`name`, `names`, from `export.names`), and a brown dwarf the star that it
+  also is (`star`). A planet with a map has the texture keys of a body of a
+  system file (`TextureLayers.blocks`).
 
 Every file has the token of the section in its `token` field. The token
 hashes each file with 16 zeros in that field, as for the sky cultures.
@@ -51,6 +53,7 @@ from space_map_data.export.extrasolar import (
     orbits,
     planet_families,
     render,
+    tidal_lock,
 )
 from space_map_data.export.extrasolar.container import Written
 from space_map_data.export.extrasolar.systems import SYSTEM_BIT
@@ -62,6 +65,7 @@ from space_map_data.export.names import (
     repeated_letters,
     served_host,
 )
+from space_map_data.export.systems import TextureLayers
 from space_map_data.extrasolar import frame
 from space_map_data.extrasolar.exoplanets import numbering
 from space_map_data.extrasolar.exoplanets.ingest import hosts_with_several_systems
@@ -129,6 +133,7 @@ POINT_COLUMNS = [
     "host_radius",
     "host_mass",
     "host_metallicity",
+    "host_age",
     "host_spectral_type",
     "host_star_source",
 ]
@@ -271,6 +276,7 @@ def _host(
         "radius_source": radius_source if radius is not None else None,
         "mass": _f32(point["host_mass"]),
         "metallicity": _f32(point["host_metallicity"]),
+        "age": _f32(point["host_age"]),
         "spectral_type": point["host_spectral_type"],
         "bp_rp": _f32(bp - rp) if bp is not None and rp is not None else None,
         "catalogue": catalogue,
@@ -444,9 +450,10 @@ def _direction(host: dict) -> np.ndarray:
     )
 
 
-def planet_record(row: dict, host: dict) -> dict:
-    """The planet entry of a system file from its planets table row and its
-    host record. A planet with a Wikidata item has an object entry."""
+def planet_record(row: dict, host: dict, maps: dict) -> dict:
+    """The planet entry of a system file from its planets table row, its
+    host record and the texture keys of its maps. A planet with a Wikidata
+    item has an object entry."""
     record: dict = {
         "host": row["host"],
         "number": row["number"],
@@ -474,7 +481,10 @@ def planet_record(row: dict, host: dict) -> dict:
     record["families"], record["families_estimated"] = planet_families.families_of(
         record, host
     )
-    return record
+    record["tidally_locked"] = tidal_lock.tidally_locked(values, host)
+    if record["tidally_locked"] is not None:
+        record["computed"] = [*record["computed"], "tidally_locked"]
+    return record | maps
 
 
 def alias_key(number: tuple[int, int]) -> str:
@@ -536,13 +546,15 @@ def build(
     run: Runner,
     live: Path,
     host_pages: Mapping[int, Names],
+    textures: TextureLayers,
 ) -> Result | None:
     """Write the planet files below `out`, or None when the registry has no
     planets table.
 
     `scratch` holds the render rows of the tree build, `run` maps a task over
     jobs in the export's workers, `live` is the served `v1/x/`, and
-    `host_pages` names the hosts with an entry, by ID.
+    `host_pages` names the hosts with an entry, by ID, and `textures` holds
+    the maps of the planets.
     """
     table = read_planets(registry)
     if table is None:
@@ -603,7 +615,11 @@ def build(
         1 for alias, end in aliases.items() if alias[0] != end[0]
     )
 
+    # The star-objects export imports this module.
+    from space_map_data.export.objects.stars import PLANET_ID, planet_id
+
     repeated = repeated_letters(rows)
+    mapped: set[str] = set()
     planets_of: dict[int, list[dict]] = defaultdict(list)
     published: Counter = Counter()
     estimated: Counter = Counter()
@@ -611,7 +627,11 @@ def build(
         host = hosts.get(row["host"])
         if host is None:
             continue
-        record = planet_record(row, host)
+        page_id = planet_id(row["host"], row["number"])
+        maps = textures.blocks(page_id)
+        if maps:
+            mapped.add(page_id)
+        record = planet_record(row, host, maps)
         names = planet_names(
             CataloguePlanet.of(row, repeated),
             served_host(host, host_pages.get(row["host"])),
@@ -641,6 +661,12 @@ def build(
                 row["designation"],
                 row["eccentricity"],
             )
+
+    counts["planets with a map"] = len(mapped)
+    for page_id in sorted(
+        k for k in textures.body_ids() - mapped if PLANET_ID.match(k)
+    ):
+        logger.warning("planets: the map of %s is of no served planet", page_id)
 
     previous = _previous_planets(live)
     gone = _gone(registry, served_numbers | set(aliases), previous, state)

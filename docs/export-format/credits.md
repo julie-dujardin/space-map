@@ -11,8 +11,8 @@ interface Credits {
   // where it differs from the entry's `name`.
   names: Record<string, Record<string, string>>;
   systems: Array<{
-    id: string | null;           // barycenter object ID ("naif-3", …) or null for the standalone bucket
-    name: string | null;         // global name of the primary planet's page ("Earth", "Jupiter", …); null for standalones
+    id: string | null;           // barycenter object ID ("naif-3", …), host star of exoplanets ("x-558442032"), or null for the standalone bucket
+    name: string | null;         // global name of the primary planet's page ("Earth", "Jupiter", …) or of the host star's page; null for standalones
     textures?: Array<{
       body_id: string;           // e.g. "naif-399"
       name: string;              // global (English) name of the body's page (`export/names.py`); other languages in `names`
@@ -23,6 +23,7 @@ interface Credits {
       frames?: number;           // only on cylindrical_monthly; frame count
       attribution?: string;      // long-form credit line when available
       description?: string;      // optional one-liner about the dataset
+      artist_impression?: true;  // an artist made the map (textures.md)
       tiles?: TilesBlock;        // the tile pyramid of this map and its own credit, see tiles.md
     }>;
     rings?: Array<{
@@ -44,13 +45,21 @@ interface Credits {
       description?: string;
     }>;
     night?: Array<SiblingCredit>;        // night-lights overlay ("_night" bundle)
+    glow?: Array<SiblingCredit>;         // emissive map lit on both sides ("_glow" bundle)
     specular?: Array<SiblingCredit>;     // specular/roughness mask ("_specular" bundle)
     displacement?: Array<SiblingCredit>; // height map ("_displacement" bundle)
   }>;
-  // `night`, `specular` and `displacement` share the `clouds` shape: the host
-  // body's real id, its English name, and the credit fields from the sibling
-  // bundle's metadata.json. A `displacement` entry also has `tiles?: TilesBlock`
-  // when the height map has a tile pyramid.
+  // `night`, `glow`, `specular` and `displacement` share the `clouds` shape:
+  // the host body's real id, its English name, and the credit fields from the
+  // sibling bundle's metadata.json, with `artist_impression?: true`. A
+  // `displacement` entry also has `tiles?: TilesBlock` when the height map has
+  // a tile pyramid.
+  //
+  // The buckets: the planetary systems Mercury to Pluto, then one bucket per
+  // host star of the exoplanets with a map (`x-<host>`, by name), whose
+  // entries have the planets' page ids (`x-<host>-b-<n>`), then standalones.
+  // A host page with no name takes the name of its first mapped planet, and
+  // a planet page with no name its page id.
   atmosphere_references: Array<{ // literature behind the derived scattering params
     title: string;               // "Fulchignoni et al. 2005 (Nature 438)"
     url: string;                 // DOI or stable publisher/archive link

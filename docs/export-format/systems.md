@@ -135,8 +135,12 @@ The frontend fetches this when entering a system: it preloads low-res textures f
 
 When a body carries a `displacement` block, the frontend loads the height map as the material's `displacementMap`. `scale_km`/`bias_km` map each texel to a value — `km = bias_km + scale_km · texel` — which the renderer converts to scene units, so relief is physically scaled and tracks the per-frame sphere-LOD tessellation. When `absolute_radius` is true the value is radius-from-centre rather than elevation: the renderer subtracts the body's own sphere radius and skips triaxial flattening, letting the DEM carry the whole shape (used for irregular bodies like Vesta and Ceres). Ships as a sibling bundle (`textures/{host_id}_displacement/`) credited independently from the surface texture.
 
-A `texture`, `displacement`, `night` or `specular` block has a `tiles` block when the tile pyramid of the layer is built. The pyramid holds the layer at the full detail of its source. It has its own credit fields and, for heights, its own `scale_km`/`bias_km`. See [tiles.md](tiles.md).
+A body with a `glow` block has an emissive map that the renderer draws on the lit and the unlit side, at full intensity; `night` glows on the unlit side only. Both have the shape of `specular`.
 
-`space-map-export --only systems` rewrites the system files. It also rewrites `texture`, `alternates` and `displacement` on the global object bundles in place, because the bundles repeat these blocks and are the only copy for a body that is not in a system file. Then it refreshes the `objects` version token.
+A block with `artist_impression: true` restates a map that an artist made ([textures.md](textures.md)).
+
+A `texture`, `displacement`, `night`, `glow` or `specular` block has a `tiles` block when the tile pyramid of the layer is built. The pyramid holds the layer at the full detail of its source. It has its own credit fields and, for heights, its own `scale_km`/`bias_km`. See [tiles.md](tiles.md).
+
+`space-map-export --only systems` rewrites the system files. It also rewrites `texture`, `alternates` and `displacement` on the global object bundles in place, because the bundles repeat these blocks and are the only copy for a body that is not in a system file. On an exoplanet's entry (`x-<host>-b-<n>`) it rewrites every texture key of [objects.md](objects.md): `map_texture_available`, `tiers`, `texture`, `alternates` and each sibling block. Then it refreshes the `objects` version token. The planet records of the extrasolar export ([extrasolar.md](extrasolar.md)) change only when that export runs again.
 
 When a body carries a `rings` block, the frontend builds an annulus aligned to its IAU pole, fetches `${DATA_BASE}/v1/rings/{body_id}/{channels[name]}` for each channel, and routes the credit fields through the same per-organisation attribution path as textures. The `channels` map is flat (channel → filename) rather than tier-nested because rings ship at a single resolution.

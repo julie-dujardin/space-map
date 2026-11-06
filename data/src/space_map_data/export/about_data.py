@@ -23,20 +23,16 @@ from sqlalchemy.orm import Session
 from space_map_data.constants.atmosphere.facts import ATMOSPHERE_FACTS
 from space_map_data.export.about_objects import object_rows
 from space_map_data.export.names import Names, ObjectNames, by_language
+from space_map_data.export.objects.stars import PLANET_ID
 from space_map_data.export.system_groups import (
     load_system_lookup,
     resolve_system_id,
 )
 from space_map_data.export.systems import (
-    load_alternate_metadata,
-    load_clouds_metadata,
-    load_displacement_metadata,
+    TextureLayers,
     load_model_metadata,
-    load_night_metadata,
     load_radii,
     load_ring_metadata,
-    load_specular_metadata,
-    load_texture_metadata,
     ring_block,
 )
 from space_map_data.export.wikidata import WikidataEntityCache
@@ -264,38 +260,53 @@ def has_no_surface(body_id: str) -> bool:
     return facts is not None and facts.note == "no_surface"
 
 
+def real_maps(layers: TextureLayers) -> TextureLayers:
+    """``layers`` without the artist's impressions: the page counts only the
+    worlds that a map of real images covers."""
+
+    def real(name: str, metas: dict) -> dict:
+        if name == "alternates":
+            return {
+                body_id: kept
+                for body_id, found in metas.items()
+                if (kept := [m for m in found if not m.get("artist_impression")])
+            }
+        return {k: m for k, m in metas.items() if not m.get("artist_impression")}
+
+    kept = layers.map(real)
+    dropped = set(layers.textures) - set(kept.textures)
+    if dropped:
+        logger.info("About data: %d artist's impressions left out", len(dropped))
+    return kept
+
+
+# The kind of a layer's map rows, where it is not the layer's name.
+_ROW_KINDS = {
+    "textures": "surface",
+    "alternates": "surface",
+    "displacement": "topography",
+}
+
+
 def world_maps(
-    body_id: str,
-    radius_km: float | None,
-    out_dir: Path,
-    textures: dict[str, dict],
-    alternates: dict[str, list[dict]],
-    clouds: dict[str, dict],
-    night: dict[str, dict],
-    specular: dict[str, dict],
-    displacement: dict[str, dict],
+    body_id: str, radius_km: float | None, out_dir: Path, layers: TextureLayers
 ) -> list[dict]:
     """The maps of one world, in the layer order of the credits page."""
     rows = []
-    if body_id in textures:
-        meta = textures[body_id]
-        rows.append(map_row("surface", meta, tier_rows(meta), radius_km))
-    for meta in alternates.get(body_id, []):
-        rows.append(
-            map_row("surface", meta, tier_rows(meta), radius_km, alternate=True)
-        )
-    if body_id in clouds:
-        meta = clouds[body_id]
-        tiers = cloud_tier_rows(out_dir / "textures" / meta["id"], meta)
-        rows.append(map_row("clouds", meta, tiers, radius_km))
-    for layer, metas in (
-        ("night", night),
-        ("specular", specular),
-        ("topography", displacement),
-    ):
-        if body_id in metas:
-            meta = metas[body_id]
-            rows.append(map_row(layer, meta, tier_rows(meta), radius_km))
+    for layer, metas in layers.items():
+        if (found := metas.get(body_id)) is None:
+            continue
+        kind = _ROW_KINDS.get(layer, layer)
+        if layer == "alternates":
+            rows.extend(
+                map_row(kind, meta, tier_rows(meta), radius_km, alternate=True)
+                for meta in found
+            )
+        elif layer == "clouds":
+            tiers = cloud_tier_rows(out_dir / "textures" / found["id"], found)
+            rows.append(map_row(kind, found, tiers, radius_km))
+        else:
+            rows.append(map_row(kind, found, tier_rows(found), radius_km))
     return rows
 
 
@@ -492,12 +503,7 @@ def build_about_data(
     names: ObjectNames,
     out_dir: Path,
     radii: dict[int, dict],
-    textures: dict[str, dict],
-    alternates: dict[str, list[dict]],
-    clouds: dict[str, dict],
-    night: dict[str, dict],
-    specular: dict[str, dict],
-    displacement: dict[str, dict],
+    layers: TextureLayers,
     rings: dict[str, list[dict]],
     models: dict[str, dict],
     extrasolar_dir: Path,
@@ -508,9 +514,11 @@ def build_about_data(
     downloads.
     The maps are grouped by planetary system. The rings and the shape models
     are lists of worlds in the same order. The rows have the English names of
-    the pages (`export.names`), and `names` holds the other languages."""
-    layers = (textures, alternates, clouds, night, specular, displacement)
-    mapped = set().union(*layers)
+    the pages (`export.names`), and `names` holds the other languages.
+    An artist's impression is no map of the world (`real_maps`), and an
+    exoplanet has no Object row."""
+    layers = real_maps(layers)
+    mapped = {b for b in layers.body_ids() if not PLANET_ID.match(b)}
     lightcurve = []
     craft = []
     shapes: dict[str, list[dict]] = {}
@@ -540,7 +548,7 @@ def build_about_data(
             world["radius_km"] = _figures(radius_km, 6)
         if has_no_surface(obj.id):
             world["no_surface"] = True
-        world["maps"] = world_maps(obj.id, radius_km, out_dir, *layers)
+        world["maps"] = world_maps(obj.id, radius_km, out_dir, layers)
         grouped.setdefault(system_id, []).append(world)
 
     named.update((sys_id, system_names[sys_id]) for sys_id in grouped if sys_id)
@@ -591,12 +599,7 @@ def write_about_data(
     names: ObjectNames,
     out_dir: Path,
     radii: dict[int, dict],
-    textures: dict[str, dict],
-    alternates: dict[str, list[dict]],
-    clouds: dict[str, dict],
-    night: dict[str, dict],
-    specular: dict[str, dict],
-    displacement: dict[str, dict],
+    layers: TextureLayers,
     rings: dict[str, list[dict]],
     models: dict[str, dict],
 ) -> None:
@@ -607,12 +610,7 @@ def write_about_data(
         names,
         out_dir,
         radii,
-        textures,
-        alternates,
-        clouds,
-        night,
-        specular,
-        displacement,
+        layers,
         rings,
         models,
         EXTRASOLAR_DIR,
@@ -652,12 +650,7 @@ def export_about_data_only(engine) -> None:
             ObjectNames(WikidataEntityCache(), session),
             out_dir,
             load_radii(DOWNLOAD_DIR),
-            load_texture_metadata(out_dir),
-            load_alternate_metadata(out_dir),
-            load_clouds_metadata(out_dir),
-            load_night_metadata(out_dir),
-            load_specular_metadata(out_dir),
-            load_displacement_metadata(out_dir),
+            TextureLayers.load(out_dir),
             load_ring_metadata(out_dir),
             load_model_metadata(out_dir),
         )

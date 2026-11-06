@@ -466,24 +466,30 @@ class TestPlanetsPage:
         ]
 
     def test_an_exoplanet_entry_has_its_diameter_and_year(self, page):
-        """The diameter of a measured radius and the discovery year. A Solar
-        System planet keeps its lineup entry."""
+        """The diameter of a measured radius, else of an estimated one, and the
+        discovery year. A Solar System planet keeps its lineup entry."""
         ids, groups = page
         members = groups.planets.notable_members
-        assert {m.object_id: (m.diameter_km, m.first_obs) for m in members} == {
-            "naif-399": (None, None),
-            "naif-599": (None, None),
-            _id(ids[0], 1): (214500.0, "2000"),
-            _id(ids[0], 2): (286000.0, "2000"),
-            _id(ids[0], 3): (None, "2000"),
-            _id(ids[0], 4): (None, "2000"),
+        assert {
+            m.object_id: (m.diameter_km, m.estimated_diameter_km, m.first_obs)
+            for m in members
+        } == {
+            "naif-399": (None, None, None),
+            "naif-599": (None, None, None),
+            _id(ids[0], 1): (214500.0, None, "2000"),
+            _id(ids[0], 2): (286000.0, None, "2000"),
+            _id(ids[0], 3): (None, 357500.0, "2000"),
+            _id(ids[0], 4): (None, None, "2000"),
         }
         entries = notable_entries(members)
         assert (entries[2]["diameter_km"], entries[2]["first_obs"]) == (
             214500.0,
             "2000",
         )
+        assert "estimated_diameter_km" not in entries[2]
         assert "diameter_km" not in entries[4]
+        assert entries[4]["estimated_diameter_km"] == 357500.0
+        assert not {"diameter_km", "estimated_diameter_km"} & entries[5].keys()
 
     def test_largest(self, page):
         """The largest measured radius with error bars within 10% of it: planet
@@ -597,19 +603,24 @@ class TestListEntry:
         }
 
     @pytest.mark.parametrize(
-        ("flags", "diameter"),
+        ("flags", "diameter", "estimated"),
         [
-            ({}, 214500.0),
-            ({"estimated": ["radius"]}, None),
-            ({"limits": ["radius<"]}, None),
-            ({"assumed": ["radius"]}, None),
+            ({}, 214500.0, None),
+            ({"estimated": ["radius"]}, None, 214500.0),
+            ({"limits": ["radius<"]}, None, None),
+            ({"assumed": ["radius"]}, None, None),
         ],
     )
-    def test_diameter(self, flags, diameter):
+    def test_diameter(self, flags, diameter, estimated):
+        """A measured radius gives `diameter_km`, an estimate its own field."""
         found = planet_family._planet(
             self._record() | flags, "x-1-b-1", Names("b"), 1.0
         )
-        assert (found.diameter_km, found.first_obs) == (diameter, "1995")
+        assert (found.diameter_km, found.estimated_diameter_km) == (
+            diameter,
+            estimated,
+        )
+        assert found.first_obs == "1995"
 
     def test_no_discovery_year(self):
         record = self._record(discovery_year=None)

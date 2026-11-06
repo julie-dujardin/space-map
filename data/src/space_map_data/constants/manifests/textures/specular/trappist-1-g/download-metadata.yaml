@@ -1,0 +1,10 @@
+bodies:
+- body: x-558442032-b-6
+  body_name: trappist-1-g
+  source: https://eyes.nasa.gov/apps/exo/
+  organisation: NASA
+  license: Public domain
+  attribution: "Artist's impression by NASA/JPL-Caltech: the specular map of TRAPPIST-1 g in NASA Eyes on Exoplanets."
+  file: trappist-1-g-specular-artist-impression-nasa-eyes.png
+  type: cylindrical_specular
+  artist_impression: true
