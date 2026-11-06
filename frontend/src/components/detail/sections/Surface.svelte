@@ -79,7 +79,7 @@
 	// matches the ingested DAMIT model scale); a measured albedo pins it.
 	let estimatedDiameterKm = $derived.by(() => {
 		if (!sbdb || sbdb.H == null) return null;
-		if (radii || wd?.radius || sbdb.diameter || sbdb.extent || wd?.length || wd?.width) return null;
+		if (radii || sbdb.diameter || sbdb.extent || wd?.length || wd?.width) return null;
 		if (sbdb.albedo) return { nominal: diameterKmFromH(sbdb.H, sbdb.albedo), range: null };
 		return {
 			nominal: diameterKmFromH(sbdb.H),
@@ -143,7 +143,6 @@
 	let hasBodyRows = $derived(
 		!!(
 			diameterRows ||
-			wd?.radius ||
 			sbdb?.diameter ||
 			sbdb?.extent ||
 			wd?.length ||
@@ -175,11 +174,6 @@
 				{#each diameterRows as row (row.label)}
 					<Row label={row.label} value={row.value} />
 				{/each}
-			{:else if wd?.radius}
-				<Row
-					label={m.diameter()}
-					value={formatQuantity({ value: wd.radius.value * 2, unit: wd.radius.unit })}
-				/>
 			{:else if sbdb?.diameter}
 				<Row
 					label={m.diameter()}

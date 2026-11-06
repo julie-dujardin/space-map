@@ -4,7 +4,7 @@
 	import StatCardRow from './kit/StatCardRow.svelte';
 	import type { Stat } from './kit/StatCard.svelte';
 	import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
-	import { rotationPeriodDays } from '$lib/fetch/objects/physical';
+	import { meanRadiusKm, rotationPeriodDays } from '$lib/fetch/objects/physical';
 	import {
 		ObjectType,
 		isNaturalBodyType,
@@ -175,23 +175,15 @@
 		const out: Stat[] = [];
 		const sbdb = global?.sbdb;
 		const wd = global?.wikidata;
-		const radii = global?.radii;
 
-		// Block 1 — a size, in kilometres. Wikidata's mass unit varies by source
-		// and reads as noise at a glance, so mass only stands in when no size is
-		// measured at all. Triaxial bodies average their axes; per-axis figures
-		// live in the Physical panel.
-		const diameterKm =
-			sbdb?.diameter ?? (radii ? ((radii.a + radii.b + radii.c) / 3) * 2 : undefined);
-		if (diameterKm != null)
+		// Block 1: a size in kilometres. Wikidata's mass unit varies by source
+		// and is noise at a glance, so mass stands in only when no size is
+		// measured. A triaxial body shows its mean; the Physical panel has the axes.
+		const radiusKm = meanRadiusKm(global);
+		if (radiusKm != null)
 			out.push({
 				label: m.diameter(),
-				value: formatQuantity({ value: diameterKm, unit: 'kilometre' }, true)
-			});
-		else if (wd?.radius)
-			out.push({
-				label: m.diameter(),
-				value: formatQuantity({ value: wd.radius.value * 2, unit: wd.radius.unit }, true)
+				value: formatQuantity({ value: radiusKm * 2, unit: 'kilometre' }, true)
 			});
 		else if (sbdb?.H != null)
 			// No measured size: the H-magnitude estimate, as in the Physical panel.

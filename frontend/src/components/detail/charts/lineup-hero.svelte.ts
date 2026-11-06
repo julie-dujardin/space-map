@@ -12,6 +12,7 @@ import {
 import { STRIP_CAPACITY } from '../members/MemberStrip.svelte';
 import type { LineupBody } from './BodyLineup.svelte';
 import { rowQualifier } from '$lib/credits/imagery-layers';
+import { catalogueSizeCredit } from '$lib/credits/size-sources';
 import { loadTextureCredits, type TextureSource } from '$lib/credits/texture-credits';
 import { extrasolarBase } from '$lib/fetch/extrasolar/files';
 import { isExtrasolarObjectId, planetOfObjectId } from '$lib/fetch/extrasolar/ids';
@@ -52,15 +53,18 @@ const hasLightcurvePole = (mm: NotableMemberEntry) => mm.pole?.source === 'light
 const hasPckGeometry = (mm: NotableMemberEntry) =>
 	hasPckRadii(mm) || mm.mass_kg != null || hasPckPole(mm);
 
-/** The distinct works behind the lineup's measured ellipsoids, deduped by URL —
- *  one paper usually shapes several members of a small-body lineup. */
-function measuredShapeWorks(members: NotableMemberEntry[] | undefined): CitedSource[] {
-	const byUrl = new Map<string, CitedSource>();
+/** The distinct works and moon catalogues behind the lineup's sizes. One
+ *  paper usually shapes several members of a small-body lineup. */
+function sizeWorks(members: NotableMemberEntry[] | undefined): CitedSource[] {
+	const byKey = new Map<string, CitedSource>();
 	for (const mm of members ?? []) {
 		const ref = mm.radii?.reference;
-		if (ref) byUrl.set(ref.url, { key: ref.url, label: ref.title, url: ref.url });
+		const credit = ref
+			? { key: ref.url, label: ref.title, url: ref.url }
+			: mm.radii?.source && catalogueSizeCredit(mm.radii.source);
+		if (credit) byKey.set(credit.key, credit);
 	}
-	return [...byUrl.values()];
+	return [...byKey.values()];
 }
 
 export interface LineupHeroDeps {
@@ -135,8 +139,7 @@ export class LineupHero {
 	readonly lightcurvePole: boolean;
 	readonly wikidata: boolean;
 	readonly sbdb: boolean;
-	// Papers behind the members whose ellipsoid no kernel holds — the lineup
-	// draws Bienor and Haumea on a fit, not on a PCK constant.
+	// The papers and moon catalogues behind the sizes that no kernel holds.
 	readonly shapeWorks: CitedSource[];
 	// The moon-lineup hero moves its credits to the members tab where the spheres
 	// render, so the overview footer drops them.
@@ -356,9 +359,9 @@ export class LineupHero {
 		this.imagery = $derived(imageryFor(lineupBodies));
 		this.craftImagery = $derived(imageryFor(this.probeLineup?.bodies));
 
-		// Metadata sources the lineup members draw on: radii/pole/mass ⇒ PCK (moon
-		// diameters are PCK mean radii too); radius fallback ⇒ Wikidata; small-body
-		// diameter/albedo/spectral data ⇒ SBDB.
+		// The metadata sources of the lineup members: radii, pole and mass from the
+		// PCK; a size from a moon catalogue or Wikidata; small-body diameter,
+		// albedo and spectral data from SBDB.
 		// The Solar System tab draws its own members, not the notable ones.
 		const creditMembers = $derived([
 			...(notable ?? []),
@@ -368,9 +371,11 @@ export class LineupHero {
 		const hasLineup = $derived(lineupBodies.length > 0);
 		this.pck = $derived(hasLineup && pckClaim);
 		this.lightcurvePole = $derived(hasLineup && creditMembers.some(hasLightcurvePole));
-		this.wikidata = $derived(hasLineup && creditMembers.some((mm) => mm.radius_km != null));
+		this.wikidata = $derived(
+			hasLineup && creditMembers.some((mm) => mm.radii?.source === 'wikidata')
+		);
 		this.sbdb = $derived(hasLineup && isSmallBodyLineup);
-		this.shapeWorks = $derived(hasLineup ? measuredShapeWorks(creditMembers) : []);
+		this.shapeWorks = $derived(hasLineup ? sizeWorks(creditMembers) : []);
 
 		// The overview footer credits only a lineup that the overview draws.
 		const lineupOnTab = $derived(

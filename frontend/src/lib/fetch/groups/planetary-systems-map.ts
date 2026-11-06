@@ -25,7 +25,7 @@ export interface PlanetarySystemsMapEntry {
 	moon_count: number;
 }
 
-/** Keyed by barycenter id. */
+/** Keyed by barycenter id, else by the id of a host that orbits the Sun. */
 export type PlanetarySystemsMapFile = Record<string, PlanetarySystemsMapEntry>;
 
 export const fetchPlanetarySystemsMap = memoizedGzJson<PlanetarySystemsMapFile>(

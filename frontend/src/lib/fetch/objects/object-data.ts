@@ -150,6 +150,11 @@ export type ProbeVisitKind =
  *  diameter at the star's distance, or the star's own catalogue value. */
 export type StarRadiusSource = 'literature' | 'interferometry' | 'catalogue';
 
+/** Where a Solar System body's `radii` come from, best source first: the PCK
+ *  or a fitted ellipsoid, the AsterSat and Johnston moon catalogues, then
+ *  Wikidata. An SBDB size stays in `sbdb.diameter`. */
+export type BodyRadiusSource = 'pck' | MeasuredShapeSource | 'astersat' | 'johnston' | 'wikidata';
+
 export interface NotableMemberEntry {
 	/** English Wikidata label (matching object bundles), or the DB fallback name. */
 	name: string;
@@ -172,22 +177,19 @@ export interface NotableMemberEntry {
 	diameter_km?: number;
 	/** Body mass (kg) from PCK GM; major bodies only. Drives the planets mass chart. */
 	mass_kg?: number;
-	/** Triaxial radii (km); the render shape for major bodies + Ceres/Pluto.
-	 *  `source` names the fit when the body appears in no kernel, so the footer
-	 *  credits the paper rather than the PCK. */
+	/** Semi-axes (km), the lineup's render shape. `source` names the source
+	 *  when it is not the PCK, so the footer credits it; a fitted ellipsoid
+	 *  adds the paper as `reference`. */
 	radii?: {
 		a: number;
 		b: number;
 		c: number;
-		source?: MeasuredShapeSource | StarRadiusSource;
+		source?: Exclude<BodyRadiusSource, 'pck'> | StarRadiusSource;
 		reference?: OrientationReference;
 	};
 	/** A star's temperature (K), else its BP − RP: its colour on the lineup. */
 	teff?: number;
 	bp_rp?: number;
-	/** Scalar render radius (km) from the Wikidata radius — the render-size
-	 *  fallback for bodies with no PCK radii or SBDB diameter (most TNO dwarfs). */
-	radius_km?: number;
 	/** An exoplanet's diameter from its catalogue's estimated radius, when it
 	 *  has no measured one. */
 	estimated_diameter_km?: number;
@@ -660,13 +662,11 @@ export interface GlobalObjectData {
 	/** Refit-from-CK attitude stream (probes with NAIF CK kernels). Loaded
 	 *  lazily on focus; supersedes `pointing` over its coverage window. */
 	attitude?: ProbeAttitude;
-	/** Triaxial radii (km) along body-fixed X, Y, Z (Z = spin axis). When
-	 *  present, this is the shape the 3D scene renders — supersedes the
-	 *  Wikidata radius and SBDB diameter as the authoritative size. */
+	/** Semi-axes (km) along body-fixed X, Y, Z (Z = spin axis); equal for a
+	 *  source that gives one size. Present when it outranks `sbdb.diameter`. */
 	radii?: { a: number; b: number; c: number };
-	/** Which table the radii were read off: the PCK, or a published fit for a
-	 *  body no kernel covers. Decides who the sidebar credits for the size. */
-	radii_source?: 'pck' | MeasuredShapeSource;
+	/** Where the radii come from. Decides who the sidebar credits for the size. */
+	radii_source?: BodyRadiusSource;
 	/** The work that fitted the ellipsoid, present with a measured
 	 *  `radii_source`. Often not the paper the pole came from. */
 	radii_reference?: OrientationReference;
@@ -794,7 +794,6 @@ export interface GlobalObjectData {
 		discovery_date?: string[];
 		launch_date?: string;
 		mass?: QuantityWithUnit;
-		radius?: QuantityWithUnit;
 		density?: QuantityWithUnit;
 		surface_gravity?: QuantityWithUnit;
 		absolute_magnitude?: number;

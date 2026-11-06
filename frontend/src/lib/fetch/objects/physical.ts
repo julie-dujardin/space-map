@@ -1,16 +1,10 @@
 import type { GlobalObjectData } from './object-data';
 
-/** Back to kilometres from whichever size source the body publishes: the mean
- *  of the radii triple, a Wikidata radius, else an SBDB diameter. */
+/** The body's mean radius (km): the mean of `radii`, else half the SBDB
+ *  diameter. The export writes `radii` only where it outranks SBDB. */
 export function meanRadiusKm(global: GlobalObjectData | null): number | null {
 	const radii = global?.radii;
 	if (radii) return (radii.a + radii.b + radii.c) / 3;
-	const radius = global?.wikidata?.radius;
-	if (radius) {
-		if (radius.unit === 'kilometre') return radius.value;
-		if (radius.unit === 'metre') return radius.value / 1000;
-		return null;
-	}
 	const diameter = global?.sbdb?.diameter;
 	return diameter ? diameter / 2 : null;
 }

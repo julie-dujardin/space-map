@@ -20,9 +20,9 @@ export const RENDER_HINTS: Record<string, Pick<LineupGeometry, 'surfaceFrame' | 
 	'naif-399': { surfaceFrame: '06', cloudSystem: 'naif-3' } // Earth
 };
 
-/** The lineup geometry of a member. The size and flattening come from PCK
- *  `radii`, else the SBDB diameter, else the Wikidata radius, else an
- *  exoplanet's estimated diameter, as the scene draws it. The tilt comes
+/** The lineup geometry of a member. The size and flattening come from
+ *  `radii`, else the SBDB diameter, else an exoplanet's estimated diameter,
+ *  as the scene draws it. The tilt comes
  *  from the IAU `pole`. It also carries the render hints, the measured colour
  *  and albedo, and the law of the ground. `null` for a member with no size or
  *  for a star of another system, so it also filters what the row can draw. A
@@ -40,8 +40,6 @@ export function geometryFromMember(m: NotableMemberEntry & { id: string }): Line
 		geom.polarRatio = m.radii.c / eq;
 	} else if (m.diameter_km != null) {
 		geom.radiusKm = m.diameter_km / 2;
-	} else if (m.radius_km != null) {
-		geom.radiusKm = m.radius_km;
 	} else if (m.estimated_diameter_km != null) {
 		geom.radiusKm = m.estimated_diameter_km / 2;
 		geom.sizeEstimated = true;

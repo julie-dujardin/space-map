@@ -10,6 +10,7 @@
 		type OrientationReference,
 		type OrientationSource
 	} from '$lib/credits/orientation-sources';
+	import { catalogueSizeCredit } from '$lib/credits/size-sources';
 	import { TAXONOMY_SOURCES } from '$lib/credits/taxonomy-sources';
 	import type { CitedWork, GlobalObjectData } from '$lib/fetch/objects/object-data';
 
@@ -108,9 +109,9 @@
 
 		const qid = global?.cross_refs?.wikidata_qid;
 		if (qid) addProvider('wikidata', `https://www.wikidata.org/wiki/${qid}`);
-		// Wikidata values on a page carrying no QID of its own: the lineup's radius
-		// fallback (P2120), and the spacecraft whose figures were ingested from an
-		// item the bundle never named. Deduped against the QID link above by key.
+		// Wikidata values on a page with no QID of its own: a lineup radius from
+		// P2120 or P2386, and craft figures from an item that the bundle does not
+		// name. The key dedups this against the QID link above.
 		else if (wikidata || global?.wikidata) addProvider('wikidata');
 
 		// Collection-page lineup geometry/metadata, derived from the members shown.
@@ -146,19 +147,16 @@
 		if (orientation) addPole(orientation.source, orientation.reference);
 		if (lightcurvePole) addPole('lightcurve');
 
-		// The size rows are the PCK's whoever published the pole — a DAMIT pole
-		// says nothing about a body's radii. Only a measured ellipsoid displaces
-		// the kernel, and it names the work that fitted it, which is often not
-		// the one the pole came from; where it is the same work, the pole credit
-		// above already covers it and dedup drops this one. Bundles predating
-		// `radii_source` are read off the pole, which agrees for every body that
-		// had one then.
-		const radiiSource = global?.radii_source ?? orientation?.source;
-		const measuredShape = radiiSource === 'occultation' || radiiSource === 'photometry';
+		// The size rows credit `radii_source`, not the pole: a fitted ellipsoid
+		// often comes from another work. The QID link above credits a Wikidata
+		// size.
+		const radiiSource = global?.radii_source;
 		if (global?.radii) {
-			if (!measuredShape) addPck();
-			else if (global.radii_reference)
-				add(...creditArgs(measuredShapeCredit(global.radii_reference)));
+			const catalogue = radiiSource && catalogueSizeCredit(radiiSource, global.johnston?.page);
+			if (radiiSource === 'occultation' || radiiSource === 'photometry') {
+				if (global.radii_reference) add(...creditArgs(measuredShapeCredit(global.radii_reference)));
+			} else if (catalogue) add(catalogue.key, catalogue.label, catalogue.url, catalogue.note);
+			else if (radiiSource !== 'wikidata') addPck();
 		}
 
 		// Named works the panel cites outright, like the blocks below rather
