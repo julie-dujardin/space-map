@@ -33,8 +33,10 @@ export function starInteriorBlock(
 	if (t.range) block.centre_temperature_range_k = t.range;
 	if (rho.value !== null) block.centre_density_g_cm3 = rho.value;
 	if (rho.range) block.centre_density_range_g_cm3 = rho.range;
-	if (interior.centreX) block.centre_hydrogen_range = interior.centreX;
-	if (interior.centreY) block.centre_helium_range = interior.centreY;
+	const centre: NonNullable<InteriorBlock['centre_composition']> = [];
+	if (interior.centreX) centre.push({ material: 'hydrogen', share_range: interior.centreX });
+	if (interior.centreY) centre.push({ material: 'helium', share_range: interior.centreY });
+	if (centre.length) block.centre_composition = centre;
 	return block;
 }
 

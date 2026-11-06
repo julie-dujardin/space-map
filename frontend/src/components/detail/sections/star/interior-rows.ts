@@ -1,7 +1,8 @@
 /**
  * The rows above a star's cross-section: where its interior comes from, the
- * stage of the fit, and the centre of the star. A fit gives the centre as
- * ranges, so the rows show ranges. Tier 3 has no centre values.
+ * stage of the fit, and the centre of the star. A row shows the range of a
+ * value where there is one: a fit gives the centre as ranges, a paper mostly
+ * as values. Tier 3 has no centre values.
  */
 
 import * as m from '$lib/paraglide/messages.js';
@@ -61,10 +62,15 @@ function fitInputs(interior: StarInterior): string | undefined {
 	return m.star_interior_inputs_from({ teff, luminosity, feh: starSourceName(fehSource) });
 }
 
-/** Ends that round alike read as one figure. */
-function percentSpan([low, high]: [number, number]): string {
-	const [a, b] = [percentParts(low, 3), percentParts(high, 3)];
-	return ltrIsolate(a.value === b.value ? joinParts(a) : formatSpan(a, b));
+/** The range where there is one, as for the density and temperature. Ends
+ *  that round alike read as one figure. */
+function fractionText(block: InteriorBlock, material: string): string | null {
+	const entry = block.centre_composition?.find((c) => c.material === material);
+	if (entry?.share_range) {
+		const [a, b] = entry.share_range.map((v) => percentParts(v, 3));
+		return ltrIsolate(a.value === b.value ? joinParts(a) : formatSpan(a, b));
+	}
+	return entry?.share === undefined ? null : ltrIsolate(joinParts(percentParts(entry.share, 3)));
 }
 
 function densityText(value: number | undefined, range: [number, number] | undefined) {
@@ -93,13 +99,7 @@ export function starInteriorRows(interior: StarInterior, block: InteriorBlock): 
 					densityText(block.centre_density_g_cm3, block.centre_density_range_g_cm3)
 				)
 			: null,
-		row(
-			m.star_interior_centre_hydrogen(),
-			block.centre_hydrogen_range && percentSpan(block.centre_hydrogen_range)
-		),
-		row(
-			m.star_interior_centre_helium(),
-			block.centre_helium_range && percentSpan(block.centre_helium_range)
-		)
+		row(m.star_interior_centre_hydrogen(), fractionText(block, 'hydrogen')),
+		row(m.star_interior_centre_helium(), fractionText(block, 'helium'))
 	]);
 }

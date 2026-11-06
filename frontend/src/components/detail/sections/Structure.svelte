@@ -32,6 +32,7 @@
 		bandColor,
 		coreBracket,
 		layerSpans,
+		surfaceBracket,
 		skyRgb,
 		type PlasmaRange
 	} from '$lib/charts/layer-appearance';
@@ -134,7 +135,8 @@
 		if (!layers.some((l) => l.state === 'plasma')) return undefined;
 		const inner = core ?? centre;
 		const innerK = inner ? (inner.lowK + inner.highK) / 2 : nominalPlasma?.innerK;
-		const outerK = surfaceK ?? nominalPlasma?.outerK;
+		const surface = surfaceBracket(layers, surfaceK);
+		const outerK = surface ? (surface.lowK + surface.highK) / 2 : nominalPlasma?.outerK;
 		if (innerK === undefined || outerK === undefined) return undefined;
 		return { innerK, outerK };
 	});

@@ -500,6 +500,7 @@ describe('the credits of a star interior', () => {
 		stage: 'main_sequence',
 		feh: 0,
 		fehSource: 'assumed-solar',
+		teff: 5800,
 		teffSource: 'gaia-dr3-gspphot',
 		luminositySource: 'gaia-dr3-flame',
 		mass: { value: 1, range: null },

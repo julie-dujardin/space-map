@@ -21,6 +21,7 @@ function fitted(over: Partial<StarInterior>): StarInterior {
 		stage: 'main_sequence',
 		feh: 0,
 		fehSource: 'pastel-2020',
+		teff: 5800,
 		teffSource: 'gaia-dr3-gspphot',
 		luminositySource: 'gaia-dr3-flame',
 		mass: { value: 1, range: [0.9, 1.1] },
@@ -76,8 +77,10 @@ describe('a fitted interior', () => {
 		expect(block.centre_temperature_k).toBe(1.6e7);
 		expect(block.centre_temperature_range_k).toEqual([1.5e7, 1.7e7]);
 		expect(block.centre_density_range_g_cm3).toEqual([100, 200]);
-		expect(block.centre_hydrogen_range).toEqual([0.3, 0.5]);
-		expect(block.centre_helium_range).toEqual([0.5, 0.7]);
+		expect(block.centre_composition).toEqual([
+			{ material: 'hydrogen', share_range: [0.3, 0.5] },
+			{ material: 'helium', share_range: [0.5, 0.7] }
+		]);
 	});
 
 	it('gives no centre on tier 3, where the export has none', () => {
@@ -96,7 +99,7 @@ describe('a fitted interior', () => {
 		expect(block.centre_temperature_k).toBeUndefined();
 		expect(block.centre_temperature_range_k).toBeUndefined();
 		expect(block.centre_density_range_g_cm3).toBeUndefined();
-		expect(block.centre_hydrogen_range).toBeUndefined();
+		expect(block.centre_composition).toBeUndefined();
 	});
 
 	it('is one convective zone for a star convective throughout', () => {

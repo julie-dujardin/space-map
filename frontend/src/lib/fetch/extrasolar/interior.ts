@@ -37,6 +37,9 @@ export interface StarInterior {
 	stage: string | null;
 	feh: number | null;
 	fehSource: string | null;
+	/** K: the Teff of the fit. A curated block has its paper's Teff on its
+	 *  outermost layer. */
+	teff: number | null;
 	teffSource: string | null;
 	luminositySource: string | null;
 	/** M☉. */
@@ -76,6 +79,7 @@ export function readStarInterior(row: TableRow): StarInterior {
 		stage: row.text('stage'),
 		feh: row.number('feh'),
 		fehSource: row.text('feh_source'),
+		teff: row.number('teff'),
 		teffSource: row.text('teff_source'),
 		luminositySource: row.text('luminosity_source'),
 		mass: fitted(row, 'mass'),

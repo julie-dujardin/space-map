@@ -1041,12 +1041,12 @@ export interface InteriorBlock {
 	 *  dilute cores have no radius to hang one on. */
 	centre_temperature_k?: number;
 	centre_temperature_range_k?: [number, number];
-	/** The centre of a star fitted to stellar models: density in g/cm³, and
-	 *  the hydrogen and helium mass fractions, which the fit gives as ranges. */
+	/** The centre of a star: density in g/cm³, and mass fractions. A paper
+	 *  gives only some fractions, so they need not sum to 1. A fit gives
+	 *  the hydrogen and helium fractions as ranges with no `share`. */
 	centre_density_g_cm3?: number;
 	centre_density_range_g_cm3?: [number, number];
-	centre_hydrogen_range?: [number, number];
-	centre_helium_range?: [number, number];
+	centre_composition?: { material: string; share?: number; share_range?: [number, number] }[];
 	/** Whole-body roll-up, descending. Absent where the source constrains
 	 *  geometry but not masses (the Sun). */
 	composition?: { material: string; share: number }[];

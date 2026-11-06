@@ -198,10 +198,22 @@ function union(a: TemperatureBracket, b: TemperatureBracket): TemperatureBracket
 	return { lowK: Math.min(a.lowK, b.lowK), highK: Math.max(a.highK, b.highK) };
 }
 
+/** The surface: the outermost layer's own reading, else `surfaceK`. A body
+ *  has none on that layer. A star from a paper has its paper's Teff there. */
+export function surfaceBracket(
+	layers: InteriorLayer[],
+	surfaceK: number | null
+): TemperatureBracket | null {
+	const own =
+		layers[0] && boundary(layers[0].outer_temperature_k, layers[0].outer_temperature_range_k);
+	if (own) return own;
+	return surfaceK === null ? null : { lowK: surfaceK, highK: surfaceK };
+}
+
 /**
  * How hot each layer runs, from its own two boundaries: its outer one against
- * the next layer down's, with the outermost closing on the body's surface and
- * the innermost on its centre.
+ * the next layer down's, with the outermost closing on the surface
+ * (`surfaceBracket`) and the innermost on its centre.
  *
  * A layer whose *outer* boundary is unpinned reports nothing even when the one
  * below it is known, because that reading describes where the layer ends
@@ -217,8 +229,8 @@ export function layerSpans(
 ): (TemperatureBracket | null)[] {
 	return layers.map((layer, i) => {
 		const outer =
-			i === 0 && surfaceK !== null
-				? { lowK: surfaceK, highK: surfaceK }
+			i === 0
+				? surfaceBracket(layers, surfaceK)
 				: boundary(layer.outer_temperature_k, layer.outer_temperature_range_k);
 		const last = i === layers.length - 1;
 		const inner = last

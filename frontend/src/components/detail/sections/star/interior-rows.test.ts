@@ -19,6 +19,7 @@ function fitted(over: Partial<StarInterior>): StarInterior {
 		stage: 'main_sequence',
 		feh: 0,
 		fehSource: 'pastel-2020',
+		teff: 5800,
 		teffSource: 'gaia-dr3-gspphot',
 		luminositySource: 'gaia-dr3-flame',
 		mass: { value: 1, range: [0.9, 1.1] },
@@ -81,6 +82,28 @@ describe('the centre rows', () => {
 		expect(rows['Central density']).toContain('100–200');
 		expect(rows['Central hydrogen fraction']).toContain('30–50%');
 		expect(rows['Central helium fraction']).toContain('50–70%');
+	});
+
+	it('give the centre of a paper as its values, and its fractions alone', () => {
+		const curated = {
+			structure: 'fluid',
+			layers: [{ role: 'convective_zone', outer_radius_km: 1, composition: [] }],
+			centre_temperature_k: 1.9e7,
+			centre_density_g_cm3: 177.1,
+			centre_composition: [
+				{ material: 'hydrogen', share: 0.2414 },
+				{ material: 'helium', share: 0.785, share_range: [0.78, 0.79] as [number, number] }
+			]
+		};
+		const interior = fitted({ tier: 0, curated, stage: null });
+		const rows = Object.fromEntries(rowsOf(interior).map((r) => [r.label, r.value]));
+		expect(rows['Central density']).toContain('177');
+		expect(rows['Central hydrogen fraction']).toContain('24.1%');
+		expect(rows['Central helium fraction']).toContain('78–79%');
+		const sirius = { ...curated, centre_composition: [{ material: 'hydrogen', share: 0.59 }] };
+		const labels = rowsOf(fitted({ tier: 0, curated: sirius })).map((r) => r.label);
+		expect(labels).toContain('Central hydrogen fraction');
+		expect(labels).not.toContain('Central helium fraction');
 	});
 
 	it('are left out on tier 3', () => {

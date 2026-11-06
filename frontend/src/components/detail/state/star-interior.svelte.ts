@@ -14,7 +14,8 @@ import { starInteriorCredits, type StarCredit } from '$lib/credits/star-sources'
 export interface StarStructure {
 	interior: StarInterior;
 	block: InteriorBlock;
-	/** The effective temperature, K, where the record gives one. */
+	/** The effective temperature, K: the row's, which the zones were fitted
+	 *  to, else the record's. The block's own surface temperature wins. */
 	surfaceK: number | null;
 	credits: StarCredit[];
 }
@@ -47,7 +48,7 @@ export class StarInteriorLoad {
 			return {
 				interior,
 				block,
-				surfaceK: home && starTeff(home),
+				surfaceK: interior.teff ?? (home && starTeff(home)),
 				credits: starInteriorCredits(interior, current, references())
 			};
 		});

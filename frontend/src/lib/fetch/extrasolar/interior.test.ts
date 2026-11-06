@@ -32,6 +32,7 @@ function columns(): ColumnSpec[] {
 		{ name: 'stage', type: 'dict', values: two('main_sequence', null) },
 		{ name: 'feh', type: 'float32', values: two(0.04, null) },
 		{ name: 'feh_source', type: 'dict', values: two('pastel-2020', null) },
+		{ name: 'teff', type: 'float32', values: two(5800, null) },
 		{ name: 'teff_source', type: 'dict', values: two('flower-1996', null) },
 		{ name: 'luminosity_source', type: 'dict', values: two('radius', null) },
 		{ name: 'mass', type: 'float32', values: two(2.25, null) },
@@ -105,6 +106,7 @@ describe('the Interior table', () => {
 			curated: null,
 			stage: 'main_sequence',
 			fehSource: 'pastel-2020',
+			teff: 5800,
 			teffSource: 'flower-1996',
 			luminositySource: 'radius',
 			mass: { value: 2.25, range: [2, 2.5] },
@@ -124,6 +126,7 @@ describe('the Interior table', () => {
 		const interior = await fetchStarInterior(SECOND, new ExtrasolarLookup(source('site-only')));
 		expect(interior?.tier).toBe(0);
 		expect(interior?.curated).toEqual(CURATED);
+		expect(interior).toMatchObject({ teff: null, teffSource: null });
 	});
 
 	it('has no row for a star that the table does not hold', async () => {

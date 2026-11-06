@@ -27,6 +27,21 @@ describe('layerSpans', () => {
 		expect(spans[0]).toEqual({ lowK: 288, highK: 288 });
 	});
 
+	it("takes a star's surface from its paper over the given Teff", () => {
+		const spans = layerSpans(
+			[
+				layer('convective_zone', {
+					outer_temperature_k: 5790,
+					outer_temperature_range_k: [5760, 5820]
+				}),
+				layer('radiative_zone', { outer_temperature_k: 1.893e6 })
+			],
+			null,
+			5637
+		);
+		expect(spans[0]).toEqual({ lowK: 5760, highK: 1.893e6 });
+	});
+
 	it('closes the innermost layer on the centre', () => {
 		const spans = layerSpans(
 			[layer('convective_zone'), layer('core', { outer_temperature_k: 7e6 })],
