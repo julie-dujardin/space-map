@@ -10,6 +10,9 @@
 	position: relative;
 	width: 100%;
 	height: 100%;
+	/* Seen while the canvas is hidden on its way to the opening view: space,
+	   not the host's page. */
+	background: #000;
 }
 
 .sm-map__canvas {
@@ -30,4 +33,10 @@
 	inset: 0;
 	pointer-events: none;
 	z-index: 0;
+}
+
+/* Until the camera is on its opening view: it is not seen jumping there. */
+.sm-map__canvas.sm-map--opening,
+.sm-map .scene-overlay.sm-map--opening {
+	visibility: hidden;
 }

@@ -980,6 +980,7 @@
 				viewOpened = true;
 				cameraPlaced = true;
 				searchLinkOpening = false;
+				map.showOpeningView();
 			});
 	});
 
@@ -997,6 +998,26 @@
 		if (appState.view.type === UrlType.Group && appState.view.groupSlug) {
 			await ctx.applyGroupFilter(appState.view.groupSlug);
 		}
+		// Home faces the Sun, which needs no spin and nothing more loaded: it
+		// shows as soon as the map draws, not after the rest of the opening.
+		const home =
+			!isNav && initialId === EARTH_ID && !appState.view.framed && appState.view.featureId === null;
+		const homeShown = home
+			? map.open().then(
+					() => {
+						const shown = map.snapToBodyFacing(
+							EARTH_ID,
+							SUN_ID,
+							DEFAULT_VIEW_ELEVATION_DEG,
+							DEFAULT_VIEW.zoom
+						);
+						if (shown) map.showOpeningView();
+						return shown;
+					},
+					// The opening below reports it.
+					() => false
+				)
+			: Promise.resolve(false);
 		// The opening navigation: the clock goes to a date the target has a place
 		// at before the scene loads, so the load is for that date. The camera is
 		// placed below, by what the URL asks for.
@@ -1024,8 +1045,11 @@
 				// A trip opens with the whole of it on screen.
 				reportFailed(await map.goTo(target, { clock: 'keep', camera: 'fly', view }), target);
 			} else if (initialId === EARTH_ID && !appState.view.framed) {
-				// Home view (`/` redirects here): Earth looking sunward, tilted above the ecliptic.
-				map.snapToBodyFacing(initialId, SUN_ID, DEFAULT_VIEW_ELEVATION_DEG, DEFAULT_VIEW.zoom);
+				// Home view (`/` redirects here): Earth looking sunward, tilted above the
+				// ecliptic. Once on screen it is the reader's to turn: placed again only
+				// for a clock that moved since.
+				if (!(await homeShown) || arrival.clockMoved)
+					map.snapToBodyFacing(initialId, SUN_ID, DEFAULT_VIEW_ELEVATION_DEG, DEFAULT_VIEW.zoom);
 			} else if (isExtrasolarObjectId(initialId) && !appState.view.framed) {
 				// A planetary system from above its plane. A star without planets
 				// from the Sun's side: behind it, the sky it is seen against from home.

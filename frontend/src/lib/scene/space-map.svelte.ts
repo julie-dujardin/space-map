@@ -322,6 +322,17 @@ const CONTEXT_LOST_PANEL_DELAY_MS = 2000;
  *  worker's pong can be slow; a false negative costs a full belt repack. */
 const RESTORE_PING_TIMEOUT_MS = 4000;
 
+/** Longest the opening view stays hidden while it settles: past it, a late
+ *  turn beats a map that never shows. */
+const OPENING_SETTLE_WAIT_MS = 4000;
+
+/** Run `poll` on the next frame, or on a timer in a backgrounded tab, which
+ *  fires no rAF and would never call it back. */
+function nextPoll(poll: () => void): void {
+	if (document.hidden) setTimeout(poll, 100);
+	else requestAnimationFrame(poll);
+}
+
 /** Maps mounted in each container. A host remounting into the same element
  *  can have the new map up before the old one is removed, and the old one must
  *  not take the container's class from under the new. */
@@ -390,6 +401,9 @@ export class SpaceMap {
 	private pendingFocusId: string | null = null;
 	/** The first load, started once. */
 	private opening: Promise<void> | null = null;
+	/** The camera is on the opening view; the map shows once it stops moving. */
+	private openingPlaced = false;
+	private openingShown = false;
 	/** Counts navigations: a later one supersedes an earlier one still on its way. */
 	private navigation = 0;
 	/** Retires the host's hold on the camera. Kept so that a second hold, or
@@ -593,10 +607,7 @@ export class SpaceMap {
 				// The first phase ends with what the opening body is placed from:
 				// before that, it can be in the scene with no place.
 				if (this.renderer && !this.ctx.loading && this.ctx.getBody(targetId)) resolve();
-				// A timer alongside the frame: a backgrounded tab fires no rAF, and
-				// the poll would never come back.
-				else if (document.hidden) setTimeout(check, 100);
-				else requestAnimationFrame(check);
+				else nextPoll(check);
 			};
 			check();
 		});
@@ -615,8 +626,32 @@ export class SpaceMap {
 	applyInitialView(): void {
 		this.renderer?.openView();
 		const { id, latitude, longitude, zoom } = this.initialView;
-		if (this.focusedBody || !this.ctx.getBody(id)) return;
-		this.renderer?.snapToBody(id, latitude, longitude, zoom);
+		if (!this.focusedBody && this.ctx.getBody(id)) {
+			this.renderer?.snapToBody(id, latitude, longitude, zoom);
+		}
+		this.showOpeningView();
+	}
+
+	/** @internal Show the map: the camera is on its opening view. Until then
+	 *  the map is hidden, so no one sees the camera jump onto that view. It
+	 *  shows once that view has settled on screen. */
+	showOpeningView(): void {
+		if (this.openingPlaced) return;
+		this.openingPlaced = true;
+		this.revealWhenSettled(performance.now() + OPENING_SETTLE_WAIT_MS);
+	}
+
+	private revealWhenSettled(deadline: number): void {
+		const { canvas, labelLayer } = this;
+		if (!canvas || !labelLayer || !this.openingPlaced || this.openingShown) return;
+		if ((this.renderer?.viewSettling() ?? true) && performance.now() < deadline) {
+			nextPoll(() => this.revealWhenSettled(deadline));
+			return;
+		}
+		this.openingShown = true;
+		this.renderer?.setUnseen(false);
+		canvas.classList.remove('sm-map--opening');
+		labelLayer.classList.remove('sm-map--opening');
 	}
 
 	/** @internal Build the canvas and label layer inside `container` and start
@@ -638,6 +673,11 @@ export class SpaceMap {
 		canvas.setAttribute('aria-label', host().messages.scene_canvas_label());
 		const labels = document.createElement('div');
 		labels.className = 'scene-overlay';
+		// On the map's own elements: another map can share the container.
+		if (!this.openingShown) {
+			canvas.classList.add('sm-map--opening');
+			labels.classList.add('sm-map--opening');
+		}
 		container.append(canvas, labels);
 		this.canvas = canvas;
 		this.labelLayer = labels;
@@ -668,6 +708,7 @@ export class SpaceMap {
 			return;
 		}
 		this.renderer = renderer;
+		renderer.setUnseen(!this.openingShown);
 		this.applyGestures();
 		this.applyLimits();
 		renderer.setPinnedBodies(this.tripPins);
@@ -692,6 +733,7 @@ export class SpaceMap {
 			resize.disconnect();
 			stopEffects();
 		};
+		this.revealWhenSettled(performance.now() + OPENING_SETTLE_WAIT_MS);
 	}
 
 	/** Hang a control in one of the map's corners; top-right unless the control
@@ -1066,9 +1108,7 @@ export class SpaceMap {
 			const check = (): void => {
 				if (this.renderer) resolve(this.renderer);
 				else if (this.webglError || this.ctx.error) resolve(null);
-				// A timer alongside the frame: a backgrounded tab fires no rAF.
-				else if (document.hidden) setTimeout(check, 100);
-				else requestAnimationFrame(check);
+				else nextPoll(check);
 			};
 			check();
 		});
@@ -1323,9 +1363,9 @@ export class SpaceMap {
 	}
 
 	/** @internal Snap focus onto a body, framed looking toward another body (e.g.
-	 *  the Sun) above the ecliptic. */
-	snapToBodyFacing(id: string, towardId: string, elevationDeg: number, distance: number): void {
-		this.renderer?.snapToBodyFacing(id, towardId, elevationDeg, distance);
+	 *  the Sun) above the ecliptic. False when either has no place. */
+	snapToBodyFacing(id: string, towardId: string, elevationDeg: number, distance: number): boolean {
+		return this.renderer?.snapToBodyFacing(id, towardId, elevationDeg, distance) ?? false;
 	}
 
 	/**

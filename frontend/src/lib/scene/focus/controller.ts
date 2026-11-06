@@ -122,6 +122,12 @@ export class FocusController {
 		this.pendingInitialView = null;
 	}
 
+	/** The camera is set from body-fixed angles whose body has no spin yet:
+	 *  it turns when the spin lands. */
+	get awaitsSpin(): boolean {
+		return this.pendingInitialView !== null;
+	}
+
 	/** Quaternion for lat/lon framing around `body`; undefined for scene-frame
 	 *  (see {@link framesInBodyAxes}). */
 	focusedBodyQuat(body?: PositionedBody): [number, number, number, number] | undefined {
@@ -467,13 +473,13 @@ export class FocusController {
 	/** Snap focus onto a body, framed toward `towardId` (e.g. the Sun) at
 	 *  `elevationDeg` above the ecliptic. Scene-frame, not body-fixed — clears
 	 *  the pending replay. Used for the home/bare-Earth landing view. */
-	snapToBodyFacing(id: string, towardId: string, elevationDeg: number, distance: number): void {
+	snapToBodyFacing(id: string, towardId: string, elevationDeg: number, distance: number): boolean {
 		const { ctx, camera, controls, callbacks } = this.deps;
 		const body = ctx.getBody(id);
 		const towardBody = ctx.getBody(towardId);
 		const pos = body && this.place(body);
 		const toward = towardBody && this.place(towardBody);
-		if (!body || !pos || !toward) return;
+		if (!body || !pos || !toward) return false;
 		this.settleOnBodyInstant(body, pos);
 		const offset = offsetFacing(pos, toward, elevationDeg, distance);
 		camera.position.set(offset[0], offset[1], offset[2]);
@@ -481,6 +487,7 @@ export class FocusController {
 		const settled = cartesianToSpherical(offset, [0, 0, 0]);
 		callbacks.onCameraPosition?.(settled.latitude, settled.longitude, settled.distance);
 		this.pendingInitialView = null; // scene-frame placement is final; skip the body-fixed replay
+		return true;
 	}
 
 	/** Snap focus onto a body with the camera `distance` from it on the line to

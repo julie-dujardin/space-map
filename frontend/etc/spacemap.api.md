@@ -1482,9 +1482,11 @@ export class SpaceMap {
 	// (undocumented)
 	setUserLocation(latitude: number, longitude: number): void;
 	// @internal
+	showOpeningView(): void;
+	// @internal
 	snapToBody(id: string, latitude: number, longitude: number, zoom: number): void;
 	// @internal
-	snapToBodyFacing(id: string, towardId: string, elevationDeg: number, distance: number): void;
+	snapToBodyFacing(id: string, towardId: string, elevationDeg: number, distance: number): boolean;
 	// @internal
 	snapToBodyFrom(id: string, fromId: string, distance: number): void;
 	tilesEnabled(): boolean;

@@ -444,6 +444,8 @@ export class SceneRenderer {
 	private paused = false;
 	/** Something fullscreen hides the canvas; see shouldRender. */
 	private covered = false;
+	/** The map is hidden on its way to the opening view: no one sees a fade. */
+	private unseen = false;
 	private firstFrame = true;
 	private pendingUrlWrite = false;
 	private lastTickMs = 0;
@@ -1366,7 +1368,7 @@ export class SceneRenderer {
 		this.ctx.visibility.updateCamera(distance, this.sceneJd);
 		this.ctx.visibility.clearSky =
 			(sceneSettings().clearSky ?? true) && this.constellations.wanted();
-		this.ctx.visibility.stepZones(renderedDtMs);
+		this.ctx.visibility.stepZones(this.unseen ? Number.POSITIVE_INFINITY : renderedDtMs);
 		this.updateTightFar(distance);
 
 		// A flyby probe entering a planet's system mid-play (time advancing, not a
@@ -2934,14 +2936,33 @@ export class SceneRenderer {
 		return null;
 	}
 
-	snapToBodyFacing(id: string, towardId: string, elevationDeg: number, distance: number): void {
+	snapToBodyFacing(id: string, towardId: string, elevationDeg: number, distance: number): boolean {
 		this.disarmLimits();
-		this.focusController.snapToBodyFacing(id, towardId, elevationDeg, distance);
+		return this.focusController.snapToBodyFacing(id, towardId, elevationDeg, distance);
 	}
 
 	/** The camera is on the map's opening view: the solar system's share reads it. */
 	openView(): void {
 		this.viewOpen = true;
+	}
+
+	setUnseen(unseen: boolean): void {
+		this.unseen = unseen;
+	}
+
+	/** The view just placed is not on screen as it will stay: the focused
+	 *  body's spin is on its way and will turn the camera, or no frame has
+	 *  drawn it yet. Names and halos do not fade while unseen. */
+	viewSettling(): boolean {
+		// A spin comes with a load of the focus or of its system: with none
+		// running, none is coming.
+		const spinDue =
+			this.focusController.awaitsSpin && (this.focusLoads > 0 || this.systemData.isLoading());
+		// A host's hold moves the camera every frame, so it never comes to rest.
+		const undrawn =
+			!this.holdingCamera &&
+			this.cameraMovedFrom(this.lastRenderedCamPos, this.lastRenderedCamQuat);
+		return spinDue || undrawn;
 	}
 
 	snapToBody(id: string, latitude: number, longitude: number, zoom: number): void {
