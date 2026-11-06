@@ -2,6 +2,7 @@ import { pushState as sveltePushState, replaceState as svelteReplaceState } from
 import { DEFAULT_VIEW, UrlType, type DrawerTab, type MapViewState, type NavPlace } from './view';
 import type { CameraView } from '$lib/scene/types';
 import {
+	applyClose,
 	applyFeature,
 	applyFocus,
 	applyGroup,
@@ -17,7 +18,7 @@ import {
 	type NavEnd
 } from './url';
 import { serializeSearchSuffix, type SearchUrlState } from '$lib/search/url';
-import { DEFAULT_TRIP, serializeTripSuffix, type TripState } from '$lib/travel/trip';
+import { serializeTripSuffix, type TripState } from '$lib/travel/trip';
 
 // The sim clock ticks ~2×/s, so its URL writes are throttled (trailing).
 // Everything else writes immediately — camera settles, focus changes and search
@@ -178,38 +179,14 @@ export class AppState {
 	/** Move the camera's subject to another member of the open group. The page
 	 *  stays the group's, so this is a camera move, not a navigation. */
 	setGroupFocus(id: string) {
-		if (id === this.view.id) return;
-		this.view = { ...this.view, id };
+		if (id === this.view.id && this.view.featureId === null) return;
+		this.view = { ...this.view, id, featureId: null };
 		this.replaceNow();
 	}
 
-	/** Tear down every focus layer (group + feature + body); URL parks on
-	 *  anchorId so refresh still resolves somewhere. Type must be derived from
-	 *  the id — anchorId may be a satellite/small-body/probe, not a NAIF body. */
+	/** Tear down every panel; the URL parks on what the camera is on. */
 	closeDetail(anchorId: string) {
-		this.view = {
-			...this.view,
-			type: urlTypeFromId(anchorId),
-			id: anchorId,
-			groupSlug: null,
-			figure: null,
-			featureId: null,
-			name: '',
-			imageIndex: null,
-			gallery: null,
-			tab: null,
-			memberPage: null,
-			quad: null,
-			featureType: null,
-			ring: null,
-			navFrom: null,
-			navTo: null,
-			navFromFeature: null,
-			navToFeature: null,
-			navFromPlace: null,
-			navToPlace: null,
-			trip: DEFAULT_TRIP
-		};
+		this.view = applyClose(this.view, anchorId);
 		this.pushNow();
 	}
 
@@ -263,8 +240,14 @@ export class AppState {
 		this.pushNow();
 	}
 
-	/** Return the URL to the parent-body view of the currently-selected feature. */
+	/** Drop a feature the body's nomenclature lacks: the body's view, or the
+	 *  group's with the camera on the body. A correction, so no history entry. */
 	clearFeature(bodyName: string) {
+		if (this.view.type === UrlType.Group) {
+			this.view = { ...this.view, featureId: null };
+			this.replaceNow();
+			return;
+		}
 		this.view = {
 			...this.view,
 			type: UrlType.Body,
@@ -278,7 +261,7 @@ export class AppState {
 			featureType: null,
 			ring: null
 		};
-		this.pushNow();
+		this.replaceNow();
 	}
 
 	/** Give the view the export's name for its subject, read after the view

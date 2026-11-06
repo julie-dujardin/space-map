@@ -175,26 +175,31 @@ export function resolveNorthChoice(
 }
 
 /**
- * Whether `ref` can still name a choice for the view on `focused` once what it
- * needs has loaded: galactic and the body's own north always can, a feature's
- * only while a feature is in the view, an ancestor's while the body has one
- * that many steps up, other than a body nearer: a barycentre stands for its
- * planet, so Earth has no parent of its own.
+ * Whether `ref` can name a choice for the view on `focused` once what it needs
+ * has loaded, or null while that is not known yet. Galactic and the body's own
+ * north always can, a feature's only while a feature is in the view, an
+ * ancestor's while the body has one that many steps up, other than a body
+ * nearer: a barycentre stands for its planet, so Earth has no parent of its
+ * own. An ancestor not loaded yet leaves it open, so a link keeps its north.
  */
 export function northRefHolds(
 	ref: string,
 	focused: PositionedBody,
 	hasFeature: boolean,
 	ctx: ContextManager
-): boolean {
+): boolean | null {
 	if (ref === GALACTIC_REF_ID || ref === BODY_REF) return true;
 	if (ref === FEATURE_REF) return hasFeature;
 	const steps = parentSteps(ref);
 	if (steps === null) return false;
 	const nearer = new Set<string>();
+	let top = focused;
 	for (const up of lineage(focused, ctx)) {
 		if (up.steps === steps) return !nearer.has(up.north.data.id);
 		nearer.add(up.north.data.id);
+		top = up.body;
 	}
-	return false;
+	// A root (the SSB, or a star with no parent) or a loop ends the chain for good.
+	const next = top.data.parentId;
+	return !next || next === SSB_ID || ctx.getBody(next) ? false : null;
 }

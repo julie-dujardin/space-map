@@ -324,7 +324,9 @@
 	function openGroup(slug: string, name: string, figure?: string) {
 		appState.setGroup(slug, name, { frame: true, figure });
 		// setGroup parked view.id/zoom on the group anchor; the default framing
-		// angle lands the camera there instead of the prior angle.
+		// angle lands the camera there instead of the prior angle. A camera on a
+		// feature has no anchor to go to: it stays.
+		if (appState.view.featureId !== null) return;
 		map.focusOnBody(appState.view.id, appState.view.zoom, DEFAULT_FRAMING_LAT, DEFAULT_FRAMING_LON);
 	}
 
@@ -453,7 +455,10 @@
 			return { kind: 'group', slug: appState.view.groupSlug, figure: appState.view.figure };
 		}
 		if (!selectedBody?.data.id) return null;
-		if (activeFeature) return { kind: 'feature', body: selectedBody, feature: activeFeature };
+		// The view's own feature only: a camera that left it may report the host first.
+		if (activeFeature?.featureId === appState.view.featureId) {
+			return { kind: 'feature', body: selectedBody, feature: activeFeature };
+		}
 		const star = selectedBody.extrasolar;
 		if (star) return { kind: 'star', body: selectedBody, record: star.record };
 		const planet = selectedBody.exoplanet;
@@ -469,13 +474,10 @@
 	});
 	/** Whether the view promises a detail panel. `focusable` only fills once
 	 *  the scene has streamed the body in and framed it, seconds later on a cold
-	 *  load. Closing the drawer keeps the id as the camera's anchor and drops
-	 *  the name, so past the opening a name (or a group/feature of its own) is
+	 *  load. Closing the drawer keeps what the camera is on (a body, or a
+	 *  feature) and drops the name, so past the opening a name or a group is
 	 *  what marks a panel rather than an anchor. */
-	const panelNamed = $derived(
-		opening ||
-			Boolean(appState.view.groupSlug || appState.view.name || appState.view.featureId !== null)
-	);
+	const panelNamed = $derived(opening || Boolean(appState.view.groupSlug || appState.view.name));
 	// Two steps: the compiler has dropped the parentheses of an `&&` over an
 	// `||` group inside one `$derived`.
 	const panelPromised = $derived(!isNav && panelNamed);
@@ -840,9 +842,9 @@
 	// silently falls to <body> once the drawer unmounts.
 	function closeDetail(refocusMain = true) {
 		// One teardown path: no second drawer left under a feature/group close.
+		// The feature stays resolved, for the camera may stay on it.
 		const anchorId = selectedBody?.data.id ?? appState.view.id;
 		selectedBody = undefined;
-		activeFeature = null;
 		opening = false;
 		appState.closeDetail(anchorId);
 		drawerHeightDvh = 0;
@@ -857,20 +859,23 @@
 		if (refocusMain) tick().then(() => document.getElementById('main-content')?.focus());
 	}
 
-	// A ref the place can no longer give is dropped; one whose data is still on
-	// its way stays, so a link keeps its north while the spin or feature loads.
+	// A ref is dropped only once the place surely cannot give it: one whose
+	// data is still on its way stays, so a link keeps its north meanwhile.
 	$effect(() => {
+		void ctx.bodies.orientationVersion; // re-ask as system data lands
+		void ctx.bodies.planeVersion; // and as a star system's plan does
 		const ref = northRef;
 		const focus = cameraFocus;
 		if (ref === null || !focus || focus.data.id !== viewId) return;
-		if (!northRefHolds(ref, focus, viewFeatured, ctx)) appState.setNorth(null);
+		if (northRefHolds(ref, focus, viewFeatured, ctx) === false) appState.setNorth(null);
 	});
 
-	// Repopulate selectedBody from ctx when a pinned featureId outlives a
-	// drawer close: same-body picks emit no onFocusChange to do it for us.
+	// Repopulate selectedBody from ctx when a feature is picked on the body a
+	// closed drawer left the camera on: same-body picks emit no onFocusChange.
+	// A closed drawer's feature has no name, and no panel.
 	$effect(() => {
 		if (selectedBody) return;
-		if (appState.view.featureId === null) return;
+		if (appState.view.featureId === null || !appState.view.name) return;
 		const target = ctx.getBody(appState.view.id);
 		if (target) selectedBody = target;
 	});
@@ -884,25 +889,22 @@
 		map.focusOnFeature(r.hostId, f.featureId, f.lat, f.lon, f.diameterM, f.name, r.mode, r.view);
 	});
 
-	// Resolve `view.featureId` → `activeFeature` whenever either the URL's
-	// featureId or the currently-selected body changes. Stale URLs (feature id
-	// not in the body's nomenclature, or body has no nomenclature) get cleaned
-	// out and we log so the swallow doesn't go silent.
+	// Resolve `view.featureId` → `activeFeature`: the one path that frames the
+	// feature and names it, panel or not. A feature id the body's nomenclature
+	// lacks is cleaned out of the URL, with a log so it isn't silent.
 	$effect(() => {
 		const fid = appState.view.featureId;
-		const body = selectedBody;
-		if (fid === null || !body) {
+		if (fid === null) {
 			activeFeature = null;
 			map.setSelectedFeature(null);
 			return;
 		}
+		// The camera has the host once it lands; a cross-body pick hands it to
+		// the panel first. Until either has it, wait.
+		const body = [cameraFocus, selectedBody].find((b) => b?.data.id === viewId);
+		if (!body) return;
 		// Same feature already resolved: skip the refetch.
 		if (activeFeature?.featureId === fid) return;
-		// Cross-body pick: URL already names the new body but the camera
-		// hasn't landed yet, so selectedBody is stale. Bail and wait for the
-		// onFocusChange that flips selectedBody; the effect re-fires and
-		// resolves against the right nomenclature then.
-		if (body.data.id !== appState.view.id) return;
 		const bodyId = body.data.id;
 		let cancelled = false;
 		fetchBodyNomenclature(bodyId)
@@ -942,9 +944,12 @@
 				}
 			})
 			.catch((err) => {
+				// A failed fetch says nothing of the feature: the URL keeps it, but
+				// the one it was replacing is gone.
 				if (cancelled) return;
 				console.warn(`[map] Failed to resolve feature ${fid} on ${bodyId}:`, err);
-				appState.clearFeature(body.data.name ?? '');
+				activeFeature = null;
+				map.setSelectedFeature(null);
 			});
 		return () => {
 			cancelled = true;

@@ -293,6 +293,59 @@ describe('AppState.setMemberPage', () => {
 	});
 });
 
+describe('AppState on a group with a feature in view', () => {
+	const onFeature: MapViewState = {
+		...initialView,
+		type: 'g',
+		id: 'naif-499',
+		name: 'Chasma',
+		groupSlug: 'ft-chasma',
+		featureId: 2757
+	};
+
+	it('moving to another member leaves the feature', () => {
+		const s = new AppState(onFeature);
+		s.setGroupFocus('naif-401');
+		expect(s.view.id).toBe('naif-401');
+		expect(s.view.featureId).toBeNull();
+	});
+
+	it('moving to the feature host leaves the feature too', () => {
+		const s = new AppState(onFeature);
+		s.setGroupFocus('naif-499');
+		expect(s.view.featureId).toBeNull();
+		expect(replaceStateSpy).toHaveBeenCalledOnce();
+	});
+
+	it('closing the panel leaves the camera on the feature, unnamed', () => {
+		const s = new AppState(onFeature);
+		s.closeDetail('naif-499');
+		expect(s.view.type).toBe('f');
+		expect(s.view.id).toBe('naif-499');
+		expect(s.view.featureId).toBe(2757);
+		expect(s.view.groupSlug).toBeNull();
+		expect(s.view.name).toBe('');
+	});
+
+	it('closing the panel on another body than the view drops the feature', () => {
+		const s = new AppState(onFeature);
+		s.closeDetail('naif-401');
+		expect(s.view.type).toBe('b');
+		expect(s.view.featureId).toBeNull();
+	});
+
+	it('a feature that is gone leaves the group page in place', () => {
+		const s = new AppState(onFeature);
+		s.clearFeature('Mars');
+		expect(s.view.type).toBe('g');
+		expect(s.view.groupSlug).toBe('ft-chasma');
+		expect(s.view.name).toBe('Chasma');
+		expect(s.view.featureId).toBeNull();
+		// A correction: back must not land on the bad id again.
+		expect(pushStateSpy).not.toHaveBeenCalled();
+	});
+});
+
 describe('AppState.replaceFocusName', () => {
 	it('keeps the name off the URL while the camera is the default one', () => {
 		const s = new AppState({ ...initialView, name: '' });

@@ -70,6 +70,17 @@ function parseImageIndex(raw: string | null): number | null {
 	return Number.isInteger(n) && n >= 0 ? n : null;
 }
 
+/** A group's `&focus=`: a body of the solar system, maybe a feature on it.
+ *  Null for the anchor alone, which the path already frames. */
+function parseGroupFocus(
+	raw: string | null,
+	anchorId: string
+): { bodyId: string; featureId: number | null } | null {
+	const end = raw === null ? null : parseNavEnd(raw);
+	if (!end || end.place || !isBodyId(end.bodyId)) return null;
+	return end.bodyId === anchorId && end.featureId === null ? null : end;
+}
+
 /** Earth-system zoom — mirrors MapPage's minimize-from-sat distance. */
 const EARTH_GROUP_ZOOM = 0.005;
 /** Wide Earth framing for Sun–Earth L-point pages (~3 M km out; the points sit
@@ -216,22 +227,21 @@ export function parseUrl(): MapViewState | null {
 			return null;
 		}
 		const anchor = groupAnchor(idStr);
-		// `focus` names the member the camera is on instead of the anchor. The
-		// anchor zoom only fits the anchor, so a bare link frames the member by
-		// its size, the way its own page would.
-		const focus = page.url.searchParams.get('focus');
-		const member = focus !== null && focus !== anchor.id && isBodyId(focus) ? focus : null;
+		// `focus` names what the camera is on instead of the anchor: a member, or
+		// a feature in the trip ends' grammar. The anchor zoom only fits the
+		// anchor, so a bare link frames it by its size, the way its own page would.
+		const focus = parseGroupFocus(page.url.searchParams.get('focus'), anchor.id);
 		const defaults: MapViewState = {
 			...DEFAULT_VIEW,
 			type: UrlType.Group,
-			id: member ?? anchor.id,
-			zoom: member ? DEFAULT_VIEW.zoom : anchor.zoom,
-			framed: member === null, // the anchor zoom is deliberate framing, not a default
+			id: focus?.bodyId ?? anchor.id,
+			zoom: focus ? DEFAULT_VIEW.zoom : anchor.zoom,
+			framed: focus === null, // the anchor zoom is deliberate framing, not a default
 			groupSlug: idStr,
 			figure,
 			imageIndex: parseImageIndex(page.url.searchParams.get('img')),
 			gallery: page.url.searchParams.get('gal'),
-			featureId: null,
+			featureId: focus?.featureId ?? null,
 			tab: parseTab(page.url.searchParams.get('tab')),
 			memberPage: parseMemberPage(page.url.searchParams.get('mp')),
 			quad: null,
@@ -523,8 +533,28 @@ export function applyGroup(
 		groupSlug: slug,
 		figure,
 		name,
-		featureId: null,
+		// A camera left on a feature stays on it.
+		featureId: anchor ? null : current.featureId,
 		tab: tab ?? null
+	};
+}
+
+/** Next view when every panel closes: the camera's subject, `anchorId` or the
+ *  feature on it the camera stays with, and nothing of the page around it. The
+ *  type comes from the id: anchorId may be a satellite, small body or probe. */
+export function applyClose(current: MapViewState, anchorId: string): MapViewState {
+	const featureId = anchorId === current.id ? current.featureId : null;
+	return {
+		...current,
+		...CLEAR_TAB_SCOPE,
+		...CLEAR_NAV_SCOPE,
+		type: featureId === null ? urlTypeFromId(anchorId) : UrlType.Feature,
+		id: anchorId,
+		groupSlug: null,
+		figure: null,
+		featureId,
+		name: '',
+		tab: null
 	};
 }
 
@@ -551,7 +581,7 @@ export function applyFeature(
 
 /** Produce the route path for the current MapViewState — `/<type>/<id>/<name>`
  *  for bodies and groups (groups carry a slug in the id slot, and `&focus=`
- *  the member the camera is on when it is not the anchor),
+ *  what the camera is on when it is not the anchor: a member, or a feature),
  *  `/g/culture-<key>/f/<figure>/<name>` for figures,
  *  `/x/<host>/b/<n>/<name>` for planets, or
  *  `/<type>/<id>/f/<featureId>/<name>` for features — plus the shared
@@ -605,10 +635,13 @@ export function serializeUrl(state: MapViewState): string {
 
 	if (state.type === UrlType.Group && state.groupSlug !== null) {
 		const path = groupHref(state.groupSlug, state.name, state.figure);
-		// The path names the group; the member the camera is on rides the query.
+		// The path names the group; what the camera is on rides the query.
 		// A sky page has no subject of its own to frame, so it always names one.
-		const focused = isSkyPage(state.groupSlug) || state.id !== groupAnchor(state.groupSlug).id;
-		const focus = focused ? `&focus=${state.id}` : '';
+		const focused =
+			isSkyPage(state.groupSlug) ||
+			state.featureId !== null ||
+			state.id !== groupAnchor(state.groupSlug).id;
+		const focus = focused ? `&focus=${formatNavEnd(state.id, state.featureId)}` : '';
 		return `${path}?at=${at}${north}${focus}${img}${tab}${gal}${surface}${ring}${mp}`;
 	}
 

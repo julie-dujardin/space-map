@@ -94,11 +94,16 @@
 				// map reports its own view of a body; the app works on the scene's.
 				onFocusChange?.(body && ctx.getBody(body.id));
 				if (feature || initial || isNavigatingBack || !body) return;
-				// Skip the auto-setFocus when the URL already names this body:
-				// programmatic navigators (search, deep links) push their target
-				// state first and would otherwise have featureId/groupSlug wiped
-				// out by setFocus the moment the camera lands.
-				if (body.id === appState.view.id) return;
+				// Programmatic navigators (search, deep links) push their target state
+				// first: landing on the body the URL names keeps it. A camera that left
+				// a feature for its host has left the feature, though.
+				if (body.id === appState.view.id) {
+					if (appState.view.featureId === null) return;
+					if (appState.view.type === UrlType.Group) appState.setGroupFocus(body.id);
+					else
+						appState.setFocus({ type: urlTypeFromId(body.id), id: body.id, name: body.name ?? '' });
+					return;
+				}
 				// A trip stays a trip: settling on a body inside one moves where the
 				// trip goes, since that is the question the page is asking.
 				if (appState.view.type === UrlType.Nav) {

@@ -167,6 +167,11 @@ describe('serializeUrl', () => {
 		it('emits &focus=<id> for a member the camera moved to', () => {
 			expect(serializeUrl({ ...group, id: 'naif-301' })).toContain('&focus=naif-301');
 		});
+
+		it('names a feature the camera is on the way a trip end does', () => {
+			const url = serializeUrl({ ...group, id: 'naif-499', featureId: 2757 });
+			expect(url).toContain('&focus=naif-499-f-2757');
+		});
 	});
 
 	describe('tab serialization', () => {
@@ -303,11 +308,25 @@ describe('applyGroup', () => {
 		expect(serializeUrl(view)).toContain('&focus=spkid-20000001');
 	});
 
+	it('keeps a feature in view as the focus', () => {
+		const view = applyGroup(
+			{ ...baseView, type: 'f', id: 'naif-499', featureId: 2757 },
+			'ft-chasma',
+			'Chasma'
+		);
+		expect(view.featureId).toBe(2757);
+		expect(serializeUrl(view)).toContain('&focus=naif-499-f-2757');
+	});
+
 	it('parks on the anchor when the caller is about to fly there', () => {
-		const view = applyGroup({ ...baseView, id: 'spkid-20000001' }, 'class-mba', 'Main belt', {
-			frame: true
-		});
+		const view = applyGroup(
+			{ ...baseView, id: 'spkid-20000001', featureId: 2757 },
+			'class-mba',
+			'Main belt',
+			{ frame: true }
+		);
 		expect(view.id).toBe('naif-10');
+		expect(view.featureId).toBeNull();
 		expect(serializeUrl(view)).not.toContain('focus=');
 	});
 
@@ -348,6 +367,20 @@ describe('parseUrl on a group', () => {
 		expect(view.id).toBe('spkid-20000001');
 		expect(view.framed).toBe(true);
 		expect(view.zoom).toBe(0.5);
+	});
+
+	it('lands on a focus= feature, on its body', () => {
+		open('http://x/g/cat-moons/Moons?at=now,10,20,0.5&focus=naif-499-f-2757');
+		const view = parseUrl()!;
+		expect(view.groupSlug).toBe('cat-moons');
+		expect(view.id).toBe('naif-499');
+		expect(view.featureId).toBe(2757);
+		expect(view.framed).toBe(true);
+	});
+
+	it('ignores a focus= that is a bare point', () => {
+		open('http://x/g/cat-moons/Moons?focus=naif-499-at-1,2');
+		expect(parseUrl()!.id).toBe('naif-10');
 	});
 
 	it('ignores a focus= that is not a body id', () => {

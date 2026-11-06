@@ -94,6 +94,17 @@ describe('northRefHolds', () => {
 		expect(northRefHolds('parent-99999999999', a, false, looped)).toBe(false);
 	});
 
+	it('leaves a step open while an ancestor on the way is not loaded', () => {
+		const partial = scene([moon]);
+		expect(northRefHolds('parent', moon, false, partial)).toBeNull();
+		expect(northRefHolds('parent-5', moon, false, partial)).toBeNull();
+	});
+
+	it('ends the chain at a star with no parent', () => {
+		const star = body('x-7', '', false);
+		expect(northRefHolds('parent', star, false, scene([star]))).toBe(false);
+	});
+
 	it('keeps a feature ref only with a feature in view', () => {
 		expect(northRefHolds('feature', moon, true, solar)).toBe(true);
 		expect(northRefHolds('feature', moon, false, solar)).toBe(false);
