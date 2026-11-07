@@ -248,6 +248,9 @@ def ingest(
                 "discovery_method": [None],
                 "binary_type": [P_TYPE],
                 "star_ids": [None],
+                "host_ids": [None],
+                "host_names": [None],
+                "host_values": [None],
             }
             | (record or {}),
             schema=PLANETS_INPUT,

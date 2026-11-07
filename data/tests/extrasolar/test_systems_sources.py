@@ -281,6 +281,43 @@ class TestMsc:
         assert rows["B"]["separation"] is None and rows["B"]["period"] is None
         assert all(i["catalogue"] == "msc" for i in rows["A"]["ids"])
 
+    def test_each_star_has_the_v_and_mass_code_of_its_pairs(self):
+        """KOI-5 (MSC 19190+4439): comp.tsv gives A the V of the whole point,
+        sys.tsv gives each star its own V and mass."""
+        comp = [msc_comp("19190+4439", "A", Vmag=11.73)]
+        pairs = [
+            msc_pair(
+                "19190+4439",
+                "AB",
+                "C",
+                "*",
+                Vmag1=10.3,
+                Vmag2=12.9,
+                Mass1=3.41,
+                MCode1="s",
+                Mass2=1.15,
+                MCode2="v",
+            ),
+            msc_pair(
+                "19190+4439",
+                "A",
+                "B",
+                "AB",
+                Vmag1=10.8,
+                Vmag2=11.2,
+                Mass1=1.78,
+                MCode1="v",
+                Mass2=1.63,
+                MCode2="r",
+            ),
+        ]
+        rows = {row["label"]: row for row in msc_nodes(comp, pairs, []).to_pylist()}
+        assert rows["A"]["v_mag"] == pytest.approx(11.73)
+        own = {label: rows[label]["own_v_mag"] for label in "ABC"}
+        assert own == pytest.approx({"A": 10.8, "B": 11.2, "C": 12.9})
+        codes = {label: rows[label]["mass_method"] for label in "ABC"}
+        assert codes == {"A": "v", "B": "r", "C": "v"}
+
     def test_true_zeros_stay(self):
         comp = [
             msc_comp("1", "A", PMRA=0.0, PMDE=-15.5),

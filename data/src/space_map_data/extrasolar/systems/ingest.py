@@ -23,8 +23,9 @@
    System, and `system` of Metadata. It sets `distance` on every System
    row, `orbit` on the pairs, with the assumed node of the planets where an
    orbit has none, and `star` on the held stars. It gives the planets
-   extension the host of a circumbinary planet, the root of each host, the
-   node of each drawn pair and the star that a planet record also is.
+   extension the host of a circumbinary planet, the held star of a planet of
+   a point that holds several stars, the root of each host, the node of each
+   drawn pair and the star that a planet record also is.
 """
 
 import json
@@ -99,6 +100,7 @@ from space_map_data.extrasolar.systems.pairs import (
 )
 from space_map_data.extrasolar.systems.planets import (
     PLANETS_INPUT,
+    host_columns,
     planet_star_ids,
     read_oec_trees,
     read_planet_systems,
@@ -553,6 +555,8 @@ def run_planets(run: IngestRun, prepared: Prepared, hub: Simbad) -> pa.Table:
         found["star_ids"].append(
             [dict(zip(CROSS_ID.names, item)) for item in star_ids] or None
         )
+        for name, value in host_columns(identity).items():
+            found[name].append(value)
     return pa.table(
         {name: found[name] for name in PLANETS_INPUT.names}, schema=PLANETS_INPUT
     )
@@ -596,6 +600,8 @@ class Plan:
     stars: dict[int, str] = field(default_factory=dict)
     # The claim and place of the star of each record drawn as that star.
     star_claims: dict[int, StarClaim] = field(default_factory=dict)
+    # Planet record index → the label of the held star that it orbits.
+    held_hosts: dict[int, str] = field(default_factory=dict)
 
 
 def _without_letter(name: str) -> str:
@@ -983,6 +989,13 @@ def pass_rows(
             continue
         for record in record_of.get((row["host"], row["designation"]), []):
             hosts[record] = label
+    held_hosts: dict[int, str] = {}
+    if drawn is not None:
+        held_hosts, held_stars, held_claims = _held_links(
+            drawn, held_part, held_labels, counts
+        )
+        stars |= held_stars
+        star_claims |= held_claims
     items = pc.list_flatten(claimed)
     is_oid = pc.and_(
         pc.equal(items.field("catalogue"), SYSTEM_CLAIMS),
@@ -1027,7 +1040,45 @@ def pass_rows(
         held_labels,
         stars,
         star_claims,
+        held_hosts,
     )
+
+
+def _held_links(
+    drawn: Drawn, part: pa.Table, labels: pa.Array, counts: Counter
+) -> tuple[dict[int, str], dict[int, str], dict[int, StarClaim]]:
+    """The label of the held star that each planet record orbits, of the
+    held star that a record is drawn as, and the claim of the latter.
+    `part` and `labels` are those of `_held_rows`. A held star with no row
+    leaves its planet on its point, and a record drawn as it a planet."""
+    at = {row: n for n, row in enumerate(drawn.held["member"].to_pylist())}
+    hosts: dict[int, str] = {}
+    for record, member in drawn.hosts.items():
+        label = labels[at[member]].as_py()
+        if label is None:
+            counts["planets kept on their point: their star has no row"] += 1
+            logger.warning(
+                "systems: planet record %d stays on its point: its star has no row",
+                record,
+            )
+        else:
+            hosts[record] = label
+    claims = {
+        row["catalogue_id"]: StarClaim(
+            row["claims"][0], row["match_ra"], row["match_dec"]
+        )
+        for row in part.select(
+            ["catalogue_id", "claims", "match_ra", "match_dec"]
+        ).to_pylist()
+    }
+    stars: dict[int, str] = {}
+    for record, member in drawn.stars.items():
+        label = labels[at[member]].as_py()
+        if label is None:
+            counts["planet records drawn as planets: their held star has no row"] += 1
+        else:
+            stars[record] = label
+    return hosts, stars, {record: claims[label] for record, label in stars.items()}
 
 
 def _record_stars(
@@ -1325,6 +1376,7 @@ class SystemsExtension:
     sources: tuple[str, ...] = (STAR_SYSTEMS,)
     _hosts: dict[int, int] = field(default_factory=dict)
     _stars: dict[int, int] = field(default_factory=dict)
+    _held_hosts: dict[int, int] = field(default_factory=dict)
     _root_keys: np.ndarray = field(default_factory=lambda: np.zeros(0, np.int64))
     _root_values: np.ndarray = field(default_factory=lambda: np.zeros(0, np.int64))
     # The node on the sky of each drawn pair, by ID.
@@ -1345,6 +1397,10 @@ class SystemsExtension:
     def drawn_as_star(self, record: int) -> bool:
         """Whether a planet record is drawn as the star that it also is."""
         return record in self.plan.star_claims and self.star(record) != 0
+
+    def held_host(self, record: int) -> int:
+        """The ID of the held star that a planet record orbits, else 0."""
+        return self._held_hosts.get(record, 0)
 
     def root(self, id_: int) -> int:
         """The root of the system of an ID, else 0."""
@@ -1392,6 +1448,13 @@ class SystemsExtension:
             pa.array([self.plan.stars[r] for r in records], pa.string()), rows
         )
         self._stars = {r: int(i) for r, i in zip(records, star_ids.tolist()) if i}
+        records = list(self.plan.held_hosts)
+        held_host_ids = _ids_of(
+            pa.array([self.plan.held_hosts[r] for r in records], pa.string()), rows
+        )
+        self._held_hosts = {
+            r: int(i) for r, i in zip(records, held_host_ids.tolist()) if i
+        }
         member_ids = np.concatenate(
             [with_held["node"].to_numpy(), points["key"].to_numpy()]
         )
@@ -1444,6 +1507,7 @@ class SystemsExtension:
         lines += [f"pass: {k} {v:,}" for k, v in sorted(plan.counts.items())]
         lines += _engine_lines(self.run)
         lines.append(f"circumbinary hosts: {len(self._hosts):,}")
+        lines.append(f"planets on a held star: {len(self._held_hosts):,}")
         lines.append(f"planet records linked to their star: {len(self._stars):,}")
         report = "\n".join(lines) + "\n"
         return ExtensionResult(
@@ -1760,6 +1824,9 @@ def drawn_lines(drawn: Drawn) -> list[str]:
         "",
         f"Held stars {drawn.held.num_rows:,}, pairs drawn {drawn.orbits.num_rows:,}",
         *(f"  {k}: {v:,}" for k, v in sorted(drawn.counts.items())),
+        "",
+        "The planets of the points that hold several stars",
+        *(f"  {line}" for line in drawn.host_lines),
     ]
 
 
@@ -1779,7 +1846,8 @@ def add_systems(
     at = planets.schema.get_field_index("host")
     hosts = resolver.objects(planets["host"].to_numpy())
     planets = planets.set_column(at, "host", pa.array(hosts, pa.int64()))
-    systems = build(replace(inputs, planets=planets), resolver)
+    inputs = replace(inputs, planets=planets)
+    systems = build(inputs, resolver)
     drawn = draw(systems, inputs, resolver)
     built = time.monotonic()
     targets = target_keys(index, resolver)

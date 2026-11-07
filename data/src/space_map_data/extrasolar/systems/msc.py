@@ -8,7 +8,9 @@ whose only evidence is common proper motion (`c` or `C` with no criterion but
 `m`) is unverified, as in the WDS. The criteria `p`, `h` and `r` are other
 evidence. A row of comp.tsv gives the catalogue values of one label, which can
 be a pair (Castor A is Aa and Ab). A letter with no node of its own gives them
-to the node that holds its light (`letter_holders`).
+to the node that holds its light (`letter_holders`). A label's own V, mass and
+mass code come from sys.tsv: those of the secondary of its pair, else those of
+the primary of its first pair. Its V is that of comp.tsv, else its own V.
 
 A zero in a numeric column means "unknown" (Readme note 4), with two
 exceptions. An eccentricity of 0 is a circular orbit. One axis of a proper
@@ -293,11 +295,14 @@ def _add_system(
         orbit = elements.get((system, label), {})
         separation = _positive(pair["Sep"]) if pair else None
         period = _positive(pair["P"]) if pair else None
-        mass = None
+        mass = mass_method = None
         if pair:
-            mass = _positive(pair["Mass2"])
+            mass, mass_method = _positive(pair["Mass2"]), pair["MCode2"]
         elif first:
-            mass = _positive(first["Mass1"])
+            mass, mass_method = _positive(first["Mass1"]), first["MCode1"]
+        own_v_mag = _positive((pair or {}).get("Vmag2")) or _positive(
+            (first or {}).get("Vmag1")
+        )
         pmra, pmdec = _motion(comp)
         node = out.add(
             system,
@@ -311,14 +316,14 @@ def _add_system(
             pmra=pmra,
             pmdec=pmdec,
             parallax=_positive(comp.get("plx")),
-            v_mag=_positive(comp.get("Vmag"))
-            or _positive((pair or {}).get("Vmag2"))
-            or _positive((first or {}).get("Vmag1")),
+            v_mag=_positive(comp.get("Vmag")) or own_v_mag,
+            own_v_mag=own_v_mag,
             g_mag=_positive(comp.get("Gmag")),
             spectral_type=comp.get("Sp")
             or (pair or {}).get("SP2")
             or (first or {}).get("SP1"),
             mass=mass,
+            mass_method=((mass_method or "").strip() or None) if mass else None,
             separation=separation * SEPARATION_UNITS.get(pair["Sunit"], 1.0)
             if separation and pair and pair["Sunit"] in SEPARATION_UNITS
             else None,

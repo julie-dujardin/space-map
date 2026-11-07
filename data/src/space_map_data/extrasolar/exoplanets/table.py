@@ -140,6 +140,9 @@ GROUPS = (
     # The star of the fits that gave the orbit and the mass.
     ColumnGroup("stellar", _measured(*STELLAR), (ARCHIVE, EU)),
     ColumnGroup("binary", (pa.field("binary_type", pa.string()),), (OEC, ARCHIVE)),
+    # Whether the planet transits its star. Only the archive flags it. The
+    # discovery method of the others misses transits found after discovery.
+    ColumnGroup("transit", (pa.field("transits", pa.bool_()),), (ARCHIVE,)),
 )
 KEY_FIELDS = (
     pa.field("host", pa.int64(), nullable=False),
@@ -400,6 +403,11 @@ def merge(
             values["binary_type"] = row.binary
             values["binary_source"] = source
             break
+
+    archive = joined.rows.get(ARCHIVE)
+    if archive is not None and archive.transits is not None:
+        values["transits"] = archive.transits
+        values["transit_source"] = ARCHIVE
 
     central = record.get("star_mass") or star_mass
     values["class"], values["class_basis"], values["mass_ratio"] = classify(

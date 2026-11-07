@@ -127,6 +127,17 @@ def _flame(run: str) -> tuple[pa.Field, ...]:
     )
 
 
+# The Point source columns of a planet host's values, one group each.
+HOST_VALUES = (
+    "host_teff",
+    "host_radius",
+    "host_mass",
+    "host_metallicity",
+    "host_logg",
+    "host_age",
+)
+# The other columns of a group of HOST_VALUES.
+HOST_ERRORS = {"host_radius": ("host_radius_error",)}
 # The source of the star systems. It mints the resolved systems in the
 # System table.
 STAR_SYSTEMS = "star-systems"
@@ -614,10 +625,9 @@ POINT_SOURCE = TableDef(
             ("gaia-dr3", "gaia-dr3-named"),
         ),
         # The star as an exoplanet catalogue gives it: its name there, the
-        # distance (pc) with its larger error, Teff (K), radius and mass
-        # (solar), metallicity (dex), log g (cgs), age (Gyr) and V, G and K
-        # magnitudes. The distance places a star that neither a 5σ parallax
-        # nor the distance group places.
+        # distance (pc) with its larger error, V, G and K magnitudes, its
+        # spectral type and SIMBAD type. The distance places a star that
+        # neither a 5σ parallax nor the distance group places.
         ColumnGroup(
             "host_star",
             (
@@ -626,12 +636,6 @@ POINT_SOURCE = TableDef(
                     pa.float32(),
                     "host_distance",
                     "host_distance_error",
-                    "host_teff",
-                    "host_radius",
-                    "host_mass",
-                    "host_metallicity",
-                    "host_logg",
-                    "host_age",
                     "host_v_mag",
                     "host_g_mag",
                     "host_k_mag",
@@ -640,6 +644,18 @@ POINT_SOURCE = TableDef(
                 pa.field("host_simbad_otype", pa.string()),
             ),
             EXOPLANET_SOURCES,
+        ),
+        # The values of the star in the exoplanet catalogues, each from the
+        # first catalogue that has it: Teff (K), radius and mass (solar),
+        # metallicity (dex), log g (cgs) and age (Gyr). The radius has its
+        # larger error, which tells whether a card can show it.
+        *(
+            ColumnGroup(
+                name,
+                _fields(pa.float32(), name, *HOST_ERRORS.get(name, ())),
+                EXOPLANET_SOURCES,
+            )
+            for name in HOST_VALUES
         ),
         # A star of a resolved system whose own spectral type is the
         # composite type of its system. That type moves to the System row,
@@ -877,21 +893,37 @@ SYSTEM_ORBIT = pa.struct(
     ]
 )
 # The values of a held star, each with its source: solar masses, nominal
-# solar radii, K. V and G are its member's, in mag: the export reads them for
-# the star families, which should not read every member.
+# solar radii, K, dex, log(cm/s²), Gyr. `host_radius` is the first radius of
+# a planet catalogue, with its larger error, also when a paper gives
+# `radius`: a transit host takes it first. V and G are its member's, in mag:
+# the export reads them for the star families, which should not read every
+# member. `dominant` is true for the first member of a point when it
+# dominates the point's light (`host_stars.dominates`): the point's
+# measurements are then its own. The ingest decides it, as the members' own V
+# and mass codes are not in this table.
 SYSTEM_STAR = pa.struct(
     [
         pa.field("mass", pa.float32()),
         pa.field("mass_source", pa.string()),
         pa.field("radius", pa.float32()),
         pa.field("radius_source", pa.string()),
+        pa.field("host_radius", pa.float32()),
+        pa.field("host_radius_error", pa.float32()),
+        pa.field("host_radius_source", pa.string()),
         pa.field("teff", pa.float32()),
         pa.field("teff_source", pa.string()),
+        pa.field("metallicity", pa.float32()),
+        pa.field("metallicity_source", pa.string()),
+        pa.field("logg", pa.float32()),
+        pa.field("logg_source", pa.string()),
+        pa.field("age", pa.float32()),
+        pa.field("age_source", pa.string()),
         pa.field("spectral_type", pa.string()),
         pa.field("spectral_type_source", pa.string()),
         pa.field("references", pa.list_(REFERENCE)),
         pa.field("v_mag", pa.float32()),
         pa.field("g_mag", pa.float32()),
+        pa.field("dominant", pa.bool_()),
     ]
 )
 # A node of a whole system, in the root's row.

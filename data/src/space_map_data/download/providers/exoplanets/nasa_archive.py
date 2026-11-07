@@ -52,7 +52,7 @@ STAR_ID_COLUMNS = ("hd_name", "hip_name", "tic_id", "gaia_dr3_id", "gaia_dr2_id"
 TABLES: tuple[ArchiveTable, ...] = (
     ArchiveTable(
         "pscomppars",
-        ("pl_name", "hostname", "gaia_dr3_id"),
+        ("pl_name", "hostname", "gaia_dr3_id", "tran_flag"),
         "planets, one composite row each",
     ),
     ArchiveTable(

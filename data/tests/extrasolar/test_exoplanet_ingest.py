@@ -1,5 +1,6 @@
 """Tests for engine extensions and the exoplanet ingest through the engine."""
 
+from collections import Counter
 from dataclasses import dataclass, field
 from typing import cast
 
@@ -10,7 +11,7 @@ import pytest
 from space_map_data.constants.stars.planet_hosts import HOSTS, STARS
 from space_map_data.extrasolar import sky
 from space_map_data.extrasolar.engine import ExtensionResult, IngestRun
-from space_map_data.extrasolar.exoplanets import catalogues, twins
+from space_map_data.extrasolar.exoplanets import catalogues, numbering, twins
 from space_map_data.extrasolar.exoplanets import ingest as exoplanets
 from space_map_data.extrasolar.exoplanets.catalogues import (
     ARCHIVE,
@@ -21,7 +22,7 @@ from space_map_data.extrasolar.exoplanets.catalogues import (
 )
 from space_map_data.extrasolar.exoplanets.names import WgsnName
 from space_map_data.extrasolar.exoplanets.table import default_node
-from space_map_data.extrasolar.registry import Registry
+from space_map_data.extrasolar.registry import ALIAS, Registry
 from space_map_data.extrasolar.sources import gaia, hipparcos, simbad
 from space_map_data.extrasolar.sources.gaia import (
     GAIA_DR3,
@@ -30,6 +31,7 @@ from space_map_data.extrasolar.sources.gaia import (
 )
 from space_map_data.extrasolar.sources.hipparcos import HIPPARCOS
 from space_map_data.extrasolar.sources.simbad import SIMBAD, SimbadList
+from space_map_data.extrasolar.tables import HOST_VALUES
 from tests.extrasolar.conftest import (
     GAIA,
     META,
@@ -354,6 +356,7 @@ class StarSystems:
     roots: dict[int, int]
     stars: dict[int, int] = field(default_factory=dict)
     as_star: set[int] = field(default_factory=set)
+    held: dict[int, int] = field(default_factory=dict)
 
     def host(self, record: int) -> int:
         return 0
@@ -363,6 +366,9 @@ class StarSystems:
 
     def drawn_as_star(self, record: int) -> bool:
         return record in self.as_star
+
+    def held_host(self, record: int) -> int:
+        return self.held.get(record, 0)
 
     def root(self, id_: int) -> int:
         return self.roots.get(id_, 0)
@@ -384,6 +390,67 @@ class TestStarSystemRoots:
             r["host"]: r["system"] for r in table_rows(root, "planets").to_pylist()
         }
         assert planets[delta_a] == system and planets[delta_b] == system
+
+    def test_a_planet_moves_to_its_held_star(self, root, backup, tmp_path):
+        """The planet takes a number on the held star, and its old number
+        leads there."""
+        inputs = downloads().write(tmp_path / "one")
+        ingest(root, backup, inputs)
+        before = {
+            (r["host"], r["number"]): r["designation"]
+            for r in table_rows(root, "planets").to_pylist()
+        }
+        held = 777
+        ingest(root, backup, inputs, systems=StarSystems({}, held={0: held}))
+        rows = table_rows(root, "planets").to_pylist()
+        (moved,) = [row for row in rows if row["host"] == held]
+        old = next(n for n, d in before.items() if d == moved["designation"])
+        state = numbering.read_state(Registry(root))
+        assert state.status[old] == ALIAS
+        assert state.alias_target[old] == (held, moved["number"])
+
+    @pytest.mark.parametrize(
+        ("all_move", "stays_as_star"), [(True, False), (False, False), (False, True)]
+    )
+    def test_the_held_star_takes_the_host_values(
+        self, root, backup, tmp_path, all_move, stays_as_star
+    ):
+        """The point keeps no copy of the values that its held star takes,
+        unless a planet stays on it: a record drawn as its star is none. It
+        keeps the catalogue's name and distance."""
+        inputs = downloads().write(tmp_path / "one")
+        _, prepared = ingest(root, backup, inputs)
+        stars = Counter(record.star for record in prepared.records)
+        star = next(s for s, n in stars.items() if n > 1)
+        records = [at for at, r in enumerate(prepared.records) if r.star == star]
+        host_of = {
+            r["designation"]: r["host"] for r in table_rows(root, "planets").to_pylist()
+        }
+        (host,) = {host_of[prepared.records[at].text("designation")] for at in records}
+        moved = records if all_move else records[1:]
+        as_star = {records[0]} if stays_as_star else set()
+        ingest(
+            root,
+            backup,
+            inputs,
+            systems=StarSystems(
+                {},
+                dict.fromkeys(as_star, 778),
+                as_star,
+                held=dict.fromkeys(moved, 777),
+            ),
+        )
+        rows = table_rows(root, "point-source").to_pylist()
+        (point,) = [row for row in rows if row["id"] == host]
+        kept = [point[f"{name}_source"] for name in HOST_VALUES]
+        cleared = all_move or stays_as_star
+        assert kept == [None] * len(kept) if cleared else any(kept)
+        # Each value names the catalogue that gives it.
+        assert all(
+            (point[name] is None) == (point[f"{name}_source"] is None)
+            for name in HOST_VALUES
+        )
+        assert point["host_distance"] is not None
 
     def test_a_record_names_the_star_that_it_also_is(self, root, backup, tmp_path):
         """The record stays on its host, and names its star and the side that

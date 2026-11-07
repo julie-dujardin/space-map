@@ -7,10 +7,21 @@ know more of it: a name of its own (SIMBAD, the planet catalogues), a mass, a
 radius, a temperature or a spectral type. A star that is only a letter stays
 an entry: a magnitude or a separation earns no ID. An entry whose only values
 are the masses of its Gaia orbit stays an entry too, and its pair keeps the
-masses. Each value comes from the first source that has it: a paper, OEC, the
-entry's tree source, then the masses of its Gaia orbit. Its letter is the
-source's. A held star of a pair with no letter takes A when it is the
-heavier star, else B, and the other letter when the other member has A or B.
+masses. The planets of a point that holds several stars orbit one of its
+stars (`host_stars`), which takes the planet catalogues' values of their
+host and is a held star. A planet that OEC puts around both stars (P-type),
+or whose name or host name names two stars ("Kepler-451 (AB) b"), stays on
+the point. Each value comes from the first source that has it: a paper, the
+planet catalogues in their order, OEC's binaries and stars, the entry's tree
+source, then the masses of its Gaia orbit. Its letter comes from the same
+sources, but not from the planet catalogues. A held star of a pair with no
+letter takes A when it is the heavier star, else B, and the other letter when
+the other member has A or B.
+
+A planet record whose star is an entry of its host's point, with no point
+of its own, is drawn once (`match_records`): as that held star when it is
+drawn as its star (`drawn_as_star`), else as a planet, and the entry stays
+an entry.
 
 The catalogues do not share letters, so a letter stays with one member of a
 system, an entry too: a star before a node, then the earlier tree source
@@ -76,17 +87,19 @@ import math
 import re
 from collections import Counter, defaultdict
 from collections.abc import Iterable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 import numpy as np
 import pyarrow as pa
 import pyarrow.compute as pc
 
 from space_map_data.extrasolar import frame
-from space_map_data.extrasolar.exoplanets.catalogues import OEC
+from space_map_data.extrasolar.exoplanets.catalogues import OEC, P_TYPE, larger_error
+from space_map_data.extrasolar.exoplanets.iau import drawn_as_star
 from space_map_data.extrasolar.exoplanets.table import default_node
 from space_map_data.extrasolar.sources.gaia_orbits import ASTROMETRIC
 from space_map_data.extrasolar.sources.simbad import star_name
+from space_map_data.extrasolar.systems import host_stars
 from space_map_data.extrasolar.systems.assemble import ENTRY, SYSTEM, Systems
 from space_map_data.extrasolar.systems.elements import (
     Elements,
@@ -113,6 +126,7 @@ from space_map_data.extrasolar.systems.orbits import (
     ORBIT_SOURCES,
     SBX,
 )
+from space_map_data.extrasolar.systems.planets import HOST_COLUMNS
 from space_map_data.extrasolar.systems.prepare import MEMBER, Inputs, same_period
 from space_map_data.extrasolar.systems.resolve import Resolver
 from space_map_data.extrasolar.tables import REFERENCE, SYSTEM_STAR
@@ -121,6 +135,8 @@ logger = logging.getLogger(__name__)
 
 # Papers first, Gaia DR3 last.
 DRAW_SOURCES = (*ORBIT_SOURCES, GAIA_ORBITS)
+# The MSC's code of a mass from the absolute V magnitude.
+MSC_V_MASS = "v"
 # What gives a pair's mass ratio, first to last: two masses of a source, or
 # the K1 and K2 of its orbits.
 MASSES, VELOCITIES = "masses", "velocities"
@@ -149,11 +165,22 @@ ELEMENTS = (
     "arg_periastron",
     "epoch",
 )
-STAR_VALUES = ("mass", "radius", "teff", "spectral_type")
+STAR_VALUES = (
+    "mass",
+    "radius",
+    "teff",
+    "metallicity",
+    "logg",
+    "age",
+    "spectral_type",
+)
 # A component letter of the WDS and the MSC, and one at the end of a name,
 # after a space or a number ("HD 27028A").
 COMPONENT = re.compile(r"^[A-Z][a-z]?\d?$")
 NAME_LETTER = re.compile(r"(?:\s|(?<=\d))(?P<letter>[A-Z][a-z]?\d?)$")
+# A name of two or more stars, with or without a planet letter after it:
+# "Kepler-451 (AB)b", "TOI-1338 AB b", "DI Tau (AB)".
+PAIR_NAME = re.compile(r"(?:\s|\()\(?[A-D]{2,}\)?\s?[b-z]?$")
 # The ids of an SBX system that name a point.
 SBX_KEYS = (GAIA_DR3, HIP, HD)
 JULIAN_YEAR = 365.25
@@ -209,6 +236,12 @@ class Drawn:
     held: pa.Table
     orbits: pa.Table
     counts: Counter = field(default_factory=Counter)
+    # Planet record → the member row of the held star that it orbits.
+    hosts: dict[int, int] = field(default_factory=dict)
+    # Each planet that moves to a held star or stays on its point, and why.
+    host_lines: list[str] = field(default_factory=list)
+    # Planet record → the member row of the held star that it is drawn as.
+    stars: dict[int, int] = field(default_factory=dict)
 
 
 @dataclass
@@ -240,9 +273,13 @@ def _order(item: Elements) -> tuple:
 
 
 def _star(row: dict) -> dict:
+    """A star of a paper or of OEC, which give no metallicity, log g or age,
+    with the larger error of its radius."""
+    error = larger_error(row.get("radius_error_upper"), row.get("radius_error_lower"))
     return {
-        name: row[name] for name in (*STAR_VALUES, "label", "spectral_type_reference")
-    }
+        name: row.get(name)
+        for name in (*STAR_VALUES, "label", "spectral_type_reference")
+    } | {"radius_error": error}
 
 
 def _two(stars: list[dict]) -> tuple[dict, dict]:
@@ -311,6 +348,46 @@ def _tag(entry: dict, letter: str | None) -> str | None:
         # Only the companion has the kind of the orbit (`assemble`).
         return GAIA_SIDES[entry["known"] is not None]
     return letter
+
+
+def _ids_of(items: list[dict] | None) -> frozenset[tuple[str, str, str]]:
+    """A CROSS_ID list as (catalogue, release, catalogue id)."""
+    return frozenset(
+        (i["catalogue"], i["release"], i["catalogue_id"]) for i in items or []
+    )
+
+
+def _host_ids(planet: dict) -> frozenset[tuple[str, str, str]]:
+    return _ids_of(planet["host_ids"])
+
+
+def host_of(planet: dict, key_of: dict[tuple[str, str, str], int]) -> host_stars.Host:
+    """The planets' star of a PLANETS_INPUT row: each value of its first
+    catalogue that has it, the letters at the end of its names, its ids
+    whose key (`key_of`) is not its point's, and whether its ids with a key
+    are all its point's."""
+    values = planet["host_values"] or []
+
+    def first(name: str) -> dict | None:
+        return next((v for v in values if v[name] is not None), None)
+
+    teff, mass = first("teff"), first("mass")
+    keys = {key_of[i] for i in _host_ids(planet)} - {0}
+    return host_stars.Host(
+        ids=frozenset(i for i in _host_ids(planet) if key_of[i] != planet["host"]),
+        of_point=keys == {planet["host"]},
+        letters=frozenset(
+            letter for name in planet["host_names"] or [] if (letter := _letter(name))
+        ),
+        teff=None if teff is None else teff["teff"],
+        mass=None if mass is None else mass["mass"],
+        mass_error=None if mass is None else mass["mass_error"],
+    )
+
+
+def _named(entry: dict, values: dict) -> bool:
+    """Whether a source names an entry, so that it can be a held star."""
+    return values["letter"] is not None or bool(entry["label"])
 
 
 def _own_name(entry: dict) -> str | None:
@@ -382,6 +459,10 @@ class Drawer:
         self._outer_pairs(keys, starts, ends)
         # The points that hold three or more stars.
         self.other_points = set(keys[keys != 0].tolist()) - set(self.point_node)
+        # The nodes that are points, and their members as `host_stars`
+        # compares them.
+        self.points = set(self.number[keys != 0].tolist())
+        self.compared: dict[int, list[host_stars.Member]] = {}
         self.msc_members = self._member_ids((MSC_ID,))
         self.wds_members = self._member_ids((WDS_ID,))
         self.by_node = self._node_ids(nodes)
@@ -390,6 +471,16 @@ class Drawer:
         self.oec_stars: dict[str, dict] = {}
         # The member rows that give up their letter.
         self.repeated: set[int] = set()
+        # Planet record → member row, and the planet catalogues' values of
+        # each member that planets orbit, in catalogue order.
+        self.planet_hosts: dict[int, int] = {}
+        self.host_values: dict[int, list[tuple[str, dict]]] = {}
+        self.host_lines: list[str] = []
+        # Member row → the planet records that are that entry, and whether
+        # each is drawn as its star (`match_records`); then record → the row
+        # of the held star that it is drawn as.
+        self.record_entries: dict[int, list[tuple[int, bool]]] = {}
+        self.record_stars: dict[int, int] = {}
         stars = inputs.catalogue_stars
         if stars is not None:
             for star in stars.filter(pc.equal(stars["source"], OEC)).to_pylist():
@@ -980,10 +1071,193 @@ class Drawer:
 
     # Held stars
 
+    def _member(self, row: int, gaia: dict[int, float]) -> host_stars.Member:
+        """A member as `host_stars` compares it, by its values before any
+        planet catalogue's. A WDS type is one type for a pair, often of their
+        combined light, and an MSC mass from V can come from a magnitude in
+        another band: neither is a check."""
+        entry = self.systems.members.slice(row, 1).to_pylist()[0]
+        values = self._values(row, entry, gaia, hosts=False)
+        mass = values["mass"]
+        if values["mass_source"] == MSC and entry["mass_method"] == MSC_V_MASS:
+            mass = None
+        spectral_type = values["spectral_type"]
+        if values["spectral_type_source"] == WDS:
+            spectral_type = None
+        return host_stars.Member(
+            row=row,
+            named=entry["kind"] == ENTRY and _named(entry, values),
+            letter=values["letter"],
+            g_mag=entry["g_mag"],
+            own_v_mag=entry["own_v_mag"],
+            v_mag=entry["v_mag"],
+            mass=mass,
+            teff=values["teff"],
+            spectral_type=spectral_type,
+            ids=_ids_of(entry["ids"]),
+        )
+
+    def _compared(self, number: int, gaia: dict[int, float]) -> list[host_stars.Member]:
+        """The members of node `number` as `host_stars` compares them."""
+        if number not in self.compared:
+            start = int(np.searchsorted(self.member_node, number))
+            end = int(np.searchsorted(self.member_node, number, "right"))
+            self.compared[number] = [self._member(r, gaia) for r in range(start, end)]
+        return self.compared[number]
+
+    def _keys_of(
+        self, ids: Iterable[frozenset[tuple[str, str, str]]]
+    ) -> dict[tuple[str, str, str], int]:
+        """The key of each (catalogue, release, id), 0 where none."""
+        texts: defaultdict[tuple[str, str], set[str]] = defaultdict(set)
+        for group in ids:
+            for catalogue, release, text in group:
+                texts[(catalogue, release)].add(text)
+        found = {}
+        for (catalogue, release), group in sorted(texts.items()):
+            ordered = sorted(group)
+            keys = self.resolver.keys(
+                catalogue, release, pa.array(ordered, pa.string())
+            )
+            for text, key in zip(ordered, keys.tolist(), strict=True):
+                found[(catalogue, release, text)] = key
+        return found
+
+    def choose_hosts(self) -> None:
+        """The member that each planet orbits, for a planet whose host is a
+        point that holds several stars, and the values that it takes. Two
+        catalogue stars that pick one member both stay on their point."""
+        planets = self.inputs.planets
+        if planets is None:
+            return
+        nodes = self.systems.nodes
+        node_of = {
+            key: number
+            for key, number in zip(
+                nodes["key"].to_pylist(), nodes["node"].to_pylist(), strict=True
+            )
+            if key
+        }
+        gaia = self._gaia_masses()
+        chosen: list[tuple[int, dict, str, int, tuple, host_stars.Choice]] = []
+        columns = ["host", "designation", "binary_type", *HOST_COLUMNS]
+        rows = planets.select(columns).to_pylist()
+        key_of = self._keys_of(_host_ids(p) for p in rows if p["host"] in node_of)
+        for record, planet in enumerate(rows):
+            number = node_of.get(planet["host"])
+            if number is None:
+                continue
+            name = planet["designation"]
+            names = [name or "", *(planet["host_names"] or [])]
+            planet_text = f"{name} (point {planet['host']})"
+            if planet["binary_type"] == P_TYPE or any(map(PAIR_NAME.search, names)):
+                why = "P-type" if planet["binary_type"] == P_TYPE else "named so"
+                self.counts["planets around both stars of their point"] += 1
+                self.host_lines.append(f"{planet_text}: stays on its pair, {why}")
+                continue
+            host = host_of(planet, key_of)
+            ids = _host_ids(planet)
+            star = (ids, frozenset(planet["host_names"] or []))
+            choice = host_stars.choose(host, self._compared(number, gaia))
+            if host.ids != ids:
+                self.counts["planets whose host has an id of its point"] += 1
+                own = ", ".join(f"{c} {i}" for c, _, i in sorted(ids - host.ids))
+                if choice.row is None:
+                    choice = replace(choice, reason=f"{choice.reason}; point has {own}")
+            chosen.append((record, planet, planet_text, number, star, choice))
+        stars: defaultdict[int, set[tuple]] = defaultdict(set)
+        for *_, star, choice in chosen:
+            if choice.row is not None:
+                stars[choice.row].add(star)
+        for record, planet, planet_text, number, _, choice in chosen:
+            if choice.row is not None and len(stars[choice.row]) > 1:
+                choice = host_stars.Choice(
+                    None,
+                    choice.evidence.split(":")[0],
+                    f"{len(stars[choice.row])} catalogue stars pick its member",
+                )
+            if choice.row is None:
+                self.counts[f"planets kept on their point: {choice.evidence}"] += 1
+                self.host_lines.append(
+                    f"{planet_text}: stays on its point"
+                    f" ({choice.evidence}: {choice.reason})"
+                )
+                continue
+            self.planet_hosts[record] = choice.row
+            self.host_values[choice.row] = [
+                (values["source"], values) for values in planet["host_values"] or []
+            ]
+            kind = choice.evidence.split(":")[0]
+            self.counts[f"planets moved to a star of their point, by {kind}"] += 1
+            member = next(
+                m for m in self._compared(number, gaia) if m.row == choice.row
+            )
+            label = member.letter or self.systems.members["label"][choice.row].as_py()
+            line = f"{planet_text}: moves to its star {label} ({choice.evidence})"
+            self.host_lines.append(line)
+            logger.info("systems: %s", line)
+
+    def match_records(self) -> None:
+        """The entry that a planet record is, when its star is no point of
+        its own: none of the record's star ids reaches another point, and one
+        member of its host's point carries one of them and no id of the
+        host. Such a record and its entry are one object, drawn once
+        (`held`)."""
+        planets = self.inputs.planets
+        if planets is None:
+            return
+        node_of = {
+            key: number
+            for key, number in zip(
+                self.systems.nodes["key"].to_pylist(),
+                self.systems.nodes["node"].to_pylist(),
+                strict=True,
+            )
+            if key
+        }
+        columns = ["host", "host_ids", "class", "mass", "discovery_method", "star_ids"]
+        rows = planets.select(columns).to_pylist()
+        star_ids = [_ids_of(row["star_ids"]) for row in rows]
+        key_of = self._keys_of(
+            ids for ids, row in zip(star_ids, rows) if row["host"] in node_of
+        )
+        for record, (row, ids) in enumerate(zip(rows, star_ids)):
+            number = node_of.get(row["host"])
+            if number is None or not ids:
+                continue
+            if {key_of[i] for i in ids} - {0, row["host"]}:
+                continue
+            start = int(np.searchsorted(self.member_node, number))
+            end = int(np.searchsorted(self.member_node, number, "right"))
+            part = self.systems.members.slice(start, end - start)
+            host_ids = _ids_of(row["host_ids"])
+            found = [
+                start + at
+                for at, (kind, member_ids) in enumerate(
+                    zip(part["kind"].to_pylist(), part["ids"].to_pylist())
+                )
+                if kind == ENTRY
+                and ids & (mine := _ids_of(member_ids))
+                and not host_ids & mine
+            ]
+            if len(found) != 1:
+                if found:
+                    self.counts["planet records that several entries carry"] += 1
+                continue
+            as_star = drawn_as_star(row["class"], row["mass"], row["discovery_method"])
+            self.record_entries.setdefault(found[0], []).append((record, as_star))
+
     def held(self, drawn: Iterable[int] = ()) -> pa.Table:
         """The held stars: the entries of the pairs with these node numbers,
-        which are drawn, and the entries that a source names and that we know
-        more of."""
+        which are drawn, the entries that a source names and that we know
+        more of, and the entries that planets orbit (`choose_hosts`). The
+        first member of a point is `dominant` when it dominates the point's
+        light, by the values that `choose_hosts` compares.
+
+        An entry that a planet record is (`match_records`) is that record's
+        held star when the record is drawn as its star (`drawn_as_star`), or
+        when its pair is drawn or planets orbit it: the trees need the star.
+        Else the record is drawn as a planet and the entry stays an entry."""
         in_drawn = {
             row
             for number in drawn
@@ -1006,12 +1280,13 @@ class Drawer:
             ]
         )
         gaia = self._gaia_masses()
+        hosts = set(self.planet_hosts.values())
         out: dict[str, list] = defaultdict(list)
         # The letters of the entries with no ID, which a page lists too.
         lines: dict[int, str | None] = {}
         for row, entry in zip(rows.tolist(), part.to_pylist()):
             values = self._values(row, entry, gaia)
-            named = values["letter"] is not None or bool(entry["label"])
+            named = _named(entry, values)
             known = any(values[name] is not None for name in STAR_VALUES)
             if not named and row not in in_drawn:
                 self.counts["entries that no source names, in no drawn pair"] += 1
@@ -1020,8 +1295,22 @@ class Drawer:
                         "entries that no source names, in no drawn pair, with values"
                     ] += 1
                 continue
+            records = self.record_entries.get(row, [])
+            if records and not (
+                any(as_star for _, as_star in records)
+                or row in in_drawn
+                or row in hosts
+            ):
+                self.counts["entries that a planet record is, drawn as the planet"] += 1
+                continue
             own = _own_name(entry)
-            if row not in in_drawn and not (known or own):
+            if row in hosts and not (known or own):
+                self.counts["held stars that are only a letter, kept for planets"] += 1
+            elif records and not (known or own):
+                self.counts[
+                    "held stars that are only a letter, kept for a planet record"
+                ] += 1
+            elif row not in in_drawn and not (known or own):
                 self.counts[
                     f"entries that are only a letter, of {entry['source']}"
                 ] += 1
@@ -1037,6 +1326,21 @@ class Drawer:
             out["own_name"].append(own)
             for name, value in values.items():
                 out[name].append(value)
+            own_values = values
+            if row in self.host_values:
+                own_values = self._values(row, entry, gaia, hosts=False)
+            out["own_mass"].append(own_values["mass"])
+            number = entry["node"]
+            dominant = (
+                number in self.points
+                and row == int(np.searchsorted(self.member_node, number))
+                and host_stars.dominates(self._compared(number, gaia))[0]
+            )
+            out["dominant"].append(dominant)
+            self.counts["held stars that dominate their point's light"] += dominant
+            for record, _ in records:
+                self.record_stars[record] = row
+                self.counts["planet records drawn as their held star"] += 1
             self.counts[f"held stars of {entry['source'] or 'no source'} entries"] += 1
             self.counts[
                 "held stars that a source names"
@@ -1089,8 +1393,8 @@ class Drawer:
 
     def _pair_letters(self, out: dict[str, list]) -> None:
         """A or B for each held star of a pair with no letter: A for the
-        heavier star, else for the first member, and the other letter when
-        the other member has A or B."""
+        heavier star by the masses of the stars' own sources, else for the
+        first member, and the other letter when the other member has A or B."""
         at = {row: i for i, row in enumerate(out["member"])}
         given = list(out["letter"])
         members = self.systems.members
@@ -1104,12 +1408,12 @@ class Drawer:
                 continue
             other = pair.second if row == pair.first else pair.first
             if other in at:
-                theirs, their_mass = given[at[other]], out["mass"][at[other]]
+                theirs, their_mass = given[at[other]], out["own_mass"][at[other]]
             else:
                 entry = members.slice(other, 1).to_pylist()[0]
                 their_mass = entry["mass"]
                 theirs = None if other in self.repeated else _source_letter(entry)
-            mine = out["mass"][i]
+            mine = out["own_mass"][i]
             if theirs in PAIR_LETTERS:
                 letter = PAIR_LETTERS[1 - PAIR_LETTERS.index(theirs)]
             elif mine is not None and their_mass is not None and mine != their_mass:
@@ -1132,31 +1436,54 @@ class Drawer:
                     found[row] = mass
         return found
 
-    def _values(self, row: int, entry: dict, gaia: dict[int, float]) -> dict:
-        """The SYSTEM_STAR values of an entry, and its letter."""
+    def _values(
+        self, row: int, entry: dict, gaia: dict[int, float], hosts: bool = True
+    ) -> dict:
+        """The SYSTEM_STAR values of an entry, and its letter, with the values
+        of its planets' host unless `hosts` is false. The letter reads the
+        sources of the star only, so that host does not change what names
+        it."""
         pair = self.pairs.get(entry["node"])
-        given: list[tuple[str, dict]] = []
-        stands_for_one = pair is not None and entry["node"] not in self.outer
-        if stands_for_one and row in (pair.first, pair.second):
-            side = 0 if row == pair.first else 1
-            given += [
-                (source, pair.stars[source][side])
-                for source in (LITERATURE, OEC)
-                if source in pair.stars
-            ]
+        sources: list[tuple[str, dict]] = []
+        stars: dict[str, tuple[dict, dict]] = {}
+        side = 0
+        if (
+            pair is not None
+            and entry["node"] not in self.outer
+            and row in (pair.first, pair.second)
+        ):
+            stars, side = pair.stars, int(row != pair.first)
+        if LITERATURE in stars:
+            sources.append((LITERATURE, stars[LITERATURE][side]))
+        if OEC in stars:
+            sources.append((OEC, stars[OEC][side]))
         own = self.oec_stars.get(self.oec_of.get(row, ""))
-        if own is not None and all(source != OEC for source, _ in given):
-            given.append((OEC, own))
+        if own is not None and OEC not in stars:
+            sources.append((OEC, own))
         tree = {"mass": entry["mass"], "spectral_type": entry["spectral_type"]}
-        given.append((entry["source"], tree))
+        sources.append((entry["source"], tree))
         if row in gaia and entry["source"] != GAIA_ORBITS:
-            given.append((GAIA_ORBITS, {"mass": gaia[row]}))
+            sources.append((GAIA_ORBITS, {"mass": gaia[row]}))
+        paper = int(LITERATURE in stars)
+        planets = self.host_values.get(row, []) if hosts else []
+        given = [*sources[:paper], *planets, *sources[paper:]]
         values: dict = {}
         for name in STAR_VALUES:
             hit = next(
                 ((v[name], s) for s, v in given if v.get(name) is not None), None
             )
             values[name], values[f"{name}_source"] = hit or (None, None)
+        by, sized = next(
+            (
+                (s, v)
+                for s, v in given
+                if s != LITERATURE and v.get("radius") is not None
+            ),
+            (None, {}),
+        )
+        values["host_radius"] = sized.get("radius")
+        values["host_radius_error"] = sized.get("radius_error")
+        values["host_radius_source"] = by
         works = []
         if pair is not None:
             paper = dict(given).get(LITERATURE, {})
@@ -1172,19 +1499,23 @@ class Drawer:
             for work in dict.fromkeys(works)
             if work
         ]
-        values["letter"] = _source_letter(entry, [v.get("label") for _, v in given])
+        values["letter"] = _source_letter(entry, [v.get("label") for _, v in sources])
         values["v_mag"], values["g_mag"] = entry["v_mag"], entry["g_mag"]
         return values
 
 
 def draw(systems: Systems, inputs: Inputs, resolver: Resolver) -> Drawn:
-    """The held stars and the orbits of the pairs of `systems`. The repeated
-    letters leave `systems.members`, after the orbits have used them."""
+    """The held stars and the orbits of the pairs of `systems`, and the held
+    star of each planet of a point that holds several stars. The repeated
+    letters leave `systems.members`, after the orbits have used them.
+    `inputs.planets` has the hosts as keys of `systems`."""
     drawer = Drawer(systems, inputs, resolver)
     drawer.counts["pairs"] = len(drawer.pairs)
     drawer.match_catalogues()
     drawer.match_msc_masses()
     drawer.match_gaia()
+    drawer.choose_hosts()
+    drawer.match_records()
     rows = []
     for number, pair in sorted(drawer.pairs.items()):
         if pair.orbits:
@@ -1204,7 +1535,14 @@ def draw(systems: Systems, inputs: Inputs, resolver: Resolver) -> Drawn:
     logger.info(
         "systems: %d held stars, %d pairs drawn", held.num_rows, orbits.num_rows
     )
-    return Drawn(held, orbits, counts)
+    return Drawn(
+        held,
+        orbits,
+        counts,
+        drawer.planet_hosts,
+        drawer.host_lines,
+        drawer.record_stars,
+    )
 
 
 def assumed_node(root: int) -> float:

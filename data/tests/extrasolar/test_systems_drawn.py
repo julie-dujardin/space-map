@@ -15,15 +15,23 @@ from space_map_data.constants.stars import binaries
 from space_map_data.extrasolar import frame
 from space_map_data.extrasolar.exoplanets.catalogues import OEC
 from space_map_data.extrasolar.exoplanets.table import default_node
-from space_map_data.extrasolar.systems import assemble, drawn, elements, orbits
+from space_map_data.extrasolar.systems import (
+    assemble,
+    drawn,
+    elements,
+    orbits,
+    prepare,
+)
 from space_map_data.extrasolar.systems.assemble import Systems
 from space_map_data.extrasolar.systems.distance import DISTANCES
 from space_map_data.extrasolar.systems.ingest import (
+    _held_links,
     _held_rows,
     _node_names,
     held_names,
 )
 from space_map_data.extrasolar.systems.nodes import GAIA_ORBITS
+from space_map_data.extrasolar.systems.planets import PLANETS_INPUT
 from space_map_data.extrasolar.systems.prepare import LEAVES, MEMBER, Inputs
 from space_map_data.extrasolar.tables import CROSS_ID
 from tests.download.orbit_catalogue_files import MSC_LINES
@@ -211,6 +219,7 @@ def msc_masses(*rows: tuple[str, str, float, str, float, str]) -> pa.Table:
 
 
 ALPHA_CEN_MASSES = ("A", "B", 1.10, "v", 0.88, "v")
+PAIR_ORBITS_EMPTY = drawn.PAIR_ORBITS.empty_table()
 
 
 @pytest.fixture
@@ -383,6 +392,42 @@ class TestPairs:
             {"source": orbits.LITERATURE, "reference": "doyle_2011"},
             {"source": orbits.LITERATURE, "reference": "triaud_2022"},
         ]
+
+    def test_a_paper_radius_keeps_the_catalogue_radius(self):
+        """A planet of Kepler-16 A gives A its host's radius beside the
+        paper's, for a transit host (`radius`)."""
+        literature, stars = orbits.read_literature()
+        found = drawn.draw(
+            kepler_16(),
+            Inputs(
+                catalogue_orbits=literature,
+                catalogue_stars=stars,
+                orbit_elements=pa.Table.from_pylist([KEPLER_16_GAIA]),
+                planets=host_planets(
+                    {
+                        "host": 20,
+                        "designation": "Kepler-16 A b",
+                        "binary_type": "S-type",
+                        "host_ids": _ids((OEC, "systems", "Kepler-16 A")),
+                        "host_values": [
+                            ARCHIVE_WASP_12
+                            | {"teff": None, "mass": 0.69, "radius": 0.7}
+                        ],
+                    }
+                ),
+            ),
+            FakeResolver({KEPLER_16: 20}, []),
+        )
+        assert found.hosts == {0: 0}
+        a = next(row for row in found.held.to_pylist() if row["letter"] == "A")
+        assert (a["radius"], a["radius_source"]) == (
+            pytest.approx(0.6489),
+            orbits.LITERATURE,
+        )
+        assert (a["host_radius"], a["host_radius_source"]) == (
+            pytest.approx(0.7),
+            "nasa-exoplanet-archive",
+        )
 
     def test_a_paper_type_goes_before_the_type_of_oec(self):
         literature, stars = orbits.read_literature()
@@ -807,6 +852,24 @@ class TestHeldStars:
         held, _ = _held([_entry(source=GAIA_ORBITS), _entry(source=GAIA_ORBITS)], (1,))
         assert held["letter"].to_pylist() == ["A", "B"]
 
+    def test_a_planet_host_mass_does_not_change_the_letters(self):
+        """The catalogue's mass of the planets' host goes on the star, but A
+        stays the heavier star by its own sources."""
+        systems = _systems(
+            [{"node": 1, "key": 30, "point": True, "ra": 1.0, "dec": 2.0}],
+            [
+                _entry(source=GAIA_ORBITS, mass=0.5),
+                _entry(source=GAIA_ORBITS, mass=0.7),
+            ],
+        )
+        drawer = drawn.Drawer(systems, Inputs(), FakeResolver({}, []))
+        drawer.host_values[0] = [("nasa-exoplanet-archive", {"mass": 1.0})]
+        rows = drawer.held((1,)).to_pylist()
+        assert [(h["letter"], h["mass"]) for h in rows] == [
+            ("B", pytest.approx(1.0)),
+            ("A", pytest.approx(0.7)),
+        ]
+
     def test_the_letter_that_the_other_member_leaves(self):
         """A planet catalogue names the primary as the system, and gives B a
         letter."""
@@ -866,6 +929,67 @@ class TestHeldStars:
             FakeResolver({}, []),
         )
         assert found.orbits.num_rows == 0 and found.held.num_rows == 0
+
+
+class TestDominant:
+    """The first member of a point that dominates its light is marked, by
+    the values that the planets' host is compared with."""
+
+    @staticmethod
+    def dominant(*members: dict, hosts: dict | None = None) -> list[bool]:
+        systems = _systems(
+            [{"node": 1, "key": 30, "point": True, "ra": 1.0, "dec": 2.0}],
+            [
+                _entry(source="msc", letter=letter, label=letter) | values
+                for letter, values in zip("ABC", members)
+            ],
+        )
+        drawer = drawn.Drawer(systems, Inputs(), FakeResolver({}, []))
+        drawer.host_values = hosts or {}
+        return drawer.held()["dominant"].to_pylist()
+
+    def test_the_first_member_fifteen_mag_brighter(self):
+        assert self.dominant(
+            {"v_mag": 3.81, "mass": 1.2}, {"v_mag": 19.19, "mass": 0.02}
+        ) == [True, False]
+
+    def test_a_first_member_that_can_blend(self):
+        assert self.dominant(
+            {"v_mag": 5.59, "mass": 1.0}, {"v_mag": 8.0, "mass": 0.9}
+        ) == [False, False]
+
+    def test_an_msc_mass_from_v_does_not_count(self):
+        def first(code: str) -> bool:
+            return self.dominant(
+                {"mass": 2.0, "mass_method": code}, {"mass": 0.5, "mass_method": "r"}
+            )[0]
+
+        assert first("r") and not first("v")
+
+    def test_the_own_v_of_the_msc(self):
+        """A's V is the light of A and B: alone, A is 1.5 mag brighter."""
+        assert self.dominant(
+            {"v_mag": 4.0, "own_v_mag": 4.5, "mass": 2.0},
+            {"v_mag": 6.0, "own_v_mag": 6.0, "mass": 0.3},
+        ) == [False, False]
+
+    def test_a_planet_host_mass_does_not_count(self):
+        hosts = {0: [("nasa-exoplanet-archive", {"mass": 2.0})]}
+        assert self.dominant({"teff": 5000.0}, {"mass": 0.5}, hosts=hosts) == [
+            False,
+            False,
+        ]
+
+    def test_no_point_no_mark(self):
+        systems = _systems(
+            [{"node": 1, "key": 0, "ra": 1.0, "dec": 2.0}],
+            [
+                _entry(source="msc", letter="A", label="A", v_mag=3.0, mass=1.0),
+                _entry(source="msc", letter="B", label="B", v_mag=12.0, mass=0.1),
+            ],
+        )
+        drawer = drawn.Drawer(systems, Inputs(), FakeResolver({}, []))
+        assert drawer.held()["dominant"].to_pylist() == [False, False]
 
 
 class TestHeldMagnitudes:
@@ -1354,6 +1478,17 @@ class TestHeldClaims:
         assert counts["held stars whose claim another held star makes"] == 2
         assert counts["held stars with nothing to claim"] == 2
 
+        # Planet records 7 and 8 are drawn as the stars of members 0 and 3:
+        # 3 has no row, so 8 stays a planet.
+        found = drawn.Drawn(held, PAIR_ORBITS_EMPTY, stars={7: 0, 8: 3})
+        hosts, stars, claims = _held_links(found, part, labels, counts)
+        assert (hosts, stars) == ({}, {7: "p30 | A"})
+        assert claims[7].claim == dict(zip(CROSS_ID.names, claim))
+        assert (claims[7].ra, claims[7].dec) == (1.0, 2.0)
+        assert (
+            counts["planet records drawn as planets: their held star has no row"] == 1
+        )
+
 
 class TestHeldNames:
     """A held star's own name, else its root's name and its letter, else its
@@ -1517,3 +1652,455 @@ class TestRootNames:
             6: "eps CrB",
             7: "[GEO97] W7",
         }
+
+
+def wasp_12_point() -> Systems:
+    """WASP-12: a point that holds A, B and C of the MSC."""
+    return _systems(
+        [
+            {
+                "node": 1,
+                "key": 30,
+                "point": True,
+                "ra": 97.64,
+                "dec": 29.67,
+                "distance": 427.0,
+                "root": 1,
+                "depth": 0,
+            }
+        ],
+        [
+            {
+                "node": 1,
+                "kind": assemble.ENTRY,
+                "letter": letter,
+                "label": letter,
+                "source": "msc",
+                "spectral_type": spectral_type,
+                "v_mag": v_mag,
+                "mass": mass,
+                "ids": _ids(("msc", "component", f"06305+2940 {letter}")),
+            }
+            for letter, spectral_type, v_mag, mass in (
+                ("A", "G0V", 11.57, 1.46),
+                ("B", "K0V", 15.67, 0.58),
+                ("C", None, 15.67, 0.56),
+            )
+        ],
+    )
+
+
+def host_planets(*rows: dict) -> pa.Table:
+    base = dict.fromkeys(PLANETS_INPUT.names)
+    return pa.Table.from_pylist([base | row for row in rows], schema=PLANETS_INPUT)
+
+
+ARCHIVE_WASP_12 = {
+    "source": "nasa-exoplanet-archive",
+    "teff": 6265.0,
+    "radius": 1.69,
+    "mass": 1.325,
+    "mass_error": 0.07,
+    "metallicity": 0.21,
+    "logg": None,
+    "age": None,
+    "spectral_type": None,
+}
+OEC_WASP_12 = ARCHIVE_WASP_12 | {"source": OEC, "radius": 1.57, "metallicity": None}
+
+
+class TestPlanetHosts:
+    """The planets of a point that holds several stars go to one of them."""
+
+    def draw(self, *planets: dict) -> drawn.Drawn:
+        return drawn.draw(
+            wasp_12_point(),
+            Inputs(planets=host_planets(*planets)),
+            FakeResolver({}, []),
+        )
+
+    def test_the_values_move_to_the_brightest_star(self) -> None:
+        found = self.draw(
+            {
+                "host": 30,
+                "designation": "WASP-12 b",
+                "binary_type": "S-type",
+                "host_names": ["WASP-12"],
+                "host_values": [ARCHIVE_WASP_12, OEC_WASP_12],
+            }
+        )
+        assert found.hosts == {0: 0}
+        a = next(row for row in found.held.to_pylist() if row["letter"] == "A")
+        assert (a["radius"], a["radius_source"]) == (
+            pytest.approx(1.69),
+            "nasa-exoplanet-archive",
+        )
+        assert (a["mass"], a["mass_source"]) == (
+            pytest.approx(1.325),
+            "nasa-exoplanet-archive",
+        )
+        assert a["metallicity"] == pytest.approx(0.21)
+        assert a["metallicity_source"] == a["teff_source"] == "nasa-exoplanet-archive"
+        assert a["spectral_type"] == "G0V" and a["spectral_type_source"] == "msc"
+        assert found.counts["planets moved to a star of their point, by brightest"] == 1
+        assert any(
+            "WASP-12 b (point 30): moves to its star A" in line
+            for line in found.host_lines
+        )
+
+    def test_two_catalogue_stars_on_one_member_stay(self) -> None:
+        """Two stars of the catalogues are not one star of the point."""
+        found = self.draw(
+            {
+                "host": 30,
+                "designation": "WASP-12 b",
+                "host_names": ["WASP-12"],
+                "host_values": [ARCHIVE_WASP_12],
+            },
+            {
+                "host": 30,
+                "designation": "WASP-12 A c",
+                "host_names": ["WASP-12 A"],
+                "host_values": [ARCHIVE_WASP_12],
+            },
+        )
+        assert found.hosts == {}
+        assert len(found.host_lines) == 2
+        assert all("2 catalogue stars" in line for line in found.host_lines)
+
+    def test_the_planets_of_one_catalogue_star_move_together(self) -> None:
+        planet = {
+            "host": 30,
+            "host_names": ["WASP-12"],
+            "host_values": [ARCHIVE_WASP_12],
+        }
+        found = self.draw(
+            planet | {"designation": "WASP-12 b"},
+            planet | {"designation": "WASP-12 c"},
+        )
+        assert found.hosts == {0: 0, 1: 0}
+
+    def test_a_planet_around_both_stars_stays(self) -> None:
+        found = self.draw(
+            {
+                "host": 30,
+                "designation": "WASP-12 b",
+                "binary_type": "P-type",
+                "host_values": [ARCHIVE_WASP_12],
+            }
+        )
+        assert found.hosts == {}
+        assert found.counts["planets around both stars of their point"] == 1
+
+    def test_a_planet_named_after_both_stars_stays(self) -> None:
+        found = self.draw(
+            {
+                "host": 30,
+                "designation": "WASP-12 (AB) b",
+                "host_values": [ARCHIVE_WASP_12],
+            }
+        )
+        assert found.hosts == {}
+        assert found.host_lines == [
+            "WASP-12 (AB) b (point 30): stays on its pair, named so"
+        ]
+
+    def test_values_that_disagree_stay(self) -> None:
+        found = self.draw(
+            {
+                "host": 30,
+                "designation": "WASP-12 b",
+                "host_values": [ARCHIVE_WASP_12 | {"teff": 4000.0, "mass": 0.6}],
+            }
+        )
+        assert found.hosts == {}
+        (line,) = found.host_lines
+        assert "stays on its point" in line and "Teff 4000" in line
+
+    def test_oec_values_keep_the_letter_of_its_star(self) -> None:
+        """The letter of a member that only OEC's star names stays when the
+        planet catalogues' values include OEC's."""
+        oec_id = {"catalogue": OEC, "release": "systems", "catalogue_id": "WASP-12 A"}
+        systems = _systems(
+            [{"node": 1, "key": 30, "point": True, "ra": 97.6, "dec": 29.7}],
+            [
+                {
+                    "node": 1,
+                    "kind": assemble.ENTRY,
+                    "source": "simbad",
+                    "v_mag": 11.57,
+                    "ids": [oec_id],
+                },
+                {
+                    "node": 1,
+                    "kind": assemble.ENTRY,
+                    "letter": "B",
+                    "label": "B",
+                    "source": "msc",
+                    "v_mag": 15.67,
+                    "mass": 0.58,
+                },
+            ],
+        )
+        oec_star = {"source": OEC, "label": "WASP-12 A", "mass": 1.4, "teff": 6300.0}
+        found = drawn.draw(
+            systems,
+            Inputs(
+                catalogue_stars=pa.Table.from_pylist(
+                    [oec_star], schema=orbits.COMPONENTS
+                ),
+                planets=host_planets(
+                    {
+                        "host": 30,
+                        "designation": "WASP-12 b",
+                        "host_ids": [oec_id],
+                        "host_values": [OEC_WASP_12],
+                    }
+                ),
+            ),
+            FakeResolver({}, []),
+        )
+        assert found.hosts == {0: 0}
+        held = {row["member"]: row for row in found.held.to_pylist()}
+        assert held[0]["letter"] == "A" and held[0]["tag"] == "A"
+
+    def test_a_star_that_takes_a_planet_is_held(self) -> None:
+        """A member that is only a letter holds an ID once a planet moves to it."""
+        systems = _systems(
+            [{"node": 1, "key": 30, "point": True, "ra": 97.6, "dec": 29.7}],
+            [
+                {
+                    "node": 1,
+                    "kind": assemble.ENTRY,
+                    "letter": letter,
+                    "label": letter,
+                    "source": "msc",
+                    "v_mag": v_mag,
+                }
+                for letter, v_mag in (("A", 11.0), ("B", 14.0))
+            ],
+        )
+        found = drawn.draw(
+            systems,
+            Inputs(
+                planets=host_planets(
+                    {
+                        "host": 30,
+                        "designation": "HD 1 A b",
+                        "host_names": ["HD 1 A"],
+                        "host_values": [],
+                    }
+                )
+            ),
+            FakeResolver({}, []),
+        )
+        assert found.hosts == {0: 0}
+        assert 0 in found.held["member"].to_pylist()
+
+    def one_point(
+        self, *members: dict, host: dict, ids: dict | None = None
+    ) -> drawn.Drawn:
+        """The planet `host` of a point 30 that holds `members`. `ids` are
+        the keys of ids, as FakeResolver takes them."""
+        systems = _systems(
+            [{"node": 1, "key": 30, "point": True, "ra": 1.0, "dec": 2.0}],
+            [{"node": 1, "kind": assemble.ENTRY} | member for member in members],
+        )
+        planet = {"host": 30, "designation": "b"} | host
+        return drawn.draw(
+            systems, Inputs(planets=host_planets(planet)), FakeResolver(ids or {}, [])
+        )
+
+    def test_a_wds_type_is_no_check(self) -> None:
+        """The WDS's A0V+M8 of bet Pic is a type of the pair, and the star
+        is A6V."""
+        gaia = _ids(("gaia", "dr3", "4792774797545800832"))
+        found = self.one_point(
+            {"letter": "Aa", "source": "wds", "spectral_type": "A0V", "ids": gaia},
+            {"letter": "Ab", "source": "wds", "spectral_type": "M8"},
+            host={
+                "host_ids": gaia,
+                "host_values": [ARCHIVE_WASP_12 | {"teff": 8039.0}],
+            },
+        )
+        assert found.hosts == {0: 0}
+
+    def test_an_id_of_the_point_is_no_evidence(self) -> None:
+        """The WDS gives Aa the Gaia id of its point. The catalogue host has
+        that id because it is the point."""
+        gaia = _ids(("gaia", "dr3", "4792774797545800832"))
+        found = self.one_point(
+            {"letter": "Aa", "source": "wds", "ids": gaia},
+            {"letter": "Ab", "source": "wds"},
+            host={
+                "host_ids": gaia,
+                "host_values": [ARCHIVE_WASP_12 | {"teff": 8039.0}],
+            },
+            ids={("gaia", "dr3", "4792774797545800832"): 30},
+        )
+        assert found.hosts == {}
+        assert found.counts["planets whose host has an id of its point"] == 1
+        (line,) = found.host_lines
+        assert line.endswith("point has gaia 4792774797545800832)")
+
+    def test_a_point_id_moves_to_the_dominant_member(self) -> None:
+        """GJ 504: each host id is the point's, and Ab is 15 mag fainter."""
+        gaia = _ids(("gaia", "dr3", "3732539683617410816"))
+        found = self.one_point(
+            {"letter": "Aa", "source": "wds", "v_mag": 3.81, "ids": gaia},
+            {"letter": "Ab", "source": "wds", "v_mag": 19.19},
+            host={"host_ids": gaia, "host_values": [ARCHIVE_WASP_12]},
+            ids={("gaia", "dr3", "3732539683617410816"): 30},
+        )
+        assert found.hosts == {0: 0}
+        (line,) = found.host_lines
+        assert "moves to its star Aa (point id: dominant member" in line
+
+    def test_a_point_id_beside_an_id_of_another_object_stays(self) -> None:
+        gaia = _ids(("gaia", "dr3", "3732539683617410816"), ("hip", "2007", "64792"))
+        found = self.one_point(
+            {"letter": "Aa", "source": "wds", "v_mag": 3.81},
+            {"letter": "Ab", "source": "wds", "v_mag": 19.19},
+            host={"host_ids": gaia, "host_values": [ARCHIVE_WASP_12]},
+            ids={
+                ("gaia", "dr3", "3732539683617410816"): 30,
+                ("hip", "2007", "64792"): 31,
+            },
+        )
+        assert found.hosts == {}
+
+    def test_an_id_of_another_object_counts(self) -> None:
+        gaia = _ids(("gaia", "dr3", "4792774797545800832"))
+        found = self.one_point(
+            {"letter": "Aa", "source": "wds", "ids": gaia},
+            {"letter": "Ab", "source": "wds"},
+            host={
+                "host_ids": gaia,
+                "host_values": [ARCHIVE_WASP_12 | {"teff": 8039.0}],
+            },
+            ids={("gaia", "dr3", "4792774797545800832"): 31},
+        )
+        assert found.hosts == {0: 0}
+
+    def test_an_msc_mass_from_v_is_no_check(self) -> None:
+        """CD-35 2722 B: the MSC's 0.48 comes from a V that is a K magnitude."""
+        found = self.one_point(
+            {
+                "letter": "B",
+                "label": "B",
+                "source": "msc",
+                "mass": 0.48,
+                "mass_method": "v",
+            },
+            {"letter": "C", "label": "C", "source": "msc", "mass": 0.27},
+            host={
+                "host_names": ["CD-35 2722 B"],
+                "host_values": [ARCHIVE_WASP_12 | {"teff": None, "mass": 0.035}],
+            },
+        )
+        assert found.hosts == {0: 0}
+
+    def test_a_published_msc_mass_is_a_check(self) -> None:
+        found = self.one_point(
+            {
+                "letter": "B",
+                "label": "B",
+                "source": "msc",
+                "mass": 0.48,
+                "mass_method": "r",
+            },
+            {"letter": "C", "label": "C", "source": "msc", "mass": 0.27},
+            host={
+                "host_names": ["CD-35 2722 B"],
+                "host_values": [ARCHIVE_WASP_12 | {"teff": None, "mass": 0.035}],
+            },
+        )
+        assert found.hosts == {}
+
+    def test_the_msc_stars_compare_by_their_own_v(self) -> None:
+        """Kepler-705 (MSC 19180+4149): A and B are 0.3 mag apart."""
+        found = self.one_point(
+            *(
+                {
+                    "letter": letter,
+                    "label": letter,
+                    "source": "msc",
+                    "v_mag": v_mag,
+                    "own_v_mag": own,
+                    "mass": mass,
+                }
+                for letter, v_mag, own, mass in (
+                    ("A", 16.71, 17.36, 0.49),
+                    ("B", 17.66, 17.66, 0.46),
+                )
+            ),
+            host={"host_values": [ARCHIVE_WASP_12 | {"teff": None, "mass": 0.49}]},
+        )
+        assert found.hosts == {}
+        (line,) = found.host_lines
+        assert "own V 17.36, next 17.66" in line
+
+
+class TestRecordStars:
+    """A planet record whose star is an entry of its host's point, with no
+    point of its own, is drawn once: as that held star, or as a planet."""
+
+    OID = ("simbad", "oid", "77")
+
+    def draw(
+        self, record: dict, keys: dict | None = None, **entry: object
+    ) -> drawn.Drawn:
+        """Point 30 holds A and the SIMBAD component HD 1 B, which planet
+        record 0 is too. Its SIMBAD object resolves to the point by default,
+        as a component inside the point's light does."""
+        systems = _systems(
+            [{"node": 1, "key": 30, "point": True, "ra": 1.0, "dec": 2.0}],
+            [
+                _entry(source="msc", letter="A", label="A", v_mag=5.0, mass=1.0),
+                _entry(source="simbad", label="HD 1 B", ids=_ids(self.OID)) | entry,
+            ],
+        )
+        planet = {"host": 30, "designation": "HD 1 B", "star_ids": _ids(self.OID)}
+        resolver = FakeResolver({self.OID: 30} if keys is None else keys, [])
+        inputs = Inputs(planets=host_planets(planet | record))
+        assert prepare.planet_overlaps(inputs.planets, resolver) == []
+        return drawn.draw(systems, inputs, resolver)
+
+    def test_a_seen_brown_dwarf_is_its_held_star(self):
+        found = self.draw({"class": "brown dwarf", "discovery_method": "Imaging"})
+        assert found.stars == {0: 1}
+        assert found.held["member"].to_pylist() == [0, 1]
+        assert found.counts["planet records drawn as their held star"] == 1
+
+    def test_a_planet_leaves_the_entry_an_entry(self):
+        found = self.draw(
+            {"class": "planet", "mass": 10.0, "discovery_method": "Radial Velocity"}
+        )
+        assert found.stars == {}
+        assert found.held["member"].to_pylist() == [0]
+        assert found.counts["entries that a planet record is, drawn as the planet"] == 1
+
+    def test_an_unresolved_star_id_counts_too(self):
+        found = self.draw({"class": "brown dwarf"}, keys={})
+        assert found.stars == {0: 1}
+
+    def test_a_star_id_of_another_point_is_an_overlap(self):
+        """`planet_overlaps` takes that record."""
+        found = drawn.draw(
+            _systems(
+                [{"node": 1, "key": 30, "point": True, "ra": 1.0, "dec": 2.0}],
+                [_entry(source="simbad", label="HD 1 B", ids=_ids(self.OID))],
+            ),
+            Inputs(
+                planets=host_planets(
+                    {"host": 30, "class": "brown dwarf", "star_ids": _ids(self.OID)}
+                )
+            ),
+            FakeResolver({self.OID: 31}, []),
+        )
+        assert found.stars == {}
+
+    def test_an_entry_with_an_id_of_the_host_is_the_host(self):
+        found = self.draw({"class": "planet", "mass": 10.0, "host_ids": _ids(self.OID)})
+        assert found.stars == {}
+        assert found.held["member"].to_pylist() == [0, 1]

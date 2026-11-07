@@ -26,9 +26,10 @@ import pyarrow.compute as pc
 from cdshealpix import nested
 
 from space_map_data.extrasolar import families, sky
-from space_map_data.extrasolar.exoplanets.catalogues import EU, OEC
+from space_map_data.extrasolar.exoplanets.catalogues import EU, OEC, Catalogue
+from space_map_data.extrasolar.exoplanets.hosts import Stars
 from space_map_data.extrasolar.exoplanets.simbad import Simbad
-from space_map_data.extrasolar.ids import CELL_LEVEL, cell_of
+from space_map_data.extrasolar.ids import CELL_LEVEL, cell_of, table_of
 from space_map_data.extrasolar.match import (
     Pairs,
     PositionMatcher,
@@ -51,7 +52,12 @@ from space_map_data.extrasolar.systems.msc import MSC_MATCHER
 from space_map_data.extrasolar.systems.nodes import GAIA_DR3, MSC_ID
 from space_map_data.extrasolar.systems.pairs import ORBIT_COLUMNS, PAIRS, orbit_pairs
 from space_map_data.extrasolar.systems.parallax import veto_error
-from space_map_data.extrasolar.systems.planets import PLANETS_INPUT, planet_star_ids
+from space_map_data.extrasolar.systems.planets import (
+    HOST_COLUMNS,
+    PLANETS_INPUT,
+    host_columns,
+    planet_star_ids,
+)
 from space_map_data.extrasolar.systems.resolve import (
     FACTS,
     GAIA_ASTROMETRY,
@@ -61,7 +67,13 @@ from space_map_data.extrasolar.systems.resolve import (
     SUSPECT,
 )
 from space_map_data.extrasolar.systems.wds import COMPONENT_KIND, WDS_MATCHER
-from space_map_data.extrasolar.tables import BINARY_ORBIT, CROSS_ID, STAR_SYSTEMS
+from space_map_data.extrasolar.tables import (
+    BINARY_ORBIT,
+    CROSS_ID,
+    STAR_SYSTEMS,
+    SYSTEM,
+    SYSTEM_TABLE,
+)
 from space_map_data.utils.arrays import find_sorted, floats
 
 logger = logging.getLogger(__name__)
@@ -417,8 +429,33 @@ class RegistryResolver:
         return keys
 
 
-def registry_planets(registry: Registry, hub: Simbad) -> pa.Table:
-    """PLANETS_INPUT from the registry's planets table."""
+def _point_hosts(registry: Registry, hosts: np.ndarray) -> np.ndarray:
+    """`hosts` with each held star replaced by the point that holds it: the
+    ingest reads the host of a planet before it moves to a held star."""
+    held = np.unique(hosts[table_of(hosts) == SYSTEM_TABLE])
+    point_of: dict[int, int] = {}
+    for region in np.unique(sky.region_of(cell_of(held))).tolist():
+        table = registry.read_table(SYSTEM.slug, region, ["id", "parent", "star"])
+        assert table is not None
+        table = table.filter(
+            pc.and_(pc.is_in(table["id"], pa.array(held)), table["star"].is_valid())
+        )
+        point_of.update(zip(table["id"].to_pylist(), table["parent"].to_pylist()))
+    return np.array([point_of.get(h, h) for h in hosts.tolist()], np.int64)
+
+
+def registry_planets(
+    registry: Registry, hub: Simbad, catalogues: list[Catalogue], stars: Stars
+) -> pa.Table:
+    """PLANETS_INPUT from the registry's planets table, each host a point as
+    the ingest reads it. A planet finds its star in `stars` by its catalogue
+    ids."""
+    star_of = {
+        (catalogue.name, planet.key): at
+        for catalogue in catalogues
+        for planet in catalogue.planets
+        if (at := stars.of.get((catalogue.name, planet.star or ""))) is not None
+    }
     columns = ["host", "number", "designation", "class", "mass", "period"]
     columns += ["discovery_method"]
     columns += ["binary_type", "cross_ids"]
@@ -430,8 +467,24 @@ def registry_planets(registry: Registry, hub: Simbad) -> pa.Table:
     if not tables:
         return PLANETS_INPUT.empty_table()
     planets = pa.concat_tables(tables)
+    points = _point_hosts(registry, planets["host"].to_numpy())
+    planets = planets.set_column(
+        planets.schema.get_field_index("host"), "host", pa.array(points)
+    )
     star_ids = []
+    hosts: dict[str, list] = {name: [] for name in HOST_COLUMNS}
     for ids in planets["cross_ids"].to_pylist():
+        at = next(
+            (
+                star_of[key]
+                for i in ids or []
+                if (key := (i["catalogue"], i["catalogue_id"])) in star_of
+            ),
+            None,
+        )
+        found = {} if at is None else host_columns(stars.identities[at])
+        for name in HOST_COLUMNS:
+            hosts[name].append(found.get(name))
         names = [
             (i["catalogue"], i["catalogue_id"])
             for i in ids or []
@@ -442,6 +495,9 @@ def registry_planets(registry: Registry, hub: Simbad) -> pa.Table:
     planets = planets.drop(["cross_ids"]).append_column(
         "star_ids", pa.array(star_ids, pa.list_(CROSS_ID))
     )
+    for name in HOST_COLUMNS:
+        kind = PLANETS_INPUT.field(name).type
+        planets = planets.append_column(name, pa.array(hosts[name], kind))
     return planets.select(PLANETS_INPUT.names).cast(PLANETS_INPUT)
 
 

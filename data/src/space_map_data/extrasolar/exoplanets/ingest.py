@@ -7,8 +7,12 @@ this ingest too. It joins the stars and planets, classes the planets and
 builds the host rows of each catalogue. `add_passes` runs the three catalogue
 passes. `PlanetsExtension` numbers the planets and writes the Planets part
 and the planets table at commit. It comes after the star systems: a
-circumbinary planet's host is the node of its pair, a planetary system is the
-root of its host's star system, and a record that is also a star names it.
+circumbinary planet's host is the node of its pair, the host of a planet of a
+point that holds several stars is the held star that it orbits, a planetary
+system is the root of its host's star system, and a record that is also a
+star names it. When all the planets of a point move to a held star, the
+point's host values (`HOST_VALUES`) are cleared: the held star holds them. A
+record drawn as its star is no planet of the point, so it does not count.
 
 `read` raises for a stale entry of `planet_hosts`, before anything is written.
 `add_passes` raises for a key of `planet_hosts` that its row does not reach.
@@ -78,7 +82,7 @@ from space_map_data.extrasolar.sky import region_of
 from space_map_data.extrasolar.sources import gaia
 from space_map_data.extrasolar.sources.gaia import GaiaReader
 from space_map_data.extrasolar.store import region_file
-from space_map_data.extrasolar.tables import POINT_SOURCE
+from space_map_data.extrasolar.tables import HOST_VALUES, POINT_SOURCE
 
 logger = logging.getLogger(__name__)
 
@@ -714,6 +718,10 @@ class SystemHosts(Protocol):
         """Whether a planet record is drawn as the star that it also is."""
         ...
 
+    def held_host(self, record: int) -> int:
+        """The ID of the held star that a planet record orbits, else 0."""
+        ...
+
     def root(self, id_: int) -> int:
         """The root of the system of an ID, else 0."""
         ...
@@ -759,9 +767,14 @@ class PlanetsExtension:
         rank: dict[int, tuple] = {}
         without_host = []
         circumbinary = 0
+        on_held = 0
+        # The catalogue host of each planet → whether each of its planets
+        # moved to a held star.
+        all_held: dict[int, bool] = {}
         for at, record in enumerate(prepared.records):
-            host = identity_id.get(record.star, 0)
+            catalogue_host = host = identity_id.get(record.star, 0)
             system = identity_id.get(record.key, 0)
+            held = 0
             if self.systems is not None and host and system:
                 pair = self.systems.host(at)
                 circumbinary += bool(pair)
@@ -769,7 +782,9 @@ class PlanetsExtension:
                     star_of[at] = star
                     if self.systems.drawn_as_star(at):
                         as_star.add(at)
-                host = pair or host
+                held = self.systems.held_host(at)
+                on_held += bool(held)
+                host = pair or held or host
                 if pair and (node := self.systems.node(pair)) is not None:
                     node_of[at] = node
                 # A host or a key in a star system goes to the file of its root.
@@ -777,6 +792,10 @@ class PlanetsExtension:
             if not host or not system:
                 without_host.append(record.text("designation") or "")
                 continue
+            if at not in as_star:
+                all_held[catalogue_host] = all_held.get(catalogue_host, True) and (
+                    host == held
+                )
             host_of[at], system_of[at] = host, system
             found = hosts.key_rank(prepared.stars, record.key)
             rank[system] = min(rank.get(system, found), found)
@@ -802,6 +821,7 @@ class PlanetsExtension:
                     ),
                 )
             )
+        moved = np.array([h for h, held in all_held.items() if held], np.int64)
         system_of, joined_systems = one_system_per_host(host_of, system_of, rank)
         state = numbering.read_state(registry)
         assignment = numbering.assign(
@@ -836,6 +856,8 @@ class PlanetsExtension:
                 ),
                 f"Wikidata: {len(links.qid)} planets have an item",
                 f"circumbinary planets on the node of their pair: {circumbinary}",
+                f"planets on a held star of their point: {on_held}",
+                f"points whose host values moved to their held star: {moved.size}",
                 f"circumbinary planets with the node of their pair's orbit: {len(node_of)}",
                 *_listed(
                     "check: Wikidata items whose ids name several planets",
@@ -851,6 +873,7 @@ class PlanetsExtension:
             counts=counts,
             report=report,
             unreviewed=assignment.unreviewed + len(disagree),
+            cleared={POINT_SOURCE.slug: (HOST_VALUES, moved)},
         )
 
     def _identity_ids(

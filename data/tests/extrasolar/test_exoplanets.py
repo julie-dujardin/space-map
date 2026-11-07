@@ -131,6 +131,7 @@ class TestReaders:
                 20.0,
                 sy_dist="12.5",
                 st_teff="5800",
+                tran_flag="1",
             ),
         ]
         found = catalogues.read_archive(
@@ -151,6 +152,7 @@ class TestReaders:
         assert c.values["eccentricity"].limit == catalogues.UPPER_LIMIT
         assert c.values["mass"].estimated and c.mass_kind == catalogues.ESTIMATED_MASS
         assert c.values["star_mass"].value == 1.1
+        assert (b.transits, c.transits) == (True, None)
 
     def test_eu(self, tmp_path):
         rows = [
@@ -873,6 +875,17 @@ class TestTable:
         assert values["molecules"] == ["H2O"]
         assert values["class"] == iau.PLANET and values["class_basis"] == iau.TRUE
         assert record.estimated == set()
+
+    @pytest.mark.parametrize("transits", [True, False])
+    def test_the_archive_says_whether_it_transits(self, transits):
+        archive = planet(ARCHIVE, "S b", "2.1", 3.0, transits=transits)
+        eu = planet(EU, "S b", "S", 3.0)
+        values = table.merge(joined_planet(archive, eu), 0, 0, 0, [], None).values
+        assert (values["transits"], values["transit_source"]) == (transits, ARCHIVE)
+
+    def test_no_archive_row_no_transit_flag(self):
+        record = table.merge(joined_planet(planet(EU, "S b", "S")), 0, 0, 0, [], None)
+        assert "transits" not in record.values
 
     def test_defaults(self):
         transiting = planet(

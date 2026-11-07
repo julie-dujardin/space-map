@@ -13,6 +13,8 @@ PLANETS is the planets table as the builder reads it. `star_ids` are the ids
 under which the planet is also a star: its SIMBAD object when that is typed a
 brown dwarf, that object's Gaia DR3 id, and the star of its own name in its
 planet catalogue. A catalogue can list two stars as each other's planets.
+The `host_` columns are the planets' star as the catalogues give it
+(`host_columns`), which `host_stars` matches to a star of a point.
 """
 
 import gzip
@@ -26,8 +28,14 @@ from pathlib import Path
 import pyarrow as pa
 
 from space_map_data.download.providers.exoplanets import names as provider_names
-from space_map_data.extrasolar.exoplanets.catalogues import OEC, OEC_SYSTEMS
-from space_map_data.extrasolar.exoplanets.hosts import Identity, Stars, Systems
+from space_map_data.extrasolar.exoplanets.catalogues import CATALOGUES, OEC, OEC_SYSTEMS
+from space_map_data.extrasolar.exoplanets.hosts import (
+    Identity,
+    Stars,
+    Systems,
+    error_of,
+    value_of,
+)
 from space_map_data.extrasolar.exoplanets.simbad import TABLES, Simbad
 from space_map_data.extrasolar.systems.nodes import (
     CATALOGUE,
@@ -42,6 +50,28 @@ from space_map_data.extrasolar.tables import CROSS_ID
 
 logger = logging.getLogger(__name__)
 
+# One catalogue's values of a host star: solar radii and masses, each with
+# its larger error, K, dex, log(cm/s²), Gyr.
+HOST_VALUE_STRUCT = pa.struct(
+    [
+        pa.field("source", pa.string()),
+        *(
+            pa.field(name, pa.float32())
+            for name in (
+                "teff",
+                "radius",
+                "radius_error",
+                "mass",
+                "mass_error",
+                "metallicity",
+                "logg",
+                "age",
+            )
+        ),
+        pa.field("spectral_type", pa.string()),
+    ]
+)
+HOST_COLUMNS = ("host_ids", "host_names", "host_values")
 PLANETS_INPUT = pa.schema(
     [
         ("host", pa.int64()),
@@ -54,6 +84,11 @@ PLANETS_INPUT = pa.schema(
         ("discovery_method", pa.string()),
         ("binary_type", pa.string()),
         ("star_ids", pa.list_(CROSS_ID)),
+        # The ids and names of the planets' star, and its values in each
+        # catalogue, in catalogue order.
+        ("host_ids", pa.list_(CROSS_ID)),
+        ("host_names", pa.list_(pa.string())),
+        ("host_values", pa.list_(HOST_VALUE_STRUCT)),
     ]
 )
 RELEASE = dict(PLANET_HOSTS)
@@ -136,6 +171,32 @@ def _identity_ids(identity: Identity) -> list[tuple[str, str, str]]:
     if identity.hip:
         ids.append((*HIP, str(identity.hip)))
     return ids
+
+
+def host_columns(identity: Identity) -> dict:
+    """The HOST_COLUMNS of the planets of `identity`."""
+    values = []
+    for catalogue in CATALOGUES:
+        star = identity.members.get(catalogue)
+        if star is None:
+            continue
+        values.append(
+            {
+                "source": catalogue,
+                **{
+                    name: value_of(star, name)
+                    for name in ("teff", "radius", "mass", "metallicity", "logg", "age")
+                },
+                "radius_error": error_of(star, "radius"),
+                "mass_error": error_of(star, "mass"),
+                "spectral_type": star.spectral_type,
+            }
+        )
+    return {
+        "host_ids": [dict(zip(CROSS_ID.names, i)) for i in _identity_ids(identity)],
+        "host_names": [star.name for star in identity.members.values()],
+        "host_values": values,
+    }
 
 
 @dataclass

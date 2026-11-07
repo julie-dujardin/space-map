@@ -90,10 +90,15 @@ NODES = pa.schema(
         ("pmdec", pa.float32()),
         ("parallax", pa.float32()),
         ("v_mag", pa.float32()),
+        # The MSC's V of the star alone, from its pairs (sys.tsv). `v_mag`
+        # can be the light of a close pair (comp.tsv).
+        ("own_v_mag", pa.float32()),
         ("g_mag", pa.float32()),
         ("spectral_type", pa.string()),
         # Solar masses.
         ("mass", pa.float32()),
+        # The MSC's code of how it found the mass.
+        ("mass_method", pa.string()),
         # The orbit in the group, from the group's primary: arcsec, deg, d.
         ("separation", pa.float64()),
         # The first measure of a WDS pair. `separation` is its last.

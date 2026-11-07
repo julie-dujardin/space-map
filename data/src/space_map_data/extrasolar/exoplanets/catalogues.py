@@ -134,6 +134,12 @@ class Measure:
     estimated: bool = False
 
 
+def larger_error(upper: float | None, lower: float | None) -> float | None:
+    """The one error of a value that a check or a card reads: the larger
+    of its two, None with neither."""
+    return max((e for e in (upper, lower) if e is not None), default=None)
+
+
 @dataclass
 class Star:
     """A star as one catalogue lists it."""
@@ -180,6 +186,8 @@ class Planet:
     facility: str | None = None
     # S_TYPE or P_TYPE when OEC puts it in a binary.
     binary: str | None = None
+    # The archive's `tran_flag`: whether the planet transits its star.
+    transits: bool | None = None
     values: dict[str, Measure] = field(default_factory=dict)
     mass_kind: str | None = None
     molecules: tuple[str, ...] = ()
@@ -476,6 +484,7 @@ def read_archive(path: Path = PSCOMPPARS) -> Catalogue:
                 year=int(row["disc_year"]) if row["disc_year"] else None,
                 facility=row["disc_facility"] or None,
                 binary=P_TYPE if row["cb_flag"] == "1" else None,
+                transits={"1": True, "0": False}.get(row["tran_flag"]),
                 values=values,
                 mass_kind=kind if "mass" in values else None,
                 time_system=row["pl_tranmid_systemref"] or None,

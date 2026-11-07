@@ -86,7 +86,7 @@ def cli() -> None:
 
     registry = Registry(args.root)
     with registry.reader():
-        inputs.planets = registry_planets(registry, hub)
+        inputs.planets = registry_planets(registry, hub, cats, identities)
         inputs.orbits, inputs.orbit_elements = registry_orbits(registry)
         resolver = RegistryResolver(registry)
         systems = build(inputs, resolver)

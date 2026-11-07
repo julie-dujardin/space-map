@@ -432,6 +432,9 @@ class ExtensionResult:
     # sets on the rows of these IDs. A computed column can hold other IDs,
     # which exist only once every region is minted.
     patches: dict[str, pa.Table] = field(default_factory=dict)
+    # Table slug → column groups and IDs. The engine sets these groups to null
+    # on these rows, because another row now holds their values.
+    cleared: dict[str, tuple[tuple[str, ...], np.ndarray]] = field(default_factory=dict)
 
 
 class Extension(Protocol):
@@ -1777,6 +1780,8 @@ class IngestRun:
         for extension, result in zip(self.extensions, built):
             for slug, rows in result.patches.items():
                 self._patch(extension.name, slug, rows)
+            for slug, (groups, ids) in result.cleared.items():
+                self._clear(extension.name, slug, groups, ids)
         if merges:
             write_parquet(
                 pa.table(
@@ -1944,6 +1949,38 @@ class IngestRun:
             for column in columns:
                 values = here[column].combine_chunks().take(at)
                 kept = pc.if_else(found, values, stored[column].combine_chunks())
+                stored = stored.set_column(
+                    stored.schema.get_field_index(column), column, kept
+                )
+            write_parquet(stored.cast(table.schema), path, sync=True)
+        if missing:
+            logger.warning("%s: %d rows of %s have no ID in it", name, missing, slug)
+
+    def _clear(
+        self, name: str, slug: str, groups: tuple[str, ...], ids: np.ndarray
+    ) -> None:
+        """Null the column `groups` of a table of this ingest, with their
+        source columns, on the rows of `ids`."""
+        (table,) = [t for t in self.all_tables if t.slug == slug]
+        columns = [
+            column
+            for group in map(table.group, groups)
+            for column in (*group.names, group.source_column)
+        ]
+        regions = region_of(cell_of(ids))
+        missing = 0
+        for region in np.unique(regions).tolist():
+            here = pa.array(ids[regions == region], pa.int64())
+            path = region_file(self._table_dir(table), region)
+            if not path.exists():
+                missing += len(here)
+                continue
+            stored = pq.read_table(path)
+            hit = pc.is_in(stored["id"], value_set=here)
+            missing += len(here) - int(pc.sum(hit).as_py() or 0)
+            for column in columns:
+                values = stored[column].combine_chunks()
+                kept = pc.if_else(hit, pa.nulls(len(values), values.type), values)
                 stored = stored.set_column(
                     stored.schema.get_field_index(column), column, kept
                 )

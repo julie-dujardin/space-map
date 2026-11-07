@@ -36,6 +36,7 @@ ARCHIVE_COLUMNS = (
     "disc_year",
     "disc_facility",
     "cb_flag",
+    "tran_flag",
     "pl_bmassprov",
     "pl_tranmid_systemref",
 )

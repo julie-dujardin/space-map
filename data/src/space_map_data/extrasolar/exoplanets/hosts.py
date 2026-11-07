@@ -62,6 +62,7 @@ from space_map_data.extrasolar.exoplanets.catalogues import (
     OEC,
     Catalogue,
     Star,
+    larger_error,
     reduced,
 )
 from space_map_data.extrasolar.exoplanets.simbad import Simbad
@@ -486,16 +487,14 @@ def reference_position(identity: Identity) -> tuple[float, float] | None:
     return None
 
 
-def _value(star: Star, name: str) -> float | None:
+def value_of(star: Star, name: str) -> float | None:
     found = star.values.get(name)
     return None if found is None else found.value
 
 
-def _error(star: Star, name: str) -> float | None:
+def error_of(star: Star, name: str) -> float | None:
     found = star.values.get(name)
-    if found is None or (found.upper is None and found.lower is None):
-        return None
-    return max(e for e in (found.upper, found.lower) if e is not None)
+    return None if found is None else larger_error(found.upper, found.lower)
 
 
 ASTROMETRY_FIELDS = (
@@ -552,7 +551,7 @@ def host_rows(
         if star.listed and star is not first:
             continue
         claim = claims.get(identity.index) or _claim(identity, star)
-        g = _value(first, "g_mag")
+        g = value_of(first, "g_mag")
         matchable = g is not None and identity.index not in lensed
         rows.append(
             {
@@ -568,17 +567,18 @@ def host_rows(
                 "dec": star.dec,
                 "ra_error": None,
                 "dec_error": None,
-                "parallax": _value(star, "parallax"),
-                "parallax_error": _error(star, "parallax"),
-                "pmra": _value(star, "pmra"),
-                "pmra_error": _error(star, "pmra"),
-                "pmdec": _value(star, "pmdec"),
-                "pmdec_error": _error(star, "pmdec"),
+                "parallax": value_of(star, "parallax"),
+                "parallax_error": error_of(star, "parallax"),
+                "pmra": value_of(star, "pmra"),
+                "pmra_error": error_of(star, "pmra"),
+                "pmdec": value_of(star, "pmdec"),
+                "pmdec_error": error_of(star, "pmdec"),
                 "epoch": star.epoch,
                 "host_name": star.name,
-                "host_distance": _value(star, "distance"),
-                "host_distance_error": _error(star, "distance"),
-                **{name: _value(star, name[5:]) for name in HOST_STAR_FIELDS},
+                "host_distance": value_of(star, "distance"),
+                "host_distance_error": error_of(star, "distance"),
+                **{name: value_of(star, name[5:]) for name in HOST_STAR_FIELDS},
+                "host_radius_error": error_of(star, "radius"),
                 "host_spectral_type": star.spectral_type,
                 "host_simbad_otype": otypes.get(identity.index),
                 "name": names.get(identity.index)
@@ -684,6 +684,7 @@ HOST_ROW_SCHEMA = pa.schema(
         ("host_distance", pa.float32()),
         ("host_distance_error", pa.float32()),
         *((name, pa.float32()) for name in HOST_STAR_FIELDS),
+        ("host_radius_error", pa.float32()),
         ("host_spectral_type", pa.string()),
         ("host_simbad_otype", pa.string()),
         ("name", pa.string()),

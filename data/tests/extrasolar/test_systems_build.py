@@ -16,6 +16,7 @@ import pytest
 
 from space_map_data.extrasolar.exoplanets.catalogues import EU
 from space_map_data.extrasolar.exoplanets.simbad import Simbad
+from space_map_data.extrasolar.ids import encode
 from space_map_data.extrasolar.registry import Registry
 from space_map_data.extrasolar.systems.assemble import Assembler, Systems, _Node
 from space_map_data.extrasolar.systems.build import build
@@ -58,12 +59,14 @@ from space_map_data.extrasolar.systems.reduce import (
 )
 from space_map_data.extrasolar.systems.registry import (
     RegistryResolver,
+    _point_hosts,
     registry_orbits,
 )
 from space_map_data.extrasolar.systems.report import report_lines, tree_lines
 from space_map_data.extrasolar.systems.resolve import FACTS, MATCH, Facts
 from space_map_data.extrasolar.systems.simbad import read_simbad
 from space_map_data.extrasolar.systems.wds import WDS_MATCHER, WdsCatalogue
+from space_map_data.extrasolar.tables import SYSTEM_STAR, SYSTEM_TABLE
 from tests.extrasolar.conftest import offset
 from tests.extrasolar.systems_fakes import (
     KEPLER_16_GAIA,
@@ -2960,3 +2963,22 @@ class TestEntryIsAPoint:
             pc.equal(systems.events["kind"], "entry is a point")
         )
         assert [t.split(" is ")[-1] for t in texts["text"].to_pylist()] == ["802"]
+
+
+class TestDryRunHosts:
+    """The dry run reads a planet's host as the ingest does: a point."""
+
+    def test_a_held_star_stands_for_its_point(self) -> None:
+        held, point = encode(7, SYSTEM_TABLE, 42), encode(7, 1, 42)
+        other_held = encode(8, SYSTEM_TABLE, 42)
+        system = pa.table(
+            {
+                "id": pa.array([held, other_held], pa.int64()),
+                "parent": pa.array([point, None], pa.int64()),
+                "star": pa.array([{"radius": 1.0}, None], SYSTEM_STAR),
+            }
+        )
+        registry = MagicMock(read_table=lambda *_: system)
+        hosts = np.array([held, point, other_held], np.int64)
+        found = _point_hosts(registry, hosts)
+        assert found.tolist() == [point, point, other_held]
