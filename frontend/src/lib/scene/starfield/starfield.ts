@@ -350,8 +350,9 @@ export class StarfieldSystem {
 	 * the focused system. Each draws at its record's place or on its drawn
 	 * orbit, which is exact where a node's float32 row is not, whatever the
 	 * drawn limit or the budget. Its row in the tree draws nothing meanwhile, so
-	 * it is never drawn twice. A held star on a drawn orbit has no row. A
-	 * companion takes no floor: it shows the light its row would.
+	 * it is never drawn twice. A held star on a drawn orbit has no row, and a
+	 * held host takes its point's. A companion takes no floor: it shows the
+	 * light its row would.
 	 */
 	setExactStars(stars: readonly StarAnchor[], companions: readonly StarAnchor[] = []): void {
 		const next = new Map<number, StarAnchor>();

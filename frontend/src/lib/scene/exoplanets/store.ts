@@ -82,13 +82,15 @@ export class ExoplanetStore {
 		return held;
 	}
 
-	/** Hold the star system of `root` and its bodies. */
+	/** Hold the star system of `root` and its bodies. The index names its held
+	 *  hosts; with no index, every point draws as a point. */
 	async ensureStarSystem(root: number): Promise<StarSystemPlan> {
 		let load = this.planLoads.get(root);
 		if (!load) {
 			// The lookup holds the rows, so a second load reads no file.
-			load = loadStarSystem(root)
-				.then((plan) => holdStarSystem(this.ctx, plan))
+			const index = this.loadIndex().catch(() => null);
+			load = Promise.all([loadStarSystem(root), index])
+				.then(([plan, hosts]) => holdStarSystem(this.ctx, plan, hosts))
 				.then((plan) => this.holdPlan(plan))
 				.finally(() => this.planLoads.delete(root));
 			this.planLoads.set(root, load);
@@ -97,13 +99,23 @@ export class ExoplanetStore {
 	}
 
 	/** Hold the star system of a looked-up star. It brings the star's orbit
-	 *  and light, and a link to a node frames its pair. A failed load leaves the
+	 *  and light, a link to a node frames its pair, and a link to a point that a
+	 *  held host took over frames the host's planets. A failed load leaves the
 	 *  star on its own: the page still works. */
 	async ensureStarSystemOf(found: ExtrasolarLookupResult): Promise<void> {
-		const root = found.kind === 'live' ? systemRoot(found.record) : null;
+		if (found.kind !== 'live') return;
+		const root = systemRoot(found.record);
 		if (root === null) return;
-		await this.ensureStarSystem(root).catch((e) => {
+		const plan = await this.ensureStarSystem(root).catch((e) => {
 			console.warn(`[systems] the system ${root} did not load:`, e);
+			return null;
+		});
+		const host = plan?.heldHosts.get(found.record.id);
+		const entry = host === undefined ? undefined : this.index?.host(host);
+		// The plan holds and places the host's body.
+		if (!entry) return;
+		await this.ensureSystem(entry.system).catch((e) => {
+			console.warn(`[planets] the system of ${host} did not load:`, e);
 		});
 	}
 
@@ -159,10 +171,10 @@ export class ExoplanetStore {
 		this.trim();
 	}
 
-	/** The camera place of a link to a host star, one of its planets, or a node
-	 *  of a star system with a drawn orbit, once its system and its place are
-	 *  in. The plane is the planet's own, else the plane of the node's pair, else
-	 *  that of the star's outermost orbit. */
+	/** The camera place of a link to a host star, one of its planets, a point
+	 *  that a held host took over, or a node of a star system with a drawn orbit,
+	 *  once its system and its place are in. The plane is the planet's own, else
+	 *  the plane of the node's pair, else that of the star's outermost orbit. */
 	view(objectId: string): SystemView | null {
 		const frame = this.frameOf(objectId);
 		return frame && systemView(frame.at, frame.normal ?? [0, 1, 0], frame.outer || NO_ORBIT_AU);
@@ -179,8 +191,10 @@ export class ExoplanetStore {
 		objectId: string
 	): { at: Readonly<Vec3>; normal: Vec3 | null; outer: number } | null {
 		const planet = planetOfObjectId(objectId);
-		const hostId = planet?.host ?? extrasolarIdOf(objectId);
-		if (hostId === null) return null;
+		const asked = planet?.host ?? extrasolarIdOf(objectId);
+		if (asked === null) return null;
+		// A point's own planets come before those of the held host that took it over.
+		const hostId = planet || this.index?.host(asked) ? asked : (this.heldHostOf(asked) ?? asked);
 		const held = this.held(hostId);
 		const star = this.ctx.getBody(extrasolarObjectId(hostId))?.extrasolar;
 		const pair = planet ? null : this.pairOf(star);
@@ -191,6 +205,13 @@ export class ExoplanetStore {
 		const plane = own ?? pair?.orbit ?? outermostElements(planets);
 		const normal = plane ? orbitNormal(plane.i, plane.om) : null;
 		return { at, normal, outer: Math.max(pair?.orbit.a ?? 0, outerOrbitAU(planets) ?? 0) };
+	}
+
+	/** The held host that took over the point `id`, once its plan is in. */
+	heldHostOf(id: number): number | undefined {
+		const record = this.ctx.getBody(extrasolarObjectId(id))?.extrasolar?.record;
+		const root = record && systemRoot(record);
+		return root ? this.plans.get(root)?.heldHosts.get(id) : undefined;
 	}
 
 	/** The pair that a page of the node `star` frames. Null for a star. */

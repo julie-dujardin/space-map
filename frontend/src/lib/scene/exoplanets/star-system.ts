@@ -13,16 +13,19 @@
  * the solar system. It carries the halo and name of the system while the focus
  * is in the system, with no threshold of its own. A star on the barycentre of
  * the pair that a node frames takes over the node: the star carries the halo,
- * and the node draws none, also on its own page.
+ * and the node draws none, also on its own page. A held star that hosts
+ * planets takes over its point the same way, and draws in its stead.
  */
 
 import { ExtrasolarStaleError } from '$lib/fetch/extrasolar/files';
 import { extrasolarObjectId } from '$lib/fetch/extrasolar/ids';
 import { homeRow } from '$lib/fetch/extrasolar/lookup';
+import type { PlanetIndex } from '$lib/fetch/extrasolar/planets';
 import {
 	loadSystemNodes,
 	systemPointIds,
 	systemRoot,
+	type HeldStarValues,
 	type SystemNode
 } from '$lib/fetch/extrasolar/systems';
 import { RetryBackoff } from '$lib/fetch/retry-backoff';
@@ -40,6 +43,7 @@ import {
 	drawnPairs,
 	framedPair,
 	haloCarrier,
+	heldHosts,
 	nodePlace,
 	pairElements,
 	pairLight,
@@ -60,8 +64,11 @@ export interface StarSystemPlan {
 	points: readonly number[];
 	/** The pairs that draw, outermost first. */
 	pairs: readonly DrawnPair[];
-	/** Every ID that needs a body: the root, the points and the drawn pairs and
-	 *  members. */
+	/** The held host that took over each point, by point ID: the one source
+	 *  of that link (see {@link heldHosts}). */
+	heldHosts: ReadonlyMap<number, number>;
+	/** Every ID that needs a body: the root, the points, the drawn pairs and
+	 *  members, and the held hosts. */
 	ids: readonly number[];
 }
 
@@ -90,15 +97,17 @@ export async function loadStarSystem(root: number): Promise<StarSystemPlan> {
 	const points = systemPointIds(rows[0]?.tree ?? [], rows);
 	const pairs = drawnPairs(nodes);
 	const members = pairs.flatMap(({ node, first, second }) => [node.id, first, second]);
-	return { root, nodes, points, pairs, ids: [...new Set([root, ...points, ...members])] };
+	const ids = [...new Set([root, ...points, ...members])];
+	return { root, nodes, points, pairs, heldHosts: new Map(), ids };
 }
 
-/** The points of a system on no drawn orbit, but for the one on its centre
- *  and those whose own stars draw. */
-function wideStars({ root, nodes, pairs, points }: StarSystemPlan): number[] {
+/** The points of a system on no drawn orbit, or their held hosts, but for the
+ *  one on its centre and those whose own stars draw. A taken point stays
+ *  taken in its host. */
+function wideStars({ root, nodes, pairs, points, heldHosts }: StarSystemPlan): number[] {
 	const taken = new Set(pairs.flatMap(({ node, first, second }) => [node.id, first, second]));
 	taken.add(haloCarrier(root, nodes, pairs));
-	return points.filter((id) => !taken.has(id));
+	return points.filter((id) => !taken.has(id)).map((id) => heldHosts.get(id) ?? id);
 }
 
 /** A resolved node has no point, so its stars draw and it does not. */
@@ -114,12 +123,14 @@ function samePlace(a: Readonly<Vec3>, b: Readonly<Vec3>): boolean {
 /**
  * Hold the bodies of a plan, and give them what a page and a drawn star need
  * from the System rows. A drawn pair with a member that has no body or no place
- * leaves the plan. Each call gives the values again, because a body that left
- * the LRU comes back with the values of its record.
+ * leaves the plan, and so does a held host with no body or whose point has no
+ * row. `index` names the hosts. Each call gives the values again, because a
+ * body that left the LRU comes back with the values of its record.
  */
 export async function holdStarSystem(
 	ctx: ContextManager,
-	plan: StarSystemPlan
+	plan: StarSystemPlan,
+	index: Pick<PlanetIndex, 'host'> | null = null
 ): Promise<StarSystemPlan> {
 	await Promise.all(plan.ids.map((id) => ensureExtrasolarBody(ctx, extrasolarObjectId(id))));
 	const anchor = (id: number) => ctx.getBody(extrasolarObjectId(id))?.extrasolar;
@@ -142,7 +153,33 @@ export async function holdStarSystem(
 		const at = framed && anchor(framed.node.id)?.scene;
 		if (star && at) star.scene = at;
 	}
-	return pairs.length === plan.pairs.length ? plan : { ...plan, pairs };
+	const named = heldHosts(plan.nodes, pairs, (id) => index?.host(id) !== undefined);
+	await Promise.all(
+		[...named.values()].map((id) => ensureExtrasolarBody(ctx, extrasolarObjectId(id)))
+	);
+	const hosts = new Map<number, number>();
+	for (const [point, host] of named) {
+		const [from, star] = [anchor(point), ctx.getBody(extrasolarObjectId(host))];
+		if (!from?.tree || !star?.extrasolar) continue;
+		takeOver(star, from, plan.nodes.get(host)?.star ?? null);
+		hosts.set(point, host);
+	}
+	const ids = [...new Set([...plan.ids, ...hosts.values()])];
+	return { ...plan, pairs, heldHosts: hosts, ids };
+}
+
+/** A held host draws at its point's place and row with its point's light, in
+ *  its own colour and size. The point's anchor stays as it is: whatever draws
+ *  the point asks the plan for its host. */
+function takeOver(star: PositionedBody, point: StarAnchor, values: HeldStarValues | null): void {
+	const host = star.extrasolar!;
+	host.scene = point.scene;
+	host.tree = point.tree;
+	host.absMag = point.absMag;
+	host.teff = values?.teff ?? null;
+	host.colour = host.teff === null ? point.colour : bpRpFromTeff(host.teff);
+	giveSphere(star);
+	star.data.starColor = starCssColour(host.teff, host.colour);
 }
 
 /** A held star takes its radius only where it draws on its own, so the
@@ -274,9 +311,9 @@ export class FocusedStarSystem {
 	 *  the root at the node's place, which shows one halo for both. */
 	haloOf(id: number): number {
 		if (!this.plan) return id;
-		const { root, nodes, pairs } = this.plan;
-		const own = haloCarrier(id, nodes, pairs);
-		const centre = haloCarrier(root, nodes, pairs);
+		const { root, nodes, pairs, heldHosts } = this.plan;
+		const own = haloCarrier(id, nodes, pairs, heldHosts);
+		const centre = haloCarrier(root, nodes, pairs, heldHosts);
 		const [at, centreAt] = [this.star(own)?.scene, this.star(centre)?.scene];
 		return at && centreAt && samePlace(at, centreAt) ? centre : own;
 	}
@@ -310,8 +347,8 @@ export class FocusedStarSystem {
 		if (this.plan && !this.drawn.has(this.plan.root)) plans.push(this.plan);
 		const focusId = focused?.extrasolar?.id;
 		const centres = new Map<string, number>();
-		for (const { root, nodes, pairs } of plans) {
-			const carrier = (id: number) => haloCarrier(id, nodes, pairs);
+		for (const { root, nodes, pairs, heldHosts } of plans) {
+			const carrier = (id: number) => haloCarrier(id, nodes, pairs, heldHosts);
 			const centre = this.body(carrier(root));
 			const at = centre ? this.ctx.place(centre, jd) : null;
 			if (!centre || !at) continue;
@@ -328,12 +365,15 @@ export class FocusedStarSystem {
 		return centres;
 	}
 
-	/** The stars to draw at their exact place, nearest first. */
+	/** The stars to draw at their exact place, nearest first. A held host
+	 *  draws in its point's stead. */
 	private nearStars([cx, cy, cz]: Readonly<Vec3>): StarAnchor[] {
-		const ids = new Set(this.plan?.points);
+		const ids = new Set<number>();
+		const add = (plan: StarSystemPlan, id: number) => ids.add(plan.heldHosts.get(id) ?? id);
+		if (this.plan) for (const id of this.plan.points) add(this.plan, id);
 		// A point draws its share of the light until its orbit has faded out.
 		for (const { plan, stars } of this.drawn.values()) {
-			for (const id of [...plan.points, ...stars]) ids.add(id);
+			for (const id of [...plan.points, ...stars]) add(plan, id);
 		}
 		const distance = ({ drawnAt, scene }: StarAnchor): number => {
 			const at = drawnAt ?? scene;
@@ -356,8 +396,9 @@ export class FocusedStarSystem {
 			const star = this.star(id);
 			if (star) star.pairAxis = undefined;
 		}
+		const plan = this.plan;
 		const centre =
-			this.plan && this.star(haloCarrier(this.plan.root, this.plan.nodes, this.plan.pairs));
+			plan && this.star(haloCarrier(plan.root, plan.nodes, plan.pairs, plan.heldHosts));
 		this.wide = ids.filter((id) => {
 			const [star, from] = [this.star(id), centre?.scene];
 			if (!star?.scene || !from) return false;

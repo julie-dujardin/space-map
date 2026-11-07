@@ -13,6 +13,7 @@ import {
 	drawnPairs,
 	framedPair,
 	haloCarrier,
+	heldHosts,
 	listedMass,
 	memberMu,
 	nodePlace,
@@ -329,6 +330,63 @@ describe('haloCarrier', () => {
 	it('leaves a star and an unknown ID', () => {
 		expect(carrier(5, pair(2, 0))).toBe(5);
 		expect(carrier(404, pair(2, 0))).toBe(404);
+	});
+
+	it('gives a point, and a node with it as primary, to the held host that takes it over', () => {
+		const point = node(2, { point: true, primary: 2, members: [member(5, 'held star')] });
+		const root = node(1, { primary: 2, members: [member(2, 'system'), member(7)] });
+		const nodes = byId(root, point);
+		const hosts = new Map([[2, 5]]);
+		expect(haloCarrier(2, nodes, [], hosts)).toBe(5);
+		expect(haloCarrier(1, nodes, [], hosts)).toBe(5);
+		expect(haloCarrier(2, nodes, [])).toBe(2);
+	});
+});
+
+describe('heldHosts', () => {
+	/** A point of a held star 5 and a held pair 3 of 6 and 7, as WASP-12 holds
+	 *  A and B–C. */
+	const wasp12 = (pairOrbit: PairOrbit | null = null): Map<number, SystemNode> =>
+		byId(
+			node(2, {
+				point: true,
+				primary: 2,
+				orbit: pairOrbit,
+				members: [member(5, 'held star'), member(3, 'system')]
+			}),
+			node(3, {
+				depth: 1,
+				primary: 6,
+				orbit: orbit(),
+				members: [member(6, 'held star'), member(7, 'held star')]
+			})
+		);
+	const hostsOf = (nodes: Map<number, SystemNode>, ...ids: number[]) =>
+		heldHosts(nodes, drawnPairs(nodes), (id) => ids.includes(id));
+
+	it('gives a point to the one held member that hosts planets', () => {
+		expect([...hostsOf(wasp12(), 5)]).toEqual([[2, 5]]);
+	});
+
+	it('leaves a point with no held host', () => {
+		expect(hostsOf(wasp12()).size).toBe(0);
+		const star = byId(node(2, { point: true, primary: 2, members: [member(5, 'star')] }));
+		expect(hostsOf(star, 5).size).toBe(0);
+	});
+
+	it('leaves a held host on a drawn orbit to its orbit', () => {
+		const nodes = wasp12();
+		nodes.get(2)!.members = [member(6, 'held star'), member(7, 'held star')];
+		nodes.delete(3);
+		nodes.get(2)!.orbit = orbit();
+		expect(hostsOf(nodes, 6).size).toBe(0);
+	});
+
+	it('leaves a point that holds two held hosts a point', () => {
+		const nodes = wasp12();
+		nodes.get(2)!.members.push(member(8, 'held star'));
+		expect(hostsOf(nodes, 5, 8).size).toBe(0);
+		expect([...hostsOf(nodes, 5, 6)]).toEqual([[2, 5]]);
 	});
 });
 

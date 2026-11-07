@@ -244,12 +244,14 @@ export interface StarAnchor {
 	scene: [number, number, number] | null;
 	/** Tree position (pc) of a star the starfield draws; null when the record
 	 *  gives no distance, or for an object with no point: a resolved star
-	 *  system or a held star has a scene place, and no tree place. */
+	 *  system or a held star has a scene place, and no tree place. A held host
+	 *  that takes over its point has the point's. */
 	tree: [number, number, number] | null;
 	/** Absolute G as the render tree rounds it; null when the record has none. */
 	absMag: number | null;
 	/** The ID that draws its light: its own, the primary of a node, or for a
-	 *  held star its node, whose primary it is when the node is resolved. */
+	 *  held star its node, whose primary it is when the node is resolved. A
+	 *  held host that takes over its point draws its own and the point's. */
 	point: number;
 	/** BP − RP; null when unknown. */
 	colour: number | null;

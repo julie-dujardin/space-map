@@ -1,8 +1,9 @@
 /**
  * The pairs of a star system that draw up close, and the numbers each one
  * needs: the orbits of its members, the place of its barycentre, the object
- * that carries its halo, the light of a held star, and the handover from a
- * point to its two stars. Nothing here reads the scene.
+ * that carries its halo, the light of a held star, the held host that takes
+ * over its point, and the handover from a point to its two stars. Nothing here
+ * reads the scene.
  */
 
 import type { PairOrbit, SystemNode } from '$lib/fetch/extrasolar/systems';
@@ -19,6 +20,8 @@ const POINT_ALONE_PX = 2;
 const STARS_ALONE_PX = 6;
 /** Luminosity goes as this power of the mass, on the main sequence. */
 const MASS_LUMINOSITY = 3.5;
+
+const NO_HOSTS: ReadonlyMap<number, number> = new Map();
 
 /** Two values, of a pair's first and second member. */
 export type Both<T> = readonly [T, T];
@@ -161,16 +164,43 @@ export function framedPair(
  * The object that carries the halo and name of the node `id`: the node, or the
  * member on the barycentre of the pair that the node frames. That member takes
  * over the node, as the Sun takes over the solar system. With no pair that
- * draws there is no barycentre, and the primary takes over.
+ * draws there is no barycentre, and the primary takes over, or the held host
+ * that takes over the primary's point (see {@link heldHosts}).
  */
 export function haloCarrier(
 	id: number,
 	nodes: ReadonlyMap<number, SystemNode>,
-	pairs: readonly DrawnPair[]
+	pairs: readonly DrawnPair[],
+	hosts: ReadonlyMap<number, number> = NO_HOSTS
 ): number {
 	const pair = framedPair(id, nodes, pairs);
-	if (pair) return pair.orbit.barycentre === 0 ? haloCarrier(pair.first, nodes, pairs) : id;
-	return nodes.get(id)?.primary ?? id;
+	if (pair) return pair.orbit.barycentre === 0 ? haloCarrier(pair.first, nodes, pairs, hosts) : id;
+	const primary = nodes.get(id)?.primary ?? id;
+	return hosts.get(primary) ?? primary;
+}
+
+/**
+ * The held star that takes over each point, by point ID: the one held member
+ * that hosts planets, with neither on a drawn orbit. Its planets need its
+ * sphere to circle, so it draws in the point's stead with the point's light.
+ * A point with two such members stays a point: one sphere would stand for
+ * both.
+ */
+export function heldHosts(
+	nodes: ReadonlyMap<number, SystemNode>,
+	pairs: readonly DrawnPair[],
+	hostsPlanets: (id: number) => boolean
+): Map<number, number> {
+	const onOrbit = new Set(pairs.flatMap(({ first, second }) => [first, second]));
+	const out = new Map<number, number>();
+	for (const node of nodes.values()) {
+		if (!node.point || onOrbit.has(node.id)) continue;
+		const hosts = node.members.flatMap(({ id, kind }) =>
+			kind === 'held star' && id !== null && !onOrbit.has(id) && hostsPlanets(id) ? [id] : []
+		);
+		if (hosts.length === 1) out.set(node.id, hosts[0]);
+	}
+	return out;
 }
 
 function flux(mag: number): number {

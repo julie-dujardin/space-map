@@ -15,7 +15,7 @@ const load = vi.hoisted(() => ({
 async function planOf(root: number) {
 	const points = await load.points(root);
 	await Promise.all(points.map((id) => load.body(null, `x-${id}`)));
-	return { root, nodes: new Map(), points, pairs: [], ids: points };
+	return { root, nodes: new Map(), points, pairs: [], heldHosts: new Map(), ids: points };
 }
 
 function star(id: number, root: number | null = null, row?: TableRow): PositionedBody {
@@ -63,7 +63,12 @@ function systemsWith(bodies: PositionedBody[], pins?: (ids: ReadonlySet<string>)
 	const ctx = {
 		getBody: (id: string) => bodies.find((body) => body.data.id === id),
 		place: (body: PositionedBody) => body.position,
-		exoplanets: { index: null, loadIndex: async () => {}, ensureStarSystem: planOf },
+		exoplanets: {
+			index: null,
+			loadIndex: async () => {},
+			ensureStarSystem: planOf,
+			heldHostOf: () => undefined
+		},
 		bodies: { pinExtrasolar: pins ?? (() => {}) },
 		visibility: {}
 	} as unknown as ContextManager;

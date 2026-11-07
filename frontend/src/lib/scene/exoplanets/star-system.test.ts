@@ -3,6 +3,7 @@ import type { HeldStarValues, PairOrbit, SystemNode } from '$lib/fetch/extrasola
 import { SYSTEM_SLUG, type ExtrasolarRecord, type StarRadius } from '$lib/fetch/extrasolar/lookup';
 import { systemRow } from '$lib/fetch/extrasolar/__fixtures__/record';
 import { SOLAR_RADIUS_KM } from '$lib/math/units';
+import { bpRpFromTeff } from '$lib/scene/starfield/colour';
 import type { PromotionRegistry } from '$lib/scene/focus/promotion';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { ObjectType, type PositionedBody } from '$lib/types/objects';
@@ -87,7 +88,8 @@ function pointPair(): Map<number, SystemNode> {
 function planOf(nodes: Map<number, SystemNode>, points: number[]): StarSystemPlan {
 	const pairs = drawnPairs(nodes);
 	const members = pairs.flatMap((p) => [p.node.id, p.first, p.second]);
-	return { root: ROOT, nodes, points, pairs, ids: [...new Set([...points, ...members])] };
+	const ids = [...new Set([...points, ...members])];
+	return { root: ROOT, nodes, points, pairs, heldHosts: new Map(), ids };
 }
 
 /** A scene that holds `bodies`. A body stays at its `position`. */
@@ -100,7 +102,8 @@ function scene(bodies: PositionedBody[], plan: StarSystemPlan) {
 		exoplanets: {
 			index: null,
 			loadIndex: async () => {},
-			ensureStarSystem: async () => plan
+			ensureStarSystem: async () => plan,
+			heldHostOf: (id: number) => plan.heldHosts.get(id)
 		},
 		bodies: { notifyBodiesAdded: notify, pinExtrasolar: () => {} },
 		visibility: {}
@@ -201,6 +204,167 @@ describe('holdStarSystem', () => {
 		const plan = planOf(pointPair(), [POINT]);
 		const held = await holdStarSystem(scene([point, a], plan).ctx, plan);
 		expect(held.pairs).toEqual([]);
+	});
+});
+
+describe('a held host on no drawn orbit', () => {
+	/** A point of two held stars with no orbit, as WASP-12 holds A and B–C,
+	 *  and A hosts planets. */
+	async function wasp12() {
+		const nodes = pointPair();
+		nodes.get(POINT)!.orbit = null;
+		const point = body(POINT, [3, 4, 5]);
+		point.extrasolar!.point = POINT;
+		const a = heldBody(HELD_A);
+		sized(a, { solar: 1.69, source: 'nasa-exoplanet-archive' });
+		const b = heldBody(HELD_B);
+		const plan = planOf(nodes, [POINT]);
+		const { ctx } = scene([point, a, b], plan);
+		const held = await holdStarSystem(ctx, plan, HOSTS_A);
+		useHeld(ctx, held);
+		// As the placer puts it at its new place.
+		Object.assign(a, { position: a.extrasolar!.scene });
+		return { point, a, b, ctx, plan, held };
+	}
+
+	/** The body of a held star as its record makes it: no row, no light, no size. */
+	function heldBody(id: number): PositionedBody {
+		const star = body(id, null);
+		Object.assign(star.extrasolar!, { tree: null, absMag: null, colour: null, point: POINT });
+		return star;
+	}
+
+	/** An index in which A hosts planets. */
+	const HOSTS_A = { host: (id: number) => (id === HELD_A ? {} : undefined) } as never;
+
+	/** The store holds `plan` for the system. */
+	function useHeld(ctx: ContextManager, plan: StarSystemPlan): void {
+		Object.assign(ctx.exoplanets, {
+			ensureStarSystem: async () => plan,
+			heldHostOf: (id: number) => plan.heldHosts.get(id)
+		});
+	}
+
+	it('takes over the point: its place, row and light, with its own colour and size', async () => {
+		const { point, a, b, held } = await wasp12();
+		expect([...held.heldHosts]).toEqual([[POINT, HELD_A]]);
+		expect(held.ids).toContain(HELD_A);
+		const host = a.extrasolar!;
+		expect(host.scene).toEqual(point.extrasolar!.scene);
+		expect(host.tree).toEqual(point.extrasolar!.tree);
+		expect(host.absMag).toBe(5);
+		expect(host.teff).toBe(4450);
+		expect(host.colour).toBe(bpRpFromTeff(4450));
+		expect(host.radiusKm).toBe(1.69 * SOLAR_RADIUS_KM);
+		expect(a.data.radiusKm).toBe(1.69 * SOLAR_RADIUS_KM);
+		// The point's anchor stays as its record has it.
+		expect([host.point, point.extrasolar!.point]).toEqual([POINT, POINT]);
+		expect(b.extrasolar!.tree).toBeNull();
+		expect(b.extrasolar!.radiusKm).toBeNull();
+	});
+
+	it('keeps no host whose point has no row, or that has no body', async () => {
+		const nodes = pointPair();
+		nodes.get(POINT)!.orbit = null;
+		const plan = planOf(nodes, [POINT]);
+		const rowless = body(POINT, [3, 4, 5]);
+		rowless.extrasolar!.tree = null;
+		const a = heldBody(HELD_A);
+		const noRow = await holdStarSystem(scene([rowless, a], plan).ctx, plan, HOSTS_A);
+		expect(noRow.heldHosts.size).toBe(0);
+		expect(a.extrasolar!.tree).toBeNull();
+		const noBody = await holdStarSystem(scene([body(POINT, [3, 4, 5])], plan).ctx, plan, HOSTS_A);
+		expect(noBody.heldHosts.size).toBe(0);
+		expect(noBody.ids).not.toContain(HELD_A);
+	});
+
+	it('draws the point while the host is back from the LRU without its row', async () => {
+		const { point, b, ctx } = await wasp12();
+		const back = heldBody(HELD_A);
+		const known = new Map([point, back, b].map((star) => [star.data.id, star] as const));
+		Object.assign(ctx, { getBody: (id: string) => known.get(id) });
+		const promotion = { syncSystemBodies: () => {} } as unknown as PromotionRegistry;
+		const systems = new ExoplanetSystems(ctx, promotion, () => {});
+		expect(systems.exactStars(point).map((star) => star.id)).toEqual([POINT]);
+		expect(systems.exactStars(back).map((star) => star.id)).toEqual([POINT]);
+	});
+
+	it('draws the point alone after a hold with no index', async () => {
+		const { a, ctx, plan } = await wasp12();
+		const again = await holdStarSystem(ctx, plan);
+		expect(again.heldHosts.size).toBe(0);
+		useHeld(ctx, again);
+		const promotion = { syncSystemBodies: () => {} } as unknown as PromotionRegistry;
+		const systems = new ExoplanetSystems(ctx, promotion, () => {});
+		systems.update(frame(a, 1e6));
+		await landed();
+		systems.update(frame(a, 1e6));
+		const exact = systems.exactStars(a);
+		expect(exact.map((star) => star.id)).toEqual([POINT]);
+		expect(systems.companions(exact)).toEqual([]);
+	});
+
+	it('draws in the stead of the point, whichever of the two is focused', async () => {
+		const { point, a, ctx } = await wasp12();
+		const promotion = { syncSystemBodies: vi.fn() } as unknown as PromotionRegistry;
+		const systems = new ExoplanetSystems(ctx, promotion, () => {});
+		for (const focused of [a, point]) {
+			systems.update(frame(focused, 1e6));
+			await landed();
+			systems.update(frame(focused, 1e6));
+			const exact = systems.exactStars(focused);
+			expect(exact.map((star) => star.id)).toEqual([HELD_A]);
+			expect(systems.companions(exact)).toEqual([]);
+		}
+	});
+
+	it('shows the planets of the host with the focus on the point', async () => {
+		const { point, a, ctx } = await wasp12();
+		const use = vi.fn();
+		const host = { id: HELD_A, system: ROOT, planets: [1], position: null };
+		Object.assign(ctx.exoplanets, {
+			index: {
+				file: { hosts: [] },
+				host: (id: number) => (id === HELD_A ? host : undefined),
+				hostsOf: (key: number) => (key === ROOT ? [HELD_A] : [])
+			},
+			ensureHost: async () => null,
+			held: () => null,
+			use
+		});
+		const promotion = { syncSystemBodies: () => {} } as unknown as PromotionRegistry;
+		const systems = new ExoplanetSystems(ctx, promotion, () => {});
+		for (const focused of [a, point]) {
+			systems.update(frame(focused, 1e6));
+			await landed();
+			systems.update(frame(focused, 1e6));
+			expect([...use.mock.lastCall![0]]).toEqual([ROOT]);
+		}
+	});
+
+	it('carries the halo and name of the point', async () => {
+		const { point, a, ctx } = await wasp12();
+		const system = new FocusedStarSystem(ctx, () => {});
+		for (const focused of [a, point]) {
+			system.update(frame(focused, 1e6));
+			await landed();
+			system.update(frame(focused, 1e6));
+			expect(system.centres.get('x-1')).toBe(0);
+			expect(system.centres.get('x-11')).toBe(1);
+			expect(system.haloOf(POINT)).toBe(HELD_A);
+			expect(system.shares.size).toBe(0);
+		}
+	});
+
+	it('leaves the point to draw with no index', async () => {
+		const nodes = pointPair();
+		nodes.get(POINT)!.orbit = null;
+		const point = body(POINT, [3, 4, 5]);
+		const a = heldBody(HELD_A);
+		const plan = planOf(nodes, [POINT]);
+		const held = await holdStarSystem(scene([point, a], plan).ctx, plan);
+		expect(held.heldHosts.size).toBe(0);
+		expect(a.extrasolar!.tree).toBeNull();
 	});
 });
 
@@ -465,6 +629,38 @@ describe('a star on no drawn orbit', () => {
 		system.update(frame(body(9, [0, 0, 0], 0), 1e6));
 		expect(b.extrasolar!.pairAxis).toBeUndefined();
 		expect(system.shares.size).toBe(0);
+	});
+
+	it('is never the host of a point on a drawn orbit', async () => {
+		const members = [21, 22].map((id) => ({
+			id,
+			kind: 'star',
+			gMag: null,
+			vMag: null,
+			mass: null
+		}));
+		const root = {
+			id: ROOT,
+			point: false,
+			depth: 0,
+			primary: 21,
+			distance: 10,
+			orbit: orbit(),
+			members
+		};
+		// A plan that holdStarSystem never makes: a host for a point on an orbit.
+		const nodes = new Map([[ROOT, root as unknown as SystemNode]]);
+		const plan = { ...planOf(nodes, [21, 22]), heldHosts: new Map([[22, 23]]) };
+		const a = body(21, [100, 0, 0]);
+		const { ctx } = scene(
+			[body(ROOT, [100, 0, 0]), a, body(22, [100, 3, 0]), body(23, [100, 3, 0])],
+			plan
+		);
+		const system = new FocusedStarSystem(ctx, () => {});
+		system.update(frame(a, 1e6));
+		await landed();
+		system.update(frame(a, 1e6));
+		expect(system.shares.has('x-23')).toBe(false);
 	});
 });
 

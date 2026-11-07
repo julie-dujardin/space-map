@@ -126,11 +126,15 @@ export class ExoplanetSystems {
 		this.lightStar = lit === undefined ? null : extrasolarObjectId(lit);
 	}
 
-	/** The planetary system of a focused star: its own, or for a star on a
-	 *  drawn orbit that of its star system. The root keys the file of a star
-	 *  system. */
+	/** The planetary system of a focused star: its own, that of the held host
+	 *  that took over its point, or for a star on a drawn orbit that of its star
+	 *  system. The root keys the file of a star system. */
 	private planetSystemOf(star: number): number | undefined {
-		return this.ctx.exoplanets.index!.host(star)?.system ?? this.starSystem.drawnRoot;
+		const store = this.ctx.exoplanets;
+		const held = store.heldHostOf(star);
+		const index = store.index!;
+		const own = index.host(star) ?? (held === undefined ? undefined : index.host(held));
+		return own?.system ?? this.starSystem.drawnRoot;
 	}
 
 	/** Publish the shares of the hosts, of the stars on drawn orbits and of the
@@ -183,8 +187,12 @@ export class ExoplanetSystems {
 	}
 
 	/** The star that draws the light of `anchor`. A node and a held star on no
-	 *  drawn orbit have none of their own. */
+	 *  drawn orbit have none of their own. A point that a held host took over
+	 *  draws as the host, once the host has the point's row. */
 	private pointStar(anchor: StarAnchor): StarAnchor | undefined {
+		const held = this.ctx.exoplanets.heldHostOf(anchor.id);
+		const host = held === undefined ? undefined : this.ctx.getBody(extrasolarObjectId(held));
+		if (host?.extrasolar?.tree) return host.extrasolar;
 		if (anchor.point === anchor.id) return anchor;
 		const next = this.ctx.getBody(extrasolarObjectId(anchor.point))?.extrasolar;
 		return next && this.pointStar(next);
