@@ -7,7 +7,11 @@ import {
 } from '$lib/fetch/extrasolar/files';
 import { configureHost } from '$lib/host';
 import type { StarInterior } from '$lib/fetch/extrasolar/interior';
-import { ExtrasolarLookup, type ExtrasolarRecord } from '$lib/fetch/extrasolar/lookup';
+import {
+	ExtrasolarLookup,
+	type ExtrasolarRecord,
+	type StarRadiusSource
+} from '$lib/fetch/extrasolar/lookup';
 import {
 	HAS_EXPORT,
 	diskSource,
@@ -17,7 +21,12 @@ import {
 } from '$lib/fetch/extrasolar/__fixtures__/export';
 import { pointSourceRecord, valueColumns } from '$lib/fetch/extrasolar/__fixtures__/record';
 import type { PlanetSystem } from '$lib/fetch/extrasolar/planets';
-import { member, pairOrbit, systemNodeOf } from '$lib/fetch/extrasolar/__fixtures__/system-node';
+import {
+	heldValues,
+	member,
+	pairOrbit,
+	systemNodeOf
+} from '$lib/fetch/extrasolar/__fixtures__/system-node';
 import {
 	CREDIT_PAGES,
 	citationCredits,
@@ -37,6 +46,9 @@ describe('star sources', () => {
 		expect(starSourceName('hipparcos-2007')).toBe('Hipparcos (2007)');
 		expect(starSourceName('andrae-2023')).toBe('Gaia XP (Andrae et al. 2023)');
 		expect(starSourceName('gaia-dr3-gspphot')).toBe('Gaia DR3 GSP-Phot');
+		expect(starSourceName('gaia-dr3-flame')).toBe('Gaia DR3 FLAME');
+		expect(starSourceName('gaia-dr3-flame-spec')).toBe('Gaia DR3 FLAME (GSP-Spec)');
+		expect(starSourceName('jmdc')).toBe('JMDC');
 		expect(starSourceName('gaia-dr3-nss')).toBe('Gaia DR3 orbit solution');
 		expect(starSourceName('hipparcos-1997')).toBe('Hipparcos (1997)');
 		expect(starSourceName('simbad')).toBe('SIMBAD');
@@ -139,24 +151,36 @@ describe('star sources', () => {
 });
 
 describe('star credits', () => {
-	it('credits the measurement of a held star by its point', () => {
-		const star = pointSourceRecord(
-			[],
-			[{ name: 'JMDC', organisation: 'J', source: `https://example.org${CREDIT_PAGES.jmdc}` }]
-		);
-		const point = systemNodeOf(1, { measuredRadius: 800, measuredBy: 'angular diameter' });
-		expect(starCredits(star, undefined, [], point).map((c) => c.label)).toEqual(['JMDC']);
-		const paper = { short: 'Smith 2020', title: 'Radii', url: 'https://example.org/paper' };
-		const byPaper = { ...point, measuredBy: 'paper' as const, radiusPapers: [paper] };
-		expect(starCredits(star, undefined, [], byPaper).map((c) => c.label)).toEqual(['Radii']);
-	});
-
 	// One credit per page, labelled with its page's key.
 	const credits: ExtrasolarCredit[] = Object.entries(CREDIT_PAGES).map(([key, page]) => ({
 		name: key,
 		organisation: 'Test',
 		source: `https://example.org${page}`
 	}));
+	const paper = { short: 'Smith 2020', title: 'Radii', url: 'https://example.org/paper' };
+	const sized = (
+		source: StarRadiusSource,
+		columns = valueColumns({ angular_diameter_source: 'jmdc' })
+	) => pointSourceRecord(columns, credits, undefined, { solar: 1, source });
+	const radiusLabels = (source: StarRadiusSource) =>
+		starCredits(sized(source), { paper_radius: [paper] }).map((c) => c.label);
+
+	it('credits the source of the radius that the export picked', () => {
+		expect(radiusLabels('jmdc')).toEqual(['jmdc']);
+		expect(radiusLabels('gaia-dr3-flame')).toEqual(['gaia']);
+		expect(radiusLabels('gaia-dr3-flame-spec')).toEqual(['gaia']);
+		expect(radiusLabels('gaia-dr3-gspphot')).toEqual(['gaia']);
+		expect(radiusLabels('nasa-exoplanet-archive')).toEqual(['nasaExoplanetArchive']);
+		expect(radiusLabels('exoplanet-eu')).toEqual(['exoplanetEu']);
+		expect(radiusLabels('open-exoplanet-catalogue')).toEqual(['openExoplanetCatalogue']);
+		expect(radiusLabels('literature')).toEqual(['Radii']);
+	});
+
+	it('cites the paper of the point that gives a held star its radius', () => {
+		const point = systemNodeOf(1, { point: true, paperRadius: true, radiusPapers: [paper] });
+		const star = sized('literature', []);
+		expect(starCredits(star, undefined, [], point).map((c) => c.label)).toEqual(['Radii']);
+	});
 	const record = (
 		values: Record<string, number | string>,
 		nameSource: string | null
@@ -205,6 +229,57 @@ describe('star credits', () => {
 			hipparcos_photometry_source: 'hipparcos-1997'
 		};
 		expect(labels(row, 'hipparcos-1997')).toEqual(['hipparcosPhotometry']);
+	});
+
+	it('credits the catalogue of each value of a planet host', () => {
+		const host = {
+			...noParallax,
+			host_star_source: 'nasa-exoplanet-archive',
+			host_teff_source: 'exoplanet-eu',
+			host_mass_source: 'open-exoplanet-catalogue',
+			host_metallicity_source: 'nasa-exoplanet-archive',
+			host_logg_source: 'nasa-exoplanet-archive',
+			host_age_source: 'nasa-exoplanet-archive'
+		};
+		expect(labels(host, null)).toEqual([
+			'nasaExoplanetArchive',
+			'exoplanetEu',
+			'openExoplanetCatalogue'
+		]);
+		expect(labels({ ...noParallax, host_teff_source: 'exoplanet-eu' }, null)).toEqual([
+			'exoplanetEu'
+		]);
+	});
+
+	it("credits only the name and distance catalogue of a point's host values, which it does not show", () => {
+		const star = record(
+			{
+				...noParallax,
+				host_star_source: 'nasa-exoplanet-archive',
+				host_teff_source: 'exoplanet-eu'
+			},
+			null
+		);
+		const node = {
+			...star,
+			rows: new Map([...star.rows, ['system', star.rows.get('point-source')!]])
+		};
+		expect(starCredits(node).map((c) => c.label)).toEqual(['nasaExoplanetArchive']);
+	});
+
+	it('credits the planet catalogue of each value of a held star', () => {
+		const held = systemNodeOf(1, {
+			star: heldValues({
+				massSource: 'nasa-exoplanet-archive',
+				teffSource: 'exoplanet-eu',
+				spectralTypeSource: 'literature'
+			})
+		});
+		const star = sized('literature', []);
+		expect(starCredits(star, undefined, [held]).map((c) => c.label)).toEqual([
+			'nasaExoplanetArchive',
+			'exoplanetEu'
+		]);
 	});
 
 	it('cites the papers of a distance from the literature table', () => {
@@ -563,7 +638,11 @@ describe('the credits of a star interior', () => {
 
 	it('credits the source of the radius that a luminosity came from', () => {
 		const radius = { teffSource: 'host-star', luminositySource: 'radius' };
-		const host = { ...HIPPARCOS, host_star_source: 'nasa-exoplanet-archive' };
+		const host = {
+			...HIPPARCOS,
+			host_star_source: 'exoplanet-eu',
+			host_teff_source: 'nasa-exoplanet-archive'
+		};
 		expect(labels(radius, { ...host, radius_literature: 1.1 }, { paper_radius: [paper] })).toEqual([
 			'MIST v2.5 stellar evolution tracks',
 			'NASA Exoplanet Archive',

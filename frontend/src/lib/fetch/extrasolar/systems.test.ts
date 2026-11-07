@@ -4,8 +4,10 @@ import { ExtrasolarLookup, type ExtrasolarRecord, type LookupSource } from './lo
 import { HAS_EXPORT, diskSource, own } from './__fixtures__/export';
 import { resolvedSystemRecord } from './__fixtures__/record';
 import { BINARY, HELD, SECOND, STAR, SYSTEM, syntheticExport } from './__fixtures__/synthetic';
+import { heldValues, systemNodeOf } from './__fixtures__/system-node';
 import {
 	loadSystemNodes,
+	measuresPoint,
 	pointOf,
 	systemNode,
 	systemPointIds,
@@ -165,11 +167,11 @@ describe('the System row', () => {
 		expect(held).toMatchObject({ primary: null, parent: BINARY, stars: 1, members: [] });
 		expect(held.star).toEqual({
 			mass: 0.5,
-			radius: null,
 			teff: 4500,
 			spectralType: 'K1V',
 			massSource: 'literature',
 			radiusSource: null,
+			hostRadiusError: 0.0625,
 			teffSource: 'open-exoplanet-catalogue',
 			spectralTypeSource: 'msc',
 			references: [
@@ -180,13 +182,40 @@ describe('the System row', () => {
 					title: 'A title',
 					url: 'https://example.org/'
 				}
-			]
+			],
+			dominant: true
 		});
 		expect((await node(lookup, SYSTEM)).star).toBeNull();
+		// Its radius is the one of its Metadata row.
+		expect((await record(lookup, HELD)).metadata.radius).toEqual({
+			solar: 0.75,
+			source: 'nasa-exoplanet-archive'
+		});
 	});
 
 	it('has no System row on a star', async () => {
 		expect(systemNode(await record(syntheticLookup(), SECOND))).toBeNull();
+	});
+});
+
+describe('measuresPoint', () => {
+	const held = (radiusSource: string | null, dominant = true) =>
+		systemNodeOf(HELD, { star: heldValues({ radiusSource, dominant }) });
+
+	it("tells a dominant held star with its point's measurement", () => {
+		expect(measuresPoint(held(null), { solar: 2, source: 'literature' })).toBe(true);
+		expect(measuresPoint(held('msc'), { solar: 2, source: 'jmdc' })).toBe(true);
+	});
+
+	it('tells it from its own paper, a catalogue radius and none', () => {
+		expect(measuresPoint(held('literature'), { solar: 2, source: 'literature' })).toBe(false);
+		expect(measuresPoint(held(null), { solar: 2, source: 'nasa-exoplanet-archive' })).toBe(false);
+		expect(measuresPoint(held(null), null)).toBe(false);
+	});
+
+	it('gives a member that does not dominate its point none', () => {
+		expect(measuresPoint(held(null, false), { solar: 2, source: 'literature' })).toBe(false);
+		expect(measuresPoint(held('msc', false), { solar: 2, source: 'jmdc' })).toBe(false);
 	});
 });
 

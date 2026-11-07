@@ -28,6 +28,24 @@ import { LruPromiseCache } from '$lib/fetch/position/cache';
 
 export const METADATA_SLUG = 'metadata';
 
+/** Where a star's radius comes from (`docs/export-format/extrasolar.md`, "Radius"). */
+export type StarRadiusSource =
+	| 'literature'
+	| 'jmdc'
+	| 'nasa-exoplanet-archive'
+	| 'exoplanet-eu'
+	| 'open-exoplanet-catalogue'
+	| 'gaia-dr3-flame'
+	| 'gaia-dr3-flame-spec'
+	| 'gaia-dr3-gspphot';
+
+/** The one radius that every view draws and shows for a star. */
+export interface StarRadius {
+	/** Nominal solar radii, with the digits of its source. */
+	solar: number;
+	source: StarRadiusSource;
+}
+
 /** A row of the Metadata table. */
 export interface MetadataRow {
 	id: number;
@@ -47,6 +65,8 @@ export interface MetadataRow {
 	familiesEstimated: bigint;
 	/** The MK spectral type that gives the star families; null for none. */
 	spectralType: string | null;
+	/** Null for a star with none and for a node of a star system. */
+	radius: StarRadius | null;
 	/** True when the site's object bundles hold an entry for the ID: its
 	 *  names in other languages, its Wikidata and Wikipedia text, the papers
 	 *  of its values. */
@@ -404,6 +424,12 @@ export function readMetadataRow(c: Container, row: number): MetadataRow {
 		families: c.has('families') ? c.uint64('families')[row] : 0n,
 		familiesEstimated: c.has('families_estimated') ? c.uint64('families_estimated')[row] : 0n,
 		spectralType: c.strings('spectral_type').get(row),
+		radius: c.isValid('radius', row)
+			? {
+					solar: c.float32('radius')[row],
+					source: c.dict('radius_source').get(row) as StarRadiusSource
+				}
+			: null,
 		object: c.has('object') && c.isValid('object', row) && c.bool('object')[row] === 1,
 		aliasTarget: alias > 0 ? alias : null
 	};

@@ -12,8 +12,6 @@
  */
 
 import { SUN_ID } from '$lib/constants';
-import { familiesOf } from '$lib/fetch/extrasolar/families';
-import { fetchExtrasolarMetadata } from '$lib/fetch/extrasolar/files';
 import { extrasolarIdOf, isStarObjectId, planetOfObjectId } from '$lib/fetch/extrasolar/ids';
 import { formatSizeKm } from '$lib/format/distance';
 import { localName } from '$lib/format/name';
@@ -26,9 +24,10 @@ import {
 	type ExtrasolarRecord
 } from '$lib/fetch/extrasolar/lookup';
 import { starPageName } from '$lib/fetch/extrasolar/star-name';
+import { systemNode } from '$lib/fetch/extrasolar/systems';
 import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 import { starCssColour, teffFromBpRp } from '$lib/scene/starfield/colour';
-import { colourBpRp, lineupRadiusKm, starTeff } from '$lib/scene/starfield/record';
+import { colourBpRp, starRadiusKm, starTeff } from '$lib/scene/starfield/record';
 import { loadSystemsGlobal, nutPrecFor } from '$lib/fetch/systems-global';
 import { iauAngles } from '$lib/math/orientation';
 import { dateToJD } from '$lib/time/jd';
@@ -119,38 +118,49 @@ async function craftBundleFor(id: string): Promise<CompareObject | null> {
 	return attached ? craftObject(id, '', attached) : null;
 }
 
-/** The families of the compact stars, whose Gaia radii do not count. */
-const COMPACT_FAMILIES = new Set(['neutron-star', 'white-dwarf']);
 /** A star's radius is known to a few percent at best. */
 const RADIUS_DIGITS = 3;
 
-/** The record that holds a star's point: its own, or a star system's primary's. */
-async function pointRecord(record: ExtrasolarRecord): Promise<ExtrasolarRecord | null> {
-	if (record.rows.has(POINT_SOURCE_SLUG)) return record;
-	const primary = systemPrimary(record);
-	if (primary === null) return null;
-	const found = await extrasolarLookup.live(primary);
+async function liveRecord(id: number): Promise<ExtrasolarRecord | null> {
+	const found = await extrasolarLookup.live(id);
 	return found.kind === 'live' ? found.record : null;
 }
 
+/** The record with the radius that a star is drawn at: its own, a resolved
+ *  system's primary's, or for a point of several stars, its first member's
+ *  when that member dominates the point's light. */
+async function sizedRecord(record: ExtrasolarRecord): Promise<ExtrasolarRecord | null> {
+	if (record.metadata.radius) return record;
+	const primary = systemPrimary(record);
+	if (primary === null) return null;
+	if (primary !== record.id) {
+		const found = await liveRecord(primary);
+		return found && sizedRecord(found);
+	}
+	const first = systemNode(record)?.members[0]?.id ?? null;
+	const member = first === null ? null : await liveRecord(first);
+	return member && systemNode(member)?.star?.dominant ? member : null;
+}
+
+/** A star's temperature: its Point source row's, else a held star's. */
+function teffOf(record: ExtrasolarRecord): number | null {
+	const row = record.rows.get(POINT_SOURCE_SLUG);
+	if (!row) return systemNode(record)?.star?.teff ?? null;
+	const colour = colourBpRp(row);
+	return starTeff(row) ?? (colour === null ? null : teffFromBpRp(colour));
+}
+
 /** A star of the extrasolar catalogue, sized and coloured as a row of stars is.
- *  A star system stands for its main star. */
+ *  A star system stands for its main star, and a point of several stars for
+ *  its dominant member. */
 async function starObject(id: string, seed: { name: string }): Promise<CompareObject | null> {
 	const star = extrasolarIdOf(id);
 	const found = star === null ? null : await extrasolarLookup.live(star);
 	if (found?.kind !== 'live') return null;
-	const record = await pointRecord(found.record);
-	const row = record?.rows.get(POINT_SOURCE_SLUG);
-	if (!record || !row) return null;
-	const { families, familiesEstimated } = record.metadata;
-	const known = (await fetchExtrasolarMetadata())?.families ?? [];
-	const compact = familiesOf(families | familiesEstimated, known).some((slug) =>
-		COMPACT_FAMILIES.has(slug)
-	);
-	const radiusKm = lineupRadiusKm(row, compact);
-	const colour = colourBpRp(row);
-	const teff = starTeff(row) ?? (colour === null ? null : teffFromBpRp(colour));
-	if (radiusKm === null || teff === null) return null;
+	const record = await sizedRecord(found.record);
+	const radiusKm = record && starRadiusKm(record.metadata);
+	const teff = record && (teffOf(record) ?? teffOf(found.record));
+	if (!radiusKm || !teff) return null;
 	return {
 		id,
 		name: seed.name || (await starPageName(found.record)) || id,

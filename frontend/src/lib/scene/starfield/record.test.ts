@@ -8,6 +8,7 @@ import {
 	readExportJson
 } from '$lib/fetch/extrasolar/__fixtures__/export';
 import { pointSourceRow } from '$lib/fetch/extrasolar/__fixtures__/synthetic';
+import { pointSourceRecord, valueColumns } from '$lib/fetch/extrasolar/__fixtures__/record';
 import type { PlanetHost, PlanetIndexFile, PlanetSystem } from '$lib/fetch/extrasolar/planets';
 import { SOLAR_RADIUS_KM } from '$lib/math/units';
 import { bpRpFromTeff } from './colour';
@@ -17,7 +18,6 @@ import {
 	colourBpRp,
 	drawnAbsoluteG,
 	gEstimate,
-	lineupRadiusKm,
 	propagate,
 	starMass,
 	starPlace,
@@ -56,17 +56,18 @@ describe('gEstimate', () => {
 	});
 });
 
-describe('lineupRadiusKm', () => {
-	it('takes a measurement before a host catalogue, as the lineups do', () => {
-		const row = pointSourceRow({ radius_literature: 3, host_radius: 2, radius_flame: 1 });
-		expect(lineupRadiusKm(row, false)).toBe(3 * SOLAR_RADIUS_KM);
-		expect(starRadiusKm(row)).toBe(2 * SOLAR_RADIUS_KM);
+describe('starRadiusKm', () => {
+	const columns = valueColumns({ radius_literature: 3, host_radius: 2, radius_flame: 1 });
+
+	it('reads the Metadata radius, not the Point source columns', () => {
+		const radius = { solar: 0.75, source: 'gaia-dr3-flame-spec' } as const;
+		expect(starRadiusKm(pointSourceRecord(columns, [], undefined, radius).metadata)).toBe(
+			0.75 * SOLAR_RADIUS_KM
+		);
 	});
 
-	it('leaves the Gaia radius of a compact star out', () => {
-		const row = pointSourceRow({ radius_flame: 1 });
-		expect(lineupRadiusKm(row, false)).toBe(SOLAR_RADIUS_KM);
-		expect(lineupRadiusKm(row, true)).toBeNull();
+	it('gives none where the Metadata row has none', () => {
+		expect(starRadiusKm(pointSourceRecord(columns).metadata)).toBeNull();
 	});
 });
 
@@ -270,8 +271,10 @@ describe.skipIf(!HAS_EXPORT)('planet hosts from their records, against the plane
 		// The disc takes the radius and Teff that the system file gives.
 		if (host.teff === null) expect(starTeff(row)).toBeNull();
 		else expect(starTeff(row)).toBeCloseTo(host.teff, 0);
-		if (host.radius !== null && host.radius_source !== 'gaia-dr3') {
-			expect(starRadiusKm(row)! / 695_700).toBeCloseTo(host.radius, 4);
-		}
+		const { radius } = result.record.metadata;
+		expect(radius?.solar ?? null).toEqual(
+			host.radius === null ? null : expect.closeTo(host.radius, 4)
+		);
+		expect(radius?.source ?? null).toBe(host.radius_source);
 	});
 });

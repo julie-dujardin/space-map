@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { HeldStarValues, PairOrbit, SystemNode } from '$lib/fetch/extrasolar/systems';
-import { SYSTEM_SLUG, type ExtrasolarRecord } from '$lib/fetch/extrasolar/lookup';
+import { SYSTEM_SLUG, type ExtrasolarRecord, type StarRadius } from '$lib/fetch/extrasolar/lookup';
 import { systemRow } from '$lib/fetch/extrasolar/__fixtures__/record';
 import { SOLAR_RADIUS_KM } from '$lib/math/units';
 import type { PromotionRegistry } from '$lib/scene/focus/promotion';
@@ -34,7 +34,7 @@ function body(id: number, scene: [number, number, number] | null, root = ROOT): 
 	const record = {
 		id,
 		home: 'point-source',
-		metadata: { system: id === root ? null : root },
+		metadata: { system: id === root ? null : root, radius: null },
 		rows: new Map(id === root ? [[SYSTEM_SLUG, systemRow(id)]] : [])
 	} as unknown as ExtrasolarRecord;
 	return {
@@ -59,7 +59,7 @@ function orbit(fields: Partial<PairOrbit> = {}): PairOrbit {
 }
 
 function held(id: number, values: Partial<HeldStarValues> = {}): SystemNode {
-	const star = { mass: 1, radius: null, teff: null, ...values };
+	const star = { mass: 1, teff: null, ...values };
 	return { id, orbit: null, members: [], star } as unknown as SystemNode;
 }
 
@@ -79,8 +79,8 @@ function pointPair(): Map<number, SystemNode> {
 	} as unknown as SystemNode;
 	return new Map([
 		[POINT, node],
-		[HELD_A, held(HELD_A, { mass: 2, radius: 0.65, teff: 4450 })],
-		[HELD_B, held(HELD_B, { mass: 1, radius: null })]
+		[HELD_A, held(HELD_A, { mass: 2, teff: 4450 })],
+		[HELD_B, held(HELD_B, { mass: 1 })]
 	]);
 }
 
@@ -106,6 +106,11 @@ function scene(bodies: PositionedBody[], plan: StarSystemPlan) {
 		visibility: {}
 	} as unknown as ContextManager;
 	return { ctx, notify };
+}
+
+/** A held star whose Metadata row has `radius`, which its body has none of. */
+function sized(star: PositionedBody, radius: StarRadius): void {
+	Object.assign(star.extrasolar!.record.metadata, { radius });
 }
 
 const frame = (focused: PositionedBody | undefined, cameraX: number, dtMs = 50): SystemsFrame => ({
@@ -147,17 +152,19 @@ describe('loadStarSystem', () => {
 });
 
 describe('holdStarSystem', () => {
-	it('gives a held star its light, size and colour', async () => {
+	it('gives a held star on a drawn orbit its light, colour and the size of its record', async () => {
 		const point = body(POINT, [0, 0, 0]);
 		const a = body(HELD_A, [0, 0, 0]);
+		sized(a, { solar: 0.65, source: 'literature' });
 		const b = body(HELD_B, [0, 0, 0]);
 		const plan = planOf(pointPair(), [POINT]);
 		await holdStarSystem(scene([point, a, b], plan).ctx, plan);
-		expect(a.extrasolar!.radiusKm).toBeCloseTo(0.65 * SOLAR_RADIUS_KM, 3);
-		expect(a.data.radiusKm).toBeCloseTo(0.65 * SOLAR_RADIUS_KM, 3);
+		expect(a.extrasolar!.radiusKm).toBe(0.65 * SOLAR_RADIUS_KM);
+		expect(a.data.radiusKm).toBe(0.65 * SOLAR_RADIUS_KM);
 		expect(a.extrasolar!.teff).toBe(4450);
 		expect(a.extrasolar!.colour).not.toBe(1);
 		expect(b.extrasolar!.radiusKm).toBeNull();
+		expect(b.data.radiusKm).toBeNaN();
 		expect(b.extrasolar!.colour).toBe(1);
 		// Masses 2 and 1: the first star takes 2^3.5 of 2^3.5 + 1 of the light.
 		const light = (mag: number) => 10 ** (-0.4 * mag);

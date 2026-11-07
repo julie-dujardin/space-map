@@ -3,14 +3,16 @@ import { HAS_EXPORT, diskSource } from '$lib/fetch/extrasolar/__fixtures__/expor
 import {
 	ExtrasolarLookup,
 	extrasolarLookup,
-	type ExtrasolarRecord
+	type ExtrasolarRecord,
+	type StarRadius
 } from '$lib/fetch/extrasolar/lookup';
 import { loadSystemNodes, type SystemNode } from '$lib/fetch/extrasolar/systems';
 import { PlanetIndex, planetCatalogue, type PlanetSystem } from '$lib/fetch/extrasolar/planets';
 import {
 	pointSourceRecord,
 	resolvedSystemRecord,
-	systemRow
+	systemRow,
+	tableRow
 } from '$lib/fetch/extrasolar/__fixtures__/record';
 import type { ColumnSpec } from '$lib/fetch/extrasolar/__fixtures__/writer';
 import { elementsOffset } from '$lib/math/orbit/offset';
@@ -58,15 +60,16 @@ vi.mock('$lib/fetch/extrasolar/systems', async (importOriginal) => {
 
 const PC_KM = PC_AU * AU_KM;
 const TAU_CETI = 21238067;
+const FLAME_RADIUS: StarRadius = { solar: 0.9, source: 'gaia-dr3-flame' };
 const GM_JUPITER = 1.2668653e8;
 const GM_EARTH = 3.986004e5;
 
 /** A file of Tau Ceti, at 1, 2, 3 pc, with these planets. */
-function system(planets: PlanetSystem['planets']): PlanetSystem {
+function system(planets: PlanetSystem['planets'], radius: number | null = 0.9): PlanetSystem {
 	return {
 		token: '0'.repeat(16),
 		system: TAU_CETI,
-		hosts: [host(TAU_CETI, [1, 2, 3, 4])],
+		hosts: [{ ...host(TAU_CETI, [1, 2, 3, 4]), radius }],
 		planets
 	};
 }
@@ -75,17 +78,21 @@ function planetBody(file: PlanetSystem, id: string): PositionedBody {
 	return makePlanetBodies(file).find((b) => b.data.id === id)!;
 }
 
-/** A star 10 pc out with a FLAME mass of 0.8 solar masses. */
-function starRecord(extra: ColumnSpec[] = []) {
-	return pointSourceRecord([
-		{ name: 'ra', type: 'float64', values: [26] },
-		{ name: 'dec', type: 'float64', values: [-16] },
-		{ name: 'parallax', type: 'float32', values: [100] },
-		{ name: 'parallax_error', type: 'float32', values: [0.1] },
-		{ name: 'mass_flame', type: 'float32', values: [0.8] },
-		{ name: 'radius_flame', type: 'float32', values: [0.9] },
-		...extra
-	]);
+/** A star 10 pc out with a FLAME mass of 0.8 solar masses and a radius of 0.9. */
+function starRecord(extra: ColumnSpec[] = [], radius: StarRadius | null = FLAME_RADIUS) {
+	return pointSourceRecord(
+		[
+			{ name: 'ra', type: 'float64', values: [26] },
+			{ name: 'dec', type: 'float64', values: [-16] },
+			{ name: 'parallax', type: 'float32', values: [100] },
+			{ name: 'parallax_error', type: 'float32', values: [0.1] },
+			{ name: 'mass_flame', type: 'float32', values: [0.8] },
+			...extra
+		],
+		[],
+		undefined,
+		radius
+	);
 }
 
 afterEach(() => vi.restoreAllMocks());
@@ -140,7 +147,12 @@ describe('a planet end', () => {
 		expect(extrasolarEndOf(planetBody(file, 'x-21238067-b-1'), host)!.star).toEqual(star);
 		const alone = extrasolarEndOf(planetBody(file, 'x-21238067-b-1'))!.star;
 		expect(alone.muKm3S2! / GM_SUN_KM3_S2).toBeCloseTo(0.9, 6);
-		expect(alone.radiusKm).toBeCloseTo(0.8 * 695_700, -1);
+		expect(alone.radiusKm).toBeCloseTo(0.9 * 695_700, -1);
+	});
+
+	it("takes the radius of the file's host, never the star radius of a planet's fits", () => {
+		const unsized = system(file.planets, null);
+		expect(extrasolarEndOf(planetBody(unsized, 'x-21238067-b-1'))!.star.radiusKm).toBeNull();
 	});
 
 	it('takes its mass from its radius when that is all there is, and is rock', () => {
@@ -399,6 +411,8 @@ describe('the place of an end on the map', () => {
 });
 
 describe('resolving an end from the export', () => {
+	afterEach(() => vi.mocked(loadSystemNodes).mockReset());
+
 	it('reads a planet through the planet files, as its live body', async () => {
 		vi.spyOn(planetCatalogue, 'planet').mockResolvedValue({
 			planet: ALPHA_CEN.planets[0],
@@ -470,6 +484,72 @@ describe('resolving an end from the export', () => {
 		expect((await resolveExtrasolarEnd('x-5'))?.body.id).toBe('x-5');
 	});
 
+	describe('at a point of several stars', () => {
+		/** A held star of the point, at the place of its System row. */
+		const heldStar = (id: number, solar: number): ExtrasolarRecord => {
+			const base = resolvedSystemRecord(id, null);
+			const radius = { solar, source: 'literature' } as const;
+			const row = tableRow('system', 3, [
+				{ name: 'primary', type: 'id', values: [null] },
+				{ name: 'ra', type: 'float64', values: [26] },
+				{ name: 'dec', type: 'float64', values: [-16] },
+				{ name: 'distance', type: 'float64', values: [10] }
+			]);
+			return {
+				...base,
+				metadata: { ...base.metadata, class: 'star', system: 5, radius },
+				rows: new Map([['system', row]])
+			};
+		};
+
+		/** The point 5 holds the star 6 and the pair 8 of the stars 7 and 9. */
+		function point() {
+			const record = { ...starRecord([], null), id: 5 };
+			record.rows = new Map([...record.rows, ['system', systemRow(5)]]);
+			const records = new Map([
+				[5, record],
+				[6, heldStar(6, 3)],
+				[7, heldStar(7, 1)],
+				[9, heldStar(9, 4)]
+			]);
+			vi.spyOn(extrasolarLookup, 'live').mockImplementation(async (id) => ({
+				kind: 'live',
+				record: records.get(Number(id))!
+			}));
+			vi.spyOn(planetCatalogue, 'index').mockResolvedValue(null);
+			const node = (id: number, point: boolean, members: [number, string][]) =>
+				({
+					id,
+					point,
+					depth: point ? 0 : 1,
+					orbit: null,
+					members: members.map(([id, kind]) => ({ id, kind }))
+				}) as unknown as SystemNode;
+			vi.mocked(loadSystemNodes).mockResolvedValue([
+				node(5, true, [
+					[6, 'held star'],
+					[8, 'system']
+				]),
+				node(8, false, [
+					[7, 'held star'],
+					[9, 'held star']
+				])
+			]);
+		}
+
+		it('stops clear of the largest star it holds, also inside its pairs', async () => {
+			point();
+			const end = (await resolveExtrasolarEnd('x-5'))!;
+			expect(end.star.radiusKm).toBe(4 * SOLAR_RADIUS_KM);
+			expect((await extrasolarEndAtRest('x-5'))!.star.radiusKm).toBeNull();
+		});
+
+		it('stops clear of a held star by its own radius, which the scene does not draw', async () => {
+			point();
+			expect((await resolveExtrasolarEnd('x-6'))!.star.radiusKm).toBe(3 * SOLAR_RADIUS_KM);
+		});
+	});
+
 	describe('with a star on a drawn orbit', () => {
 		const ROOT = 20;
 		const STAR = 11;
@@ -519,8 +599,6 @@ describe('resolving an end from the export', () => {
 		}
 
 		const members = [member(STAR), member(12), member(OTHER_PAIR[0]), member(OTHER_PAIR[1])];
-
-		afterEach(() => vi.mocked(loadSystemNodes).mockReset());
 
 		it('turns about a barycentre the map can place', async () => {
 			system([...members, member(ROOT)]);

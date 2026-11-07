@@ -46,9 +46,12 @@ const SOURCE_NAMES: Record<string, () => string> = {
 	'iau-wgsn': m.source_iau_wgsn_name,
 	'andrae-2023': m.source_andrae_2023_name,
 	'gaia-dr3-gspphot': m.source_gaia_dr3_gspphot_name,
+	'gaia-dr3-flame': m.source_gaia_dr3_flame_name,
+	'gaia-dr3-flame-spec': m.source_gaia_dr3_flame_spec_name,
 	'gaia-dr3-gspspec': m.source_gaia_dr3_gspspec_name,
 	'gaia-dr3-nss': m.source_gaia_dr3_nss_name,
 	'pastel-2020': m.source_pastel_name,
+	jmdc: m.source_jmdc_name,
 	'apogee-dr17': m.source_apogee_dr17_name,
 	'lamost-dr10': m.source_lamost_dr10_name,
 	'gcvs-5.1': m.source_gcvs_name,
@@ -80,8 +83,6 @@ const SOURCE_NAMES: Record<string, () => string> = {
 	'open-exoplanet-catalogue': m.source_open_exoplanet_catalogue_name,
 	'iau-nameexoworlds': m.source_nameexoworlds_name,
 	// The inputs of an interior fit.
-	'gaia-dr3-flame': m.source_gaia_dr3_flame_name,
-	'gaia-dr3-flame-spec': m.source_gaia_dr3_flame_spec_name,
 	'gaia-dr3-esphs': m.source_gaia_dr3_esphs_name,
 	'host-star': m.source_planet_catalogues_name,
 	'casagrande-2010': m.source_casagrande_2010_name,
@@ -144,6 +145,10 @@ type CreditPage = keyof typeof CREDIT_PAGES;
 const SOURCE_PAGES: Partial<Record<string, CreditPage>> = {
 	'gaia-dr3': 'gaia',
 	'gaia-dr3-named': 'gaia',
+	'gaia-dr3-flame': 'gaia',
+	'gaia-dr3-flame-spec': 'gaia',
+	'gaia-dr3-gspphot': 'gaia',
+	jmdc: 'jmdc',
 	'hipparcos-2007': 'hipparcos',
 	'hipparcos-1997': 'hipparcosPhotometry',
 	simbad: 'simbad',
@@ -169,6 +174,8 @@ const SYSTEM_PAGES: Partial<Record<string, CreditPage[]>> = {
 	simbad: ['simbad'],
 	'simbad-type': ['simbad'],
 	'gaia-dr3-orbits': ['orbits'],
+	'nasa-exoplanet-archive': ['nasaExoplanetArchive'],
+	'exoplanet-eu': ['exoplanetEu'],
 	'open-exoplanet-catalogue': ['openExoplanetCatalogue'],
 	'planet-catalogues': ['nasaExoplanetArchive', 'exoplanetEu', 'openExoplanetCatalogue']
 };
@@ -187,11 +194,21 @@ function systemSources({ sources, members, orbit, star }: SystemNode): (string |
 		orbit?.argPeriastronSource ?? null,
 		orbit?.epochSource ?? null,
 		star?.massSource ?? null,
-		star?.radiusSource ?? null,
 		star?.teffSource ?? null,
 		star?.spectralTypeSource ?? null
 	];
 }
+
+/** The source columns of a planet host's values on its Point source row, each
+ *  from the first catalogue that has it. The radius is credited by its
+ *  Metadata source. */
+const HOST_VALUE_SOURCES = [
+	'host_teff_source',
+	'host_mass_source',
+	'host_metallicity_source',
+	'host_logg_source',
+	'host_age_source'
+];
 
 /** The LMC is at 49.6 kpc and the SMC at 62.4 kpc. */
 const SMC_BEYOND_PC = 56_000;
@@ -229,7 +246,7 @@ export function citationCredits(citations: readonly SystemCitation[]): StarCredi
 /** The credits of the catalogues that gave this record its values and `nodes`,
  *  the System rows its panel shows, then the papers that `references` cites
  *  for its values from the literature table. `measured` is the point whose
- *  measurement the panel shows for a held star. */
+ *  paper gives a held star its radius. */
 export function starCredits(
 	record: ExtrasolarRecord,
 	references?: GlobalObjectData['references'],
@@ -237,7 +254,8 @@ export function starCredits(
 	measured: SystemNode | null = null
 ): StarCredit[] {
 	const pages = new Set<CreditPage | undefined>();
-	const name = record.metadata.nameSource;
+	const { nameSource: name, radius } = record.metadata;
+	pages.add(SOURCE_PAGES[radius?.source ?? '']);
 	const home = homeRow(record);
 	const distance = home && starDistance(home, astrometricOrbit(record));
 	pages.add(distancePage(distance));
@@ -248,11 +266,14 @@ export function starCredits(
 	for (const source of nodes.flatMap(systemSources)) {
 		for (const page of SYSTEM_PAGES[source ?? ''] ?? []) pages.add(page);
 	}
-	// A metallicity assumes one star, so a node shows none.
+	// A node shows no one-star values: no metallicity, no host values.
 	const oneStar = !record.rows.has(SYSTEM_SLUG);
 	for (const row of record.rows.values()) {
 		pages.add(SOURCE_PAGES[row.text('astrometry_source') ?? '']);
 		pages.add(SOURCE_PAGES[row.text('host_star_source') ?? '']);
+		if (oneStar) {
+			for (const column of HOST_VALUE_SOURCES) pages.add(SOURCE_PAGES[row.text(column) ?? '']);
+		}
 		if (
 			row.text('gaia_photometry_source') ||
 			row.text('gspphot_source') ||
@@ -265,7 +286,6 @@ export function starCredits(
 		if (oneStar && row.text('xgboost_source')) pages.add('xpMetallicity');
 		// PASTEL, the GCVS and ATNF join by SIMBAD ids, LAMOST by its M-star catalogue.
 		if (row.text('pastel_source')) pages.add('pastel').add('simbad');
-		if (row.text('angular_diameter_source')) pages.add('jmdc');
 		if (row.text('apogee_source')) pages.add('apogee');
 		if (row.text('lamost_source')) pages.add('lamost').add('lamostMStars');
 		if (row.text('gcvs_source')) pages.add('gcvs').add('simbad');
@@ -273,12 +293,11 @@ export function starCredits(
 		if (row.text('atnf_source')) pages.add('atnf').add('simbad');
 		if (oneStar && row.text('xhip_metallicity_source')) pages.add('xhip');
 	}
-	if (measured?.measuredBy === 'angular diameter') pages.add('jmdc');
 	return [
 		...creditsOf(pages, record.credits),
 		...paperCredits([
 			...(distance?.source === LITERATURE ? (references?.distance ?? []) : []),
-			...(references?.paper_radius ?? []),
+			...(radius?.source === LITERATURE ? (references?.paper_radius ?? []) : []),
 			...(measured?.radiusPapers ?? [])
 		])
 	];
@@ -364,7 +383,7 @@ export function starInteriorCredits(
 		const distance = starDistance(home, astrometricOrbit(record));
 		const fromColour = teffSource === 'casagrande-2010' || teffSource === 'flower-1996';
 		const fromV = luminositySource === 'bolometric-correction';
-		if (teffSource === 'host-star') pages.add(SOURCE_PAGES[home.text('host_star_source') ?? '']);
+		if (teffSource === 'host-star') pages.add(SOURCE_PAGES[home.text('host_teff_source') ?? '']);
 		if (fromColour) pages.add(photometryPage(home, 'b_v'));
 		if (fromV) {
 			pages.add(photometryPage(home, 'v_mag'));

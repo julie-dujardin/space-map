@@ -8,8 +8,10 @@ import * as m from '$lib/paraglide/messages.js';
 import { extrasolarObjectId } from '$lib/fetch/extrasolar/ids';
 import { planetCatalogue, type Planet, type PlanetSystem } from '$lib/fetch/extrasolar/planets';
 import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
+import { LITERATURE, type StarRadius } from '$lib/fetch/extrasolar/lookup';
 import {
 	loadSystemNodes,
+	measuresPoint,
 	type HeldStarValues,
 	type SystemMember,
 	type SystemNode
@@ -48,24 +50,14 @@ export interface SystemHost {
 	planets: readonly Planet[];
 }
 
-/** A companion this much fainter adds a tenth of the light at most. */
-const BLEND_MAGNITUDES = 2.5;
-/** The same test for a companion with no magnitude. */
-const BLEND_MASS_RATIO = 0.7;
-
-function blends(main: SystemMember, other: SystemMember): boolean {
-	if (main.vMag !== null && other.vMag !== null) return other.vMag - main.vMag < BLEND_MAGNITUDES;
-	return main.mass !== null && other.mass !== null && other.mass / main.mass > BLEND_MASS_RATIO;
-}
-
-/** The point whose measurement is that of the held star `held`. A measurement
- *  is of a point's light, so it is the first star's only when no other member
- *  adds much to that light. */
-export function measuredPoint(system: StarSystem | null, held: SystemNode): SystemNode | null {
-	const point = held.parent === null ? null : system?.nodes.get(held.parent);
-	if (!point?.point || point.measuredRadius === null) return null;
-	const [main, ...others] = point.members;
-	return main?.id === held.id && !others.some((other) => blends(main, other)) ? point : null;
+/** The point whose paper gives the held star `held` its radius `radius`. */
+export function radiusPaperPoint(
+	system: StarSystem | null,
+	held: SystemNode,
+	radius: StarRadius | null
+): SystemNode | null {
+	if (radius?.source !== LITERATURE || !measuresPoint(held, radius)) return null;
+	return (held.parent !== null && system?.nodes.get(held.parent)) || null;
 }
 
 /** A component letter, alone or at the end of a name ("Sirius A"). A longer
@@ -149,7 +141,7 @@ async function loadPlanets(root: number, ids: ReadonlySet<number>): Promise<Map<
 }
 
 async function withRadiusPapers(node: SystemNode): Promise<SystemNode> {
-	if (node.measuredBy !== 'paper') return node;
+	if (!node.paperRadius) return node;
 	const detail = await fetchObjectDetail(extrasolarObjectId(node.id)).catch((e: unknown) => {
 		console.warn(`[systems] no papers for ${node.id}:`, e);
 		return null;

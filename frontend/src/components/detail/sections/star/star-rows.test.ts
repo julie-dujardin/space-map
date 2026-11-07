@@ -3,6 +3,7 @@ import { ExtrasolarLookup, type ExtrasolarRecord } from '$lib/fetch/extrasolar/l
 import { HAS_EXPORT, diskSource } from '$lib/fetch/extrasolar/__fixtures__/export';
 import { pointSourceRecord, valueColumns } from '$lib/fetch/extrasolar/__fixtures__/record';
 import type { ColumnSpec } from '$lib/fetch/extrasolar/__fixtures__/writer';
+import type { StarRadius } from '$lib/fetch/extrasolar/lookup';
 import { STAR } from '$lib/fetch/extrasolar/__fixtures__/synthetic';
 import { ltrIsolate } from '$lib/format/bidi';
 import { starAliases, starClassLabel, starIdentifiers, starSections, starStats } from './star-rows';
@@ -148,6 +149,7 @@ describe("a star's identifiers", () => {
 				system: null,
 				families: 0n,
 				familiesEstimated: 0n,
+				radius: null,
 				spectralType: null,
 				object: false,
 				aliasTarget: null
@@ -450,10 +452,12 @@ describe('the identifiers of the catalogues that join the Point source row', () 
 	});
 });
 
-/** A record with one Point source row of these columns and nothing else. */
+/** A record with one Point source row of these columns, the Metadata
+ *  `radius` and nothing else. */
 function synthetic(
 	values: Record<string, number | string | null>,
-	orbit?: ColumnSpec[]
+	orbit?: ColumnSpec[],
+	radius: StarRadius | null = null
 ): ExtrasolarRecord {
 	return pointSourceRecord(
 		Object.entries(values).map(([name, value]) => ({
@@ -462,9 +466,62 @@ function synthetic(
 			values: [value]
 		})),
 		[],
-		orbit
+		orbit,
+		radius
 	);
 }
+
+type Values = Record<string, number | string | null>;
+
+describe("a star's diameter", () => {
+	const row = (values: Values, radius: StarRadius | null) =>
+		starSections(synthetic(values, undefined, radius))
+			.find((s) => s.key === 'physical')
+			?.rows.find((r) => r.label.startsWith('Diameter'));
+	const card = (values: Values, radius: StarRadius | null) =>
+		starStats(synthetic(values, undefined, radius))
+			.flat()
+			.find((s) => s.label === 'Diameter');
+	const transitHost = {
+		teff_gspphot: 6300,
+		radius_literature: 1.5,
+		radius_flame: 1.9,
+		host_radius: 1.657,
+		host_radius_error: 0.046
+	};
+
+	it("shows the export's radius and its source, not a column the export passed over", () => {
+		const radius = { solar: 1.657, source: 'nasa-exoplanet-archive' } as const;
+		const diameter = row(transitHost, radius)!;
+		expect(plain(diameter.value)).toBe('2,306,000 ± 64,000 km');
+		expect(plain(diameter.tooltip!)).toBe('1.66× the Sun · Source: NASA Exoplanet Archive');
+		expect(plain(card(transitHost, radius)!.value)).toBe('2.31M km');
+	});
+
+	it('shows a measurement at three figures', () => {
+		const diameter = row(transitHost, { solar: 1.5, source: 'literature' })!;
+		expect(plain(diameter.value)).toBe('2,090,000 km');
+		expect(diameter.tooltip).toContain('Source: Published paper');
+		const jmdc = row(transitHost, { solar: 1.5, source: 'jmdc' })!;
+		expect(jmdc.tooltip).toContain('Source: JMDC');
+	});
+
+	it("gives a FLAME-spec radius the bounds of FLAME's second run", () => {
+		const spec = {
+			radius_flame_spec: 0.95,
+			radius_flame_spec_lower: 0.9,
+			radius_flame_spec_upper: 1
+		};
+		const diameter = row(spec, { solar: 0.95, source: 'gaia-dr3-flame-spec' })!;
+		expect(plain(diameter.value)).toBe('1,322,000 ± 70,000 km');
+		expect(diameter.tooltip).toContain('Source: Gaia DR3 FLAME (GSP-Spec)');
+	});
+
+	it('has no row and no card without a radius, whatever the columns hold', () => {
+		expect(row(transitHost, null)).toBeUndefined();
+		expect(card(transitHost, null)).toBeUndefined();
+	});
+});
 
 describe("a star's FLAME values", () => {
 	const dwarf = {
@@ -488,22 +545,36 @@ describe("a star's FLAME values", () => {
 		bc_flame: -0.05,
 		flags_flame: '00'
 	};
-	const physical = (values: Record<string, number | string | null>) =>
+	/** The radius that the export picks for these columns. */
+	const radiusOf = (values: Values): StarRadius | null => {
+		const fit = (['', '_spec'] as const).find(
+			(run) => typeof values[`radius_flame${run}`] === 'number'
+		);
+		if (fit !== undefined) {
+			const source = fit ? 'gaia-dr3-flame-spec' : 'gaia-dr3-flame';
+			return { solar: values[`radius_flame${fit}`] as number, source };
+		}
+		const gspphot = values.radius_gspphot;
+		return typeof gspphot === 'number' ? { solar: gspphot, source: 'gaia-dr3-gspphot' } : null;
+	};
+	const sectionsOf = (values: Values) =>
+		starSections(synthetic(values, undefined, radiusOf(values)));
+	const physical = (values: Values) =>
 		Object.fromEntries(
-			(starSections(synthetic(values)).find((s) => s.key === 'physical')?.rows ?? []).map((r) => [
+			(sectionsOf(values).find((s) => s.key === 'physical')?.rows ?? []).map((r) => [
 				r.label,
 				plain(r.value)
 			])
 		);
-	const section = (values: Record<string, number | string | null>, key: string) =>
+	const section = (values: Values, key: string) =>
 		Object.fromEntries(
-			(starSections(synthetic(values)).find((s) => s.key === key)?.rows ?? []).map((r) => [
+			(sectionsOf(values).find((s) => s.key === key)?.rows ?? []).map((r) => [
 				r.label,
 				plain(r.value)
 			])
 		);
-	const cards = (values: Record<string, number | string | null>) =>
-		starStats(synthetic(values))
+	const cards = (values: Values) =>
+		starStats(synthetic(values, undefined, radiusOf(values)))
 			.flat()
 			.map((s) => [s.label, plain(s.value)]);
 

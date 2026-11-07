@@ -43,7 +43,7 @@ export class StarInteriorLoad {
 			const interior = this.interior;
 			if (!current || !interior || interior.id !== current.id) return null;
 			const home = homeRow(current);
-			const block = starInteriorBlock(interior, home && starRadiusKm(home));
+			const block = starInteriorBlock(interior, starRadiusKm(current.metadata));
 			if (!block) return null;
 			return {
 				interior,

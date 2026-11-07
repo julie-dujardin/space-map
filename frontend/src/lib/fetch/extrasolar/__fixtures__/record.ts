@@ -6,7 +6,7 @@
 
 import { Container, KIND_TILE } from '../container';
 import type { ExtrasolarCredit, ExtrasolarTable } from '../files';
-import { SYSTEM_SLUG, TableRow, type ExtrasolarRecord } from '../lookup';
+import { SYSTEM_SLUG, TableRow, type ExtrasolarRecord, type StarRadius } from '../lookup';
 import { own } from './export';
 import { encode, tileInfoBytes, type ColumnSpec } from './writer';
 
@@ -35,10 +35,12 @@ export function valueColumns(values: Record<string, number | string>): ColumnSpe
 	}));
 }
 
+/** A star whose Metadata row has `radius`. */
 export function pointSourceRecord(
 	columns: ColumnSpec[],
 	credits: ExtrasolarCredit[] = [],
-	orbit?: ColumnSpec[]
+	orbit?: ColumnSpec[],
+	radius: StarRadius | null = null
 ): ExtrasolarRecord {
 	const rows = new Map([[SLUG, tableRow(SLUG, 1, columns)]]);
 	if (orbit) rows.set(ORBIT_SLUG, tableRow(ORBIT_SLUG, 2, orbit));
@@ -56,6 +58,7 @@ export function pointSourceRecord(
 			families: 0n,
 			familiesEstimated: 0n,
 			spectralType: null,
+			radius,
 			object: false,
 			aliasTarget: null
 		},
@@ -86,6 +89,7 @@ export function resolvedSystemRecord(id: number, primary: number | null): Extras
 			families: 0n,
 			familiesEstimated: 0n,
 			spectralType: null,
+			radius: null,
 			object: false,
 			aliasTarget: null
 		},

@@ -6,17 +6,17 @@
  */
 
 import * as m from '$lib/paraglide/messages.js';
-import { starSourceName } from '$lib/credits/star-sources';
 import {
 	POINT_SOURCE_SLUG,
 	astrometricOrbit,
-	type ExtrasolarRecord
+	type ExtrasolarRecord,
+	type StarRadius
 } from '$lib/fetch/extrasolar/lookup';
-import type {
-	HeldStarValues,
-	PairOrbit,
-	SystemCitation,
-	SystemNode
+import {
+	measuresPoint,
+	type HeldStarValues,
+	type PairOrbit,
+	type SystemNode
 } from '$lib/fetch/extrasolar/systems';
 import type { EntityRef } from '$lib/fetch/objects/object-data';
 import { ltrIsolate } from '$lib/format/bidi';
@@ -26,16 +26,19 @@ import { formatCompactKm } from '$lib/format/distance';
 import { formatUnit, joinParts, sigFigures } from '$lib/format/quantities';
 import { formatTemperature } from '$lib/format/temperature';
 import { SOLAR_RADIUS_KM } from '$lib/math/units';
-import { measuredPoint, systemRows, type StarSystem, type SystemRow } from '$lib/state/star-system';
+import { systemRows, type StarSystem, type SystemRow } from '$lib/state/star-system';
 import type { Stat } from '../kit/StatCard.svelte';
 import { formatJulianDay, formatPeriod } from '../planet/planet-rows';
 import {
 	PC_LY,
+	diameterRow,
 	distanceStat,
 	epochLabel,
+	hint,
 	pointDistanceStat,
 	row,
 	rows,
+	sourceOf,
 	spectralType,
 	starSections,
 	units,
@@ -57,16 +60,6 @@ const COMPUTED = 3;
 /** Decimals of a Julian day: under a second. */
 const JD_DECIMALS = 5;
 
-/** Where a value is from: the work that its source cites, else the source. */
-function sourceOf(
-	source: string | null,
-	references: readonly SystemCitation[]
-): string | undefined {
-	if (!source) return undefined;
-	const short = references.find((work) => work.source === source)?.short;
-	return `${m.source_prefix()} ${short ?? starSourceName(source)}`;
-}
-
 /** An object's link in a row. */
 function objectRef(id: number, name: string): EntityRef {
 	return { name, primary_type: 'x', primary_id: String(id) };
@@ -86,22 +79,16 @@ function diameterValue(radius: number): string {
 	return formatCompactKm(2 * radius * SOLAR_RADIUS_KM);
 }
 
-/** A held star's values. A measurement of its point comes before a catalogue's
- *  radius, as on the page of a star of its own. */
-function heldValues(node: SystemNode, star: HeldStarValues, system: StarSystem | null) {
-	const point = measuredPoint(system, node);
-	return point ? { ...star, radius: point.measuredRadius, radiusSource: null } : star;
-}
-
-function heldStarStats(node: SystemNode, star: HeldStarValues): (Stat | null)[] {
-	const diameter =
-		star.radius === null
-			? null
-			: {
-					label: m.diameter(),
-					value: diameterValue(star.radius),
-					tooltip: sizeComparison(star.radius * SOLAR_RADIUS_KM)
-				};
+function heldStarStats(
+	node: SystemNode,
+	star: HeldStarValues,
+	radius: StarRadius | null
+): (Stat | null)[] {
+	const diameter = radius && {
+		label: m.diameter(),
+		value: diameterValue(radius.solar),
+		tooltip: sizeComparison(radius.solar * SOLAR_RADIUS_KM)
+	};
 	const code = spectralType(star.spectralType);
 	const nature =
 		star.teff !== null
@@ -125,14 +112,9 @@ function nodeStats(record: ExtrasolarRecord, node: SystemNode, planets: number):
 }
 
 /** The cards of a node, which holds `planets` planets, or of a held star. */
-export function systemStats(
-	record: ExtrasolarRecord,
-	node: SystemNode,
-	planets: number,
-	system: StarSystem | null = null
-): Stat[][] {
+export function systemStats(record: ExtrasolarRecord, node: SystemNode, planets: number): Stat[][] {
 	const cards = node.star
-		? heldStarStats(node, heldValues(node, node.star, system))
+		? heldStarStats(node, node.star, record.metadata.radius)
 		: nodeStats(record, node, planets);
 	return [cards.filter((card): card is Stat => card !== null).slice(0, 3)];
 }
@@ -143,11 +125,6 @@ function degrees(value: number, digits: number): string {
 
 function arcseconds(value: number): string {
 	return joinParts({ value: sigFigures(value), unit: m.symbol_arcsecond(), tight: true });
-}
-
-/** Joins the hints of one value. */
-function hint(...parts: (string | null | undefined)[]): string | undefined {
-	return parts.filter(Boolean).join(' · ') || undefined;
 }
 
 /** The element rows of a pair's orbit. An assumed or computed element says so. */
@@ -286,6 +263,7 @@ function classification(label: string, value: string | null, note?: string): Sta
 function heldStarSections(
 	node: SystemNode,
 	star: HeldStarValues,
+	radius: StarRadius | null,
 	system: StarSystem | null
 ): StarSection[] {
 	const { references } = star;
@@ -298,16 +276,8 @@ function heldStarSections(
 					value: formatMass(kg),
 					tooltip: hint(massComparison(kg), sourceOf(star.massSource, references))
 				},
-		star.radius === null
-			? null
-			: {
-					label: m.diameter(),
-					value: diameterValue(star.radius),
-					tooltip: hint(
-						sizeComparison(star.radius * SOLAR_RADIUS_KM),
-						sourceOf(star.radiusSource, references)
-					)
-				},
+		// A paper of the star's own names its radius; its point's paper does not.
+		diameterRow(radius, null, star.hostRadiusError, measuresPoint(node, radius) ? [] : references),
 		star.teff === null
 			? null
 			: {
@@ -335,7 +305,7 @@ export function systemSections(
 	system: StarSystem | null
 ): StarSection[] {
 	if (node.star) {
-		return heldStarSections(node, heldValues(node, node.star, system), system).filter(
+		return heldStarSections(node, node.star, record.metadata.radius, system).filter(
 			({ rows }) => rows.length > 0
 		);
 	}

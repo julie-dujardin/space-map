@@ -26,12 +26,12 @@ import {
 	type SystemNode
 } from '$lib/fetch/extrasolar/systems';
 import { RetryBackoff } from '$lib/fetch/retry-backoff';
-import { AU_SCALE, SOLAR_RADIUS_KM } from '$lib/math/units';
+import { AU_SCALE } from '$lib/math/units';
 import type { Vec3 } from '$lib/scene/animation/math';
 import { putOnOrbit, takeOffOrbit } from '$lib/scene/position/placement';
 import { ensureExtrasolarBody } from '$lib/scene/setup/extrasolar';
 import { bpRpFromTeff, starCssColour } from '$lib/scene/starfield/colour';
-import { colourBv, gEstimate } from '$lib/scene/starfield/record';
+import { colourBv, gEstimate, starRadiusKm } from '$lib/scene/starfield/record';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { SwitchFade } from '$lib/scene/visibility/switch-fade';
 import { pxPerRad, systemShown } from '$lib/scene/visibility/system-fade';
@@ -145,6 +145,14 @@ export async function holdStarSystem(
 	return pairs.length === plan.pairs.length ? plan : { ...plan, pairs };
 }
 
+/** A held star takes its radius only where it draws on its own, so the
+ *  camera never frames a sphere that does not draw. */
+function giveSphere(star: PositionedBody): void {
+	const anchor = star.extrasolar!;
+	anchor.radiusKm = starRadiusKm(anchor.record.metadata);
+	star.data.radiusKm = anchor.radiusKm ?? NaN;
+}
+
 /** An apparent magnitude as absolute G at the distance of the node. */
 function absoluteAt(node: SystemNode, apparent: number | null): number | null {
 	if (apparent === null || node.distance === null) return null;
@@ -189,8 +197,7 @@ function describeMembers(
 			anchor.absMag = light[i];
 			anchor.teff = held.teff;
 			anchor.colour = held.teff === null ? (primary?.colour ?? null) : bpRpFromTeff(held.teff);
-			anchor.radiusKm = held.radius === null ? null : held.radius * SOLAR_RADIUS_KM;
-			star.data.radiusKm = anchor.radiusKm ?? NaN;
+			giveSphere(star);
 		}
 		const inner = plan.nodes.get(member.id!)?.primary;
 		const look = inner ? body(inner)?.extrasolar : anchor;

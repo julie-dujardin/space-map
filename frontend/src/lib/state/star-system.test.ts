@@ -5,6 +5,7 @@ import {
 	B,
 	C,
 	ROOT,
+	heldValues,
 	member,
 	systemNodeOf,
 	threeStars
@@ -17,13 +18,16 @@ const { loadSystemNodes, fetchPageName, index, system } = vi.hoisted(() => ({
 	index: vi.fn(),
 	system: vi.fn()
 }));
-vi.mock('$lib/fetch/extrasolar/systems', () => ({ loadSystemNodes }));
+vi.mock('$lib/fetch/extrasolar/systems', async (original) => ({
+	...(await original<typeof import('$lib/fetch/extrasolar/systems')>()),
+	loadSystemNodes
+}));
 vi.mock('./page-name', () => ({ fetchPageName }));
 vi.mock('$lib/fetch/extrasolar/planets', () => ({ planetCatalogue: { index, system } }));
 
 import {
 	loadStarSystem,
-	measuredPoint,
+	radiusPaperPoint,
 	nodePlanetCount,
 	systemHosts,
 	systemRows,
@@ -169,37 +173,32 @@ describe('loadStarSystem', () => {
 	});
 });
 
-describe('measuredPoint', () => {
-	const held = systemNodeOf(A, { parent: AB });
-	const systemOf = (others: ReturnType<typeof member>[], point = true): StarSystem => {
-		const node = systemNodeOf(AB, {
-			point,
-			measuredRadius: 800,
-			members: [member(A, { vMag: 1, mass: 15 }), ...others]
-		});
-		return {
-			root: node,
-			name: '',
-			nodes: new Map([[AB, node]]),
-			names: new Map(),
-			planets: new Map()
-		};
+describe('radiusPaperPoint', () => {
+	const point = systemNodeOf(AB, { point: true, paperRadius: true, members: [member(A)] });
+	const system: StarSystem = {
+		root: point,
+		name: '',
+		nodes: new Map([[AB, point]]),
+		names: new Map(),
+		planets: new Map()
 	};
+	const held = (radiusSource: string | null, dominant = true) =>
+		systemNodeOf(A, { parent: AB, star: heldValues({ radiusSource, dominant }) });
+	const paper = { solar: 800, source: 'literature' } as const;
 
-	it('gives the main star the measurement of its point', () => {
-		const point = systemOf([member(B, { vMag: 6 })]);
-		expect(measuredPoint(point, held)?.id).toBe(AB);
-		expect(measuredPoint(systemOf([member(null, { kind: 'entry' })]), held)?.id).toBe(AB);
+	it('gives the point of a held star whose paper radius is not its own', () => {
+		expect(radiusPaperPoint(system, held('msc'), paper)?.id).toBe(AB);
+		expect(radiusPaperPoint(system, held(null), paper)?.id).toBe(AB);
 	});
 
-	it('leaves a blend of two stars to the point', () => {
-		expect(measuredPoint(systemOf([member(B, { vMag: 2 })]), held)).toBeNull();
-		expect(measuredPoint(systemOf([member(B, { mass: 14 })]), held)).toBeNull();
+	it('gives none for a paper of its own, for another source, or before the system loads', () => {
+		expect(radiusPaperPoint(system, held('literature'), paper)).toBeNull();
+		expect(radiusPaperPoint(system, held(null), { solar: 800, source: 'jmdc' })).toBeNull();
+		expect(radiusPaperPoint(system, held(null), null)).toBeNull();
+		expect(radiusPaperPoint(null, held(null), paper)).toBeNull();
 	});
 
-	it('gives nothing to a companion or under a resolved node', () => {
-		expect(measuredPoint(systemOf([member(B)]), systemNodeOf(B, { parent: AB }))).toBeNull();
-		expect(measuredPoint(systemOf([], false), held)).toBeNull();
-		expect(measuredPoint(null, held)).toBeNull();
+	it('gives none for a member that does not dominate its point', () => {
+		expect(radiusPaperPoint(system, held(null, false), paper)).toBeNull();
 	});
 });

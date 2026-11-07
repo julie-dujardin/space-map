@@ -78,6 +78,7 @@ describe('ExtrasolarLookup on synthetic tiles', () => {
 		]);
 		expect(record.metadata.mask).toBe(2);
 		expect(record.metadata.object).toBe(true);
+		expect(record.metadata.radius).toEqual({ solar: expect.closeTo(1.711, 6), source: 'jmdc' });
 		expect(record.home).toBe('point-source');
 		expect(homeRow(record)?.number('parallax')).toBeCloseTo(379.21, 4);
 		expect(starDistance(homeRow(record)!, null)?.pc).toBeCloseTo(1000 / 379.21, 4);
@@ -139,6 +140,8 @@ describe('ExtrasolarLookup on synthetic tiles', () => {
 		const { record } = resolved;
 		expect(record.home).toBe('system');
 		expect(record.metadata.class).toBe('multiple star');
+		// A node of a star system has no radius.
+		expect(record.metadata.radius).toBeNull();
 		expect(hasDistance(record)).toBe(true);
 		expect(systemPrimary(record)).toBe(BINARY);
 		expect(record.metadata.system).toBeNull();

@@ -1,7 +1,7 @@
 import { ObjectType, type BodyData, type PositionedBody } from '$lib/types/objects';
 import { OrbitalSource } from '$lib/fetch/position/format';
 import { extrasolarObjectId } from '$lib/fetch/extrasolar/ids';
-import { isStarSystem, pointOf } from '$lib/fetch/extrasolar/systems';
+import { pointOf } from '$lib/fetch/extrasolar/systems';
 import {
 	SYSTEM_SLUG,
 	astrometricOrbit,
@@ -22,14 +22,15 @@ export const STAR_VIEW_DISTANCE = 1e4;
 
 /** The starfield draws extrasolar bodies at their catalogue positions. A
  *  resolved system or a held star has a place but no point, so it draws
- *  nothing. The Metadata row says whether the object bundles hold a localized
- *  entry. */
+ *  nothing, and has no radius for the camera to frame: a held star takes its
+ *  radius where its system draws it (`holdStarSystem`). The Metadata row gives
+ *  the radius and says whether the object bundles hold a localized entry. */
 export function makeStarBody(record: ExtrasolarRecord): PositionedBody {
 	const home = homeRow(record);
 	const orbit = astrometricOrbit(record);
 	const place = home ? starPlace(home, orbit) : null;
-	// One sphere at the point would show one star where there are more.
-	const radiusKm = home && !isStarSystem(record) ? starRadiusKm(home) : null;
+	const pointless = record.home === SYSTEM_SLUG;
+	const radiusKm = pointless ? null : starRadiusKm(record.metadata);
 	const data: BodyData = {
 		id: extrasolarObjectId(record.id),
 		name: record.metadata.name,
@@ -56,7 +57,7 @@ export function makeStarBody(record: ExtrasolarRecord): PositionedBody {
 			id: record.id,
 			record,
 			scene: place?.scene ?? null,
-			tree: record.home === SYSTEM_SLUG ? null : (place?.tree ?? null),
+			tree: pointless ? null : (place?.tree ?? null),
 			absMag: home ? drawnAbsoluteG(home, orbit) : null,
 			point: pointOf(record),
 			colour: home ? colourBpRp(home) : null,

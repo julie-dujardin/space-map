@@ -16,6 +16,7 @@ import {
 	valueColumns
 } from '$lib/fetch/extrasolar/__fixtures__/record';
 import { systemRows, type StarSystem } from '$lib/state/star-system';
+import type { ExtrasolarRecord, StarRadius } from '$lib/fetch/extrasolar/lookup';
 import { memberFigures, systemSections, systemStats } from './system-rows';
 import type { StarRowEntry, StarSection } from './star-rows';
 
@@ -172,7 +173,12 @@ describe('a held star', () => {
 		dec: -60.83,
 		star: heldValues()
 	});
-	const record = resolvedSystemRecord(A, null);
+	/** A held star whose Metadata row has `radius`. */
+	const heldRecord = (radius: StarRadius | null): ExtrasolarRecord => {
+		const base = resolvedSystemRecord(A, null);
+		return { ...base, metadata: { ...base.metadata, class: 'star', radius } };
+	};
+	const record = heldRecord({ solar: 0.6489, source: 'literature' });
 	const inPair = (orbit = pairOrbit()): StarSystem => {
 		const base = threeStars();
 		const pair = base.nodes.get(AB)!;
@@ -184,23 +190,34 @@ describe('a held star', () => {
 		expect(cards.map((c) => c.label)).toEqual(['Diameter', 'Distance', 'Temperature']);
 	});
 
-	it('takes the measurement of its point', () => {
-		const point = systemNodeOf(AB, {
-			point: true,
-			measuredRadius: 2,
-			measuredBy: 'angular diameter',
-			members: [member(A)]
-		});
-		const system: StarSystem = { ...threeStars(), nodes: new Map([[AB, point]]) };
-		const [cards] = systemStats(record, held, 0, system);
+	it('shows its Metadata radius and that source, not the radius of its System row', () => {
+		const archive = heldRecord({ solar: 2, source: 'nasa-exoplanet-archive' });
+		const [cards] = systemStats(archive, held, 0);
 		expect(cards[0].value).toBe('2.78M km');
-		const physical = section(systemSections(record, held, system), 'physical')?.rows;
-		expect(entry(physical, 'Diameter')?.tooltip).not.toContain('Doyle');
+		const physical = section(systemSections(archive, held, null), 'physical')?.rows;
+		expect(plain(entry(physical, 'Diameter')!.tooltip!)).toBe(
+			'2× the Sun · Source: NASA Exoplanet Archive'
+		);
+	});
+
+	it("names no paper of its own for the radius of its point's paper", () => {
+		const borrowed = { ...held, star: heldValues({ radiusSource: null, dominant: true }) };
+		const physical = section(systemSections(record, borrowed, null), 'physical')?.rows;
+		const tooltip = entry(physical, 'Diameter')!.tooltip!;
+		expect(tooltip).not.toContain('Doyle');
+		expect(tooltip).toContain('Source: Published paper');
+	});
+
+	it('gives a catalogue radius as the page of a star gives it, with its error', () => {
+		const host = { ...held, star: heldValues({ hostRadiusError: 0.046 }) };
+		const radius = { solar: 1.657, source: 'nasa-exoplanet-archive' } as const;
+		const physical = section(systemSections(heldRecord(radius), host, null), 'physical')?.rows;
+		expect(plain(entry(physical, 'Diameter')!.value)).toBe('2,306,000 ± 64,000 km');
 	});
 
 	it('falls back to mass and spectral type', () => {
-		const star = heldValues({ radius: null, teff: null });
-		const [cards] = systemStats(record, { ...held, star }, 0);
+		const star = heldValues({ teff: null });
+		const [cards] = systemStats(heldRecord(null), { ...held, star }, 0);
 		expect(cards.map((c) => c.label)).toEqual(['Mass', 'Distance', 'Spectral type']);
 	});
 

@@ -6,15 +6,16 @@
 
 import type { CrossId } from './container';
 import type { ValueReference } from '$lib/fetch/objects/object-data';
-import { measuredRadiusSolar } from '$lib/scene/starfield/record';
 import {
+	LITERATURE,
 	POINT_SOURCE_SLUG,
 	SYSTEM_SLUG,
 	TableRow,
 	extrasolarLookup,
 	systemPrimary,
 	type ExtrasolarLookup,
-	type ExtrasolarRecord
+	type ExtrasolarRecord,
+	type StarRadius
 } from './lookup';
 
 export type MemberKind = 'star' | 'system' | 'held star' | 'entry';
@@ -132,16 +133,21 @@ export interface PairOrbit {
 export interface HeldStarValues {
 	/** Solar masses. */
 	mass: number | null;
-	/** Nominal solar radii. */
-	radius: number | null;
 	/** K. */
 	teff: number | null;
 	spectralType: string | null;
 	massSource: string | null;
+	/** The source of the row's own radius. The star's radius is its Metadata
+	 *  `radius`, which this radius feeds. */
 	radiusSource: string | null;
+	/** The error of the planet catalogues' radius of a host, solar radii. */
+	hostRadiusError: number | null;
 	teffSource: string | null;
 	spectralTypeSource: string | null;
 	references: SystemCitation[];
+	/** True for the first member of a point when it dominates the point's
+	 *  light, so that the point's measurements are its own. */
+	dominant: boolean;
 }
 
 /** A System row: a point, a resolved system or a held star. */
@@ -172,11 +178,10 @@ export interface SystemNode {
 	orbit: PairOrbit | null;
 	/** On a held star. */
 	star: HeldStarValues | null;
-	/** What a paper or an angular diameter gives for a point, in nominal solar
-	 *  radii. */
-	measuredRadius: number | null;
-	measuredBy: 'paper' | 'angular diameter' | null;
-	/** The papers behind `measuredRadius`, once a system's load fills them. */
+	/** Whether its Point source row has a paper's radius. A held star of the
+	 *  point can take it. */
+	paperRadius: boolean;
+	/** The papers of that radius, once a system's load fills them. */
 	radiusPapers: ValueReference[];
 }
 
@@ -278,15 +283,25 @@ function pairOrbit(item: TableRow): PairOrbit {
 function heldStarValues(item: TableRow): HeldStarValues {
 	return {
 		mass: item.number('star.mass'),
-		radius: item.number('star.radius'),
 		teff: item.number('star.teff'),
 		spectralType: item.text('star.spectral_type'),
 		massSource: item.text('star.mass_source'),
 		radiusSource: item.text('star.radius_source'),
+		hostRadiusError: item.number('star.host_radius_error'),
 		teffSource: item.text('star.teff_source'),
 		spectralTypeSource: item.text('star.spectral_type_source'),
-		references: citations(item, 'star.references')
+		references: citations(item, 'star.references'),
+		dominant: item.flag('star.dominant') === true
 	};
+}
+
+/** Whether the held star `held`, whose Metadata radius is `radius`, has the
+ *  measurement of its point: a dominant member with no paper of its own
+ *  takes it, and a held star has no angular diameter of its own. */
+export function measuresPoint(held: SystemNode, radius: StarRadius | null): boolean {
+	if (!held.star?.dominant) return false;
+	if (radius?.source === 'jmdc') return true;
+	return radius?.source === LITERATURE && held.star.radiusSource !== LITERATURE;
 }
 
 /** The System row of a record, or null for an ID with none. */
@@ -296,8 +311,6 @@ export function systemNode(record: ExtrasolarRecord): SystemNode | null {
 	const orbit = items(row, 'orbit')?.[0];
 	const star = items(row, 'star')?.[0];
 	const ps = record.rows.get(POINT_SOURCE_SLUG);
-	const measuredRadius = ps ? measuredRadiusSolar(ps) : null;
-	const paper = ps?.number('radius_literature') != null;
 	return {
 		id: record.id,
 		point: row.flag('point')!,
@@ -318,8 +331,7 @@ export function systemNode(record: ExtrasolarRecord): SystemNode | null {
 		tree: items(row, 'tree')?.map(treeNode) ?? null,
 		orbit: orbit ? pairOrbit(orbit) : null,
 		star: star ? heldStarValues(star) : null,
-		measuredRadius,
-		measuredBy: measuredRadius === null ? null : paper ? 'paper' : 'angular diameter',
+		paperRadius: ps?.number('radius_literature') != null,
 		radiusPapers: []
 	};
 }

@@ -1,13 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { Container } from '$lib/fetch/extrasolar/container';
-import { TableRow, type ExtrasolarRecord } from '$lib/fetch/extrasolar/lookup';
+import { TableRow, type ExtrasolarRecord, type StarRadius } from '$lib/fetch/extrasolar/lookup';
 import type { ExtrasolarTable } from '$lib/fetch/extrasolar/files';
 import { encode } from '$lib/fetch/extrasolar/__fixtures__/writer';
 import { pointSourceRecord, tableRow } from '$lib/fetch/extrasolar/__fixtures__/record';
 import { makeStarBody } from './star-focus';
 
+/** A star whose Metadata row has `radius`, with Point source columns `extra`. */
 function record(
-	radius: number | null | undefined,
+	radius: StarRadius | null,
 	extra: Record<string, number | null> = {},
 	cls = 'star'
 ): ExtrasolarRecord {
@@ -18,10 +19,9 @@ function record(
 		parallax_error: 1,
 		teff_gspphot: 3000,
 		phot_bp_mean_mag: 8,
-		phot_rp_mean_mag: 5
+		phot_rp_mean_mag: 5,
+		...extra
 	};
-	if (radius !== undefined) values.radius_gspphot = radius;
-	Object.assign(values, extra);
 	const bytes = encode(
 		1,
 		'test',
@@ -36,7 +36,7 @@ function record(
 	);
 	return {
 		id: 22137869,
-		metadata: { name: 'Test star', class: cls } as ExtrasolarRecord['metadata'],
+		metadata: { name: 'Test star', class: cls, radius } as ExtrasolarRecord['metadata'],
 		home: 'point-source',
 		rows: new Map([['point-source', row]]),
 		credits: []
@@ -72,28 +72,41 @@ describe('a focused binary star', () => {
 });
 
 describe('a focused object with no point', () => {
-	it('has the place of its System row, and no tree place or light', () => {
+	/** A node or a held star at the place of its System row. */
+	function pointless(cls: string, radius: StarRadius | null): ExtrasolarRecord {
 		const row = tableRow('system', 3, [
 			{ name: 'ra', type: 'float64', values: [45] },
 			{ name: 'dec', type: 'float64', values: [30] },
 			{ name: 'distance', type: 'float64', values: [10] }
 		]);
-		const body = makeStarBody({
+		return {
 			id: 7,
-			metadata: { name: 'Pair', class: 'binary star' } as ExtrasolarRecord['metadata'],
+			metadata: { name: 'Pair', class: cls, radius } as ExtrasolarRecord['metadata'],
 			rows: new Map([['system', row]]),
 			home: 'system',
 			credits: []
-		});
+		};
+	}
+
+	it('has the place of its System row, and no tree place or light', () => {
+		const body = makeStarBody(pointless('binary star', null));
 		expect(body.extrasolar?.scene).not.toBeNull();
 		expect(body.extrasolar?.tree).toBeNull();
 		expect(body.extrasolar?.absMag).toBeNull();
 	});
+
+	it('gives a held star no sphere to frame, though its Metadata row has a radius', () => {
+		const body = makeStarBody(pointless('star', { solar: 1.2, source: 'literature' }));
+		expect(body.data.radiusKm).toBeNaN();
+		expect(body.extrasolar?.radiusKm).toBeNull();
+	});
 });
 
 describe('a focused stellar photosphere', () => {
-	it('converts solar radii to km for both the camera and renderer', () => {
-		const body = makeStarBody(record(2));
+	const flameSpec = { solar: 2, source: 'gaia-dr3-flame-spec' } as const;
+
+	it('converts the Metadata radius to km for both the camera and renderer', () => {
+		const body = makeStarBody(record(flameSpec));
 		expect(body.data.radiusKm).toBe(1_391_400);
 		expect(body.extrasolar?.radiusKm).toBe(body.data.radiusKm);
 		expect(body.extrasolar?.teff).toBe(3000);
@@ -101,27 +114,15 @@ describe('a focused stellar photosphere', () => {
 		expect(body.extrasolar?.scene).not.toBeNull();
 	});
 
-	it("takes FLAME's radius before GSP-Phot's, and GSP-Phot's where FLAME has none", () => {
-		expect(makeStarBody(record(2, { radius_flame: 3 })).data.radiusKm).toBe(2_087_100);
-		expect(makeStarBody(record(2, { radius_flame: null })).data.radiusKm).toBe(1_391_400);
+	it('reads no Point source radius', () => {
+		const columns = { radius_flame: 3, radius_gspphot: 1, host_radius: 0.65 };
+		expect(makeStarBody(record(flameSpec, columns)).data.radiusKm).toBe(1_391_400);
 	});
 
-	it.each(['binary star', 'multiple star'])(
-		'is not drawn for a point that holds several stars (%s)',
-		(cls) => {
-			const body = makeStarBody(record(2, { host_radius: 0.65 }, cls));
-			expect(body.data.radiusKm).toBeNaN();
-			expect(body.extrasolar?.radiusKm).toBeNull();
-			expect(body.extrasolar?.scene).not.toBeNull();
-		}
-	);
-
-	it.each([undefined, null, 0, -1, NaN, Infinity])(
-		'preserves an unknown radius (%s), including older exports',
-		(radius) => {
-			const body = makeStarBody(record(radius));
-			expect(body.data.radiusKm).toBeNaN();
-			expect(body.extrasolar?.radiusKm).toBeNull();
-		}
-	);
+	it('draws a point where the Metadata row has no radius', () => {
+		const body = makeStarBody(record(null, { radius_flame: 3, host_radius: 0.65 }, 'binary star'));
+		expect(body.data.radiusKm).toBeNaN();
+		expect(body.extrasolar?.radiusKm).toBeNull();
+		expect(body.extrasolar?.scene).not.toBeNull();
+	});
 });

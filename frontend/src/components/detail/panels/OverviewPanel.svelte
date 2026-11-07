@@ -65,7 +65,7 @@
 	import { planetCatalogue, type PlanetSystem } from '$lib/fetch/extrasolar/planets';
 	import { systemNode } from '$lib/fetch/extrasolar/systems';
 	import {
-		measuredPoint,
+		radiusPaperPoint,
 		nodePlanetCount,
 		systemHosts,
 		type StarSystem
@@ -294,7 +294,9 @@
 		out.push(...figureCredits);
 		if (star) {
 			const nodes = system ? [...system.nodes.values()] : citedNodes;
-			const measured = systemRow?.star ? measuredPoint(system, systemRow) : null;
+			const measured = systemRow?.star
+				? radiusPaperPoint(system, systemRow, star.metadata.radius)
+				: null;
 			out.push(...starCredits(star, data?.global?.references, nodes, measured));
 			out.push(
 				...citationCredits(
@@ -343,7 +345,7 @@
 			<FeatureStatCards {feature} detail={load.featureDetail} />
 		{:else if star}
 			<div class="flex flex-col gap-2">
-				{#each systemRow ? systemStats(star, systemRow, planetCount, system) : starStats(star) as stats, i (i)}
+				{#each systemRow ? systemStats(star, systemRow, planetCount) : starStats(star) as stats, i (i)}
 					<StatCardRow {stats} />
 				{/each}
 			</div>

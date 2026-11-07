@@ -51,8 +51,7 @@ export function systemNodeOf(id: number, values: Partial<SystemNode> = {}): Syst
 		tree: null,
 		orbit: null,
 		star: null,
-		measuredRadius: null,
-		measuredBy: null,
+		paperRadius: false,
 		radiusPapers: [],
 		...values
 	};
@@ -106,14 +105,15 @@ export function pairOrbit(values: Partial<PairOrbit> = {}): PairOrbit {
 export function heldValues(values: Partial<HeldStarValues> = {}): HeldStarValues {
 	return {
 		mass: 0.6897,
-		radius: 0.6489,
 		teff: 4450,
 		spectralType: 'K',
 		massSource: 'literature',
 		radiusSource: 'literature',
+		hostRadiusError: null,
 		teffSource: 'literature',
 		spectralTypeSource: 'open-exoplanet-catalogue',
 		references: pairOrbit().references,
+		dominant: false,
 		...values
 	};
 }

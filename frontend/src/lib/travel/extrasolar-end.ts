@@ -29,7 +29,7 @@ import {
 	type ExtrasolarRecord
 } from '$lib/fetch/extrasolar/lookup';
 import { planetCatalogue, type Planet } from '$lib/fetch/extrasolar/planets';
-import { loadSystemNodes, systemRoot } from '$lib/fetch/extrasolar/systems';
+import { loadSystemNodes, systemRoot, type SystemNode } from '$lib/fetch/extrasolar/systems';
 import {
 	GM_SUN_KM3_S2,
 	type SystemEnd,
@@ -49,7 +49,7 @@ import {
 	placeNodes
 } from '$lib/scene/exoplanets/pair-orbits';
 import { makeStarBody } from '$lib/scene/focus/star-focus';
-import { measuredRadiusSolar, starMass, type StarMass } from '$lib/scene/starfield/record';
+import { starMass, starRadiusKm, type StarMass } from '$lib/scene/starfield/record';
 import type {
 	BodyData,
 	OrbitalElements,
@@ -206,14 +206,6 @@ function muOf(mass: StarMass | null): number | null {
 	return mass && mass.solar * GM_SUN_KM3_S2;
 }
 
-/** The measured radius of a point of several stars, km. The scene draws no sphere
- *  for such a point, and a trip must still stop clear of what the point measures. */
-function pointRadiusKm(record: ExtrasolarRecord): number | null {
-	const home = homeRow(record);
-	const radius = home && measuredRadiusSolar(home);
-	return radius && radius * SOLAR_RADIUS_KM;
-}
-
 function starEnd(body: PositionedBody, star: StarAnchor): ExtrasolarEnd | null {
 	if (!star.scene) return null;
 	return {
@@ -225,16 +217,17 @@ function starEnd(body: PositionedBody, star: StarAnchor): ExtrasolarEnd | null {
 			orbits: [],
 			fixedId: body.data.id,
 			muKm3S2: muOf(starMass(homeRow(star.record))),
-			radiusKm: star.radiusKm ?? pointRadiusKm(star.record),
+			radiusKm: star.radiusKm,
 			class: star.record.metadata.class
 		},
 		planet: null
 	};
 }
 
-/** A planet end. Its star has the values of the star end of `host`, the
- *  scene's anchor of the host. The fits of the planet fill a value that the
- *  host lacks. Without `host`, the star is where the system file puts it. */
+/** A planet end. Its star has the radius of the system file's host, and the
+ *  place and mass of `host`, the scene's anchor of the host. The fits of the
+ *  planet fill a mass that the host lacks. Without `host`, the star is where
+ *  the system file puts it. */
 function planetEnd(
 	body: PositionedBody,
 	anchor: PlanetAnchor,
@@ -243,7 +236,6 @@ function planetEnd(
 	const { planet, hostRecord } = anchor;
 	const at = host?.scene ?? hostScene(hostRecord);
 	if (!at) return null;
-	const fitRadius = positive(planet.values.star_radius);
 	const size = planetSize(planet);
 	return {
 		body: body.data,
@@ -254,10 +246,7 @@ function planetEnd(
 			orbits: [],
 			fixedId: extrasolarObjectId(anchor.host),
 			muKm3S2: muOf(starMass(host && homeRow(host.record), planet)),
-			radiusKm:
-				host?.radiusKm ??
-				(fitRadius && fitRadius * SOLAR_RADIUS_KM) ??
-				(host && pointRadiusKm(host.record)),
+			radiusKm: hostRecord.radius && hostRecord.radius * SOLAR_RADIUS_KM,
 			class: hostRecord.class
 		},
 		planet: {
@@ -328,12 +317,35 @@ function hostBody(planet: PositionedBody): Promise<PositionedBody | null> {
 	});
 }
 
-/** The orbits `star` is drawn on in its system, the place they turn about, and the
- *  μ of a star of unknown mass. The system's tables come before the pair's orbit:
- *  Kepler's sum goes as a³, so a poor orbit gives a mass far off. A system that does
- *  not load leaves the star at its catalogue place, and so does a barycentre with no
- *  place of its own. The planner draws a crossing about that object, so the map must
- *  be able to place it. */
+/** The held stars of the node `id`, also those of its inner nodes. */
+function heldStars(id: number, nodes: ReadonlyMap<number, SystemNode>): number[] {
+	return (nodes.get(id)?.members ?? []).flatMap(({ id: member, kind }) => {
+		if (member === null) return [];
+		if (kind === 'held star') return [member];
+		return kind === 'system' ? heldStars(member, nodes) : [];
+	});
+}
+
+/** The clearance of a point of several stars, km: the largest radius of the
+ *  stars it holds. The point itself has no radius. */
+async function heldRadiusKm(
+	id: number,
+	nodes: ReadonlyMap<number, SystemNode>
+): Promise<number | null> {
+	if (!nodes.get(id)?.point) return null;
+	const found = await Promise.all(heldStars(id, nodes).map((star) => extrasolarLookup.live(star)));
+	const radii = found.flatMap((f) => (f.kind === 'live' && starRadiusKm(f.record.metadata)) || []);
+	return radii.length > 0 ? Math.max(...radii) : null;
+}
+
+/** The orbits `star` is drawn on in its system, the place they turn about, the
+ *  μ of a star of unknown mass, and its clearance: a held star's own radius,
+ *  which the scene gives it only where it draws, or a point's held stars'.
+ *  The system's tables give μ before the pair's orbit, because Kepler's sum goes
+ *  as a³ and a poor orbit gives a mass far off. A system that does not load
+ *  leaves the star at its catalogue place, and so does a barycentre with no
+ *  place of its own. The planner draws a crossing about that object, so the map
+ *  must be able to place it. */
 async function onItsOrbits(
 	star: ExtrasolarStar,
 	record: ExtrasolarRecord
@@ -345,7 +357,9 @@ async function onItsOrbits(
 		const pairs = drawnPairs(nodes);
 		const listed = listedMass(record.id, nodes);
 		const mu = listed === null ? memberMu(record.id, pairs) : listed * GM_SUN_KM3_S2;
-		const weighed = { ...star, muKm3S2: star.muKm3S2 ?? mu };
+		const radiusKm =
+			star.radiusKm ?? starRadiusKm(record.metadata) ?? (await heldRadiusKm(record.id, nodes));
+		const weighed = { ...star, muKm3S2: star.muKm3S2 ?? mu, radiusKm };
 		const { orbits, top } = carryingOrbits(record.id, pairs);
 		if (!top) return weighed;
 		const ids = placeNodes(top.node.id, pairs);

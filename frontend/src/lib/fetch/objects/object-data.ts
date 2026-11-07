@@ -1,5 +1,6 @@
 import { getLocale, textureAllowed, type TextureDistribution } from '$lib/host';
 import { isExtrasolarObjectId } from '$lib/fetch/extrasolar/ids';
+import type { StarRadiusSource } from '$lib/fetch/extrasolar/lookup';
 import type { Coverage } from '$lib/fetch/metadata';
 import {
 	fetchBundlePair,
@@ -145,10 +146,6 @@ export type ProbeVisitKind =
 	| 'sample'
 	| 'atmospheric'
 	| 'observer';
-
-/** Where a star's lineup radius comes from: a paper, a measured angular
- *  diameter at the star's distance, or the star's own catalogue value. */
-export type StarRadiusSource = 'literature' | 'interferometry' | 'catalogue';
 
 /** Where a Solar System body's `radii` come from, best source first: the PCK
  *  or a fitted ellipsoid, the AsterSat and Johnston moon catalogues, then

@@ -71,6 +71,8 @@ interface MetaRow {
 	crossIds?: CrossId[];
 	object?: boolean;
 	spectralType?: string;
+	radius?: number;
+	radiusSource?: string;
 }
 
 /** The column of the Metadata tile that says whether an ID has an object
@@ -107,7 +109,9 @@ function metadataTile(
 					? [col('object_file', 'string', () => null)]
 					: []),
 			col('alias_target', 'id', (r) => r.alias ?? null),
-			col('spectral_type', 'string', (r) => r.spectralType ?? null)
+			col('spectral_type', 'string', (r) => r.spectralType ?? null),
+			col('radius', 'float32', (r) => r.radius ?? null),
+			col('radius_source', 'dict', (r) => r.radiusSource ?? null)
 		],
 		tileInfoBytes(0, 0, 0)
 	);
@@ -134,8 +138,8 @@ function dataTile(
 }
 
 /** The rows SYSTEM, HELD and BINARY. A value list follows the rows, or the
- *  items of the list before it. */
-function systemTile(): Uint8Array {
+ *  items of the list before it. HELD is `dominant` in BINARY. */
+function systemTile(dominant: boolean): Uint8Array {
 	const column = (name: string, type: ColumnSpec['type'], values: ColumnSpec['values']) => ({
 		name,
 		type,
@@ -237,6 +241,7 @@ function systemTile(): Uint8Array {
 			column('star.mass_source', 'dict', ['literature']),
 			column('star.radius', 'float32', [null]),
 			column('star.radius_source', 'dict', [null]),
+			column('star.host_radius_error', 'float32', [0.0625]),
 			column('star.teff', 'float32', [4500]),
 			column('star.teff_source', 'dict', ['open-exoplanet-catalogue']),
 			column('star.spectral_type', 'string', ['K1V']),
@@ -246,7 +251,8 @@ function systemTile(): Uint8Array {
 			column('star.references.reference', 'string', ['doyle2011']),
 			column('star.references.short', 'dict', ['Doyle et al. 2011']),
 			column('star.references.title', 'dict', ['A title']),
-			column('star.references.url', 'dict', ['https://example.org/'])
+			column('star.references.url', 'dict', ['https://example.org/']),
+			column('star.dominant', 'bool', [dominant])
 		],
 		tileInfoBytes(0, 0, 3)
 	);
@@ -259,7 +265,7 @@ export interface SyntheticExport {
 }
 
 export function syntheticExport(
-	options: { metaDistribution?: string; objectColumn?: ObjectColumn } = {}
+	options: { metaDistribution?: string; objectColumn?: ObjectColumn; dominant?: boolean } = {}
 ): SyntheticExport {
 	const meta: ExtrasolarMetadata = {
 		format: 1,
@@ -289,14 +295,23 @@ export function syntheticExport(
 						{ catalogue: 'gaia', release: 'dr3', catalogueId: '42' },
 						{ catalogue: 'wikidata', release: 'qid', catalogueId: 'Q86' }
 					],
-					object: true
+					object: true,
+					radius: 1.711,
+					radiusSource: 'jmdc'
 				},
 				{ id: SECOND, system: SYSTEM },
 				{ id: ALIAS, alias: STAR },
 				{ id: WITH_TABLE_2, mask: 2 | 4 },
 				{ id: BINARY, mask: 2 | 8, class: 'binary star', system: SYSTEM },
 				{ id: SYSTEM, mask: 8, name: 'Test System', class: 'multiple star' },
-				{ id: HELD, mask: 8, name: 'Test System Aa', system: SYSTEM }
+				{
+					id: HELD,
+					mask: 8,
+					name: 'Test System Aa',
+					system: SYSTEM,
+					radius: 0.75,
+					radiusSource: 'nasa-exoplanet-archive'
+				}
 			],
 			options.objectColumn
 		),
@@ -316,7 +331,7 @@ export function syntheticExport(
 				{ name: 'corr_vec', type: 'float32_list', values: [[0.5, NaN, -0.25]] }
 			]
 		),
-		'system/0/0.bin.gz': systemTile()
+		'system/0/0.bin.gz': systemTile(options.dominant ?? true)
 	};
 	return { meta, payloads };
 }

@@ -10,15 +10,13 @@ import {
 	type ExtrasolarRecord,
 	type StarDistance,
 	POINT_SOURCE_SLUG,
+	type StarRadius,
+	type StarRadiusSource,
 	type TableRow
 } from '$lib/fetch/extrasolar/lookup';
+import { starSourceName } from '$lib/credits/star-sources';
 import { PC_AU } from '$lib/scene/starfield/tree';
-import {
-	flameFitHolds,
-	measuredRadiusSolar,
-	starMass,
-	type FlameRun
-} from '$lib/scene/starfield/record';
+import { flameFitHolds, starMass, type FlameRun } from '$lib/scene/starfield/record';
 import {
 	boundErrors,
 	formatDeclination,
@@ -44,7 +42,7 @@ import { SOLAR_RADIUS_KM } from '$lib/math/units';
 import type { Stat } from '../kit/StatCard.svelte';
 import { chooseMetallicity, type MetallicityQuantity } from './metallicity';
 import type { EntityRef } from '$lib/fetch/objects/object-data';
-import type { SystemNode } from '$lib/fetch/extrasolar/systems';
+import type { SystemCitation, SystemNode } from '$lib/fetch/extrasolar/systems';
 
 /** Light years in one parsec. */
 export const PC_LY = PC_AU / 63_241.077;
@@ -182,6 +180,21 @@ function magnitudeError(row: TableRow, fluxOverError: string): number | null {
 	return foe !== null && foe > 0 ? MAG_PER_FLUX / foe : null;
 }
 
+/** The parts of a tooltip that are there, joined; undefined for none. */
+export function hint(...parts: (string | null | undefined)[]): string | undefined {
+	return parts.filter(Boolean).join(' · ') || undefined;
+}
+
+/** Where a value is from: the work that its source cites, else the source. */
+export function sourceOf(
+	source: string | null,
+	references: readonly SystemCitation[] = []
+): string | undefined {
+	if (!source) return undefined;
+	const short = references.find((work) => work.source === source)?.short;
+	return `${m.source_prefix()} ${short ?? starSourceName(source)}`;
+}
+
 /** Rows whose value is there; a null value leaves its row out. */
 export function rows(entries: (StarRowEntry | null)[]): StarRowEntry[] {
 	return entries.filter((entry): entry is StarRowEntry => entry !== null);
@@ -209,7 +222,22 @@ function measured(
 	return { label, value: plusMinus(value, err, unit, decimals) };
 }
 
-/** `power` as for `formatMeasuredQuantity`. */
+/** A value with its percentiles, times `scale`. `power` as for
+ *  `formatMeasuredQuantity`. */
+function boundedValue(
+	value: number,
+	lower: number | null,
+	upper: number | null,
+	unit: string,
+	scale: number,
+	power?: number
+): string {
+	if (scale === 1) return withBounds(value, lower, upper, unit);
+	return lower === null || upper === null
+		? formatMeasuredQuantity({ value: value * scale, unit, power, maxSignificantDigits: 3 })
+		: withBounds(value * scale, lower * scale, upper * scale, unit, true, power);
+}
+
 function bounded(
 	ps: TableRow,
 	label: string,
@@ -220,42 +248,48 @@ function bounded(
 ): StarRowEntry | null {
 	const value = ps.number(name);
 	if (value === null) return null;
-	const lower = ps.number(`${name}_lower`);
-	const upper = ps.number(`${name}_upper`);
-	if (scale === 1) return { label, value: withBounds(value, lower, upper, unit) };
-	return {
-		label,
-		value:
-			lower === null || upper === null
-				? formatMeasuredQuantity({ value: value * scale, unit, power, maxSignificantDigits: 3 })
-				: withBounds(value * scale, lower * scale, upper * scale, unit, true, power)
-	};
+	const [lower, upper] = [ps.number(`${name}_lower`), ps.number(`${name}_upper`)];
+	return { label, value: boundedValue(value, lower, upper, unit, scale, power) };
 }
 
-/** A star's diameter row, with what `column`'s radius comes to against the Sun
- *  (or Jupiter or Earth). */
-function diameterRow(
-	ps: TableRow,
-	entry: StarRowEntry | null,
-	column: string
+/** The bounds of a Gaia radius, by its source. */
+const FIT_RADII: Partial<Record<StarRadiusSource, string>> = {
+	'gaia-dr3-flame': 'radius_flame',
+	'gaia-dr3-flame-spec': 'radius_flame_spec',
+	'gaia-dr3-gspphot': 'radius_gspphot'
+};
+const CATALOGUE_RADII = new Set<StarRadiusSource>([
+	'nasa-exoplanet-archive',
+	'exoplanet-eu',
+	'open-exoplanet-catalogue'
+]);
+
+/**
+ * The diameter row of a star's radius, the same on a star's page and a held
+ * star's. A Gaia radius takes its bounds from the Point source row `fit`, a
+ * catalogue's its `error`. The tooltip names the source, or the work of
+ * `references` that gives it.
+ */
+export function diameterRow(
+	radius: StarRadius | null,
+	fit: TableRow | null,
+	error: number | null,
+	references: readonly SystemCitation[] = []
 ): StarRowEntry | null {
-	const radius = ps.number(column);
-	if (!entry || radius === null) return entry;
-	return { ...entry, tooltip: sizeComparison(radius * SOLAR_RADIUS_KM) };
-}
-
-/** The row of a measured diameter, with the column that gives it as source. */
-function measuredDiameterRow(ps: TableRow, u: ReturnType<typeof units>): StarRowEntry | null {
-	const radius = measuredRadiusSolar(ps);
-	if (radius === null) return null;
+	if (!radius) return null;
+	const { solar, source } = radius;
+	const { km } = units();
+	const scale = 2 * SOLAR_RADIUS_KM;
+	const column = fit && FIT_RADII[source];
+	const value = column
+		? boundedValue(solar, fit.number(`${column}_lower`), fit.number(`${column}_upper`), km, scale)
+		: CATALOGUE_RADII.has(source)
+			? cataloguedValue(float32Value(solar)!, float32Value(error), km, scale)
+			: formatMeasuredQuantity({ value: solar * scale, unit: km, maxSignificantDigits: 3 });
 	return {
-		label: m.diameter(),
-		value: formatMeasuredQuantity({
-			value: 2 * radius * SOLAR_RADIUS_KM,
-			unit: u.km,
-			maxSignificantDigits: 3
-		}),
-		tooltip: sizeComparison(radius * SOLAR_RADIUS_KM)
+		label: source === 'gaia-dr3-gspphot' ? m.star_row_diameter_photometric() : m.diameter(),
+		value,
+		tooltip: hint(sizeComparison(solar * SOLAR_RADIUS_KM), sourceOf(source, references))
 	};
 }
 
@@ -358,22 +392,18 @@ function evolutionaryStage(index: number): string {
 }
 
 type FlameRows = Record<
-	'diameter' | 'luminosity' | 'age' | 'stage' | 'redshift' | 'correction',
+	'luminosity' | 'age' | 'stage' | 'redshift' | 'correction',
 	StarRowEntry | null
 >;
 
 /** The rows of one FLAME run. A mass that does not hold takes its age and
- *  stage with it. The mass row is {@link massRow}. */
+ *  stage with it. The mass row is {@link massRow}, the diameter row
+ *  {@link diameterRow}. */
 function flameRows(ps: TableRow, u: ReturnType<typeof units>, run: FlameRun): FlameRows {
 	const column = (name: string) => `${name}_flame${run}`;
 	const fit = flameFitHolds(ps, run);
 	const stage = ps.number(column('evolstage'));
 	return {
-		diameter: diameterRow(
-			ps,
-			bounded(ps, m.diameter(), column('radius'), u.km, 2 * SOLAR_RADIUS_KM),
-			column('radius')
-		),
 		luminosity: solarRow(ps, SOLAR_LUMINOSITY, column('lum')),
 		age: fit ? bounded(ps, m.star_row_age(), column('age'), u.gigayear) : null,
 		stage:
@@ -424,12 +454,7 @@ export function starStats(record: ExtrasolarRecord): Stat[][] {
 	const ps = pointSource(record);
 	if (!ps) return [];
 	const out: (Stat | null)[] = [];
-	const radius =
-		measuredRadiusSolar(ps) ??
-		ps.number('radius_flame') ??
-		ps.number('radius_flame_spec') ??
-		ps.number('radius_gspphot') ??
-		ps.number('host_radius');
+	const radius = record.metadata.radius?.solar ?? null;
 	const mass = starMass(ps)?.solar ?? null;
 	if (radius !== null) {
 		out.push({
@@ -476,6 +501,7 @@ export function starSections(record: ExtrasolarRecord, node?: SystemNode): StarS
 	if (!ps) return [];
 	return pointSourceSections(
 		ps,
+		record.metadata.radius,
 		astrometricOrbit(record),
 		spectralType(record.metadata.spectralType),
 		units(),
@@ -490,7 +516,29 @@ function float32Value(value: number | null): number | null {
 	return value === null ? null : Number(value.toPrecision(FLOAT32_DIGITS));
 }
 
-/** A value of an exoplanet catalogue, at the digits it gave. */
+/** A value of an exoplanet catalogue and its error, times `scale`, at the
+ *  digits it gave. */
+function cataloguedValue(
+	value: number,
+	err: number | null,
+	unit: string,
+	scale: number,
+	power?: number
+): string {
+	if (scale === 1) return formatCatalogueQuantity(value, err, err, unit);
+	// The catalogue's decimals hold in its own unit only; its figures hold in both.
+	const scaledError = err === null ? null : err * scale;
+	return formatMeasuredQuantity({
+		value: value * scale,
+		upperError: scaledError,
+		lowerError: scaledError,
+		unit,
+		rawValue: value,
+		roundLargeErrors: true,
+		power
+	});
+}
+
 function catalogued(
 	ps: TableRow,
 	label: string,
@@ -503,21 +551,7 @@ function catalogued(
 	const value = float32Value(ps.number(name));
 	if (value === null) return null;
 	const err = error === null ? null : float32Value(ps.number(error));
-	if (scale === 1) return { label, value: formatCatalogueQuantity(value, err, err, unit) };
-	// The catalogue's decimals hold in its own unit only; its figures hold in both.
-	const scaledError = err === null ? null : err * scale;
-	return {
-		label,
-		value: formatMeasuredQuantity({
-			value: value * scale,
-			upperError: scaledError,
-			lowerError: scaledError,
-			unit,
-			rawValue: value,
-			roundLargeErrors: true,
-			power
-		})
-	};
+	return { label, value: cataloguedValue(value, err, unit, scale, power) };
 }
 
 /** A distance with its bounds; with one bound or none, at the precision of a
@@ -532,6 +566,7 @@ function distanceValue(distance: StarDistance, ly: string): string {
 
 function pointSourceSections(
 	ps: TableRow,
+	radius: StarRadius | null,
 	orbit: TableRow | null,
 	spType: string | null,
 	u: ReturnType<typeof units>,
@@ -660,18 +695,7 @@ function pointSourceSections(
 		metallicity.length === 0
 			? catalogued(ps, m.exoplanet_row_metallicity(), 'host_metallicity', u.dex)
 			: null,
-		measuredDiameterRow(ps, u) ??
-			fitted('diameter') ??
-			diameterRow(
-				ps,
-				bounded(ps, m.star_row_diameter_photometric(), 'radius_gspphot', u.km, 2 * SOLAR_RADIUS_KM),
-				'radius_gspphot'
-			) ??
-			diameterRow(
-				ps,
-				catalogued(ps, m.diameter(), 'host_radius', u.km, null, 2 * SOLAR_RADIUS_KM),
-				'host_radius'
-			),
+		diameterRow(radius, ps, ps.number('host_radius_error')),
 		fitted('luminosity'),
 		massRow(ps),
 		fitted('age') ?? catalogued(ps, m.star_row_age(), 'host_age', m.symbol_gigaannum()),

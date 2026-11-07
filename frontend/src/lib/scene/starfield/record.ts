@@ -6,14 +6,9 @@
  * table-2 row, which gives the distance where it has one.
  */
 
-import {
-	distanceParallax,
-	LITERATURE,
-	starDistance,
-	type TableRow
-} from '$lib/fetch/extrasolar/lookup';
+import { starDistance, type MetadataRow, type TableRow } from '$lib/fetch/extrasolar/lookup';
 import type { Planet } from '$lib/fetch/extrasolar/planets';
-import { KM_PER_PC, SOLAR_RADIUS_KM } from '$lib/math/units';
+import { SOLAR_RADIUS_KM } from '$lib/math/units';
 import { bpRpFromTeff } from './colour';
 import { icrsToTree, treeToScene, type Vec3 } from './tree';
 
@@ -29,51 +24,9 @@ export function positiveNumber(row: TableRow, name: string): number | null {
 	return value !== null && Number.isFinite(value) && value > 0 ? value : null;
 }
 
-/** A radius from a paper or a measured diameter, in nominal solar radii. A
- *  diameter takes a paper's distance or a 5σ parallax: the distance of a
- *  saturated supergiant from a prior can be off tenfold. The export reads the
- *  same rule (`measured_radius` in `star_lineup.py`). */
-export function measuredRadiusSolar(row: TableRow): number | null {
-	const paper = positiveNumber(row, 'radius_literature');
-	if (paper !== null) return paper;
-	const diameter = positiveNumber(row, 'angular_diameter');
-	if (diameter === null) return null;
-	const used = distanceParallax(row, null);
-	const distance =
-		row.text('distance_source') === LITERATURE
-			? positiveNumber(row, 'distance')
-			: used && 1000 / used.parallax;
-	return distance ? (diameter / MAS_PER_RAD / 2) * distance * (KM_PER_PC / SOLAR_RADIUS_KM) : null;
-}
-
-/** In nominal solar radii. A measurement comes first. Then FLAME's radius: for
- *  most stars it rests on the parallax, where GSP-Phot's always rests on its
- *  own photometric distance. */
-export function starRadiusSolar(row: TableRow): number | null {
-	return (
-		measuredRadiusSolar(row) ??
-		positiveNumber(row, 'radius_flame') ??
-		positiveNumber(row, 'radius_gspphot')
-	);
-}
-
-/** The drawn radius. A planet host's exoplanet catalogue comes first: its
- *  planets' sizes and orbits rest on that radius. */
-export function starRadiusKm(row: TableRow): number | null {
-	const radius = positiveNumber(row, 'host_radius') ?? starRadiusSolar(row);
-	return radius === null ? null : radius * SOLAR_RADIUS_KM;
-}
-
-/** The radius a row of stars draws, by the order of `_size` in `star_lineup.py`:
- *  what Gaia sees of a compact star is mostly its companion. */
-export function lineupRadiusKm(row: TableRow, compact: boolean): number | null {
-	const radius =
-		measuredRadiusSolar(row) ??
-		positiveNumber(row, 'host_radius') ??
-		(compact
-			? null
-			: (positiveNumber(row, 'radius_flame') ?? positiveNumber(row, 'radius_gspphot')));
-	return radius === null ? null : radius * SOLAR_RADIUS_KM;
+/** The star's radius in km, as every view draws it; null for none. */
+export function starRadiusKm({ radius }: MetadataRow): number | null {
+	return radius && radius.solar * SOLAR_RADIUS_KM;
 }
 
 /** Effective temperature (K): a planet host's catalogue's, else GSP-Phot's. */
