@@ -86,9 +86,7 @@
 			{/if}
 		</div>
 		{#if points}
-			<div
-				class="text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-1 pt-1 text-[11px]"
-			>
+			<div class="text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-1 pt-1 text-xs">
 				<span class="flex items-center gap-1.5">
 					<svg class="size-2" viewBox="0 0 8 8" aria-hidden="true">
 						<circle cx="4" cy="4" r="3" fill={PLANET_PLOT_COLORS.measured} />

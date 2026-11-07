@@ -1849,7 +1849,7 @@
 		<!-- The name sits under the body it belongs to. One left unnamed by the
 		     declutter is still named by hovering it, and by the caller's list.
 		     Over a bleeding canvas a body can run under it, hence the backing. -->
-		<div class="relative {marksImpression ? 'h-12' : 'h-9'}" aria-hidden="true">
+		<div class="relative {marksImpression ? 'h-13' : 'h-9'}" aria-hidden="true">
 			{#each layout as p (p.id)}
 				{#if p.labelWidth >= LABEL_MIN_WIDTH}
 					<div
@@ -1858,15 +1858,15 @@
 							: ''}"
 						style="left: {p.cx}px; max-width: {p.labelWidth}px"
 					>
-						<div dir="auto" class="truncate text-[11px] font-medium">{p.name}</div>
+						<div dir="auto" class="truncate text-xs font-medium">{p.name}</div>
 						<div
-							class="truncate text-[11px] text-muted-foreground tabular-nums"
+							class="truncate text-xs text-muted-foreground tabular-nums"
 							title={p.sizeEstimated ? m.tooltip_size_estimated() : undefined}
 						>
 							{sizeText(p)}
 						</div>
 						{#if impressions.has(p.id)}
-							<div class="truncate text-[10px] text-muted-foreground italic">
+							<div class="truncate text-2xs text-muted-foreground italic">
 								{m.artist_impression_qualifier()}
 							</div>
 						{/if}
@@ -1888,18 +1888,18 @@
 		>
 			<div dir="auto" class="text-xs font-medium whitespace-nowrap">{hovered.name}</div>
 			{#if hovered.description}
-				<div class="text-muted-foreground text-[11px]">{hovered.description}</div>
+				<div class="text-muted-foreground text-xs">{hovered.description}</div>
 			{/if}
 			{#if impressions.has(hovered.id)}
-				<div class="text-muted-foreground text-[11px] italic">{m.artist_impression_title()}</div>
+				<div class="text-muted-foreground text-xs italic">{m.artist_impression_title()}</div>
 			{/if}
-			<div class="text-muted-foreground text-[11px] tabular-nums">
+			<div class="text-muted-foreground text-xs tabular-nums">
 				{hovered.craft ? m.lineup_span() : m.diameter()}: {(bandRatio &&
 					sizeComparison(hovered.radiusKm)) ||
 					sizeText(hovered)}
 			</div>
 			{#if hovered.sizeEstimated}
-				<div class="text-muted-foreground text-[11px]">{m.tooltip_size_estimated()}</div>
+				<div class="text-muted-foreground text-xs">{m.tooltip_size_estimated()}</div>
 			{/if}
 		</div>
 	{/if}

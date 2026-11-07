@@ -119,7 +119,7 @@
 						</button>
 					{:else}
 						<kbd
-							class="pointer-events-none inline-flex h-5 shrink-0 items-center rounded border border-border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground select-none"
+							class="pointer-events-none inline-flex h-5 shrink-0 items-center rounded border border-border bg-muted px-1.5 font-mono text-2xs font-medium text-muted-foreground select-none"
 						>
 							{shortcut}
 						</kbd>
@@ -136,7 +136,7 @@
 									{#each qs.groups as group (group.kind)}
 										<div role="group" aria-label={group.label} class="mb-2">
 											<p
-												class="px-2 pt-1 pb-1 text-[11px] font-medium tracking-wide text-muted-foreground uppercase"
+												class="px-2 pt-1 pb-1 text-2xs font-medium tracking-wide text-muted-foreground uppercase"
 											>
 												{group.label}
 											</p>

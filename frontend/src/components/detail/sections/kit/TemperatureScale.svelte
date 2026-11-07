@@ -130,7 +130,7 @@
 		<Tooltip.Trigger>
 			{#snippet child({ props })}
 				<span
-					class="text-muted-subtle border-muted-foreground/30 w-fit cursor-help rounded border px-1 text-[0.65rem] uppercase"
+					class="text-muted-subtle border-muted-foreground/30 w-fit cursor-help rounded border px-1 text-2xs uppercase"
 					{...props}
 				>
 					{label}

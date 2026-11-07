@@ -3,14 +3,13 @@
  * apart, and whether a label's name and its reading can share a line.
  */
 
-/** The cross-section frame, sized to the drawer's content width so the label
- *  sizes in the charts render at the sizes they say — scaling a 320-wide chart
- *  into 264px shrank 10px text to 8. */
+/** The cross-section frame. Its label sizes are viewBox units: narrower than
+ *  the drawer's content width, so they never render smaller than they say. */
 export const FRAME_W = 264;
-export const FRAME_H = 190;
+export const FRAME_H = 198;
 
 /** A label is two lines: the name, and the layer's extent under it. */
-export const SECOND_LINE_DY = 11;
+export const SECOND_LINE_DY = 12;
 
 /** How far down a label's name can be pushed. The second line hangs below it,
  *  so a bound set off the frame alone clips that line out of the SVG. */

@@ -198,7 +198,7 @@
 										x={sun.px + NAMED + 4}
 										y={sun.py}
 										dominant-baseline="central"
-										class="fill-foreground pointer-events-none text-[10px] font-medium"
+										class="fill-foreground pointer-events-none text-2xs font-medium"
 									>
 										{sun.name}
 									</text>
@@ -234,9 +234,7 @@
 			{/if}
 		</div>
 		{#if file}
-			<div
-				class="text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-1 pt-1 text-[11px]"
-			>
+			<div class="text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-1 pt-1 text-xs">
 				{#each legend as item (item.label)}
 					<span class="flex items-center gap-1.5">
 						<svg class="size-2" viewBox="0 0 8 8" aria-hidden="true">
@@ -246,7 +244,7 @@
 					</span>
 				{/each}
 			</div>
-			<p class="text-muted-foreground text-[11px]">
+			<p class="text-muted-foreground text-xs">
 				{m.star_plot_sample({ count: formatNumber(file.stage.length) })}
 			</p>
 		{/if}

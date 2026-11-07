@@ -78,11 +78,10 @@
 		<span class="min-w-0 flex-1">
 			<span class="block truncate"><bdi>{name}</bdi></span>
 			{#if region}
-				<span class="text-muted-foreground block truncate text-[11px] leading-[14px]">{region}</span
-				>
+				<span class="text-muted-foreground block truncate text-xs leading-[14px]">{region}</span>
 			{/if}
 		</span>
-		<span class="text-muted-foreground shrink-0 font-mono text-[11px] tabular-nums"
+		<span class="text-muted-foreground shrink-0 font-mono text-xs tabular-nums"
 			>{formatNumber(culture.figures)}</span
 		>
 		{#if selected}<CheckIcon class="size-3.5 shrink-0" aria-hidden="true" />{/if}
@@ -130,7 +129,7 @@
 				{#if order === 'region'}
 					{#each byRegion(cultures, locale) as region (region.group)}
 						<div
-							class="bg-popover max-md:bg-background sticky top-0 z-[1] flex justify-between gap-2 px-2 pt-2 pb-1 text-[10px] font-semibold tracking-[0.12em] text-muted-foreground uppercase rtl:text-xs rtl:tracking-normal"
+							class="bg-popover max-md:bg-background sticky top-0 z-[1] flex justify-between gap-2 px-2 pt-2 pb-1 text-2xs font-semibold tracking-[0.12em] text-muted-foreground uppercase rtl:text-xs rtl:tracking-normal"
 						>
 							<span>{region.label}</span>
 							<span class="font-mono font-normal tracking-normal tabular-nums"

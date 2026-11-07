@@ -165,7 +165,7 @@
 			<Row label={m.atmosphere_classification()} value={type} />
 		{/if}
 		{#if note}
-			<dd class="text-muted-foreground col-span-2 -mt-1.5 text-[11px] leading-snug">{note}</dd>
+			<dd class="text-muted-foreground col-span-2 -mt-1.5 text-xs leading-snug">{note}</dd>
 		{/if}
 		{#snippet footer()}
 			{#if profile && profile.bands.length}

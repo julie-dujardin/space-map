@@ -186,7 +186,7 @@
 	<span class="col-start-3 row-start-1 shrink-0 text-end">
 		{#if blocked}
 			<span class="text-muted-foreground block text-xs">{blocked.header}</span>
-			<span class="text-muted-foreground block text-[11px] tabular-nums">{blocked.detail}</span>
+			<span class="text-muted-foreground block text-xs tabular-nums">{blocked.detail}</span>
 		{:else if route && shipTime}
 			<span class="block text-sm font-semibold tabular-nums">
 				{m.travel_clock_ship({ value: shipTime })}
@@ -230,7 +230,7 @@
 		     one thing on the row that must never decide how wide it is. -->
 		<span
 			bind:this={lineEl}
-			class="col-start-2 col-end-4 row-start-2 mt-0.5 flex min-h-4 min-w-0 items-center gap-2 overflow-hidden text-[11px] whitespace-nowrap"
+			class="col-start-2 col-end-4 row-start-2 mt-0.5 flex min-h-4 min-w-0 items-center gap-2 overflow-hidden text-xs whitespace-nowrap"
 		>
 			{#each hazards.slice(0, fits) as hazard (hazard.kind)}
 				{@const Icon = hazardIcon(hazard)}

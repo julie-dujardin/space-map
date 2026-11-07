@@ -29,7 +29,7 @@
 	<MapPinXIcon class="size-5 md:size-4" />
 	<span
 		class="absolute -top-1 -end-1 min-w-4 h-4 px-1 rounded-full
-			bg-white text-black text-[10px] leading-none font-medium
+			bg-white text-black text-2xs leading-none font-medium
 			flex items-center justify-center pointer-events-none"
 		aria-hidden="true"
 	>

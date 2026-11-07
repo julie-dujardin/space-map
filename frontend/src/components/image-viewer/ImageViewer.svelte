@@ -348,7 +348,7 @@
 		gap: 0.375rem;
 		width: 100%;
 		padding: 0.5rem 1rem 0.625rem;
-		font-size: 11px;
+		font-size: 12px;
 		line-height: 1.1;
 		color: rgba(255, 255, 255, 0.75);
 		white-space: nowrap;

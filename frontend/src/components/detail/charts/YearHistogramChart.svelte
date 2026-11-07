@@ -100,7 +100,7 @@
 
 {#if series.length > 0}
 	<div class="flex flex-col gap-1">
-		<div class="text-muted-foreground flex justify-end gap-2 text-[10px]">
+		<div class="text-muted-foreground flex justify-end gap-2 text-xs">
 			<span class="flex items-center gap-1">
 				<span class="bg-foreground inline-block size-2 rounded-[1px] opacity-70"></span>
 				{binSize === 1 ? m.legend_per_year() : m.legend_per_n_years({ n: binSize })}

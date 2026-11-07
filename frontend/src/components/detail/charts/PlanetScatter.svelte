@@ -44,7 +44,7 @@
 	const DOT = 3;
 	const RING = 1.8;
 	const SOLAR = 3.5;
-	const LABEL_FONT = 10;
+	const LABEL_FONT = 11;
 	// The pick radius around a dot, squared: the size of a finger.
 	const PICK_R2 = 12 * 12;
 
@@ -282,7 +282,7 @@
 
 <style>
 	.planet-label {
-		font-size: 10px;
+		font-size: 11px;
 		font-weight: 500;
 		fill: var(--color-foreground);
 		paint-order: stroke;

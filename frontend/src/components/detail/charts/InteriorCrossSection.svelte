@@ -77,7 +77,7 @@
 	const R = 114;
 	/** Where the labels begin, just clear of that edge. */
 	const GUTTER = CX + 9;
-	const LABEL_SPACING = 25;
+	const LABEL_SPACING = 26;
 
 	// The body shrinks to leave room for the atmosphere strip outside it,
 	// rather than overflow the frame — Titan's is 19% of its radius, Earth's
@@ -161,7 +161,7 @@
 	<!-- What the drawing is worth, above it rather than in it: every corner of
 	     the frame belongs to a label that moves with the body's own layers, and
 	     the only one free on Earth is taken on the Sun. -->
-	<div class="text-muted-foreground mb-1 text-end text-[10px] tabular-nums">
+	<div class="text-muted-foreground mb-1 text-end text-2xs tabular-nums">
 		{m.structure_to_scale_radius({ value: ltrIsolate(formatKm(section.radiusKm)) })}
 	</div>
 	<svg
@@ -251,10 +251,10 @@
 		<!-- Outer end is labelled by what the radius is measured to, not
 		     "surface" — Jupiter has none, and the atmosphere chart above
 		     measures its own heights from the 1 bar level. -->
-		<text x={CX - 3} y={CY - R - 6} text-anchor="end" class="fill-muted-foreground text-[9px]">
+		<text x={CX - 3} y={CY - R - 6} text-anchor="end" class="fill-muted-foreground text-[10px]">
 			{(DATUM_LABEL[datum] ?? DATUM_LABEL.surface)()}
 		</text>
-		<text x={CX - 3} y={CY + 11} text-anchor="end" class="fill-muted-foreground text-[9px]">
+		<text x={CX - 3} y={CY + 11} text-anchor="end" class="fill-muted-foreground text-[10px]">
 			{m.structure_disc_centre()}
 		</text>
 
@@ -287,7 +287,7 @@
 							x={W - 2}
 							y={row.labelY + (stacked[i] ? SECOND_LINE_DY : 0)}
 							text-anchor="end"
-							class="fill-muted-foreground text-[9px]"
+							class="fill-muted-foreground text-[10px]"
 						>
 							{value}
 						</text>
@@ -299,7 +299,7 @@
 					x={GUTTER}
 					y={row.labelY + SECOND_LINE_DY}
 					visibility={stacked[i] && crowded[i] ? 'hidden' : undefined}
-					class="fill-muted-foreground text-[9px]"
+					class="fill-muted-foreground text-[10px]"
 				>
 					{row.band ? layerWidth(row.band) : ltrIsolate(formatKm(section.atmosphere?.km ?? 0))}
 				</text>

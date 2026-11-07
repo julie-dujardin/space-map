@@ -176,13 +176,13 @@
 	<div class="flex flex-wrap items-baseline gap-x-2">
 		<span class="flex-1 text-sm font-medium">{layerName(layer.role, layer.note)}</span>
 		{#if thickness}
-			<span class="text-muted-foreground shrink-0 text-[11px] tabular-nums">
+			<span class="text-muted-foreground shrink-0 text-xs tabular-nums">
 				{m.structure_layer_thick({ value: thickness })}
 			</span>
 		{/if}
 	</div>
 
-	<div class="text-muted-foreground flex items-baseline gap-2 text-[11px] leading-snug">
+	<div class="text-muted-foreground flex items-baseline gap-2 text-xs leading-snug">
 		<span class="flex-1">{descriptor}</span>
 		{#if reading}
 			<span class="shrink-0 tabular-nums">{reading}</span>
@@ -192,7 +192,7 @@
 	<CompositionBar {entries} />
 
 	{#if mass || coverage || footnote}
-		<div class="text-muted-foreground mt-1 text-[10px] leading-snug">
+		<div class="text-muted-foreground mt-1 text-xs leading-snug">
 			{[mass, coverage, footnote].filter(Boolean).join(' · ')}
 		</div>
 	{/if}
@@ -207,7 +207,7 @@
 	     would cry wolf, and the words carry it. -->
 	{#if standing || evidence}
 		<div
-			class="mt-1 text-[10px] leading-snug"
+			class="mt-1 text-xs leading-snug"
 			class:text-amber-500={layer.standing === 'disputed'}
 			class:text-muted-foreground={layer.standing !== 'disputed'}
 		>

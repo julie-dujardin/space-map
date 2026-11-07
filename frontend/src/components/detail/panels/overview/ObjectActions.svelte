@@ -144,7 +144,7 @@
 	// it reads as two buttons, not as a row with holes in it.
 	const tile = 'flex min-w-0 max-w-24 flex-1 flex-col items-center gap-1.5 text-center';
 	const disc = 'flex size-11 items-center justify-center rounded-full transition-colors';
-	const label = 'text-[11px] leading-tight text-muted-foreground';
+	const label = 'text-xs leading-tight text-muted-foreground';
 </script>
 
 <div class="flex items-start gap-1">

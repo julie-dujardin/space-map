@@ -44,10 +44,31 @@ const TIP_MARGIN = 6;
 const LABEL_MARGIN = 4;
 const LABEL_SIZE = 18;
 const LABEL_MIN_SIZE = 12;
+// The chart is often drawn far narrower than its viewBox (a drawer column),
+// where viewBox-sized text shrinks below reading size; these screen px floors
+// hold it there.
+const LABEL_PX = 12;
+const LABEL_MIN_PX = 11;
+const AXIS_PX = 11;
+const TICK_SIZE = 16;
+const AXIS_UNIT_SIZE = 14;
+/** Viewbox height above the bands and below them that axis and band labels may fill. */
+const AXIS_ROOM = BAND_Y - 1;
+const LABEL_ROOM = VIEW_H - (BAND_Y + BAND_H) - 4;
 /** Viewbox px a band label may run to before it is set smaller. */
 const LABEL_MAX_W = 190;
 
 type Attrs = Record<string, string | number | undefined>;
+
+/** A text's box, or null before it is laid out. */
+function textBox(el: SVGTextElement): DOMRect | null {
+	try {
+		const box = el.getBBox();
+		return box.width ? box : null;
+	} catch {
+		return null;
+	}
+}
 
 function svg<K extends keyof SVGElementTagNameMap>(
 	tag: K,
@@ -111,6 +132,8 @@ export class SystemMapChart {
 	/** What is drawn, as a string to tell a new picture from new links. */
 	private shape = '';
 	private labels: SVGTextElement[] = [];
+	private axisTexts: { el: SVGTextElement; size: number }[] = [];
+	private axisUnit: SVGTextElement | null = null;
 
 	constructor() {
 		this.tip.className = 'sm-system-map__tip';
@@ -217,6 +240,8 @@ export class SystemMapChart {
 		this.highlights = new Map();
 		this.targets = new Map();
 		this.labels = [];
+		this.axisTexts = [];
+		this.axisUnit = null;
 		const root = this.svg;
 		root.replaceChildren();
 		root.setAttribute('viewBox', (bg && model.backgroundView) || `0 0 ${VIEW_W} ${VIEW_H}`);
@@ -302,7 +327,6 @@ export class SystemMapChart {
 				x: band.x + band.width / 2,
 				y: VIEW_H - 8,
 				'text-anchor': 'middle',
-				'font-size': LABEL_SIZE,
 				class: `sm-system-map__band-label sm-system-map__band-label--${band.tone}`
 			});
 			label.textContent = band.label;
@@ -366,18 +390,17 @@ export class SystemMapChart {
 			const x = l.xOf(t * model.unitKm);
 			const tick = svg('text', {
 				x,
-				y: 16,
 				'text-anchor': 'middle',
-				'font-size': 16,
 				fill: 'currentColor',
 				opacity: 0.85
 			});
 			tick.textContent = String(t);
+			this.axisTexts.push({ el: tick, size: TICK_SIZE });
 			this.svg.append(
 				svg('line', {
 					x1: x,
 					x2: x,
-					y1: 20,
+					y1: BAND_Y,
 					y2: VIEW_H - 28,
 					stroke: 'currentColor',
 					'stroke-width': 0.5,
@@ -388,13 +411,13 @@ export class SystemMapChart {
 		}
 		const unit = svg('text', {
 			x: X_RIGHT,
-			y: 16,
 			'text-anchor': 'end',
-			'font-size': 14,
 			fill: 'currentColor',
-			opacity: 0.65
+			opacity: 0.75
 		});
 		unit.textContent = model.axisLabel;
+		this.axisTexts.push({ el: unit, size: AXIS_UNIT_SIZE });
+		this.axisUnit = unit;
 		this.svg.append(unit);
 	}
 
@@ -597,9 +620,24 @@ export class SystemMapChart {
 	 *  would run off the chart, so it is pulled back inside, and a long one
 	 *  would run into its neighbour's, so it is set smaller. */
 	private fitLabels(): void {
+		const unitsPerPx = this.root.clientWidth ? VIEW_W / this.root.clientWidth : 0;
+		for (const { el, size } of this.axisTexts) {
+			const fontSize = Math.min(AXIS_ROOM, Math.max(size, AXIS_PX * unitsPerPx));
+			el.setAttribute('font-size', String(fontSize));
+			el.setAttribute('y', String(Math.max(16, Math.round(fontSize * 0.9))));
+		}
+		// At reading size a tick near the right edge can run into the unit.
+		const unitBox = this.axisUnit && textBox(this.axisUnit);
+		for (const { el } of this.axisTexts) {
+			if (el === this.axisUnit) continue;
+			const box = unitBox && textBox(el);
+			el.style.visibility = box && box.x + box.width + 4 > unitBox.x ? 'hidden' : '';
+		}
+		const labelSize = Math.min(LABEL_ROOM, Math.max(LABEL_SIZE, LABEL_PX * unitsPerPx));
+		const labelMin = Math.min(labelSize, Math.max(LABEL_MIN_SIZE, LABEL_MIN_PX * unitsPerPx));
 		for (const label of this.labels) {
 			let width = 0;
-			label.setAttribute('font-size', String(LABEL_SIZE));
+			label.setAttribute('font-size', String(labelSize));
 			try {
 				width = label.getComputedTextLength();
 			} catch {
@@ -607,9 +645,9 @@ export class SystemMapChart {
 			}
 			if (!width) continue;
 			if (width > LABEL_MAX_W) {
-				const size = Math.max(LABEL_MIN_SIZE, (LABEL_SIZE * LABEL_MAX_W) / width);
+				const size = Math.max(labelMin, (labelSize * LABEL_MAX_W) / width);
 				label.setAttribute('font-size', String(size));
-				width *= size / LABEL_SIZE;
+				width *= size / labelSize;
 			}
 			const centre = Number(label.dataset.centre ?? label.getAttribute('x'));
 			label.dataset.centre = String(centre);

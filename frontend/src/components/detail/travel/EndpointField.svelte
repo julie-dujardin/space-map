@@ -269,7 +269,7 @@
 			{bodyName ?? placeholder}
 		</span>
 		{#if subLine}
-			<span class="text-muted-foreground block truncate text-[11px]">{subLine}</span>
+			<span class="text-muted-foreground block truncate text-xs">{subLine}</span>
 		{/if}
 	</span>
 	<ChevronDownIcon class="text-muted-foreground size-4 shrink-0" />
@@ -290,7 +290,7 @@
 	ariaText: string
 )}
 	<label class="flex flex-col gap-0.5">
-		<span class="text-muted-foreground text-[10px] tracking-wide uppercase">{caption}</span>
+		<span class="text-muted-foreground text-2xs tracking-wide uppercase">{caption}</span>
 		<span class="flex items-center gap-2">
 			<input
 				type="range"
@@ -302,7 +302,7 @@
 				class="accent-primary h-1 flex-1"
 				aria-valuetext={ariaText}
 			/>
-			<span class="text-muted-foreground w-24 shrink-0 text-end text-[10px] tabular-nums">
+			<span class="text-muted-foreground w-24 shrink-0 text-end text-xs tabular-nums">
 				{readout}
 			</span>
 		</span>
@@ -323,9 +323,9 @@
 			<button
 				type="button"
 				onclick={() => (step = 'how')}
-				class="border-border/60 text-muted-foreground hover:text-foreground mt-2 flex w-full shrink-0 items-center gap-2 border-t pt-2 text-start text-[11px]"
+				class="border-border/60 text-muted-foreground hover:text-foreground mt-2 flex w-full shrink-0 items-center gap-2 border-t pt-2 text-start text-xs"
 			>
-				<span class="shrink-0 text-[10px] tracking-wide uppercase">
+				<span class="shrink-0 text-2xs tracking-wide uppercase">
 					{showPads
 						? m.travel_launch_pad()
 						: role === 'origin'
@@ -346,7 +346,7 @@
 				<ChevronLeftIcon class="size-3.5 shrink-0" />
 				<span class="truncate">{bodyName}</span>
 			</button>
-			<span class="text-muted-foreground ms-auto shrink-0 text-[10px] tracking-wide uppercase">
+			<span class="text-muted-foreground ms-auto shrink-0 text-2xs tracking-wide uppercase">
 				{showPads
 					? m.travel_launch_pad()
 					: role === 'origin'
@@ -378,13 +378,13 @@
 							<span class="flex w-full items-baseline gap-2">
 								<span class="flex-1 truncate text-xs font-medium">{pad.name}</span>
 								{#if pad.launches > 0}
-									<span class="text-muted-foreground shrink-0 text-[10px] tabular-nums">
+									<span class="text-muted-foreground shrink-0 text-xs tabular-nums">
 										{m.tooltip_launches_count({ count: pad.launches })}
 									</span>
 								{/if}
 							</span>
 							{#if padPlaces > 1}
-								<span class="text-muted-foreground block truncate text-[10px]">
+								<span class="text-muted-foreground block truncate text-xs">
 									{pad.siteName}
 								</span>
 							{/if}
@@ -393,7 +393,7 @@
 				{/if}
 				{#each groups as { group, items } (group)}
 					<div class="flex flex-col">
-						<p class="text-muted-foreground px-1 pb-1 text-[10px] tracking-wide uppercase">
+						<p class="text-muted-foreground px-1 pb-1 text-2xs tracking-wide uppercase">
 							{GROUP_LABELS[group]()}
 						</p>
 						{#each items as choice (choice.kind)}
@@ -420,15 +420,13 @@
 										{endpointModeLabel(choice.kind, role)}
 									</span>
 									{#if dv !== null}
-										<span class="text-muted-foreground shrink-0 text-[10px] tabular-nums">
+										<span class="text-muted-foreground shrink-0 text-xs tabular-nums">
 											{formatDvBrief(dv)}
 										</span>
 									{/if}
 								</span>
 								{#if choice.periodHours !== undefined}
-									<span
-										class="text-muted-foreground flex w-full items-baseline gap-1.5 text-[10px]"
-									>
+									<span class="text-muted-foreground flex w-full items-baseline gap-1.5 text-xs">
 										<span class="truncate">{detailOf(choice)}</span>
 										<span>·</span>
 										<span class="shrink-0">{formatDuration(choice.periodHours / 24)}</span>

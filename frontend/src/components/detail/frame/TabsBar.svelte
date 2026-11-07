@@ -78,7 +78,7 @@
 					<Tabs.Trigger value={item.tab} class={TAB_TRIGGER_CLASS}>
 						{item.label}
 						{#if item.count !== undefined}
-							<Badge variant="secondary" class="text-[10px] py-0 px-1.5 h-4 leading-none">
+							<Badge variant="secondary" class="text-2xs py-0 px-1.5 h-4 leading-none">
 								{formatCompactNumber(item.count)}
 							</Badge>
 						{/if}

@@ -34,7 +34,7 @@
 <style>
 	.label {
 		fill: var(--color-foreground);
-		font-size: 10px;
+		font-size: 11px;
 		font-weight: 600;
 		font-variant-numeric: tabular-nums;
 	}

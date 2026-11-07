@@ -19,10 +19,10 @@
 </script>
 
 {#if description}
-	<span class="text-muted-foreground block truncate text-[11px]">{description}</span>
+	<span class="text-muted-foreground block truncate text-xs">{description}</span>
 {/if}
 {#if stats.length > 0}
-	<span class="text-muted-foreground block text-[11px] tabular-nums">
+	<span class="text-muted-foreground block text-xs tabular-nums">
 		{stats.join(' · ')}
 	</span>
 {/if}

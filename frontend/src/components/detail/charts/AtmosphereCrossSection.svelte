@@ -53,7 +53,7 @@
 	/** The scrim stays put when the gutter moves: it is placed against the limb
 	 *  it has to fade out, not against the text. */
 	const SCRIM_X = 92;
-	const LABEL_SPACING = 26;
+	const LABEL_SPACING = 27;
 
 	const DATUM_LABEL: Record<string, () => string> = {
 		surface: m.atmosphere_datum_surface,
@@ -228,14 +228,14 @@
 			x={W - 2}
 			y={row.labelY + (stacked[i] ? SECOND_LINE_DY : 0)}
 			text-anchor="end"
-			class="fill-muted-foreground text-[9px]"
+			class="fill-muted-foreground text-[10px]"
 		>
 			{value}
 		</text>
 	{/if}
 	<!-- The layer's thickness, not its top: the interior chart's second line
 	     says the same thing, so the two cross-sections read alike. -->
-	<text x={GUTTER + 4} y={row.labelY + SECOND_LINE_DY} class="fill-muted-foreground text-[9px]">
+	<text x={GUTTER + 4} y={row.labelY + SECOND_LINE_DY} class="fill-muted-foreground text-[10px]">
 		{[widthKm !== undefined ? km(widthKm) : '', stacked[i] ? air : ''].filter(Boolean).join(' · ')}
 	</text>
 	{#if air && !stacked[i]}
@@ -243,7 +243,7 @@
 			x={W - 2}
 			y={row.labelY + SECOND_LINE_DY}
 			text-anchor="end"
-			class="fill-muted-foreground text-[9px]"
+			class="fill-muted-foreground text-[10px]"
 		>
 			{air}
 		</text>
@@ -254,7 +254,7 @@
 	<!-- How high the drawn-to-scale part reaches, above the drawing rather than
 	     in it: the frame is bands edge to edge, so any corner of it is either
 	     inside a layer or on the line of a label that moves with the stack. -->
-	<div class="text-muted-foreground mb-1 text-end text-[10px] tabular-nums">
+	<div class="text-muted-foreground mb-1 text-end text-2xs tabular-nums">
 		{m.structure_to_scale({ value: km(profile.scaleKm) })}
 	</div>
 	<svg
@@ -296,7 +296,7 @@
 			stroke="rgb(255 255 255 / 0.25)"
 			stroke-width="0.75"
 		/>
-		<text x="8" y={GROUND_Y + 13} class="fill-white/70 text-[9px]">
+		<text x="8" y={GROUND_Y + 13} class="fill-white/70 text-[10px]">
 			{(DATUM_LABEL[profile.datum] ?? DATUM_LABEL.surface)()}
 		</text>
 

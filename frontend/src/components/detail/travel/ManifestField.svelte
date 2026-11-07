@@ -115,7 +115,7 @@
 				class={INPUT}
 				oninput={(e) => onPayloadChange(parseAmount(e.currentTarget.value))}
 			/>
-			<span class="text-muted-foreground shrink-0 text-[11px]">{formatUnit('kilogram', true)}</span>
+			<span class="text-muted-foreground shrink-0 text-xs">{formatUnit('kilogram', true)}</span>
 			<button
 				type="button"
 				class={STEP}
@@ -137,7 +137,7 @@
 	</div>
 
 	{#if note}
-		<p class="{note.warn ? 'text-amber-500' : 'text-muted-foreground'} text-[11px]">{note.text}</p>
+		<p class="{note.warn ? 'text-amber-500' : 'text-muted-foreground'} text-xs">{note.text}</p>
 	{/if}
 </div>
 

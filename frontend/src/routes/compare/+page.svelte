@@ -792,7 +792,7 @@
 						onpointerenter={() => (hot = 'prev')}
 						onpointerleave={() => (hot = null)}
 						aria-label={opened ? m.compare_open({ name: ghost.name }) : m.search_prev_page()}
-						class="absolute left-5 z-10 flex h-8 max-w-[45%] items-center rtl:flex-row-reverse gap-1.5 rounded-lg px-2 text-[11.5px] transition-colors {hot ===
+						class="absolute left-5 z-10 flex h-8 max-w-[45%] items-center rtl:flex-row-reverse gap-1.5 rounded-lg px-2 text-xs transition-colors {hot ===
 						'prev'
 							? 'bg-stage/80 text-foreground'
 							: 'bg-stage/55 text-muted-foreground'}"
@@ -829,7 +829,7 @@
 						onpointerenter={() => (hot = 'next')}
 						onpointerleave={() => (hot = null)}
 						aria-label={opened ? m.compare_open({ name: speck.name }) : m.search_next_page()}
-						class="absolute right-5 z-10 flex h-8 max-w-[45%] items-center rtl:flex-row-reverse gap-1.5 rounded-lg px-2 text-[11.5px] transition-colors {hot ===
+						class="absolute right-5 z-10 flex h-8 max-w-[45%] items-center rtl:flex-row-reverse gap-1.5 rounded-lg px-2 text-xs transition-colors {hot ===
 						'next'
 							? 'bg-stage/80 text-foreground'
 							: 'bg-stage/55 text-muted-foreground'}"
@@ -855,7 +855,7 @@
 							class="h-[7px] border-x border-b border-muted-foreground"
 							style="width: {scaleBar.px}px"
 						></div>
-						<span class="text-[11px] text-muted-foreground tabular-nums">{scaleBar.label}</span>
+						<span class="text-xs text-muted-foreground tabular-nums">{scaleBar.label}</span>
 					</div>
 				{/if}
 
@@ -879,7 +879,7 @@
 							spread={false}
 						/>
 						<span
-							class="mx-auto block w-fit rounded-md bg-stage/70 px-1.5 text-center text-[11px] leading-tight text-muted-foreground"
+							class="mx-auto block w-fit rounded-md bg-stage/70 px-1.5 text-center text-xs leading-tight text-muted-foreground"
 						>
 							<bdi>{comparableBody.name}</bdi> ·
 							<bdi class="tabular-nums">{comparableSize}</bdi>

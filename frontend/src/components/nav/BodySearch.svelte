@@ -216,7 +216,7 @@
 							>
 								<span class="min-w-0 flex-1">
 									<span class="block truncate text-xs">{localizedName(hit, getLocale())}</span>
-									<span class="text-muted-foreground block truncate text-[11px]">
+									<span class="text-muted-foreground block truncate text-xs">
 										{secondaryText(hit, { bodyName, featureTypeLabel: (code) => code })}
 									</span>
 								</span>

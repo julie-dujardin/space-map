@@ -167,7 +167,7 @@
 	>
 		{label}
 		{#if count}
-			<Badge class="h-[18px] min-w-[18px] px-1.5 text-[11px] tabular-nums">{count}</Badge>
+			<Badge class="h-[18px] min-w-[18px] px-1.5 text-2xs tabular-nums">{count}</Badge>
 		{/if}
 		{#if open === section}
 			<ChevronUpIcon class="size-3.5 text-muted-foreground" />
@@ -242,13 +242,12 @@
 								>
 									<span class="min-w-0 flex-1">
 										<span class="block truncate text-sm font-medium"><bdi>{hit.name}</bdi></span>
-										<span class="block truncate text-[11.5px] text-muted-foreground">
+										<span class="block truncate text-xs text-muted-foreground">
 											{typeLabel(hit.type)}{#if size}{DOT}<bdi>{size}</bdi>{/if}
 										</span>
 									</span>
 									{#if already}
-										<span class="shrink-0 text-[11.5px] text-muted-foreground"
-											>{m.compare_already()}</span
+										<span class="shrink-0 text-xs text-muted-foreground">{m.compare_already()}</span
 										>
 										<XIcon class="size-4 shrink-0 text-muted-foreground" />
 									{:else}

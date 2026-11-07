@@ -75,12 +75,12 @@
 	// width follows the ticks a level actually draws: a fixed one wide enough
 	// for "4,780,000" leaves a band of nothing beside "8.75", and every pixel
 	// here is one the ring names lose.
-	const TICK_CHAR = 5.4;
+	const TICK_CHAR = 6.6;
 	const TICK_PAD = 10;
-	const GUTTER_MIN = 24;
-	const GUTTER_MAX = 58;
-	/** A label row: the width mark's 10 px monospace, and the flex gap. */
-	const MARK_CHAR = 6.6;
+	const GUTTER_MIN = 28;
+	const GUTTER_MAX = 70;
+	/** A label row: the width mark's 11 px monospace with its padding, and the flex gap. */
+	const MARK_CHAR = 7.2;
 	const ROW_GAP = 8;
 	const STRIP_WIDTH = 46;
 	const LEADER_WIDTH = 22;
@@ -740,17 +740,15 @@
 		style="max-width: calc(100% - {markRoom(width, summary)}px)">{name}</span
 	>
 	{#if summary}
-		<span class="min-w-0 truncate font-mono text-[10px] text-sky-400">{summary} ›</span>
+		<span class="min-w-0 truncate font-mono text-2xs text-sky-400">{summary} ›</span>
 	{/if}
-	<span class="ml-auto shrink-0 pl-1 font-mono text-[10px] text-muted-foreground"
-		>{width ?? ''}</span
-	>
+	<span class="ml-auto shrink-0 pl-1 font-mono text-2xs text-muted-foreground">{width ?? ''}</span>
 {/snippet}
 
 {#snippet stats(feature: RingFeature)}
 	<!-- Associated moons are not here: they are the dots down the left of the
 	     chart, where each one sits at the ring it shepherds. -->
-	<div class="flex flex-wrap gap-x-3 gap-y-1 font-mono text-[11px] text-muted-foreground">
+	<div class="flex flex-wrap gap-x-3 gap-y-1 font-mono text-2xs text-muted-foreground">
 		{#if feature.optical_depth}
 			<span>τ {formatOpticalDepth(feature.optical_depth)}</span>
 		{/if}
@@ -774,7 +772,7 @@
 		<!-- The row's chip is the first thing to get truncated when a name is
 		     long ("2 ringlet…"), so the tooltip carries the whole count. -->
 		{#if summary}
-			<span class="font-mono text-[10px] text-sky-400">{summary}</span>
+			<span class="font-mono text-2xs text-sky-400">{summary}</span>
 		{/if}
 		{#if feature.note}
 			<span class="text-xs">{feature.note}</span>
@@ -821,7 +819,7 @@
 					{/if}
 				{/each}
 			</div>
-			<span class="shrink-0 font-mono text-[11px] text-muted-foreground">
+			<span class="shrink-0 font-mono text-2xs text-muted-foreground">
 				{axisRange}
 				{axisInRadii ? m.rings_axis_body_radii() : m.rings_axis_km()}
 			</span>
@@ -891,7 +889,7 @@
 						x={axisGutter - 6}
 						y={tick.y + 3}
 						text-anchor="end"
-						class="fill-muted-foreground font-mono text-[9px]">{tick.text}</text
+						class="fill-muted-foreground font-mono text-2xs">{tick.text}</text
 					>
 					<line x1={axisGutter - 4} x2={axisGutter} y1={tick.y} y2={tick.y} class="stroke-border" />
 				{/each}
@@ -1096,7 +1094,7 @@
 		</div>
 	</div>
 
-	<div class="flex items-center gap-2 px-1 text-[10px] text-muted-foreground">
+	<div class="flex items-center gap-2 px-1 text-xs text-muted-foreground">
 		<span>{m.rings_invisible()}</span>
 		<!-- Fixed left-to-right, like the labels either side of it: Tailwind's
 		     `rtl:` variant keys on an ancestor `dir`, so an RTL override here

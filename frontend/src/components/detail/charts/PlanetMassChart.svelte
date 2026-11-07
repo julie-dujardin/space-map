@@ -43,7 +43,7 @@
 	const BAR_Y = 8;
 	const BAR_H = 30;
 	// Inline name shown only where the segment is wide enough to hold it.
-	const LABEL_MIN_W = 46;
+	const LABEL_MIN_W = 51;
 	const GAP = 1; // px separator carved out of each segment's right edge
 	let width = $state(0);
 
@@ -151,11 +151,11 @@
 					style:visibility={tipWidth === 0 ? 'hidden' : 'visible'}
 				>
 					<div class="text-xs font-medium">{hovered.name}</div>
-					<div class="text-background/70 text-[11px] tabular-nums">
+					<div class="text-background/70 text-xs tabular-nums">
 						{formatMass(hovered.massKg)} · {sharePct(hovered.share)}
 					</div>
 					{#if hoveredComparison}
-						<div class="text-background/70 text-[11px] tabular-nums">{hoveredComparison}</div>
+						<div class="text-background/70 text-xs tabular-nums">{hoveredComparison}</div>
 					{/if}
 				</div>
 			{/if}
@@ -165,7 +165,7 @@
 
 <style>
 	.seg-label {
-		font-size: 10px;
+		font-size: 11px;
 		font-weight: 500;
 		fill: var(--color-foreground);
 		paint-order: stroke;

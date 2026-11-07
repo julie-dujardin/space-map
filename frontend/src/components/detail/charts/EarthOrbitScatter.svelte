@@ -226,7 +226,7 @@
 		<!-- Inc-only zones have no polygon — surface the rule as a top banner. -->
 		<div
 			class="bg-muted/70 text-muted-foreground absolute top-1 right-2 left-14 rounded px-1.5 py-0.5 leading-tight"
-			style:font-size="9px"
+			style:font-size="11px"
 		>
 			{focusedZone.tooltipDefinition()}
 		</div>

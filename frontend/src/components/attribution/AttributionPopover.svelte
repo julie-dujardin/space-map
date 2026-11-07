@@ -169,7 +169,7 @@
 </script>
 
 {#snippet sectionHeader(label: string)}
-	<h3 class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+	<h3 class="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
 		{label}
 	</h3>
 {/snippet}

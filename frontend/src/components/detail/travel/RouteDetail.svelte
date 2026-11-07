@@ -371,9 +371,9 @@
 			: ''}"
 		{...props}
 	>
-		<div class="text-muted-foreground text-[10px] uppercase">{tile.label}</div>
+		<div class="text-muted-foreground text-2xs uppercase">{tile.label}</div>
 		<div class="text-lg leading-tight font-semibold tabular-nums">
-			{tile.value}{#if tile.unit}<span class="text-muted-foreground ms-1 text-[10px] font-normal"
+			{tile.value}{#if tile.unit}<span class="text-muted-foreground ms-1 text-xs font-normal"
 					>{tile.unit}</span
 				>{/if}
 		</div>

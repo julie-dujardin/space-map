@@ -251,7 +251,7 @@
 										{vehicleName(vehicle)}
 									</span>
 									{#if !fits}
-										<span class="text-muted-foreground shrink-0 text-[11px]">
+										<span class="text-muted-foreground shrink-0 text-xs">
 											{departureNote(vehicle)}
 										</span>
 									{/if}

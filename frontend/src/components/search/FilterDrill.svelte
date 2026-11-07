@@ -96,7 +96,7 @@
 		</span>
 		<span class="min-w-0 flex-1 truncate text-sm text-foreground">{capitalize(leaf.label)}</span>
 		{#if leaf.count != null}
-			<span class="shrink-0 font-mono text-[11px] tabular-nums text-muted-foreground"
+			<span class="shrink-0 font-mono text-xs tabular-nums text-muted-foreground"
 				>{formatCompactNumber(leaf.count)}</span
 			>
 		{/if}
@@ -160,11 +160,11 @@
 				>
 				{#if au > 0}
 					<span
-						class="grid h-4 min-w-4 place-items-center rounded-full bg-primary/20 px-1.5 text-[10px] tabular-nums text-primary"
+						class="grid h-4 min-w-4 place-items-center rounded-full bg-primary/20 px-1.5 text-2xs tabular-nums text-primary"
 						>{au}</span
 					>
 				{:else if node.count != null}
-					<span class="shrink-0 font-mono text-[11px] tabular-nums text-muted-foreground"
+					<span class="shrink-0 font-mono text-xs tabular-nums text-muted-foreground"
 						>{formatCompactNumber(node.count)}</span
 					>
 				{/if}

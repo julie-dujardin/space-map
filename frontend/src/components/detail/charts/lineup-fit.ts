@@ -58,7 +58,7 @@ export const LABEL_MAX_WIDTH = 180;
 /** Air on either side of a name, so names in neighbouring boxes read apart. */
 const LABEL_PAD = 8;
 /** The label font size, as the row's markup sets it. */
-const LABEL_FONT_SIZE = '11px';
+const LABEL_FONT_SIZE = '12px';
 
 // Edge room for a neighbouring band: the band before it gets this share of
 // the row, the same on every page so it reads as an edge rather than as a

@@ -245,7 +245,7 @@
 	<ScrollArea class="flex min-h-0 flex-1 flex-col" viewportClasses="min-h-0 flex-1">
 		<div class="flex flex-col gap-5 px-5 pb-5">
 			<section class="flex flex-col gap-4">
-				<h3 class="text-[10px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
+				<h3 class="text-2xs font-semibold tracking-[0.12em] text-muted-foreground uppercase">
 					{m.settings_section_display()}
 				</h3>
 
@@ -355,7 +355,7 @@
 
 			{#if showTime}
 				<section class="flex flex-col gap-4">
-					<h3 class="text-[10px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
+					<h3 class="text-2xs font-semibold tracking-[0.12em] text-muted-foreground uppercase">
 						{m.settings_section_time()}
 					</h3>
 
@@ -382,7 +382,7 @@
 
 			{#if showScene}
 				<section class="flex flex-col gap-4">
-					<h3 class="text-[10px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
+					<h3 class="text-2xs font-semibold tracking-[0.12em] text-muted-foreground uppercase">
 						{m.settings_section_graphics()}
 					</h3>
 
@@ -429,7 +429,7 @@
 				</section>
 
 				<section class="flex flex-col gap-4">
-					<h3 class="text-[10px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
+					<h3 class="text-2xs font-semibold tracking-[0.12em] text-muted-foreground uppercase">
 						{m.settings_section_developer()}
 					</h3>
 

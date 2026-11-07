@@ -130,7 +130,7 @@
 				<section class="flex flex-col gap-3">
 					<h3
 						id="layers-view-mode-label"
-						class="text-[10px] font-semibold tracking-[0.12em] text-muted-foreground uppercase"
+						class="text-2xs font-semibold tracking-[0.12em] text-muted-foreground uppercase"
 					>
 						{m.layers_view_mode()}
 					</h3>
@@ -159,7 +159,7 @@
 				</section>
 
 				<section class="flex flex-col gap-3">
-					<h3 class="text-[10px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
+					<h3 class="text-2xs font-semibold tracking-[0.12em] text-muted-foreground uppercase">
 						{m.layers_section_layers()}
 					</h3>
 					{#each layerToggles as toggle (toggle.id)}

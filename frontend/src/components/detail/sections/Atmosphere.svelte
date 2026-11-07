@@ -59,7 +59,7 @@
 			value={ucfirst(atmosphereTypeName(atmosphere.type))}
 		/>
 		{#if note}
-			<dd class="text-muted-foreground col-span-2 -mt-1.5 text-[11px] leading-snug">{note}</dd>
+			<dd class="text-muted-foreground col-span-2 -mt-1.5 text-xs leading-snug">{note}</dd>
 		{/if}
 		{#if pressure}
 			{@const reading = ltrIsolate(

@@ -80,7 +80,7 @@
 						<h4 class="text-xs font-medium">
 							{family.name ?? FAMILY_NAME[family.key]?.() ?? family.key}
 						</h4>
-						<span class="text-muted-foreground text-[10px] tabular-nums">
+						<span class="text-muted-foreground text-xs tabular-nums">
 							{formatCompactNumber(family.n)}
 						</span>
 					</div>

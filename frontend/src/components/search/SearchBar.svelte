@@ -997,7 +997,7 @@
 							{m.search_filter()}
 							{#if model.activeCount > 0}
 								<span
-									class="grid h-[17px] min-w-[17px] place-items-center rounded-full bg-foreground px-1 text-[10px] tabular-nums text-background"
+									class="grid h-[17px] min-w-[17px] place-items-center rounded-full bg-foreground px-1 text-2xs tabular-nums text-background"
 									>{model.activeCount}</span
 								>
 							{/if}

@@ -397,7 +397,7 @@
 	{#if activePlot === 'a-q'}
 		<div
 			class="text-muted-foreground absolute top-1 left-9 flex gap-0 overflow-hidden rounded border border-border"
-			style:font-size="9px"
+			style:font-size="11px"
 		>
 			<button
 				type="button"
@@ -421,7 +421,7 @@
 	{:else if isCometMode}
 		<div
 			class="text-muted-foreground absolute top-1 left-9 flex gap-0 overflow-hidden rounded border border-border"
-			style:font-size="9px"
+			style:font-size="11px"
 		>
 			<button
 				type="button"

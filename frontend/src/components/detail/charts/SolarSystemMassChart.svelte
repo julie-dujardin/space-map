@@ -165,11 +165,11 @@
 						style:visibility={tipWidth === 0 ? 'hidden' : 'visible'}
 					>
 						<div class="text-xs font-medium">{hovered.label}</div>
-						<div class="text-background/70 text-[11px] tabular-nums">
+						<div class="text-background/70 text-xs tabular-nums">
 							{formatMass(hovered.mass * EARTH_MASS_KG)} · {sharePct(hovered.share)}
 						</div>
 						{#if hoveredComparison}
-							<div class="text-background/70 text-[11px] tabular-nums">{hoveredComparison}</div>
+							<div class="text-background/70 text-xs tabular-nums">{hoveredComparison}</div>
 						{/if}
 					</div>
 				{/if}
@@ -183,7 +183,7 @@
 		     read as proportions. The inventory's citation is in the page footer. -->
 		<div class="flex items-baseline justify-between gap-2">
 			<h3 class="text-sm font-medium">{m.mass_budget_title()}</h3>
-			<span class="text-muted-foreground text-[10px] uppercase">{m.chart_log_scale()}</span>
+			<span class="text-muted-foreground text-2xs uppercase">{m.chart_log_scale()}</span>
 		</div>
 		<div class="border-border/60 border-t"></div>
 		<div class="mt-1 flex flex-col gap-[3px]">
@@ -244,7 +244,7 @@
 							<div class="text-background/70 tabular-nums">
 								{formatMassRange(r.lo * EARTH_MASS_KG, r.hi * EARTH_MASS_KG)}
 							</div>
-							<div class="text-background/55 text-[11px]">{m.mass_budget_percentile()}</div>
+							<div class="text-background/55 text-xs">{m.mass_budget_percentile()}</div>
 						{/if}
 					</Tooltip.Content>
 				</Tooltip.Root>

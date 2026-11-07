@@ -207,7 +207,7 @@
 		<!-- Cruise length runs bottom-to-top, so its end labels sit beside the
 		     rows they belong to rather than under a rotated axis title. -->
 		<div
-			class="text-muted-foreground flex shrink-0 flex-col justify-between text-end text-[10px] leading-none"
+			class="text-muted-foreground flex shrink-0 flex-col justify-between text-end text-2xs leading-none"
 		>
 			<span>{tofShort}</span>
 			<span class="text-muted-subtle">{m.travel_tof_axis()}</span>
@@ -258,7 +258,7 @@
 					></span>
 					{#if lit}
 						<span
-							class="bg-background/85 text-foreground absolute top-full left-1/2 mt-1 -translate-x-1/2 rounded px-1 py-0.5 text-[10px] whitespace-nowrap"
+							class="bg-background/85 text-foreground absolute top-full left-1/2 mt-1 -translate-x-1/2 rounded px-1 py-0.5 text-xs whitespace-nowrap"
 						>
 							{point.label}
 						</span>
@@ -298,7 +298,7 @@
 		</div>
 	</div>
 
-	<figcaption class="text-muted-foreground flex flex-col gap-1 text-[10px]">
+	<figcaption class="text-muted-foreground flex flex-col gap-1 text-xs">
 		<div class="flex items-baseline justify-between gap-2 tabular-nums">
 			<span class="truncate">{departFrom}</span>
 			<span class="text-muted-subtle shrink-0">{m.travel_departure_axis()}</span>

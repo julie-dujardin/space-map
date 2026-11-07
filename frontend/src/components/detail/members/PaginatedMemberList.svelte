@@ -272,7 +272,7 @@
 	     otherwise anyone's guess. Only the metrics the rows actually carry. -->
 	{#if valueLabels.length > 0}
 		<div
-			class="text-muted-foreground flex justify-end px-1 text-[10px] tracking-wide uppercase"
+			class="text-muted-foreground flex justify-end px-1 text-2xs tracking-wide uppercase"
 			aria-hidden="true"
 		>
 			{valueLabels.join(' · ')}

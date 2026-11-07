@@ -146,7 +146,7 @@
 		</ul>
 
 		{#if caption}
-			<p class="text-muted-foreground text-[11px] leading-snug">{caption}</p>
+			<p class="text-muted-foreground text-xs leading-snug">{caption}</p>
 		{/if}
 	</div>
 {/if}

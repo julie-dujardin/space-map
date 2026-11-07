@@ -37,7 +37,7 @@
 <style>
 	text {
 		fill: var(--color-muted-foreground);
-		font-size: 10px;
+		font-size: 11px;
 		font-variant-numeric: tabular-nums;
 	}
 </style>

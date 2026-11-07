@@ -63,7 +63,7 @@
 
 {#snippet card(props: Record<string, unknown>)}
 	<div class="{CARD} {stat.tooltip ? 'cursor-help' : ''}" {...props}>
-		<div class="text-muted-foreground flex items-center gap-1.5 text-[10px] uppercase">
+		<div class="text-muted-foreground flex items-center gap-1.5 text-2xs uppercase">
 			{#if stat.dot}
 				<span class="inline-block size-1.5 shrink-0 rounded-full {stat.dot}"></span>
 			{/if}
@@ -71,7 +71,7 @@
 		</div>
 		{@render value()}
 		{#if stat.note}
-			<div class="text-muted-foreground truncate text-[11px] leading-4">{stat.note}</div>
+			<div class="text-muted-foreground truncate text-xs leading-4">{stat.note}</div>
 		{/if}
 		{#if stat.share != null && stat.share >= MIN_BAR_SHARE}
 			<div class="bg-muted-foreground/30 h-0.5 w-full overflow-hidden rounded-full">

@@ -36,7 +36,7 @@
 			<h3 class="text-sm font-medium">{title}</h3>
 			<div class="flex items-baseline gap-2">
 				{#if unit}
-					<span class="text-muted-foreground text-[10px] uppercase">{unit}</span>
+					<span class="text-muted-foreground text-2xs uppercase">{unit}</span>
 				{/if}
 				<ChartPager {page} {pageCount} onpage={(p) => (page = p)} />
 				{@render action?.()}

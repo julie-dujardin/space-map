@@ -246,12 +246,12 @@
 		class="absolute inset-0 {onPick || onToggle ? 'cursor-pointer' : 'pointer-events-none'}"
 	></div>
 	<span
-		class="pointer-events-none absolute top-1 start-1.5 text-[10px] font-semibold text-white/70"
+		class="pointer-events-none absolute top-1 start-1.5 text-2xs font-semibold text-white/70"
 		aria-hidden="true">N ↑</span
 	>
 	{#if (expanded || fill) && scale}
 		<div
-			class="pointer-events-none absolute bottom-1.5 start-1.5 text-[10px] leading-tight text-white/80"
+			class="pointer-events-none absolute bottom-1.5 start-1.5 text-2xs leading-tight text-white/80"
 			aria-hidden="true"
 			transition:fade={{ duration: 150 }}
 		>

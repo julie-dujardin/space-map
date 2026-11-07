@@ -36,7 +36,7 @@
 		{@const tx = xScale(t)}
 		<g transform="translate({tx},0)">
 			<line y2={3} class="stroke-muted-foreground/60" />
-			<text y={12} text-anchor="middle" class="fill-muted-foreground" style:font-size="9px">
+			<text y={14} text-anchor="middle" class="fill-muted-foreground" style:font-size="11px">
 				{formatTick(t)}
 			</text>
 		</g>
@@ -46,7 +46,7 @@
 		y={marginBottom - 4}
 		text-anchor="middle"
 		class="fill-muted-foreground"
-		style:font-size="9px"
+		style:font-size="11px"
 	>
 		{xLabel}
 	</text>
@@ -57,7 +57,7 @@
 		{@const ty = yScale(t)}
 		<g transform="translate(0,{ty})">
 			<line x2={-3} class="stroke-muted-foreground/60" />
-			<text x={-5} dy={3} text-anchor="end" class="fill-muted-foreground" style:font-size="9px">
+			<text x={-5} dy={3} text-anchor="end" class="fill-muted-foreground" style:font-size="11px">
 				{formatTick(t)}
 			</text>
 		</g>
@@ -66,7 +66,7 @@
 		transform="translate({-marginLeft + 10},{innerH / 2}) rotate(-90)"
 		text-anchor="middle"
 		class="fill-muted-foreground"
-		style:font-size="9px"
+		style:font-size="11px"
 	>
 		{yLabel}
 	</text>
