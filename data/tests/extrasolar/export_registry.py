@@ -392,7 +392,9 @@ def write_registry(
     star indexes: the loser's ID is an alias and has no data rows. A `retired`
     star index has a retired record and no rows. A `missing` star index takes
     its serial but has no record and no rows, as in a registry rolled back.
-    `extra_table_ids` get rows but no registry record. `orbits` gives the
+    `extra_table_ids` get rows but no registry record. A star row's
+    `_minted_at` (ra, dec) mints its ID at another place than its position,
+    as a star minted at an older position. `orbits` gives the
     Binary orbit row of a star index; without it the registry has no table 2.
     `planets` are rows of `planet`, each with a link record of its first
     cross-id in the Planets part; `planet_status` are (star index, number,
@@ -403,7 +405,7 @@ def write_registry(
     serials: dict[int, int] = defaultdict(int)
     minted = []
     for row in stars:
-        cell = _cell(row["ra"], row["dec"])
+        cell = _cell(*row.get("_minted_at", (row["ra"], row["dec"])))
         minted.append(ids.encode(serials[cell], 1, cell))
         serials[cell] += 1
 

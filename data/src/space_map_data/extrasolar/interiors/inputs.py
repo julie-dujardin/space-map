@@ -318,16 +318,9 @@ def _colour_teff(
 def _radius_luminosity(
     table: pa.Table, log_teff: np.ndarray, sigma_log_teff: np.ndarray
 ) -> Found:
-    """L from a measured radius, as the star lineup takes it, and the Teff."""
-    radius = np.full(table.num_rows, np.nan)
-    measured = np.flatnonzero(
-        table["radius_literature"].is_valid().to_numpy(zero_copy_only=False)
-        | table["angular_diameter"].is_valid().to_numpy(zero_copy_only=False)
-    )
-    rows = table.select(MEASURED_COLUMNS).take(pa.array(measured)).to_pylist()
-    for at, row in zip(measured, rows, strict=True):
-        if (found := measured_radius(row)) is not None:
-            radius[at] = found[0]
+    """L from a measured radius and the Teff: not from a star's `radius`,
+    whose other sources are model radii."""
+    radius, _ = measured_radius(table)
     log_l = photometry.log_l_from_radius(radius, log_teff)
     return RADIUS, 10**log_l, 4 * sigma_log_teff
 

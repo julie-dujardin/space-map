@@ -30,11 +30,12 @@ import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
 from space_map_data.constants.stars.families import FAMILIES, ROOT_FAMILY
-from space_map_data.export.extrasolar import citations, container, render
+from space_map_data.export.extrasolar import citations, container, radius, render
 from space_map_data.export.extrasolar.container import Column, Written
 from space_map_data.extrasolar import families
 from space_map_data.extrasolar.ids import CELL_LEVEL, CELL_MASK, table_of
 from space_map_data.extrasolar.interiors.schema import INTERIOR
+from space_map_data.extrasolar.measured_radius import MEASURED_COLUMNS
 from space_map_data.extrasolar.registry import ALIAS, LIVE, RETIRED, Registry
 from space_map_data.extrasolar.sky import REGION_LEVEL, REGION_SHIFT, region_of
 from space_map_data.extrasolar.store import region_file
@@ -72,6 +73,7 @@ MAX_ROWS = {
 DICTIONARY = frozenset(
     {
         "class",
+        "radius_source",
         "phot_variable_flag",
         "libname_gspphot",
         "distance_method",
@@ -118,13 +120,17 @@ DICTIONARY = frozenset(
     }
 )
 # Columns that the export computes, after the columns of the table.
-COMPUTED = {METADATA.slug: families.FIELDS}
-# The Point source columns of the family masks and of the brightest stars,
-# each once: the two share some.
-FAMILY_COLUMNS = tuple(dict.fromkeys((*families.COLUMNS, *render.MAG_COLUMNS)))
+COMPUTED = {METADATA.slug: (*families.FIELDS, *radius.FIELDS)}
+# The Point source columns of the family masks, of the brightest stars and of
+# the radius, each once: they share some.
+FAMILY_COLUMNS = tuple(
+    dict.fromkeys((*families.COLUMNS, *render.MAG_COLUMNS, *radius.COLUMNS))
+)
 FAMILY_SCHEMA = pa.schema([POINT_SOURCE.schema.field(name) for name in FAMILY_COLUMNS])
 # The System columns of the held stars.
-HELD_COLUMNS = ("id", "star")
+HELD_COLUMNS = ("id", "parent", "star")
+# The Point source columns of the points whose measurement a held star takes.
+MEASURED_POINT_COLUMNS = ("id", *MEASURED_COLUMNS)
 # The length of each family list. A family page lists as many stars.
 LISTED_STARS = 20
 # The G, ID and name of a star of a family list.
@@ -362,6 +368,8 @@ class UnitJob:
     names: np.ndarray | None = None
     # The scratch files of an export table, None for a registry table.
     rows_dir: Path | None = None
+    # Metadata only: the export's scratch, for the radii (`radius.save`).
+    scratch: Path | None = None
 
 
 @dataclass
@@ -566,6 +574,8 @@ def build_unit(job: UnitJob) -> UnitResult:
         names = names_of(rows, job.names)
     if job.slug == METADATA.slug:
         rows, family_stars = with_families(registry, job.unit.regions, rows, problems)
+    if job.scratch is not None:
+        radius.save(job.scratch, job.unit.regions, rows)
 
     ids = rows["id"].to_numpy()
     first = first_cell(job.unit.level, job.unit.pixel)
@@ -610,13 +620,35 @@ def _read(
     )
 
 
-def held_rows(system: pa.Table) -> pa.Table:
-    """Family rows of the held stars in the System rows `system`.
+def measured_points(
+    registry: Registry, regions: tuple[int, ...], system: pa.Table, points: pa.Table
+) -> pa.Table:
+    """MEASURED_POINT_COLUMNS of the points whose measurement a held star of
+    `system` takes (`radius.measuring_points`): from `points`, the Point
+    source rows of `regions`, else from the region of the point's ID. A held
+    star's ID has the cell of its point's position, which can be outside the
+    region of the cell where the point's ID was minted."""
+    wanted = pc.unique(radius.measuring_points(system).drop_null())
+    names = list(MEASURED_POINT_COLUMNS)
+    found = points.select(names).filter(pc.is_in(points["id"], value_set=wanted))
+    missing = np.setdiff1d(wanted.to_numpy(), found["id"].to_numpy())
+    others = set(region_of(missing & CELL_MASK).tolist()) - set(regions)
+    if not others:
+        return found
+    rows = _read(registry, POINT_SOURCE, tuple(sorted(others)), MEASURED_POINT_COLUMNS)
+    rows = rows.filter(pc.is_in(rows["id"], value_set=pa.array(missing)))
+    return pa.concat_tables([found, rows])
+
+
+def held_rows(system: pa.Table, points: pa.Table) -> pa.Table:
+    """Family rows of the held stars in the System rows `system`. `points`
+    are the measured points that they take (`measured_points`).
 
     A held star has no Point source row, so its row is null but for its ID,
-    its spectral type and its magnitudes. The rules that read other columns
-    give nothing. Its G and V go in the columns of the last source of
-    `render.magnitudes`, which takes G, else V, with no estimate.
+    its spectral type, its magnitudes and the columns of its radius
+    (`radius.held_columns`). The rules that read other columns give nothing.
+    Its G and V go in the columns of the last source of `render.magnitudes`,
+    which takes G, else V, with no estimate.
     """
     held = system.filter(system["star"].is_valid())
     star = held["star"]
@@ -625,6 +657,7 @@ def held_rows(system: pa.Table) -> pa.Table:
         families.SPECTRAL_TYPES[0]: pc.struct_field(star, "spectral_type"),
         "host_g_mag": pc.struct_field(star, "g_mag"),
         "host_v_mag": pc.struct_field(star, "v_mag"),
+        **radius.held_columns(held, points),
     }
     return pa.table(
         [
@@ -638,22 +671,22 @@ def held_rows(system: pa.Table) -> pa.Table:
 def with_families(
     registry: Registry, regions: tuple[int, ...], rows: pa.Table, problems: Problems
 ) -> tuple[pa.Table, FamilyStars]:
-    """Metadata `rows` with their family masks and spectral type, and the
-    stars of each family.
+    """Metadata `rows` with their family masks, spectral type and radius
+    (`radius.star_radius`), and the stars of each family.
 
-    A held star reads its System row. A node of a star system has no family
-    and no type, and neither has another row without a Point source row, such
-    as an alias.
+    A held star reads its System row. A node of a star system has no family,
+    type or radius, and neither has another row without a Point source row,
+    such as an alias.
     """
-    stars = pa.concat_tables(
-        [
-            _read(registry, POINT_SOURCE, regions, FAMILY_COLUMNS),
-            held_rows(_read(registry, SYSTEM, regions, HELD_COLUMNS)),
-        ]
-    )
+    points = _read(registry, POINT_SOURCE, regions, FAMILY_COLUMNS)
+    system = _read(registry, SYSTEM, regions, HELD_COLUMNS)
+    measured = measured_points(registry, regions, system, points)
+    stars = pa.concat_tables([points, held_rows(system, measured)])
     published = np.zeros(rows.num_rows, np.uint64)
     estimated = np.zeros(rows.num_rows, np.uint64)
     spectral = pa.nulls(rows.num_rows, pa.string())
+    sizes = pa.nulls(rows.num_rows, pa.float32())
+    size_sources = pa.nulls(rows.num_rows, pa.string())
     mag = np.full(rows.num_rows, np.nan)
     if stars.num_rows:
         at = pc.index_in(stars["id"], value_set=rows["id"].combine_chunks())
@@ -669,13 +702,20 @@ def with_families(
         published[at], estimated[at] = families.masks(stars, classes)
         star_of = np.full(rows.num_rows, -1)
         star_of[at] = np.arange(at.size)
-        spectral = families.spectral_type(stars).take(
-            pa.array(star_of, mask=star_of < 0)
+        place = pa.array(star_of, mask=star_of < 0)
+        spectral = families.spectral_type(stars).take(place)
+        transits = pc.is_in(
+            stars["id"], value_set=radius.transit_hosts(registry, regions)
+        ).to_numpy(zero_copy_only=False)
+        size, size_source = radius.star_radius(
+            stars, published[at] | estimated[at], transits
         )
+        sizes, size_sources = size.take(place), size_source.take(place)
         # Only a star with a published family can be listed.
         listed = published[at] != 0
         mag[at[listed]] = render.magnitudes(stars.filter(pa.array(listed)))[0]
-    for column, values in zip(families.FIELDS, (published, estimated, spectral)):
+    computed = (published, estimated, spectral, sizes, size_sources)
+    for column, values in zip(COMPUTED[METADATA.slug], computed, strict=True):
         rows = rows.append_column(column, pa.array(values, column.type))
     counts = np.stack([families.counts(published), families.counts(estimated)])
     held = table_of(rows["id"].to_numpy()) == SYSTEM_TABLE

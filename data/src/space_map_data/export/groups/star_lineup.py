@@ -1,30 +1,32 @@
 """The size and colour of a listed star, for the lineup of its page.
 
-Gaia saturates on the brightest stars, so the best-known stars have no model
-radius. The order is `measured_radius`, then the catalogue radius. Gaia fits
-a normal star, so its radii do not count for a compact star: what it sees of
-a pulsar is mostly the companion.
+The size is the star's `radius` in its Metadata row, which the extrasolar
+export takes from `export.extrasolar.radius`, and its work follows
+`radius_source`. A paper's work is that of the paper's star: the star of a
+literature cross-id, else the pair of a held star, which its System row cites
+first, else the point whose measurement the held star takes. A paper radius
+that none of these traces credits no work. The colour comes from the Point
+source row, as the render tree colours the star. A held star has no Point
+source row: its Teff is the one of its System row.
 """
 
 import logging
 from collections import defaultdict
-from dataclasses import dataclass
 
 import numpy as np
 
 from space_map_data.constants.planets.families import SOLAR_RADIUS_KM
+from space_map_data.constants.stars import binaries
 from space_map_data.constants.stars.literature import RADII, REFERENCES, Reference
+from space_map_data.export.extrasolar.radius import FLAME, FLAME_SPEC, GSPPHOT
 from space_map_data.export.extrasolar.reader import ExportReader
 from space_map_data.export.extrasolar.render import bp_rp_from_v_i
 from space_map_data.export.notable import NotableObject
 from space_map_data.export.objects.stars import PREFIX
-from space_map_data.extrasolar.measured_radius import MEASURED_COLUMNS, measured_radius
+from space_map_data.extrasolar.exoplanets.catalogues import ARCHIVE, EU, OEC
+from space_map_data.extrasolar.sources.jmdc import JMDC as JMDC_SOURCE
 from space_map_data.extrasolar.sources.literature import LITERATURE, key_of
-from space_map_data.extrasolar.tables import (
-    METADATA,
-    POINT_SOURCE,
-    SYSTEM,
-)
+from space_map_data.extrasolar.tables import METADATA, POINT_SOURCE, SYSTEM
 
 logger = logging.getLogger(__name__)
 
@@ -38,20 +40,32 @@ GAIA_DR3 = Reference(
     "Gaia Data Release 3: summary of the content and survey properties",
     "https://doi.org/10.1051/0004-6361/202243940",
 )
-NASA_EXOPLANET_ARCHIVE = Reference(
-    "NASA Exoplanet Archive",
-    "NASA Exoplanet Archive",
-    "https://exoplanetarchive.ipac.caltech.edu",
-)
-COMPACT_FAMILIES = ("neutron-star", "white-dwarf")
 # A star's radius is known to a few percent at best.
 RADIUS_DIGITS = 3
-
-COLUMNS = [
-    *MEASURED_COLUMNS,
-    "host_radius",
-    "radius_flame",
-    "radius_gspphot",
+# The work behind a radius of each source other than a paper.
+WORKS = {
+    JMDC_SOURCE.name: JMDC,
+    ARCHIVE: Reference(
+        "NASA Exoplanet Archive",
+        "NASA Exoplanet Archive",
+        "https://exoplanetarchive.ipac.caltech.edu",
+    ),
+    EU: Reference(
+        "Schneider et al. 2011",
+        "The Extrasolar Planets Encyclopaedia",
+        "https://exoplanet.eu/",
+    ),
+    OEC: Reference(
+        "Rein 2012",
+        "Open Exoplanet Catalogue",
+        "https://github.com/OpenExoplanetCatalogue/open_exoplanet_catalogue",
+    ),
+    FLAME: GAIA_DR3,
+    FLAME_SPEC: GAIA_DR3,
+    GSPPHOT: GAIA_DR3,
+}
+RADIUS_COLUMNS = ["radius", "radius_source"]
+COLOUR_COLUMNS = [
     "host_teff",
     "teff_gspphot",
     "phot_bp_mean_mag",
@@ -60,37 +74,82 @@ COLUMNS = [
 ]
 
 
-@dataclass
-class _Size:
-    radius_sun: float
-    source: str
-    reference: Reference
+def _literature_key(cross_ids: list[dict]) -> str | None:
+    return next(
+        (
+            c["catalogue_id"]
+            for c in cross_ids
+            if c["catalogue"] == LITERATURE.catalogue
+        ),
+        None,
+    )
 
 
-def _paper(metadata: dict) -> Reference:
-    """The work behind the radius of a star of the literature table."""
-    ids = [c["catalogue_id"] for c in metadata["cross_ids"]]
-    kinds = [c["catalogue"] for c in metadata["cross_ids"]]
-    return REFERENCES[RADII[key_of(ids[kinds.index(LITERATURE.catalogue)])].reference]
-
-
-def _radius(row: dict, compact: bool) -> tuple[float, str, Reference | None] | None:
-    """The radius in solar radii, where it comes from, and the work behind it.
-    A paper's work is in the star's metadata, so it is None here."""
-    if (measured := measured_radius(row)) is not None:
-        radius, source = measured
-        return radius, source, None if source == "literature" else JMDC
-    if row["host_radius"]:
-        return row["host_radius"], "catalogue", NASA_EXOPLANET_ARCHIVE
-    radius = row["radius_flame"] or row["radius_gspphot"]
-    return (radius, "catalogue", GAIA_DR3) if radius and not compact else None
-
-
-def _size(metadata: dict, row: dict, compact: bool = False) -> _Size | None:
-    if (found := _radius(row, compact)) is None:
-        return None
-    radius, source, reference = found
-    return _Size(radius, source, reference or _paper(metadata))
+def _works(reader: ExportReader, metadata: dict[int, dict]) -> dict[int, Reference]:
+    """The work behind the radius of each star of `metadata`, which has
+    `cross_ids` and RADIUS_COLUMNS. A paper radius that no paper traces has
+    none."""
+    papers = {
+        id_: key
+        for id_, row in metadata.items()
+        if row["radius_source"] == LITERATURE.name
+        and (key := _literature_key(row["cross_ids"])) is not None
+    }
+    held_ids = [
+        id_
+        for id_, row in metadata.items()
+        if row["radius_source"] == LITERATURE.name and id_ not in papers
+    ]
+    held = reader.rows(SYSTEM.slug, held_ids, ["parent", "star"])
+    # The tiles serve a struct as a list of at most one item.
+    stars = {id_: row["star"][0] for id_, row in held.items() if row["star"]}
+    pairs = {
+        id_: work
+        for id_, star in stars.items()
+        if star["radius_source"] == LITERATURE.name
+        and (
+            work := next(
+                (
+                    r["reference"]
+                    for r in star["references"] or []
+                    if r["source"] == LITERATURE.name
+                ),
+                None,
+            )
+        )
+        is not None
+    }
+    parents = {
+        id_: row["parent"]
+        for id_, row in held.items()
+        if id_ in stars
+        and stars[id_]["radius_source"] != LITERATURE.name
+        and row["parent"] is not None
+    }
+    points = reader.rows(METADATA.slug, sorted(set(parents.values())), ["cross_ids"])
+    for id_, parent in parents.items():
+        found = points.get(parent)
+        if found and (key := _literature_key(found["cross_ids"] or [])) is not None:
+            papers[id_] = key
+    out = {id_: REFERENCES[RADII[key_of(key)].reference] for id_, key in papers.items()}
+    out |= {id_: binaries.REFERENCES[work] for id_, work in pairs.items()}
+    out |= {
+        id_: WORKS[row["radius_source"]]
+        for id_, row in metadata.items()
+        if row["radius_source"] in WORKS and id_ not in out
+    }
+    untraced = [
+        id_
+        for id_, row in metadata.items()
+        if row["radius"] is not None and id_ not in out
+    ]
+    if untraced:
+        logger.warning(
+            "Star lineup: %d radii credit no work: no paper traces them, e.g. %s",
+            len(untraced),
+            untraced[:5],
+        )
+    return out
 
 
 def _radius_km(radius_sun: float) -> float:
@@ -107,45 +166,71 @@ def _bp_rp(row: dict) -> float | None:
     return round(float(bp_rp_from_v_i(np.array([row["v_i"]]))[0]), 3)
 
 
-def _compact_families(reader: ExportReader) -> int:
-    """The bits of `COMPACT_FAMILIES` in a star's `families`."""
-    order = [entry["slug"] for entry in reader.metadata["families"]]
-    return sum(1 << order.index(family) for family in COMPACT_FAMILIES)
+def _colours(reader: ExportReader, ids: list[int]) -> dict[int, tuple]:
+    """(Teff, BP − RP) of each of `ids`: of its Point source row, else the
+    Teff of its System row."""
+    points = reader.rows(POINT_SOURCE.slug, ids, COLOUR_COLUMNS)
+    held = reader.rows(SYSTEM.slug, [i for i in ids if i not in points], ["star"])
+    out = {
+        id_: (row["host_teff"] or row["teff_gspphot"], _bp_rp(row))
+        for id_, row in points.items()
+    }
+    # The tiles serve a struct as a list of at most one item.
+    for id_, row in held.items():
+        if row["star"]:
+            out[id_] = (row["star"][0]["teff"], None)
+    return out
+
+
+def stand_ins(reader: ExportReader, ids: list[int]) -> dict[int, int]:
+    """The star that each of `ids` stands for where a star is sized: a
+    resolved star system its primary, and a point that holds several stars
+    its first member when that held star dominates the point's light
+    (`star.dominant`). A point whose light can blend stands for no one star,
+    so it stands for itself and has no size."""
+    nodes = reader.rows(SYSTEM.slug, ids, ["primary"])
+    main = {
+        id_: node["primary"] if node["primary"] is not None else id_
+        for id_, node in nodes.items()
+    }
+    points = reader.rows(SYSTEM.slug, sorted(set(main.values())), ["point", "members"])
+    first = {
+        id_: row["members"][0]["id"]
+        for id_, row in points.items()
+        if row["point"] and row["members"] and row["members"][0]["id"] is not None
+    }
+    held = reader.rows(SYSTEM.slug, sorted(set(first.values())), ["star"])
+    # The tiles serve a struct as a list of at most one item.
+    lead = {
+        id_: member
+        for id_, member in first.items()
+        if (star := held.get(member, {}).get("star")) and star[0]["dominant"]
+    }
+    out = {id_: main.get(id_, id_) for id_ in ids}
+    return {id_: lead.get(star, star) for id_, star in out.items()}
 
 
 def drawable_star_radii(reader: ExportReader, ids: list[int]) -> dict[int, float]:
     """The radius in km of each of `ids` a row of stars can draw: those with a
     size and a colour, as `starObject` in the frontend's `compare/geometry.ts`
-    asks. A star system stands for its main star."""
-    points = reader.rows(POINT_SOURCE.slug, ids, COLUMNS)
-    nodes = reader.rows(
-        SYSTEM.slug, [id_ for id_ in ids if id_ not in points], ["primary"]
-    )
-    primaries = {
-        id_: row["primary"] for id_, row in nodes.items() if row["primary"] is not None
+    asks. The size is that of the star that it stands for (`stand_ins`), and
+    the colour that star's, else its own: a point's light is its dominant
+    star's."""
+    main = stand_ins(reader, ids)
+    sizes = reader.rows(METADATA.slug, sorted(set(main.values())), RADIUS_COLUMNS)
+    sized = [id_ for id_ in ids if sizes.get(main[id_], {}).get("radius")]
+    colours = _colours(reader, sorted({i for id_ in sized for i in (id_, main[id_])}))
+
+    def coloured(id_: int) -> bool:
+        return any(
+            value is not None
+            for star in (main[id_], id_)
+            for value in colours.get(star, (None, None))
+        )
+
+    return {
+        id_: _radius_km(sizes[main[id_]]["radius"]) for id_ in sized if coloured(id_)
     }
-    points |= reader.rows(
-        POINT_SOURCE.slug, sorted({*primaries.values()} - points.keys()), COLUMNS
-    )
-    metadata = reader.rows(
-        METADATA.slug, list(points), ["families", "families_estimated"]
-    )
-    compact = _compact_families(reader)
-
-    def radius_km(id_: int) -> float | None:
-        row = points.get(id_)
-        if row is None:
-            return None
-        tags = metadata[id_]["families"] | metadata[id_]["families_estimated"]
-        found = _radius(row, bool(tags & compact))
-        if found is None:
-            return None
-        if not (row["host_teff"] or row["teff_gspphot"]) and _bp_rp(row) is None:
-            return None
-        return _radius_km(found[0])
-
-    radii = {id_: radius_km(primaries.get(id_, id_)) for id_ in ids}
-    return {id_: radius for id_, radius in radii.items() if radius is not None}
 
 
 def add_lineup_fields(
@@ -160,29 +245,25 @@ def add_lineup_fields(
         if member.extrasolar
     }
     ids = [int(object_id.removeprefix(PREFIX)) for object_id in members]
-    metadata = reader.rows(
-        METADATA.slug, ids, ["cross_ids", "families", "families_estimated"]
-    )
-    compact = _compact_families(reader)
-    rows = reader.rows(POINT_SOURCE.slug, ids, COLUMNS)
+    metadata = reader.rows(METADATA.slug, ids, ["cross_ids", *RADIUS_COLUMNS])
+    sized_ids = [id_ for id_, row in metadata.items() if row["radius"] is not None]
+    colours = _colours(reader, sized_ids)
+    works = _works(reader, {id_: metadata[id_] for id_ in sized_ids})
     sized: dict[str, int] = defaultdict(int)
-    for id_, row in rows.items():
-        tags = metadata[id_]["families"] | metadata[id_]["families_estimated"]
-        size = _size(metadata[id_], row, bool(tags & compact))
-        if size is None:
-            continue
-        sized[size.source] += 1
-        radius_km = _radius_km(size.radius_sun)
+    for id_ in sized_ids:
+        row = metadata[id_]
+        sized[row["radius_source"]] += 1
+        radius_km = _radius_km(row["radius"])
         member = members[f"{PREFIX}{id_}"]
         member.radii = {
             "a": radius_km,
             "b": radius_km,
             "c": radius_km,
-            "source": size.source,
-            "reference": dict(size.reference._asdict()),
+            "source": row["radius_source"],
         }
-        member.teff = row["host_teff"] or row["teff_gspphot"]
-        member.bp_rp = _bp_rp(row)
+        if id_ in works:
+            member.radii["reference"] = dict(works[id_]._asdict())
+        member.teff, member.bp_rp = colours.get(id_, (None, None))
     logger.info(
         "Star lineup: %d of %d stars sized %s",
         sum(sized.values()),

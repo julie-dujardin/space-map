@@ -23,9 +23,9 @@ ingest starts and no table version changes under it. Every job gets the
 registry object that the export read under the lock, so all jobs read the
 table versions that metadata.json names.
 
-Render scratch goes in `.build/` beside `v1/`. The planets read the render
-rows of their hosts from it, and then it is removed. The Interior rows go
-there too, one file for each sky region, before the tiles.
+Scratch goes in `.build/` beside `v1/`: the render rows and the radii of the
+Metadata rows, which the planets read for their hosts, and the Interior rows,
+one file for each sky region, before the tiles. Then it is removed.
 """
 
 import fcntl
@@ -516,6 +516,7 @@ def _build_tables(
                 None if found is None else partial(systems.check_metadata, found),
                 ids,
                 rows_dir,
+                layout.scratch if metadata else None,
             )
             for unit, found, ids in zip(units, unit_refs, unit_names, strict=True)
         ]

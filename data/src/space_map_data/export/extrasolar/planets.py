@@ -21,12 +21,17 @@ Files, JSON in gzip:
 Every file has the token of the section in its `token` field. The token
 hashes each file with 16 zeros in that field, as for the sky cultures.
 
-A host or a key is a point with a Point source row, or a resolved star system
-with a System row: the host of a circumbinary planet whose pair Gaia resolves,
-or the root of a host's system, which keys the system's file. A resolved
-system is not drawn as a star. It takes the render position and distance of
-its primary point, else of its first member point that the render tree draws,
-so that its planets are drawn there.
+A host or a key is a point with a Point source row, a held star, or a
+resolved star system with a System row: the host of a circumbinary planet
+whose pair Gaia resolves, or the root of a host's system, which keys the
+system's file. A held star is the star of its point that the planets orbit,
+with its values from its System row. A held star or a resolved system takes
+the render position and distance of its point, else of the first member point
+of the system that the render tree draws, so that its planets are drawn
+there. A host's radius and its source are those of its Metadata row
+(`radius.load`). A point that holds several stars has none there, so it
+takes the planet catalogues' radius (`radius.host_radius`). A resolved
+system has none.
 
 The checks: every host and system ID is live and has a Metadata row and a
 Point source or System row, every host is in one system, a host in a star
@@ -53,6 +58,7 @@ from space_map_data.export.extrasolar import (
     container,
     orbits,
     planet_families,
+    radius,
     render,
     tidal_lock,
 )
@@ -81,7 +87,8 @@ from space_map_data.extrasolar.placement import (
 )
 from space_map_data.extrasolar.registry import ALIAS, LIVE, RETIRED, Registry
 from space_map_data.extrasolar.sky import region_of
-from space_map_data.extrasolar.tables import BINARY_ORBIT, METADATA, SYSTEM
+from space_map_data.extrasolar.systems.assemble import NODE_CLASSES
+from space_map_data.extrasolar.tables import BINARY_ORBIT, HOST_VALUES, METADATA, SYSTEM
 
 logger = logging.getLogger(__name__)
 
@@ -109,7 +116,7 @@ FLAG_COLUMNS = ("assumed", "estimated", "computed", "limits")
 NOT_VALUES = frozenset((*KEY_COLUMNS, *LINK_COLUMNS, *TOP_COLUMNS, *FLAG_COLUMNS))
 SOURCE_SUFFIX = "_source"
 METADATA_COLUMNS = ["id", "name", "name_source", "class", "cross_ids", "system", "mask"]
-SYSTEM_COLUMNS = ["id", "ra", "dec", "primary", "members"]
+SYSTEM_COLUMNS = ["id", "ra", "dec", "primary", "parent", "members", "star"]
 POINT_COLUMNS = [
     "id",
     "ra",
@@ -129,17 +136,20 @@ POINT_COLUMNS = [
     "phot_bp_mean_mag",
     "phot_rp_mean_mag",
     "teff_gspphot",
-    "radius_gspphot",
     "host_name",
     "host_distance",
-    "host_teff",
-    "host_radius",
-    "host_mass",
-    "host_metallicity",
-    "host_age",
+    *(f"{name}{suffix}" for name in HOST_VALUES for suffix in ("", "_source")),
     "host_spectral_type",
     "host_star_source",
 ]
+NO_RADIUS = (None, None)
+# The values of a host record that the planet catalogues give, by the System
+# `star` field and the Point source column.
+HOST_RECORD_VALUES = (
+    ("mass", "host_mass"),
+    ("metallicity", "host_metallicity"),
+    ("age", "host_age"),
+)
 
 CREDITS = (
     {
@@ -264,21 +274,29 @@ class Places:
     placed: dict[int, str | None] = field(default_factory=dict)
     distances: dict[int, float | None] = field(default_factory=dict)
     positions: dict[int, list[float]] = field(default_factory=dict)
+    # The planet catalogues' radius and its source (`radius.host_radius`).
+    host_radii: dict[int, tuple[float | None, str | None]] = field(default_factory=dict)
 
 
 def _host(
-    meta: dict, point: dict, placed: str | None, distance: float | None, position
+    meta: dict,
+    point: dict,
+    size: tuple[float | None, str | None],
+    placed: str | None,
+    distance: float | None,
+    position,
 ) -> dict:
-    """The host record of a system file, before its planets. `distance` is
-    the render row's, from `star_distance`."""
-    catalogue = point["host_star_source"]
-    teff, teff_source = _f32(point["host_teff"]), catalogue
+    """The host record of a system file, before its planets. `size` is the
+    radius and its source, and `distance` the render row's, from
+    `star_distance`."""
+    teff, teff_source = _f32(point["host_teff"]), point["host_teff_source"]
     if teff is None:
         teff, teff_source = _f32(point["teff_gspphot"]), "gaia-dr3"
-    radius, radius_source = _f32(point["host_radius"]), catalogue
-    if radius is None:
-        radius, radius_source = _f32(point["radius_gspphot"]), "gaia-dr3"
     bp, rp = point["phot_bp_mean_mag"], point["phot_rp_mean_mag"]
+    values = {}
+    for name, column in HOST_RECORD_VALUES:
+        values[name] = _f32(point[column])
+        values[f"{name}_source"] = point[f"{column}_source"]
     return {
         "id": meta["id"],
         "name": meta["name"],
@@ -293,24 +311,27 @@ def _host(
         "epoch": _f32(point["epoch"]),
         "teff": teff,
         "teff_source": teff_source if teff is not None else None,
-        "radius": radius,
-        "radius_source": radius_source if radius is not None else None,
-        "mass": _f32(point["host_mass"]),
-        "metallicity": _f32(point["host_metallicity"]),
-        "age": _f32(point["host_age"]),
+        "radius": _f32(size[0]),
+        "radius_source": size[1],
+        **values,
         "spectral_type": point["host_spectral_type"],
         "bp_rp": _f32(bp - rp) if bp is not None and rp is not None else None,
-        "catalogue": catalogue,
+        "catalogue": point["host_star_source"],
         "catalogue_name": point["host_name"],
     }
 
 
-def _system_host(meta: dict, node: dict) -> dict:
-    """The host record of a resolved star system: the fields of a star's
-    record, of a point with no values. It is not drawn as a star, and the
-    values of its stars stay in their own records. `build` gives it the
-    place of one of its points."""
-    record = _host(meta, dict.fromkeys(POINT_COLUMNS), None, None, None)
+def _system_host(meta: dict, node: dict, size: tuple[float | None, str | None]) -> dict:
+    """The host record of a resolved star system or of a held star: the
+    fields of a star's record, with the values of its System row. A resolved
+    system is not drawn as a star, and the values of its stars stay in their
+    own records. `build` gives it the place of one of its points."""
+    record = _host(meta, dict.fromkeys(POINT_COLUMNS), size, None, None, None)
+    star = node["star"] or {}
+    for name in ("teff", *(name for name, _ in HOST_RECORD_VALUES)):
+        record[name] = _f32(star.get(name))
+        record[f"{name}_source"] = star.get(f"{name}_source")
+    record["spectral_type"] = star.get("spectral_type")
     return record | {"ra": node["ra"], "dec": node["dec"], "epoch": render.EPOCH}
 
 
@@ -328,8 +349,14 @@ def _places(job: HostJob) -> Places:
         point_table = with_orbit_parallax(point_table, orbit_table)
         where = placement(point_table)
         distance, orbit = star_distance(point_table, where)
+        # A point of several stars has no families.
+        sizes, sources = radius.host_radius(
+            point_table, np.zeros(point_table.num_rows, np.uint64)
+        )
         for at, row in enumerate(point_table.to_pylist()):
             out.points[row["id"]] = row
+            if np.isfinite(sizes[at]):
+                out.host_radii[row["id"]] = (float(sizes[at]), sources[at])
             # An orbit parallax measures the distance as a parallax does.
             if where.by_parallax[at] or (orbit[at] and not where.by_suspect[at]):
                 label = render.PARALLAX
@@ -379,6 +406,7 @@ def host_rows(job: HostJob) -> HostRows:
     metadata = rows(METADATA.slug, METADATA_COLUMNS)
     places = _places(job)
     nodes = rows(SYSTEM.slug, SYSTEM_COLUMNS)
+    sizes = radius.load(job.scratch, job.region)
     for id_ in job.ids:
         meta = metadata.get(id_)
         if meta is None:
@@ -388,15 +416,23 @@ def host_rows(job: HostJob) -> HostRows:
         if meta["system"] is not None or meta["mask"] & SYSTEM_BIT:
             out.roots[id_] = meta["system"] or id_
         if id_ in places.points:
+            # A point of several stars has no Metadata radius. Its planets'
+            # host is the catalogues' star.
+            size = (
+                places.host_radii.get(id_, NO_RADIUS)
+                if meta["class"] in NODE_CLASSES
+                else sizes.get(id_, NO_RADIUS)
+            )
             out.hosts[id_] = _host(
                 meta,
                 places.points[id_],
+                size,
                 places.placed.get(id_),
                 places.distances.get(id_),
                 places.positions.get(id_),
             )
         elif id_ in nodes:
-            out.hosts[id_] = _system_host(meta, nodes[id_])
+            out.hosts[id_] = _system_host(meta, nodes[id_], sizes.get(id_, NO_RADIUS))
             out.places[id_] = _system_points(nodes[id_])
         else:
             out.problems.setdefault("no Point source or System row", []).append(id_)
@@ -405,8 +441,12 @@ def host_rows(job: HostJob) -> HostRows:
 
 def _system_points(node: dict) -> list[int]:
     """The points whose place a resolved system takes: its primary, then its
-    members in member order. A member that is a resolved system has no place."""
-    found = [node["primary"], *(member["id"] for member in node["members"] or [])]
+    members in member order. A member that is a resolved system has no place.
+    A held star takes the place of its point."""
+    found = [
+        node["parent"] if node["star"] else node["primary"],
+        *(member["id"] for member in node["members"] or []),
+    ]
     return list(dict.fromkeys(id_ for id_ in found if id_ is not None))
 
 
@@ -572,10 +612,10 @@ def build(
     """Write the planet files below `out`, or None when the registry has no
     planets table.
 
-    `scratch` holds the render rows of the tree build, `run` maps a task over
-    jobs in the export's workers, `live` is the served `v1/x/`, and
-    `host_pages` names the hosts with an entry, by ID, and `textures` holds
-    the maps of the planets.
+    `scratch` holds the render rows of the tree build and the radii of the
+    Metadata rows (`radius.save`), `run` maps a task over jobs in the
+    export's workers, `live` is the served `v1/x/`, `host_pages` names the
+    hosts with an entry, by ID, and `textures` holds the maps of the planets.
     """
     records = read_records(registry)
     if records is None:

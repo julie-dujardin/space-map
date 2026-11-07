@@ -451,14 +451,14 @@ interface GlobalGroupData {
   // the classified stars.
   // `notable_members` are the 20 best-known stars with a published family.
   // A star listed here or on a family page, with a known size, also has `radii` (a = b = c, km, three
-  // figures), with `source` and the `reference` to credit: "literature" from a
-  // paper; "interferometry" from the median of its JMDC diameters at its
-  // distance, leaving out the bands from 8 µm, the distance a paper's or a parallax
-  // of 5σ; "catalogue" as its star page (`host_radius`, else `radius_flame`,
-  // else `radius_gspphot`, neither of those two for a neutron star or a white
-  // dwarf). It then has
-  // `teff` (`host_teff`, else `teff_gspphot`) and `bp_rp` as the render tree
-  // takes it, where it has them.
+  // figures, rounded once from the Metadata value): its Metadata `radius` in the
+  // extrasolar export, with `source` (its `radius_source`) and the `reference`
+  // to credit: the paper of a `literature` radius (of the star's literature
+  // cross-id, else of a held star's pair, else of the point whose measurement
+  // the held star takes), JMDC, the planet catalogue, or Gaia DR3; a radius
+  // that none of these traces has no `reference`. It then has
+  // `teff` (`host_teff`, else `teff_gspphot`, else a held star's `star.teff`)
+  // and `bp_rp` as the render tree takes it, where it has them.
   // `groups/__star_plot__.json.gz` is its diagram: `bp_rp` and `abs_g`
   // (absolute G from the parallax, extinction not removed) and `stage` (an
   // index into `stages`, null without one of them) of the stars of 60 random
@@ -467,7 +467,7 @@ interface GlobalGroupData {
   parent_families?: string[];       // the star- or planet- pages of the families that contain this one; the breadcrumb takes the first; `cat-stars` on a star family without a parent family; `cat-planets` on a planet family without a parent family
   published_star_count?: number;    // stars that a catalogued classification puts in the family
   estimated_star_count?: number;    // the other stars, which only an estimate (Gaia DR3 or a SIMBAD candidate type) puts there
-  largest_star?: { primary_type: "object"; primary_id: string; name: string; radius_sun: number }; // cat-stars only: the star with an entry and the largest radius, no point that holds several stars (`radius_flame`, else `radius_flame_spec`, else `radius_gspphot`) with both bounds within 10%
+  largest_star?: { primary_type: "object"; primary_id: string; name: string; radius_sun: number }; // cat-stars only: the star with an entry and the largest Metadata `radius` that is precise: a measurement (`literature`, `jmdc`), a planet catalogue's radius whose larger error (`host_radius_error`, a held star's `star.host_radius_error`) is within 10%, or FLAME (either run) with both bounds within 10%; never GSP-Phot; a node of a star system has none
 
   // Planet families (planet-<family>, one per family of the planet records'
   // `families` lists) only. The exoplanet counts are the `families` entry of

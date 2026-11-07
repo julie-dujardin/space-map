@@ -129,42 +129,64 @@ class TestBuild:
         assert (stats.published_star_count, stats.estimated_star_count) == (3, 1)
 
     @pytest.mark.parametrize(
-        ("row", "radius"),
+        ("size", "error", "radius"),
         [
-            ({"radius_flame": 2.0, "low": 1.9, "up": 2.1, "gsp": 900.0}, 2.0),
-            ({"radius_flame": 2.0, "low": 1.0, "up": 2.1, "gsp": 900.0}, None),
+            ((2.0, "gaia-dr3-flame"), 0.1, 2.0),
+            ((2.0, "gaia-dr3-flame"), 1.0, None),
+            ((2.0, "gaia-dr3-flame-spec"), 0.1, 2.0),
+            ((628.0, "literature"), None, 628.0),
+            ((9.0, "jmdc"), None, 9.0),
             # GSP-Phot alone sized CM Vel at the edge of its grid.
-            ({"radius_flame": None, "low": None, "up": None, "gsp": 900.0}, None),
+            ((900.0, "gaia-dr3-gspphot"), 1.0, None),
+            ((1.1, "nasa-exoplanet-archive"), 0.05, 1.1),
+            ((1.1, "nasa-exoplanet-archive"), 0.2, None),
+            ((1.1, "nasa-exoplanet-archive"), None, None),
         ],
     )
-    def test_a_card_shows_a_precise_radius(self, row, radius):
-        columns = dict.fromkeys(
-            f"{c}{end}"
-            for c in star_family.RADIUS_COLUMNS
-            for end in ("", "_lower", "_upper")
-        )
-        columns |= {
-            "radius_flame": row["radius_flame"],
-            "radius_flame_lower": row["low"],
-            "radius_flame_upper": row["up"],
-            "radius_gspphot": row["gsp"],
-            "radius_gspphot_lower": row["gsp"] and row["gsp"] * 0.95,
-            "radius_gspphot_upper": row["gsp"] and row["gsp"] * 1.05,
+    def test_a_card_shows_a_measured_or_precise_radius(self, size, error, radius):
+        found = {"radius": size[0], "radius_source": size[1]}
+        assert star_family._card_radius(found, error) == radius
+
+    def test_the_error_is_that_of_the_chosen_radius(self):
+        """The bounds of its FLAME run for a FLAME radius, the catalogue's
+        error for a catalogue's, on the Point source row or the held star's
+        System row."""
+        tables = {
+            "point-source": {
+                1: {"radius_flame_lower": 1.9, "radius_flame_upper": 2.2},
+                2: {"radius_flame_lower": 1.9, "radius_flame_upper": 2.1}
+                | {"host_radius_error": 0.3},
+                5: {"radius_flame_spec_lower": 0.95, "radius_flame_spec_upper": 1.1},
+            },
+            "system": {3: {"star": [{"host_radius_error": 0.04}]}},
         }
-        assert star_family._radius(columns) == radius
+
+        class Reader:
+            def rows(self, slug, ids, columns):
+                return {i: tables[slug][i] for i in ids if i in tables.get(slug, {})}
+
+        sizes = {
+            1: {"radius": 2.0, "radius_source": "gaia-dr3-flame"},
+            2: {"radius": 1.0, "radius_source": "exoplanet-eu"},
+            3: {"radius": 0.9, "radius_source": "open-exoplanet-catalogue"},
+            4: {"radius": 9.0, "radius_source": "jmdc"},
+            5: {"radius": 1.0, "radius_source": "gaia-dr3-flame-spec"},
+        }
+        errors = star_family._radius_errors(Reader(), sizes)  # ty: ignore[invalid-argument-type]
+        assert errors == pytest.approx({1: 0.2, 2: 0.3, 3: 0.04, 5: 0.1})
 
     def test_the_largest_star_is_no_system(self, session):
-        """A point that holds several stars has a radius, but it is no star."""
+        """A system has no Metadata radius, so the card never names one."""
 
-        def rows(_slug, ids, columns):
-            radius = {1: 900.0, 2: 500.0}
-            return {
-                id_: {
-                    **dict.fromkeys(columns),
-                    "radius_flame": radius[id_],
-                    "radius_flame_lower": radius[id_],
-                    "radius_flame_upper": radius[id_],
+        def rows(slug, ids, columns):
+            if slug == "metadata":
+                radius = {1: None, 2: 500.0}
+                return {
+                    id_: {"radius": radius[id_], "radius_source": "gaia-dr3-flame"}
+                    for id_ in ids
                 }
+            return {
+                id_: {"radius_flame_lower": 499.0, "radius_flame_upper": 501.0}
                 for id_ in ids
             }
 
@@ -333,13 +355,14 @@ class TestBuild:
         with pytest.raises(FileNotFoundError, match="--only extrasolar"):
             star_family.served_families_stamp(out)
 
-    def test_stamp_follows_the_counts_lists_and_metadata_tiles(self, served, session):
+    def test_stamp_follows_the_counts_lists_and_tiles(self, served, session):
         _, out = served
         stamp = star_family.served_families_stamp(out)
         assert stamp is not None
         reader = ExportReader(out / "v1" / "x")
         assert stamp["families"] == reader.metadata["families"]
         assert stamp["metadata"] == reader.metadata["tables"]["metadata"]["token"]
+        assert stamp["system"] == reader.metadata["tables"]["system"]["token"]
         path = out / "v1" / "x" / FAMILIES_FILE
         lists = json.loads(path.read_text())
         lists["brightest"]["dwarf"].reverse()

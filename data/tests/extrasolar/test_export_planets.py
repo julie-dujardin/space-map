@@ -18,13 +18,14 @@ from space_map_data.export.extrasolar.build import (
 from space_map_data.export.extrasolar.reader import ExportReader, TokenMismatch
 from space_map_data.export.swap import ExportRefused
 from space_map_data.export.wikidata import StarEntity
-from space_map_data.extrasolar.exoplanets.catalogues import EU
+from space_map_data.extrasolar.exoplanets.catalogues import ARCHIVE, EU
 from space_map_data.extrasolar.registry import ALIAS, RETIRED, Registry
+from space_map_data.extrasolar.tables import METADATA
 from space_map_data.utils.paths import EXTRASOLAR_DIR
 from tests.conftest import EntityStub, labelled
 from tests.extrasolar.conftest import offset
 from tests.extrasolar.exoplanet_files import eu_planet
-from tests.extrasolar.export_registry import planet, star, write_registry
+from tests.extrasolar.export_registry import Node, planet, star, write_registry
 from tests.extrasolar.test_exoplanet_ingest import ZETA, downloads, ingest
 from tests.extrasolar.test_export import _expected_position
 
@@ -32,8 +33,11 @@ HOST = {
     "host_star_source": "nasa-exoplanet-archive",
     "host_distance": 20.0,
     "host_teff": 5800.0,
+    "host_teff_source": "nasa-exoplanet-archive",
     "host_radius": 1.1,
+    "host_radius_source": "nasa-exoplanet-archive",
     "host_mass": 1.05,
+    "host_mass_source": "nasa-exoplanet-archive",
 }
 
 
@@ -56,7 +60,13 @@ STARS = [
     star(100.0, 20.0, 50.0, name="Host A") | HOST | {"host_name": "HD 1"},
     # 1: a literature host at its catalogue distance, with V and Teff.
     _literature(
-        101.0, 21.0, "Lit B", host_distance=500.0, host_v_mag=12.0, host_teff=4000.0
+        101.0,
+        21.0,
+        "Lit B",
+        host_distance=500.0,
+        host_v_mag=12.0,
+        host_teff=4000.0,
+        host_teff_source="nasa-exoplanet-archive",
     ),
     # 2: a microlensing host: a distance and no magnitude.
     _literature(102.0, -20.0, "OGLE-1L", host_distance=3000.0),
@@ -157,11 +167,48 @@ class TestPlanetFiles:
         assert host["distance"] == pytest.approx(20.0, rel=1e-6)
         assert (host["teff"], host["teff_source"]) == (5800.0, "nasa-exoplanet-archive")
         assert (host["radius"], host["mass"]) == (1.1, 1.05)
+        assert (host["radius_source"], host["mass_source"]) == (ARCHIVE, ARCHIVE)
         assert host["bp_rp"] == pytest.approx(0.9)
+        metadata = reader.row(METADATA.slug, built.ids[0])
+        assert metadata is not None
+        assert (metadata["radius"], metadata["radius_source"]) == (
+            pytest.approx(1.1),
+            ARCHIVE,
+        )
         literature = reader.system(built.ids[1])["hosts"][0]
         assert literature["placement"] == render.CATALOGUE_DISTANCE
         assert literature["distance"] == 500.0
         assert reader.system(built.ids[3])["hosts"][0]["placement"] is None
+
+    def test_a_point_that_keeps_its_planets_has_the_catalogue_radius(
+        self, tmp_path, out
+    ):
+        """A point of two stars has no Metadata radius, but its planets' host
+        is the catalogue's star."""
+        built = write_registry(
+            tmp_path / "reg",
+            [star(100.0, 20.0, 50.0, name="Pair") | HOST],
+            planets=[planet(0, 1)],
+            systems=[Node((("entry", None, "A"), ("entry", None, "B")), point=0)],
+        )
+        export_extrasolar(built.root, out, workers=1)
+        reader = ExportReader(out / "v1" / "x")
+        host = reader.system(built.ids[0])["hosts"][0]
+        assert (host["radius"], host["radius_source"]) == (1.1, ARCHIVE)
+        metadata = reader.row(METADATA.slug, built.ids[0])
+        assert metadata is not None and metadata["radius"] is None
+
+    def test_a_host_has_its_age(self):
+        """The tidal lock reads the host's age, also on a held star."""
+        meta = {"id": 1, "name": "A", "name_source": None, "class": "star"}
+        meta["cross_ids"] = None
+        point = dict.fromkeys(planets.POINT_COLUMNS)
+        point |= {"host_age": 4.5, "host_age_source": ARCHIVE}
+        record = planets._host(meta, point, planets.NO_RADIUS, None, None, None)
+        assert (record["age"], record["age_source"]) == (4.5, ARCHIVE)
+        node = {"ra": 1.0, "dec": 2.0, "star": {"age": 6.5, "age_source": EU}}
+        record = planets._system_host(meta, node, planets.NO_RADIUS)
+        assert (record["age"], record["age_source"]) == (6.5, EU)
 
     def test_a_planet_record(self, tmp_path, out):
         built, _, reader = _export(tmp_path, out)

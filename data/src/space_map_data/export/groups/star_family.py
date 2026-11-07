@@ -37,6 +37,7 @@ from space_map_data.constants.stars.families import (
 )
 from space_map_data.export.extrasolar.build import families_file, served
 from space_map_data.export.extrasolar.container import Container
+from space_map_data.export.extrasolar.radius import FLAME, FLAME_SPEC, GSPPHOT
 from space_map_data.export.extrasolar.reader import ExportReader
 from space_map_data.export.extrasolar.tiles import LISTED_STARS
 from space_map_data.export.groups.family_pages import (
@@ -46,14 +47,14 @@ from space_map_data.export.groups.family_pages import (
     served_metadata,
     sitelink_rank,
 )
-from space_map_data.export.groups.star_lineup import add_lineup_fields
+from space_map_data.export.groups.star_lineup import RADIUS_COLUMNS, add_lineup_fields
 from space_map_data.export.groups.stats import GroupExtraStats
 from space_map_data.export.names import Names, ObjectNames
 from space_map_data.export.notable import NotableObject
 from space_map_data.export.objects.stars import PREFIX, TYPE, StarObject
 from space_map_data.extrasolar.families import of_spectral_type
-from space_map_data.extrasolar.measured_radius import MEASURED_COLUMNS, measured_radius
-from space_map_data.extrasolar.tables import METADATA, POINT_SOURCE
+from space_map_data.extrasolar.measured_radius import MEASURED_SOURCES
+from space_map_data.extrasolar.tables import METADATA, POINT_SOURCE, SYSTEM
 from space_map_data.utils.content_stamp import content_stamp
 from space_map_data.utils.paths import EXTRASOLAR_DIR
 
@@ -76,10 +77,15 @@ PLOT_SEED = 1
 PLOT_DIGITS = 3
 # The stage of a plotted star: the first of these that it has.
 PLOT_STAGES = ("white-dwarf", "supergiant", "giant", "subgiant", "main-sequence")
-# The model radii a card can quote, each with its bounds. A catalogue's radius
-# of a planet host has no bounds, so no card can vouch for it. GSP-Phot alone
-# gave CM Vel 1416 ± 1 R☉ at log g −0.5, which no measurement backs.
-RADIUS_COLUMNS = ("radius_flame", "radius_flame_spec")
+# A card quotes a star's Metadata radius when that value is precise: a
+# measurement, a planet catalogue's radius whose error is within
+# CARD_PRECISION of it, or a FLAME radius whose bounds are. A radius with no
+# error is not precise. A GSP-Phot radius is never precise. Alone, it gave
+# CM Vel 1416 ± 1 R☉ at log g −0.5, which no measurement backs.
+FLAME_BOUNDS = {
+    FLAME: ("radius_flame_lower", "radius_flame_upper"),
+    FLAME_SPEC: ("radius_flame_spec_lower", "radius_flame_spec_upper"),
+}
 # As on the planet cards: a card shows no uncertainty.
 CARD_PRECISION = 0.1
 
@@ -101,10 +107,11 @@ class StarGroups(FamilyGroups):
 
 def served_families_stamp(extrasolar_dir: Path = EXTRASOLAR_DIR) -> dict | None:
     """The family counts, the star count, a stamp of the family lists and the
-    Metadata and Point source tokens of the served extrasolar export, None
-    with no export served. The pages read the counts and the lists, the
-    families of their Wikipedia stars from the Metadata tiles, and the largest
-    star, the diagram and the lineup from the Point source tiles."""
+    Metadata, Point source and System tokens of the served extrasolar export,
+    None with no export served. The pages read the counts and the lists, the
+    families and radii of their stars from the Metadata tiles, the diagram and
+    the colours from the Point source tiles, and the held stars' values from
+    the System tiles."""
     # Under the lock, so both files come from one export.
     with served(extrasolar_dir):
         metadata = served_metadata(extrasolar_dir)
@@ -116,6 +123,7 @@ def served_families_stamp(extrasolar_dir: Path = EXTRASOLAR_DIR) -> dict | None:
             "lists": content_stamp(families_file(extrasolar_dir / "v1" / "x")),
             "metadata": metadata["tables"]["metadata"]["token"],
             "point_source": metadata["tables"][POINT_SOURCE.slug]["token"],
+            "system": metadata["tables"][SYSTEM.slug]["token"],
         }
 
 
@@ -180,52 +188,67 @@ def build_star_family_groups(
     return out
 
 
-def _radius(row: dict) -> float | None:
-    """The radius of a Point source row that a card can show, in R☉: the first
-    of RADIUS_COLUMNS, when both its bounds are within CARD_PRECISION of it."""
-    for column in RADIUS_COLUMNS:
-        value = row[column]
-        if value is None:
-            continue
-        lower, upper = row[f"{column}_lower"], row[f"{column}_upper"]
-        precise = (
-            lower is not None
-            and upper is not None
-            and max(upper - value, value - lower) <= CARD_PRECISION * value
-        )
-        return value if precise else None
-    return None
+def _card_radius(size: dict, error: float | None) -> float | None:
+    """The radius of a star that a card can show, in R☉, from its Metadata
+    `size` and the larger error of that value."""
+    value, source = size["radius"], size["radius_source"]
+    if value is None or source == GSPPHOT:
+        return None
+    if source in MEASURED_SOURCES:
+        return value
+    precise = error is not None and error <= CARD_PRECISION * value
+    return value if precise else None
 
 
-def _measured(row: dict) -> float | None:
-    found = measured_radius(row)
-    return found and found[0]
+def _radius_errors(reader: ExportReader, sizes: dict[int, dict]) -> dict[int, float]:
+    """The larger error of the Metadata radius of each star of `sizes` that a
+    FLAME or a planet catalogue radius has: FLAME's bounds or the catalogue's
+    error, on the Point source row, else on the held star's System row.
+    FLAME stands for either FLAME run."""
+    wanted = [
+        id_
+        for id_, size in sizes.items()
+        if size["radius"] is not None
+        and size["radius_source"] not in (*MEASURED_SOURCES, GSPPHOT)
+    ]
+    columns = [c for bounds in FLAME_BOUNDS.values() for c in bounds]
+    points = reader.rows(POINT_SOURCE.slug, wanted, [*columns, "host_radius_error"])
+    out: dict[int, float] = {}
+    for id_, row in points.items():
+        value, source = sizes[id_]["radius"], sizes[id_]["radius_source"]
+        if source not in FLAME_BOUNDS:
+            error = row["host_radius_error"]
+        elif None not in (bounds := [row[c] for c in FLAME_BOUNDS[source]]):
+            error = max(bounds[1] - value, value - bounds[0])
+        else:
+            error = None
+        if error is not None:
+            out[id_] = error
+    held = reader.rows(SYSTEM.slug, [i for i in wanted if i not in points], ["star"])
+    # The tiles serve a struct as a list of at most one item.
+    for id_, row in held.items():
+        if (error := row["star"][0]["host_radius_error"]) is not None:
+            out[id_] = error
+    return out
 
 
 def _largest_star(
     reader: ExportReader, star_objects: list[StarObject], names: ObjectNames
 ) -> tuple[dict, Names] | None:
-    """The star with an entry and the largest radius, measured else from a
-    model, as {primary_type, primary_id, name, radius_sun}, and the names of its
-    page.
+    """The star with an entry and the largest radius that a card can show
+    (`_card_radius`), as {primary_type, primary_id, name, radius_sun}, and the
+    names of its page.
 
     The stars with an entry only: the tiles of every star are too many to read
-    here, and an unknown star on the card would say little. A point that holds
-    several stars has a radius, but a system is no star."""
-    columns = [
-        *MEASURED_COLUMNS,
-        *(
-            name
-            for column in RADIUS_COLUMNS
-            for name in (column, f"{column}_lower", f"{column}_upper")
-        ),
-    ]
+    here, and an unknown star on the card would say little. A system is no
+    star, so it has no radius."""
     entries = {star.id: star for star in star_objects if star.object_type == TYPE}
-    rows = reader.rows(POINT_SOURCE.slug, sorted(entries), columns)
+    sizes = reader.rows(METADATA.slug, sorted(entries), RADIUS_COLUMNS)
+    errors = _radius_errors(reader, sizes)
     radii = {
         id_: radius
-        for id_, row in rows.items()
-        if (radius := _measured(row) or _radius(row))
+        for id_, size in sizes.items()
+        if (radius := _card_radius(size, errors.get(id_)))
     }
     if not radii:
         return None

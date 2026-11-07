@@ -7,12 +7,14 @@ import numpy as np
 import pyarrow as pa
 import pytest
 
+from space_map_data.constants.stars import binaries
 from space_map_data.constants.stars.binaries import BINARIES
 from space_map_data.constants.stars.families import FAMILIES
 from space_map_data.export.extrasolar import (
     build,
     census,
     container,
+    radius,
     render,
     systems,
     tiles,
@@ -23,8 +25,9 @@ from space_map_data.export.extrasolar.build import (
 )
 from space_map_data.export.extrasolar.container import Column
 from space_map_data.export.extrasolar.reader import ExportReader, NodeInfo
+from space_map_data.export.groups import star_lineup
 from space_map_data.export.swap import ExportRefused
-from space_map_data.extrasolar import families, ids, placement
+from space_map_data.extrasolar import families, ids, placement, sky
 from space_map_data.extrasolar.interiors import inputs
 from space_map_data.extrasolar.registry import Registry, RegistryBusy
 from space_map_data.extrasolar.sources.hipparcos import g_estimate, propagate
@@ -33,12 +36,14 @@ from space_map_data.extrasolar.tables import (
     METADATA,
     POINT_SOURCE,
     SYSTEM,
+    SYSTEM_MEMBER,
     SYSTEM_STAR,
 )
 from tests.extrasolar.export_registry import (
     HOST,
     Held,
     Node,
+    planet,
     random_stars,
     star,
     write_registry,
@@ -478,6 +483,7 @@ class TestExport:
             ("system", census.HELD_COLUMNS),
             ("point-source", inputs.COLUMNS),
             ("system", inputs.SYSTEM_COLUMNS),
+            ("planets", radius.TRANSIT_COLUMNS),
             *(
                 (table.slug, census.read_columns(table))
                 for table in (METADATA, POINT_SOURCE, BINARY_ORBIT, SYSTEM)
@@ -542,9 +548,16 @@ class TestHeldRows:
 
     def test_they_read_no_member(self):
         star = {"spectral_type": "K0III", "g_mag": 7.0, "v_mag": 8.0}
-        rows = tiles.held_rows(
-            pa.table({"id": [1, 2], "star": pa.array([star, None], SYSTEM_STAR)})
+        system = pa.table(
+            {
+                "id": [1, 2],
+                "parent": pa.array([3, 3], pa.int64()),
+                "point": [False, False],
+                "members": pa.array([None, None], pa.list_(SYSTEM_MEMBER)),
+                "star": pa.array([star, None], SYSTEM_STAR),
+            }
         )
+        rows = tiles.held_rows(system, tiles.FAMILY_SCHEMA.empty_table())
         assert rows["id"].to_pylist() == [1]
         assert rows["host_g_mag"].to_pylist() == [7.0]
         assert rows["host_v_mag"].to_pylist() == [8.0]
@@ -1112,3 +1125,159 @@ class TestRenderRows:
         drawn = np.array([rows[axis][0] for axis in "xyz"]) / 50.0
         assert drawn == pytest.approx(direction, abs=1e-12)
         assert counts["moved to J2016.0"] == 1
+
+
+class TestRadius:
+    """Every star's Metadata row carries the one radius that a client draws."""
+
+    @pytest.fixture
+    def exported(self, tmp_path, out):
+        built = write_registry(
+            tmp_path / "reg",
+            [
+                star(20.0, 5.0) | {"radius_flame": 2.0, "radius_gspphot": 2.2},
+                star(20.0, 6.0)
+                | {
+                    "radius_flame": 1.4,
+                    "host_radius": 0.3,
+                    "host_radius_source": "exoplanet-eu",
+                },
+                star(20.0, 7.0) | {"radius_literature": 1.5, "radius_flame": 9.0},
+            ],
+            systems=[
+                Node(
+                    (("held", None, "A"), ("held", None, "B")),
+                    point=2,
+                    held={
+                        "A": Held(
+                            "Point A",
+                            {"spectral_type": "G2V", "dominant": True},
+                            v_mag=4.0,
+                        ),
+                        "B": Held(
+                            "Point B",
+                            {
+                                "radius": 0.4,
+                                "radius_source": "open-exoplanet-catalogue",
+                                "host_radius": 0.4,
+                                "host_radius_source": "open-exoplanet-catalogue",
+                            },
+                            v_mag=9.0,
+                        ),
+                    },
+                ),
+            ],
+        )
+        export_extrasolar(built.root, out, workers=1)
+        return built, ExportReader(out / "v1" / "x")
+
+    def _radius(self, reader: ExportReader, id_: int) -> tuple:
+        record = reader.lookup(str(id_))
+        assert record is not None
+        return record.metadata["radius"], record.metadata["radius_source"]
+
+    def test_flame_for_a_plain_star(self, exported):
+        built, reader = exported
+        assert self._radius(reader, built.ids[0]) == (2.0, "gaia-dr3-flame")
+
+    def test_a_planet_catalogue_before_gaia(self, exported):
+        built, reader = exported
+        size, source = self._radius(reader, built.ids[1])
+        assert (size, source) == (pytest.approx(0.3), "exoplanet-eu")
+
+    def test_a_transit_host_keeps_its_catalogue_radius(self, tmp_path, out):
+        """HD 189733: the archive's 0.75 R☉, not 0.80 R☉ from a paper."""
+        host = {
+            "radius_literature": 0.8,
+            "host_radius": 0.75,
+            "host_radius_source": "nasa-exoplanet-archive",
+        }
+        built = write_registry(
+            tmp_path / "reg",
+            [star(20.0, 5.0) | host, star(20.0, 6.0) | host],
+            planets=[
+                planet(0, 1, transits=True, transit_source="nasa-exoplanet-archive"),
+                planet(1, 1, transits=False, transit_source="nasa-exoplanet-archive"),
+            ],
+        )
+        export_extrasolar(built.root, out, workers=1)
+        reader = ExportReader(out / "v1" / "x")
+        size, source = self._radius(reader, built.ids[0])
+        assert (size, source) == (pytest.approx(0.75), "nasa-exoplanet-archive")
+        size, source = self._radius(reader, built.ids[1])
+        assert (size, source) == (pytest.approx(0.8), "literature")
+
+    def test_the_lineup_cites_the_paper_of_a_held_star(self, tmp_path, out):
+        """A held star's paper radius cites its pair's paper, which its System
+        row cites first, as the served tiles give it."""
+        paper = [{"source": "literature", "reference": "doyle_2011"}]
+        built = write_registry(
+            tmp_path / "reg",
+            [star(20.0, 5.0)],
+            systems=[
+                Node(
+                    (("held", None, "A"), ("held", None, "B")),
+                    point=0,
+                    held={
+                        "A": Held(
+                            "Point A",
+                            {
+                                "radius": 0.65,
+                                "radius_source": "literature",
+                                "references": paper,
+                            },
+                            v_mag=4.0,
+                        ),
+                        "B": Held("Point B", {"spectral_type": "M2V"}, v_mag=9.0),
+                    },
+                ),
+            ],
+        )
+        export_extrasolar(built.root, out, workers=1)
+        reader = ExportReader(out / "v1" / "x")
+        a = built.held[0, "A"]
+        metadata = reader.rows(
+            METADATA.slug, [a], ["cross_ids", "radius", "radius_source"]
+        )
+        assert star_lineup._works(reader, metadata) == {
+            a: binaries.REFERENCES["doyle_2011"]
+        }
+
+    def test_a_node_has_none_and_its_first_star_takes_its_measurement(self, exported):
+        built, reader = exported
+        assert self._radius(reader, built.ids[2]) == (None, None)
+        assert self._radius(reader, built.held[0, "A"]) == (1.5, "literature")
+        size, source = self._radius(reader, built.held[0, "B"])
+        assert (size, source) == (pytest.approx(0.4), "open-exoplanet-catalogue")
+
+    def test_the_measurement_of_a_point_in_another_region(self, tmp_path, out):
+        """The point's ID was minted far from its position, where its held
+        star's ID is: the tiles of the held star still read the point."""
+        point = star(20.0, 5.0) | {
+            "radius_literature": 1.5,
+            "_minted_at": (200.0, -40.0),
+        }
+        built = write_registry(
+            tmp_path / "reg",
+            [point, star(20.0, 6.0)],
+            systems=[
+                Node(
+                    (("held", None, "A"), ("held", None, "B")),
+                    point=0,
+                    held={
+                        "A": Held("Point A", {"dominant": True}, v_mag=4.0),
+                        "B": Held("Point B", {"mass": 0.2}, v_mag=9.0),
+                    },
+                ),
+            ],
+        )
+        a = built.held[0, "A"]
+        regions = sky.region_of(np.array([built.ids[0], a]) & ids.CELL_MASK)
+        assert regions[0] != regions[1]
+        export_extrasolar(built.root, out, workers=1)
+        reader = ExportReader(out / "v1" / "x")
+        assert self._radius(reader, a) == (1.5, "literature")
+        # The point stands for A, with the point's colour.
+        point_id = built.ids[0]
+        drawable = star_lineup.drawable_star_radii(reader, [point_id, a])
+        assert drawable == {point_id: 1040000.0}
