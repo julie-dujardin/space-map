@@ -104,10 +104,8 @@ def cli():
         for t in TARGETS
         if t in args.targets or (full_rebuild and t not in NAMED_ONLY)
     ]
-    db_targets = [t for t in selected if t not in DB_FREE]
-    if db_targets:
-        ingest_db(db_targets, full_rebuild, args.force)
     default_root = args.registry_root.resolve() == REGISTRY_ROOT.resolve()
+    # Before the DB targets: their image step reads the planets it writes.
     if "extrasolar" in selected:
         backup = args.backup_root or (
             REGISTRY_BACKUP_DIR if default_root else args.registry_root / "backup"
@@ -124,6 +122,9 @@ def cli():
             else args.registry_root / "skycultures"
         )
         print(skycultures.ingest(args.registry_root, matched))
+    db_targets = [t for t in selected if t not in DB_FREE]
+    if db_targets:
+        ingest_db(db_targets, full_rebuild, args.force)
 
 
 def ingest_db(selected: list[str], full_rebuild: bool, force: bool) -> None:
