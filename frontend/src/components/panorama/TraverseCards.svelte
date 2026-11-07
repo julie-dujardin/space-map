@@ -5,6 +5,7 @@
 
   The gallery of every world and a single world's own page draw the same cards,
   so a reader who picks Mars from the gallery lands on more of what they clicked.
+  Both sit on the wide column, so the grid runs up to four cards a row.
 -->
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages.js';
@@ -40,7 +41,7 @@
 	}
 </script>
 
-<ul class="grid gap-4 sm:grid-cols-2">
+<ul class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
 	{#each traverses as traverse (traverse.mission)}
 		<li>
 			<a

@@ -12,7 +12,7 @@
 	{#each { length: 2 }, section (section)}
 		<section class="mb-10">
 			<Skeleton class="mb-3 h-6 w-28" />
-			<div class="grid gap-4 sm:grid-cols-2">
+			<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
 				{#each { length: 2 }, card (card)}
 					<div class="overflow-hidden rounded-lg border border-border">
 						<Skeleton class="aspect-[16/10] w-full rounded-none" />
