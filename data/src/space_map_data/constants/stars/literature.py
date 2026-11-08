@@ -70,6 +70,12 @@ REFERENCES: dict[str, Reference] = {
         # Crossref and SIMBAD know no DOI for this volume.
         "https://ui.adsabs.harvard.edu/abs/2002BaltA..11..153B",
     ),
+    "bond_2017": Reference(
+        "Bond et al. 2017",
+        "The Sirius System and its Astrophysical Puzzles: Hubble Space Telescope"
+        " and Ground-Based Astrometry (ApJ 840, 70)",
+        "https://doi.org/10.3847/1538-4357/aa6af8",
+    ),
     # CC BY-NC 3.0 IGO.
     "gaia_dr2_2018": Reference(
         "Gaia Collaboration 2018",
@@ -221,6 +227,12 @@ DISTANCES: dict[StarKey, Distance] = {
     # β Phe. Gaia and Hipparcos 2007 give the pair no good parallax; a Hipparcos
     # re-reduction with the orbital motion gives 17.93 ± 0.53 mas (Table 3).
     ("hip", "2007", "5165"): Distance(55.77, 54.17, 57.47, "parallax", "argyle_2015"),
+    # Sirius A, and B through their shared distance. Gaia cannot measure A;
+    # B's parallax, 374.49 ± 0.23 mas at a RUWE of 2.4, would outweigh A's
+    # though it sits 3σ under the 378.9 ± 1.4 mas that the paper's masses
+    # take, the weighted mean of the ground-based and Hipparcos parallaxes
+    # (Table 5).
+    ("hip", "2007", "32349"): Distance(2.6392, 2.6295, 2.6490, "parallax", "bond_2017"),
     # τ2 Cap. The only parallax over 5σ is the dynamical one, 3.72 ± 0.62 mas
     # (CDS J/BaltA/11/153, table 2, code DYN).
     ("hip", "2007", "101923"): Distance(

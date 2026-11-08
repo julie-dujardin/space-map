@@ -79,6 +79,12 @@ class TestTable:
         wr_104 = DISTANCES[("gaia", "dr3", "4069167258796371712")]
         assert (wr_104.lower, wr_104.upper) == (1900, 3300)
 
+    def test_sirius_takes_the_parallax_of_its_masses(self):
+        sirius = DISTANCES[("hip", "2007", "32349")]
+        assert 1000 / sirius.value == pytest.approx(378.9, abs=0.01)
+        assert 1000 / sirius.lower - 1000 / sirius.upper == pytest.approx(2.8, abs=0.01)
+        assert (sirius.method, sirius.reference) == ("parallax", "bond_2017")
+
     def test_stars_of_the_sky_cultures(self):
         beta_phe = DISTANCES[("hip", "2007", "5165")]
         assert beta_phe == Distance(55.77, 54.17, 57.47, "parallax", "argyle_2015")

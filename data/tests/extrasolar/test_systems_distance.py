@@ -118,7 +118,9 @@ HD_2057_D = Star(8070554962, 6.282687, 48.046725, 18.489, 0.057)
 HD_19994 = Star(22716826, 48.194346, -1.196405, 43.703, 0.133)
 # SIMBAD's parallax of a star with no Gaia solution.
 CETI_94_B = Star(559587738, 48.194166, -1.196998, 38.999, 0.590)
-# No system holds a paper yet. These papers are real, these places are not.
+# Bond et al. 2017's parallax of Sirius, which its dynamical masses take.
+SIRIUS_BY_PAPER = Star(22137869, 101.284621, -16.721552, 378.9, 1.4, PAPER)
+# These papers are real, these places are not.
 TAU2_CAP = Star(29261684, 79.0, -14.8, 1000 / 268.8, 0.62, PAPER)
 BETA_PHE = Star(25751115, 79.0, -14.81, 1000 / 55.77, 0.53, PAPER)
 
@@ -364,6 +366,17 @@ class TestPapers:
     def test_a_paper_is_the_distance_of_its_system(self):
         shared = tree({1: (0, [HD_284659, TAU2_CAP])})
         assert shared.nodes[0] == pytest.approx(268.8)
+        assert shared.counts[SYSTEMS_BY_PAPER] == 1
+
+    def test_a_paper_outranks_a_more_precise_parallax(self):
+        """Sirius B's Gaia parallax, 3σ under the paper's, would hold 89% of
+        the mean. B still stays within the width of A."""
+        shared = tree({1: (0, [SIRIUS_BY_PAPER, SIRIUS_B])})
+        centre = shared.nodes[0]
+        assert centre == pytest.approx(1000 / 378.9)
+        assert abs(placed(shared)[SIRIUS_B.key] - centre) < apart(
+            SIRIUS, SIRIUS_B, centre
+        )
         assert shared.counts[SYSTEMS_BY_PAPER] == 1
 
     def test_the_most_precise_of_two_papers_wins(self):
