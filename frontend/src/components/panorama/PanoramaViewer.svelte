@@ -526,7 +526,7 @@
 {:else}
 	<!-- The gallery is a document page, not a view of the body: it carries the
 	     same frame as the gallery of every world, and the map is one tab away. -->
-	<SitePage current="panoramas" title={m.panorama_index_title()}>
+	<SitePage current="panoramas" title={m.panorama_index_title()} wide>
 		<!-- The body sits where the gallery puts it: a section heading under the
 		     title, not a breadcrumb over it. -->
 		<h2 class="mb-3 text-lg font-medium">{bodyName}</h2>

@@ -23,7 +23,7 @@
 	<title>{m.panorama_index_title()}</title>
 </svelte:head>
 
-<SitePage current="panoramas" title={m.panorama_index_title()}>
+<SitePage current="panoramas" title={m.panorama_index_title()} wide>
 	{#if gallery.value}
 		<PanoramaGallery gallery={gallery.value} />
 	{:else if gallery.error}

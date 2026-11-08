@@ -17,7 +17,7 @@
 		 *  a page carrying something that wants every pixel of the width. */
 		bleed?: boolean;
 		/** A column wider than the site's, for a page that stands a sidebar
-		 *  beside its content. */
+		 *  beside its content or lays a grid of cards across the width. */
 		wide?: boolean;
 		children: Snippet;
 	}
