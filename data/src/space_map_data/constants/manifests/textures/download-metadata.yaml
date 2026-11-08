@@ -1317,7 +1317,7 @@ bodies:
   file: au-mic-b-artist-impression-nasa-eyes.jpg
   type: cylindrical
   artist_impression: true
-- body: x-20654054-b-1
+- body: x-591079398-b-1
   body_name: tres-2-b
   source: https://eyes.nasa.gov/apps/exo/
   organisation: NASA
@@ -1326,7 +1326,7 @@ bodies:
   file: tres-2-b-artist-impression-nasa-eyes.jpg
   type: cylindrical
   artist_impression: true
-- body: x-23025959-b-1
+- body: x-593451303-b-1
   body_name: wasp-12-b
   source: https://science.nasa.gov/resource/wasp-12b-3d-model/
   organisation: NASA
@@ -1356,7 +1356,7 @@ bodies:
   artist_impression: true
   preference: 5
   variant: eyes
-- body: x-23566666-b-1
+- body: x-57121098-b-1
   body_name: gj-504-b
   source: https://eyes.nasa.gov/apps/exo/
   organisation: NASA

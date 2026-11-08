@@ -1,7 +1,7 @@
 # Emissive glow of an artist's impression. The renderer draws it on the lit and
 # the unlit side, at full intensity.
 bodies:
-- body: x-23025959-b-1
+- body: x-593451303-b-1
   body_name: wasp-12-b
   source: https://science.nasa.gov/resource/wasp-12b-3d-model/
   organisation: NASA
