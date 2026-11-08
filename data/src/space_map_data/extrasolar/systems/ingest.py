@@ -413,6 +413,9 @@ class RunResolver:
                 source.name,
             )
         self.run.add(source, [rows.take(pa.array(unique))], self.complete)
+        # The pass made objects that no pass mints, and the next components
+        # pass can match them: the MSC pass runs before the WDS pass.
+        self._unminted = None
         found = self.run.row_keys(source.name)
         keys = np.where(found["new"].to_numpy(zero_copy_only=False), 0, found["key"])
         keys = self._drop_unminted(*kind, found["catalogue_id"].combine_chunks(), keys)

@@ -1006,6 +1006,31 @@ class TestUnmintedObjects:
         assert entries(second) == entries(first)
 
 
+class TestUnmintedInBothPasses:
+    """A WDS component whose place holds only the new object of an MSC
+    component: neither pass mints, so the WDS member is an entry. Round 9
+    gave 44 such members no ID, 42 of them in MSC systems."""
+
+    def test_c_is_an_entry(self, tmp_path):
+        root = tmp_path / "registry"
+        w = "06000+3000"
+        rows = (
+            [
+                msc_comp(w, "A", HIP=1009),
+                msc_comp(w, "C", RAdeg=90.0, DEdeg=30.02, Vmag=12.0),
+            ],
+            [msc_pair(w, "A", "C", "*", Sep=72.0, Sunit='"')],
+        )
+        _, report = ingest(root, **with_unminted(), msc_rows=rows)
+        system = table(Registry(root), SYSTEM.slug)
+        members = [m for row in system.to_pylist() for m in row["members"] or []]
+        assert all(m["id"] is not None for m in members if m["kind"] != "entry")
+        (c,) = [m for m in members if ("msc", "id", f"{w} C") in entry_ids(m)]
+        assert c["kind"] == "entry"
+        assert not export_systems.Systems.of(system).check()
+        assert "rows with no ID 0\n" in report
+
+
 class TestUnmintedKeys:
     """The engine's objects that no minting row made or joined."""
 
