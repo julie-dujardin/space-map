@@ -317,6 +317,17 @@ class TestRoutes:
         )
         assert row["extinction_source"] == inputs.GSPPHOT
 
+    def test_a_point_of_two_stars_takes_no_gspphot_extinction(self):
+        """GSP-Phot's A0 is a one-star fit."""
+        far = _flame_star(
+            parallax=5.0, parallax_error=0.1, azero_gspphot=0.3, v_mag=11.6
+        )
+        (_, row) = _values(_flame_star(), far, binary=(101,))
+        assert row["absolute_v"] == pytest.approx(
+            11.6 - 5 * np.log10(200) + 5, abs=1e-3
+        )
+        assert row["extinction_source"] == inputs.UNKNOWN
+
     def test_an_unknown_extinction_is_taken_as_zero(self):
         far = _flame_star(parallax=5.0, parallax_error=0.1, v_mag=11.6)
         (row,) = _values(far)

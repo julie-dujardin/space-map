@@ -14,8 +14,9 @@ The sources, best first:
 9. A Johnston's Archive diameter that the archive estimated. Nominal.
 10. A radius from a kernel of PLACEHOLDER_KERNELS. Nominal.
 
-The object bundles, the lineups, the group cards and the scene radius all take
-a body's size from here, so they agree.
+The object bundles, the lineups, the group cards and the scene radius of the
+position chunks all take a body's size from here, so they agree. The systems
+map's `radii`, which scale a body's mesh, are still the kernels' (`systems`).
 """
 
 from collections.abc import Callable, Mapping

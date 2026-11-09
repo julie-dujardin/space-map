@@ -119,6 +119,12 @@ SYSTEM_COLUMNS = ("id", "point")
 COMPACT = "compact"
 # The Metadata columns of the classes that the family masks read.
 CLASS_COLUMNS = ("id", "class")
+# The measured Johnson V columns, best first, and the column of each one's
+# source. The panel and the BC luminosity take one order.
+MEASURED_V = (
+    ("v_mag", "hipparcos_photometry_source"),
+    ("simbad_v_mag", "simbad_photometry_source"),
+)
 # Extinction is small within this distance (pc) or above this V.
 NEAR_PC = 100.0
 NAKED_EYE_V = 6.0
@@ -246,24 +252,21 @@ def absolute_g(table: pa.Table, distance_pc: np.ndarray) -> np.ndarray:
 
 
 def v_mag(table: pa.Table) -> np.ndarray:
-    """Johnson V from Hipparcos, else from SIMBAD."""
-    hipparcos = floats(table, "v_mag")
-    return np.where(np.isfinite(hipparcos), hipparcos, floats(table, "simbad_v_mag"))
+    """The first measured Johnson V of each row (MEASURED_V)."""
+    v = np.full(table.num_rows, np.nan)
+    for column, _ in MEASURED_V:
+        v = np.where(np.isnan(v), floats(table, column), v)
+    return v
 
 
 def apparent_v(table: pa.Table) -> tuple[np.ndarray, np.ndarray]:
-    """Johnson V of each row and its source, None where there is none: V from
-    Hipparcos, SIMBAD or the exoplanet catalogue, by the source of the row's
-    group, else from Gaia G and BP − RP."""
+    """Johnson V of each row and its source, None where there is none: the
+    first of MEASURED_V and the exoplanet catalogue's V, credited to the
+    source of the row's group, else V from Gaia G and BP − RP."""
     bp_rp = floats(table, "phot_bp_mean_mag") - floats(table, "phot_rp_mean_mag")
-    found = (
-        ("v_mag", "hipparcos_photometry_source"),
-        ("simbad_v_mag", "simbad_photometry_source"),
-        ("host_v_mag", "host_star_source"),
-    )
     v = np.full(table.num_rows, np.nan)
     source = np.full(table.num_rows, None, object)
-    for column, source_column in found:
+    for column, source_column in (*MEASURED_V, ("host_v_mag", "host_star_source")):
         values = floats(table, column)
         at = np.isnan(v) & np.isfinite(values)
         v[at] = values[at]
@@ -276,11 +279,13 @@ def apparent_v(table: pa.Table) -> tuple[np.ndarray, np.ndarray]:
 
 
 def extinction(
-    table: pa.Table, distance_pc: np.ndarray, v: np.ndarray
+    table: pa.Table, distance_pc: np.ndarray, v: np.ndarray, binary: np.ndarray
 ) -> tuple[np.ndarray, np.ndarray]:
-    """A_V (mag) of each row of V `v`, and its source."""
+    """A_V (mag) of each row of V `v`, and its source. GSP-Phot's A0 is a
+    one-star fit, so it does not hold for a point of two or more stars
+    (`binary`)."""
     small = (distance_pc <= NEAR_PC) | (v <= NAKED_EYE_V)
-    a0 = floats(table, "azero_gspphot")
+    a0 = np.where(binary, np.nan, floats(table, "azero_gspphot"))
     known = small | np.isfinite(a0)
     source = np.select([small, known], [NEGLIGIBLE, GSPPHOT], UNKNOWN)
     return np.where(small | ~known, 0.0, a0), source
@@ -468,13 +473,13 @@ def choose(table: pa.Table) -> Chosen:
     feh = np.where(assumed, 0.0, feh)
     sigma_feh = np.where(assumed, SOLAR_SIGMA, sigma_feh)
     feh_source = np.where(assumed, ASSUMED_SOLAR, source)
+    binary = table[BINARY_POINT].to_numpy(zero_copy_only=False)
     v, v_source = apparent_v(table)
-    a_v, extinction_source = extinction(table, distance_pc, v)
+    a_v, extinction_source = extinction(table, distance_pc, v, binary)
 
     def gaia(column: str) -> np.ndarray:
         return np.where(compact, np.nan, floats(table, column))
 
-    binary = table[BINARY_POINT].to_numpy(zero_copy_only=False)
     paper_teff = floats(table, "teff_literature")
     teff, sigma_teff, teff_source = _first(
         (HOST, floats(table, "host_teff"), np.zeros(n)),

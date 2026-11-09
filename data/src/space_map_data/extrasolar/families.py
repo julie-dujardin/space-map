@@ -382,18 +382,21 @@ def _colour(rows: pa.Table) -> np.ndarray:
     return _numbers(rows, "phot_bp_mean_mag") - _numbers(rows, "phot_rp_mean_mag")
 
 
-def _dsc_white_dwarf(rows: pa.Table) -> np.ndarray:
+def _dsc_white_dwarf(rows: pa.Table, *, unplaced: bool = False) -> np.ndarray:
     """The rows that Gaia's DSC finds a white dwarf, below the white-dwarf
-    line (`_absolute_g`)."""
+    line (`_absolute_g`). A row with no absolute G counts as `unplaced`."""
     line = rules.WHITE_DWARF_INTERCEPT + rules.WHITE_DWARF_SLOPE * _colour(rows)
+    absolute = _absolute_g(rows)
+    below = np.where(np.isnan(absolute), unplaced, absolute > line)
     found = _numbers(rows, "classprob_dsc_combmod_whitedwarf")
-    return (_absolute_g(rows) > line) & (found > rules.MIN_WHITE_DWARF_PROBABILITY)
+    return below & (found > rules.MIN_WHITE_DWARF_PROBABILITY)
 
 
 def _red(rows: pa.Table) -> np.ndarray:
-    """The rows that Gaia finds red and not a white dwarf."""
+    """The rows that Gaia finds red and not a white dwarf. With no distance
+    the line cannot rule DSC out, so DSC alone keeps the white dwarf."""
     return (_colour(rows) > rules.SYSTEM_WHITE_DWARF_MAX_BP_RP) & ~_dsc_white_dwarf(
-        rows
+        rows, unplaced=True
     )
 
 

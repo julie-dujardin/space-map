@@ -173,6 +173,14 @@ class TestPublished:
         assert published[1] == published[2] == {"white-dwarf", "dwarf"}
         assert published[3] == set()
 
+    def test_with_no_distance_dsc_alone_keeps_the_systems_white_dwarf(self):
+        """The white-dwarf line needs an absolute G, so it cannot rule DSC out."""
+        red = {"phot_bp_mean_mag": 15.0, "phot_rp_mean_mag": 13.2}
+        system = {"simbad_system_sp_type": "DA2.4", "sp_type": "M1V"}
+        no_distance = {"classprob_dsc_combmod_whitedwarf": 0.9, "phot_g_mean_mag": 14}
+        published, _ = classify(system | red | no_distance)
+        assert published[0] == {"white-dwarf", "dwarf"}
+
     def test_a_white_dwarf_type_of_the_system_drops_only_its_own_column(self):
         red = {"phot_bp_mean_mag": 15.0, "phot_rp_mean_mag": 12.5}
         published, _ = classify(

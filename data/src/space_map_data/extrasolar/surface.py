@@ -10,8 +10,8 @@ them: the 16th and 84th percentiles of GSP-Phot and FLAME, or the value ± the
 none. The fit leaves out compact stars and young stellar objects, and the
 panel does not. A point that holds two or more stars has V, and the Teff that
 the exoplanet catalogue gives the host star of its planets. Its light is that
-of two stars, so the other one-star values do not hold for it. Its panel
-shows V only.
+of two stars, so the other one-star values do not hold for it, nor does
+GSP-Phot's A_V (`inputs.extinction`). Its panel shows V and absolute V only.
 
 log g is that of the source of Teff where that source has one, else
 GSP-Phot's, else the exoplanet catalogue's. A compact star takes no GSP-Phot
