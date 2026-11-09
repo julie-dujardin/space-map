@@ -1166,6 +1166,9 @@
 	"tooltip_binary_secondary_rotation": "הזמן שלוקח ללוויין להשלים סיבוב אחד סביב צירו.",
 	"binary_system_mass": "מסת המערכת",
 	"tooltip_binary_system_mass": "מסת שני הגופים יחד, הנגזרת מגודל המסלול ההדדי וממחזורו.",
+	"tooltip_system_mass": "מסת הגוף וירחיו יחד.",
+	"system_density": "צפיפות המערכת",
+	"tooltip_system_density": "מסת המערכת חלקי הנפח של הגוף וירחיו יחד.",
 	"binary_catalogue_entry": "רשומת הקטלוג",
 	"last_observed": "נצפה לאחרונה",
 	"orbit_epoch": "אפוכה",
@@ -1674,6 +1677,8 @@
 	"source_truecolortools_role": "צבעי גופים קטנים",
 	"source_surface_colour_role": "צבע פני השטח",
 	"source_ssodnet_role": "מחלקות טקסונומיות של אסטרואידים",
+	"source_ssodnet_physical_role": "גדלים ומסות של אסטרואידים",
+	"source_mass_reference_role": "מסה, {reference}",
 	"source_mahlke_role": "טקסונומיה לפי ספקטרום ואלבדו",
 	"source_sbdb_role": "גדלים, אלבדו וסוגים ספקטרליים",
 	"source_iau_wgccre_role": "סיבוב ורדיוסים",
@@ -2065,6 +2070,7 @@
 	"tooltip_distance_from_sun": "המרחק הנוכחי מהשמש",
 	"tooltip_distance_from_body": "המרחק הנוכחי מ־{name}",
 	"source_jpl_satellite_discovery_role": "תאריכי גילוי ירחים טבעיים",
+	"source_jpl_satellite_physical_role": "מסות של ירחים טבעיים",
 	"country_count": [
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],

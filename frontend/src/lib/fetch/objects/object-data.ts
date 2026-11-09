@@ -147,12 +147,46 @@ export type ProbeVisitKind =
 	| 'atmospheric'
 	| 'observer';
 
-/** Where a Solar System body's `radii` come from, best source first: the PCK
- *  or a fitted ellipsoid, the AsterSat and Johnston moon catalogues, then
- *  Wikidata. An SBDB size stays in `sbdb.diameter`. */
-export type BodyRadiusSource = 'pck' | MeasuredShapeSource | 'astersat' | 'johnston' | 'wikidata';
+/** Where a Solar System body's `radii` come from, best source first: a
+ *  paper, the PCK or a fitted ellipsoid, SsODNet, the AsterSat and Johnston
+ *  moon catalogues, then Wikidata. An SBDB size stays in `sbdb.diameter`. */
+export type BodyRadiusSource =
+	| 'literature'
+	| 'pck'
+	| MeasuredShapeSource
+	| 'ssodnet'
+	| 'astersat'
+	| 'johnston'
+	| 'wikidata';
 
-export interface NotableMemberEntry {
+/** Where a Solar System body's `mass_kg` comes from. A `pck` mass is a kernel
+ *  GM, a `jpl_satellite_physical` one the GM of JPL's satellite table, a
+ *  `literature` one a paper's, an `estimate` the export's own. */
+export type BodyMassSource =
+	| 'jpl_satellite_physical'
+	| 'pck'
+	| 'literature'
+	| 'sbdb'
+	| 'ssodnet'
+	| 'astersat'
+	| 'johnston'
+	| 'estimate'
+	| 'wikidata';
+
+/** The export's mass of a body, as a bundle and a lineup member carry it. */
+export interface BodyMassFields {
+	mass_kg?: number;
+	mass_source?: BodyMassSource;
+	/** The ephemeris of a JPL GM ("PLU060") or the kernel file of a PCK GM;
+	 *  the paper of a `literature` mass. */
+	mass_reference?: string | OrientationReference;
+	/** An upper limit, an estimate or a placeholder, not a measurement. */
+	mass_nominal?: true;
+	/** The mass of the body and its moons together. */
+	mass_system?: true;
+}
+
+export interface NotableMemberEntry extends BodyMassFields {
 	/** English Wikidata label (matching object bundles), or the DB fallback name. */
 	name: string;
 	/** Satellite Systems only: the name of the system's page ("Jupiter
@@ -172,17 +206,17 @@ export interface NotableMemberEntry {
 	feature_id?: number;
 	/** Equivalent-sphere diameter (members) or mean PCK-radii diameter (moons). */
 	diameter_km?: number;
-	/** Body mass (kg) from PCK GM; major bodies only. Drives the planets mass chart. */
-	mass_kg?: number;
 	/** Semi-axes (km), the lineup's render shape. `source` names the source
-	 *  when it is not the PCK, so the footer credits it; a fitted ellipsoid
-	 *  adds the paper as `reference`. */
+	 *  when it is not a measured PCK shape, so the footer credits it; a paper
+	 *  or a fitted ellipsoid adds the work as `reference`. */
 	radii?: {
 		a: number;
 		b: number;
 		c: number;
-		source?: Exclude<BodyRadiusSource, 'pck'> | StarRadiusSource;
+		source?: BodyRadiusSource | StarRadiusSource;
 		reference?: OrientationReference;
+		/** A placeholder or an estimate, not a measurement. */
+		nominal?: true;
 	};
 	/** A star's temperature (K), else its BP − RP: its colour on the lineup. */
 	teff?: number;
@@ -505,7 +539,7 @@ export interface ValueReference {
 	url: string;
 }
 
-export interface GlobalObjectData {
+export interface GlobalObjectData extends BodyMassFields {
 	id: string;
 	type: string;
 	/** The global name of the page; its id for an object with no name. */
@@ -586,9 +620,11 @@ export interface GlobalObjectData {
 	/** The Sun only: its nominal luminosity, W, and the work that gives it. */
 	luminosity_w?: number;
 	luminosity_reference?: CitedWork;
-	/** g/cm³, from the GM and the radii. Absent where the two give no
-	 *  plausible density. */
+	/** g/cm³: `mass_kg` over the volume of the shown size. Over a system
+	 *  mass, the volume of the body and its moons together. */
 	mean_density_g_cm3?: number;
+	/** The mass or a size behind the density is nominal. */
+	mean_density_nominal?: true;
 	/** Surface panoramas taken on this body, mission by mission in time order. */
 	panoramas?: PanoramaEntry[];
 	images?: ObjectImage[];
@@ -670,9 +706,11 @@ export interface GlobalObjectData {
 	radii?: { a: number; b: number; c: number };
 	/** Where the radii come from. Decides who the sidebar credits for the size. */
 	radii_source?: BodyRadiusSource;
-	/** The work that fitted the ellipsoid, present with a measured
+	/** The work that gives the size, present with a `literature` or measured
 	 *  `radii_source`. Often not the paper the pole came from. */
 	radii_reference?: OrientationReference;
+	/** A placeholder or an estimate, not a measurement. */
+	radii_nominal?: true;
 	sbdb?: {
 		neo?: boolean;
 		pha?: boolean;
@@ -684,7 +722,6 @@ export interface GlobalObjectData {
 		albedo?: number;
 		rot_per?: number;
 		GM?: number;
-		mass?: QuantityWithUnit;
 		H?: number;
 		G?: number;
 		spec_B?: string;
@@ -796,8 +833,8 @@ export interface GlobalObjectData {
 	wikidata?: {
 		discovery_date?: string[];
 		launch_date?: string;
+		/** A craft's launch mass. A body's mass is `mass_kg`. */
 		mass?: QuantityWithUnit;
-		density?: QuantityWithUnit;
 		surface_gravity?: QuantityWithUnit;
 		absolute_magnitude?: number;
 		apparent_magnitude?: number;

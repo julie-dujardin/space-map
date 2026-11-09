@@ -45,13 +45,13 @@ const SMALL_BODY_LINEUP_FLOOR = 3;
 
 // Only a PCK pole is the IAU's to credit; an asteroid lineup's poles come from
 // DAMIT lightcurve inversions instead, and a centaur's ellipsoid from the paper
-// that fitted it. Named, not inlined — boolean groups inside `$derived` lose
-// their parens through the .svelte.ts transform.
+// that fitted it. A placeholder PCK shape is the PCK's too. A lineup draws no
+// mass, so a member's mass earns no credit here. Named, not inlined — boolean
+// groups inside `$derived` lose their parens through the .svelte.ts transform.
 const hasPckPole = (mm: NotableMemberEntry) => !!mm.pole && !mm.pole.source;
-const hasPckRadii = (mm: NotableMemberEntry) => !!mm.radii && !mm.radii.source;
+const hasPckRadii = (mm: NotableMemberEntry) => !!mm.radii && (mm.radii.source ?? 'pck') === 'pck';
 const hasLightcurvePole = (mm: NotableMemberEntry) => mm.pole?.source === 'lightcurve';
-const hasPckGeometry = (mm: NotableMemberEntry) =>
-	hasPckRadii(mm) || mm.mass_kg != null || hasPckPole(mm);
+const hasPckGeometry = (mm: NotableMemberEntry) => hasPckRadii(mm) || hasPckPole(mm);
 
 /** The distinct works and moon catalogues behind the lineup's sizes. One
  *  paper usually shapes several members of a small-body lineup. */
@@ -359,8 +359,8 @@ export class LineupHero {
 		this.imagery = $derived(imageryFor(lineupBodies));
 		this.craftImagery = $derived(imageryFor(this.probeLineup?.bodies));
 
-		// The metadata sources of the lineup members: radii, pole and mass from the
-		// PCK; a size from a moon catalogue or Wikidata; small-body diameter,
+		// The metadata sources of the lineup members: radii and pole from the
+		// PCK; a size from a paper, a catalogue or Wikidata; small-body diameter,
 		// albedo and spectral data from SBDB.
 		// The Solar System tab draws its own members, not the notable ones.
 		const creditMembers = $derived([

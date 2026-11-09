@@ -1147,6 +1147,9 @@
 	"tooltip_binary_secondary_rotation": "Tiempo que tarda la compañera en dar una vuelta sobre su eje.",
 	"binary_system_mass": "Masa del sistema",
 	"tooltip_binary_system_mass": "Masa de ambos cuerpos juntos, deducida del tamaño y el período de la órbita mutua.",
+	"tooltip_system_mass": "Masa del cuerpo y sus lunas juntos.",
+	"system_density": "Densidad del sistema",
+	"tooltip_system_density": "Masa del sistema dividida entre el volumen del cuerpo y sus lunas juntos.",
 	"binary_catalogue_entry": "Ficha del catálogo",
 	"last_observed": "Última observación",
 	"orbit_epoch": "Época",
@@ -1651,6 +1654,8 @@
 	"source_truecolortools_role": "colores de cuerpos menores",
 	"source_surface_colour_role": "color de la superficie",
 	"source_ssodnet_role": "clases taxonómicas de asteroides",
+	"source_ssodnet_physical_role": "tamaños y masas de asteroides",
+	"source_mass_reference_role": "masa, {reference}",
 	"source_mahlke_role": "taxonomía por espectros y albedo",
 	"source_sbdb_role": "tamaños, albedos y tipos espectrales",
 	"source_iau_wgccre_role": "rotación y radios",
@@ -2040,6 +2045,7 @@
 	"tooltip_distance_from_sun": "Distancia actual al Sol",
 	"tooltip_distance_from_body": "Distancia actual a {name}",
 	"source_jpl_satellite_discovery_role": "fechas de descubrimiento de lunas naturales",
+	"source_jpl_satellite_physical_role": "masas de lunas naturales",
 	"country_count": [
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],

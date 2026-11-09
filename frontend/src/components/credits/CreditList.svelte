@@ -265,9 +265,23 @@
 				</li>
 				<li>
 					{@render link(
+						'https://ssd.jpl.nasa.gov/sats/phys_par/',
+						m.source_jpl_satellite_physical_name(),
+						m.source_jpl_satellite_physical_role()
+					)}
+				</li>
+				<li>
+					{@render link(
 						'https://www.johnstonsarchive.net/astro/asteroidmoons.html',
 						m.source_johnston_name(),
 						m.source_johnston_role()
+					)}
+				</li>
+				<li>
+					{@render link(
+						'https://ssp.imcce.fr/webservices/ssodnet/',
+						m.source_ssodnet_name(),
+						m.source_ssodnet_physical_role()
 					)}
 				</li>
 				<li>

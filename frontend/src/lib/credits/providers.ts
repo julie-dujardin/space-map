@@ -20,8 +20,10 @@ export type ProviderKey =
 	| 'johnston'
 	| 'jonathan'
 	| 'jpl-satellite-discovery'
+	| 'jpl-satellite-physical'
 	| 'mpc'
 	| 'sbdb'
+	| 'ssodnet'
 	| 'truecolortools'
 	| 'wikidata';
 
@@ -45,6 +47,16 @@ export const PROVIDERS: Record<ProviderKey, Provider> = {
 		url: 'https://ssd.jpl.nasa.gov/sats/discovery.html',
 		name: m.source_jpl_satellite_discovery_name,
 		role: m.source_jpl_satellite_discovery_role
+	},
+	'jpl-satellite-physical': {
+		url: 'https://ssd.jpl.nasa.gov/sats/phys_par/',
+		name: m.source_jpl_satellite_physical_name,
+		role: m.source_jpl_satellite_physical_role
+	},
+	ssodnet: {
+		url: 'https://ssp.imcce.fr/webservices/ssodnet/',
+		name: m.source_ssodnet_name,
+		role: m.source_ssodnet_physical_role
 	},
 	johnston: {
 		url: 'https://www.johnstonsarchive.net/astro/asteroidmoons.html',

@@ -16,6 +16,7 @@
 	import { formatDuration } from '$lib/format/duration';
 	import { formatNumber } from '$lib/format/quantities';
 	import { massReading } from '$lib/format/mass';
+	import { binarySystemMass } from './kit/body-rows';
 
 	const CONFIDENCE_LABEL: Record<string, () => string> = {
 		permanent: m.binary_confidence_permanent,
@@ -129,12 +130,10 @@
 			(g) => g.johnston?.rotation_h,
 			(hours) => formatDuration(hours / 24)
 		),
-		// The system mass is the pair's together — AsterSat derives it from the
-		// fitted orbit, Johnston takes it from whichever paper published one.
 		row(
 			m.binary_system_mass,
 			m.tooltip_binary_system_mass,
-			(g) => g.astersat?.system_mass ?? g.johnston?.mass,
+			binarySystemMass,
 			(mass) => massReading(mass).value
 		)
 	];

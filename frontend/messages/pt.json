@@ -1147,6 +1147,9 @@
 	"tooltip_binary_secondary_rotation": "Tempo que a companheira leva a dar uma volta sobre o seu eixo.",
 	"binary_system_mass": "Massa do sistema",
 	"tooltip_binary_system_mass": "Massa dos dois corpos em conjunto, deduzida do tamanho e do período da órbita mútua.",
+	"tooltip_system_mass": "Massa do corpo e das suas luas em conjunto.",
+	"system_density": "Massa volúmica do sistema",
+	"tooltip_system_density": "Massa do sistema dividida pelo volume do corpo e das suas luas em conjunto.",
 	"binary_catalogue_entry": "Entrada do catálogo",
 	"last_observed": "Última observação",
 	"orbit_epoch": "Época",
@@ -1651,6 +1654,8 @@
 	"source_truecolortools_role": "cores de corpos menores",
 	"source_surface_colour_role": "cor da superfície",
 	"source_ssodnet_role": "classes taxonómicas de asteroides",
+	"source_ssodnet_physical_role": "tamanhos e massas de asteroides",
+	"source_mass_reference_role": "massa, {reference}",
 	"source_mahlke_role": "taxonomia por espetros e albedo",
 	"source_sbdb_role": "tamanhos, albedos e tipos espetrais",
 	"source_iau_wgccre_role": "rotação e raios",
@@ -2040,6 +2045,7 @@
 	"tooltip_distance_from_sun": "Distância atual ao Sol",
 	"tooltip_distance_from_body": "Distância atual a {name}",
 	"source_jpl_satellite_discovery_role": "datas de descoberta de luas naturais",
+	"source_jpl_satellite_physical_role": "massas de luas naturais",
 	"country_count": [
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],

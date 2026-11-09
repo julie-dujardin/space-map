@@ -1128,6 +1128,9 @@
 	"tooltip_binary_secondary_rotation": "Zeit, die der Begleiter für eine Drehung um seine Achse braucht.",
 	"binary_system_mass": "Systemmasse",
 	"tooltip_binary_system_mass": "Masse beider Körper zusammen, abgeleitet aus Größe und Umlaufzeit der gegenseitigen Bahn.",
+	"tooltip_system_mass": "Masse des Körpers und seiner Monde zusammen.",
+	"system_density": "Systemdichte",
+	"tooltip_system_density": "Systemmasse geteilt durch das Volumen des Körpers und seiner Monde zusammen.",
 	"binary_catalogue_entry": "Katalogeintrag",
 	"last_observed": "Zuletzt beobachtet",
 	"orbit_epoch": "Epoche",
@@ -1628,6 +1631,8 @@
 	"source_truecolortools_role": "Farben kleiner Körper",
 	"source_surface_colour_role": "Oberflächenfarbe",
 	"source_ssodnet_role": "taxonomische Klassen von Asteroiden",
+	"source_ssodnet_physical_role": "Größen & Massen von Asteroiden",
+	"source_mass_reference_role": "Masse, {reference}",
 	"source_mahlke_role": "Taxonomie aus Spektren & Albedo",
 	"source_sbdb_role": "Größen, Albedos & Spektraltypen",
 	"source_iau_wgccre_role": "Rotation & Radien",
@@ -2015,6 +2020,7 @@
 	"tooltip_distance_from_sun": "Aktuelle Entfernung von der Sonne",
 	"tooltip_distance_from_body": "Aktuelle Entfernung von {name}",
 	"source_jpl_satellite_discovery_role": "Entdeckungsdaten natürlicher Monde",
+	"source_jpl_satellite_physical_role": "Massen natürlicher Monde",
 	"country_count": [
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],

@@ -404,21 +404,10 @@ export function formatCatalogueQuantity(
 	});
 }
 
-/** Density in g/cm³, whichever unit Wikidata stored it in.
- *
- * The claims come through unnormalized, so neighbouring bodies read "0.85
- * gram per cubic centimetre" and "850 kilogram per cubic metre" for the same
- * physical density. g/cm³ wins: water is 1, so the number says rock or ice at
- * a glance. */
-export function formatDensity(q: { value: number; unit: string }): string {
-	const grams = gramsPerCubicCentimetre(q);
-	return formatQuantity(grams === null ? q : { value: grams, unit: 'gram_per_cubic_centimetre' });
-}
-
-/** A density in g/cm³; null in a unit other than g/cm³ or kg/m³. */
-export function gramsPerCubicCentimetre(q: { value: number; unit: string }): number | null {
-	if (q.unit === 'kilogram_per_cubic_metre') return q.value / 1000;
-	return q.unit === 'gram_per_cubic_centimetre' ? q.value : null;
+/** A density in g/cm³: water is 1, so the number says rock or ice at a
+ *  glance. The figure is isolated from its unit. */
+export function formatDensity(gCm3: number): string {
+	return isolatedQuantity(quantityParts({ value: gCm3, unit: 'gram_per_cubic_centimetre' }));
 }
 
 export function formatCurrency(q: { value: number; currency: string }): string {

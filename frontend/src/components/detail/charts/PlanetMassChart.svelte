@@ -25,8 +25,8 @@
 		share: number; // fraction of the 8-planet total
 	}
 
-	// Segment width is each planet's share of the 8-planet total mass (`mass_kg`,
-	// PCK GM) — Jupiter ~71%, Saturn ~21% dominate. Sorted heaviest-first.
+	// Segment width is each planet's share of the 8-planet total `mass_kg` —
+	// Jupiter ~71%, Saturn ~21% dominate. Sorted heaviest-first.
 	let planets = $derived.by<Planet[]>(() => {
 		const raw = members
 			.filter((mm) => mm.id && mm.mass_kg != null)

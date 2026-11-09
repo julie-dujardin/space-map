@@ -35,6 +35,16 @@ describe('geometryFromMember', () => {
 		expect(geometryFromMember({ ...planet, texture: false })).toMatchObject(drawn);
 	});
 
+	it('marks a nominal size as an estimate', () => {
+		const moon = { name: 'Kari', id: 'naif-645', radii: { a: 3, b: 3, c: 3 } };
+		expect(geometryFromMember(moon)?.sizeEstimated).toBeUndefined();
+		const placeholder = {
+			...moon,
+			radii: { a: 5, b: 5, c: 5, source: 'pck' as const, nominal: true as const }
+		};
+		expect(geometryFromMember(placeholder)).toMatchObject({ radiusKm: 5, sizeEstimated: true });
+	});
+
 	it('sizes an exoplanet with no measured radius by its estimate', () => {
 		const planet = { name: 'Proxima Centauri b', id: 'x-27424668-b-1', texture: true };
 		expect(geometryFromMember(planet)).toBeNull();

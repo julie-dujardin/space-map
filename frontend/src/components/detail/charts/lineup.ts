@@ -38,6 +38,7 @@ export function geometryFromMember(m: NotableMemberEntry & { id: string }): Line
 		const eq = Math.max(m.radii.a, m.radii.b, m.radii.c);
 		geom.radiusKm = eq;
 		geom.polarRatio = m.radii.c / eq;
+		if (m.radii.nominal) geom.sizeEstimated = true;
 	} else if (m.diameter_km != null) {
 		geom.radiusKm = m.diameter_km / 2;
 	} else if (m.estimated_diameter_km != null) {

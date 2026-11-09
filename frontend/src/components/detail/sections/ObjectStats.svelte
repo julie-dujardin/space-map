@@ -25,7 +25,7 @@
 	import { formatDistance } from '$lib/format/distance';
 	import { formatDuration } from '$lib/format/duration';
 	import { formatQuantity } from '$lib/format/quantities';
-	import { massReading } from '$lib/format/mass';
+	import { massRow, nominalNote } from './kit/body-rows';
 	import { formatProbeState, probeState, type ProbeState } from '$lib/format/satellite';
 	import { describeLastContact, formatLastContact } from '$lib/format/contact';
 	import { activityFeed } from '$lib/state/activity.svelte';
@@ -174,16 +174,16 @@
 		if (isProbe || isEarthSat || !body || !isNaturalBodyType(global?.type)) return [];
 		const out: Stat[] = [];
 		const sbdb = global?.sbdb;
-		const wd = global?.wikidata;
 
-		// Block 1: a size in kilometres. Wikidata's mass unit varies by source
-		// and is noise at a glance, so mass stands in only when no size is
-		// measured. A triaxial body shows its mean; the Physical panel has the axes.
+		// Block 1: a size in kilometres, else the mass. A size is what a reader
+		// pictures. A triaxial body shows its mean; the Physical panel has the axes.
 		const radiusKm = meanRadiusKm(global);
+		const mass = massRow(global);
 		if (radiusKm != null)
 			out.push({
 				label: m.diameter(),
-				value: formatQuantity({ value: radiusKm * 2, unit: 'kilometre' }, true)
+				value: formatQuantity({ value: radiusKm * 2, unit: 'kilometre' }, true),
+				note: nominalNote(global?.radii_nominal)
 			});
 		else if (sbdb?.H != null)
 			// No measured size: the H-magnitude estimate, as in the Physical panel.
@@ -195,8 +195,13 @@
 				),
 				tooltip: m.tooltip_diameter_estimated()
 			});
-		else if (sbdb?.mass ?? wd?.mass)
-			out.push({ label: m.property_name_mass(), ...massReading((sbdb?.mass ?? wd?.mass)!) });
+		else if (mass)
+			out.push({
+				label: mass.label,
+				value: mass.value,
+				tooltip: mass.valueTooltip,
+				note: mass.note
+			});
 
 		// Block 2 — orbital speed via vis-viva from the body's own elements.
 		// Skipped for the central star: its only motion is the barycentric wobble.

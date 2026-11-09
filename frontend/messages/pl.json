@@ -1166,6 +1166,9 @@
 	"tooltip_binary_secondary_rotation": "Czas, w jakim towarzysz wykonuje jeden obrót wokół osi.",
 	"binary_system_mass": "Masa układu",
 	"tooltip_binary_system_mass": "Masa obu ciał razem, wyznaczona z rozmiaru i okresu orbity wzajemnej.",
+	"tooltip_system_mass": "Masa ciała i jego księżyców razem.",
+	"system_density": "Gęstość układu",
+	"tooltip_system_density": "Masa układu podzielona przez łączną objętość ciała i jego księżyców.",
 	"binary_catalogue_entry": "Wpis w katalogu",
 	"last_observed": "Ostatnia obserwacja",
 	"orbit_epoch": "Epoka",
@@ -1674,6 +1677,8 @@
 	"source_truecolortools_role": "kolory małych ciał",
 	"source_surface_colour_role": "kolor powierzchni",
 	"source_ssodnet_role": "klasy taksonomiczne planetoid",
+	"source_ssodnet_physical_role": "rozmiary i masy planetoid",
+	"source_mass_reference_role": "masa, {reference}",
 	"source_mahlke_role": "taksonomia z widm i albeda",
 	"source_sbdb_role": "rozmiary, albeda i typy widmowe",
 	"source_iau_wgccre_role": "rotacja i promienie",
@@ -2065,6 +2070,7 @@
 	"tooltip_distance_from_sun": "Aktualna odległość od Słońca",
 	"tooltip_distance_from_body": "Aktualna odległość od: {name}",
 	"source_jpl_satellite_discovery_role": "daty odkrycia naturalnych księżyców",
+	"source_jpl_satellite_physical_role": "masy naturalnych księżyców",
 	"country_count": [
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],

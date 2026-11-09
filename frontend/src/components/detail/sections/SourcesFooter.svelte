@@ -10,6 +10,7 @@
 		type OrientationReference,
 		type OrientationSource
 	} from '$lib/credits/orientation-sources';
+	import { massCredit } from '$lib/credits/mass-sources';
 	import { catalogueSizeCredit } from '$lib/credits/size-sources';
 	import { TAXONOMY_SOURCES } from '$lib/credits/taxonomy-sources';
 	import type { CitedWork, GlobalObjectData } from '$lib/fetch/objects/object-data';
@@ -32,7 +33,7 @@
 		nomenclature?: boolean;
 		/** Show the CC BY-SA notice when the description text is drawn from Wikipedia. */
 		wikipediaLicensed?: boolean;
-		/** Collection-page lineup draws radii/pole/mass from SPICE PCK → credit IAU WGCCRE + NAIF. */
+		/** Collection-page lineup draws radii/pole from SPICE PCK → credit IAU WGCCRE + NAIF. */
 		pck?: boolean;
 		/** Collection-page lineup tilts at least one member on a DAMIT lightcurve
 		 *  pole rather than a PCK one → credit DAMIT for the spin. */
@@ -48,7 +49,13 @@
 		 *  System charts. Everything else on this list is inferred from a field
 		 *  being present. */
 		works?: Source[];
+		/** Catalogues already resolved, deduped by key against the inferred
+		 *  credits: the sources of the masses a chart draws. */
+		catalogues?: Source[];
 	}
+
+	// The sizes that name the work they come from.
+	const CITED_SIZES: ReadonlySet<string> = new Set(['literature', 'occultation', 'photometry']);
 
 	let {
 		global,
@@ -60,21 +67,29 @@
 		sbdb = false,
 		wikidata = false,
 		imagery = [],
-		works = []
+		works = [],
+		catalogues = []
 	}: Props = $props();
 
 	// Per-object metadata has no per-field provenance, so we credit each source
 	// from a clean signal that makes its contribution near-certain. Deduped by
-	// key, so a source feeding several fields (or both orbit + SATCAT) shows once.
+	// key, so a source feeding several fields (or both orbit + SATCAT) shows once,
+	// with the note of each, as /credits does.
 	let sources = $derived.by(() => {
 		const out: Source[] = [];
-		const seen = new Set<string>();
+		const credited = (key: string) => out.find((source) => source.key === key);
+		const addNote = (source: Source, note: string | undefined) => {
+			const notes = source.note?.split('; ') ?? [];
+			if (note && !notes.includes(note)) source.note = [...notes, note].join('; ');
+		};
 		const add = (key: string, label: string, url: string | null | undefined, note?: string) => {
-			if (!url || seen.has(key)) return;
-			seen.add(key);
+			if (!url) return;
 			// A label that already ends in a qualifier — "NASA SPICE kernels
 			// (NAIF)" — would stack a second parenthetical, so it goes bare.
-			out.push({ key, label, url, note: label.endsWith(')') ? undefined : note });
+			const shown = label.endsWith(')') ? undefined : note;
+			const source = credited(key);
+			if (source) addNote(source, shown);
+			else out.push({ key, label, url, note: shown });
 		};
 		const addProvider = (key: ProviderKey, url?: string) => {
 			const provider = PROVIDERS[key];
@@ -82,18 +97,11 @@
 		};
 		// A cited work keeps its note: the parenthetical its title ends in is the
 		// journal, which says nothing about what this body took from the paper.
-		// A work cited twice shows once with both notes, as /credits does.
 		const addWork = (work: Omit<CitedWork, 'url'> & { url?: string }) => {
 			const key = work.url ?? work.title;
-			const cited = out.find((source) => source.key === key);
-			if (cited) {
-				const notes = cited.note?.split('; ') ?? [];
-				if (work.note && !notes.includes(work.note)) cited.note = [...notes, work.note].join('; ');
-				return;
-			}
-			if (seen.has(key)) return;
-			seen.add(key);
-			out.push({ key, label: work.title, url: work.url, note: work.note });
+			const cited = credited(key);
+			if (cited) addNote(cited, work.note);
+			else out.push({ key, label: work.title, url: work.url, note: work.note });
 		};
 		// A spin pole comes from the PCK (planets, moons, the handful of visited
 		// asteroids), from DAMIT's lightcurve inversion, or — for the small bodies
@@ -124,6 +132,7 @@
 		// Collection-page lineup geometry/metadata, derived from the members shown.
 		if (sbdb) addProvider('sbdb');
 		if (pck) addPck();
+		for (const source of catalogues) add(source.key, source.label, source.url, source.note);
 
 		// The surface-colour swatch, whichever tier produced it — a measured
 		// spectrum, colour indices, a taxonomic chroma or a bare albedo grey all
@@ -160,11 +169,16 @@
 		const radiiSource = global?.radii_source;
 		if (global?.radii) {
 			const catalogue = radiiSource && catalogueSizeCredit(radiiSource, global.johnston?.page);
-			if (radiiSource === 'occultation' || radiiSource === 'photometry') {
+			if (radiiSource && CITED_SIZES.has(radiiSource)) {
 				if (global.radii_reference) add(...creditArgs(measuredShapeCredit(global.radii_reference)));
 			} else if (catalogue) add(catalogue.key, catalogue.label, catalogue.url, catalogue.note);
 			else if (radiiSource !== 'wikidata') addPck();
 		}
+
+		// The mass row credits `mass_source`, which is often not the size's.
+		const mass = global && massCredit(global, global.johnston?.page);
+		if (mass?.paper) addWork({ title: mass.label, url: mass.url, note: mass.note });
+		else if (mass) add(mass.key, mass.label, mass.url, mass.note);
 
 		// Named works the panel cites outright, like the blocks below rather
 		// than the inferred credits above — their note survives a parenthesised

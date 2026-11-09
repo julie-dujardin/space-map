@@ -32,6 +32,7 @@
 	import Section from './kit/Section.svelte';
 	import Row from './kit/Row.svelte';
 	import TemperatureScale from './kit/TemperatureScale.svelte';
+	import { nominalNote } from './kit/body-rows';
 
 	interface Props {
 		global: GlobalObjectData | null;
@@ -184,7 +185,7 @@
 		{#if natural}
 			{#if diameterRows}
 				{#each diameterRows as row (row.label)}
-					<Row label={row.label} value={row.value} />
+					<Row label={row.label} value={row.value} note={nominalNote(global?.radii_nominal)} />
 				{/each}
 			{:else if sbdb?.diameter}
 				<Row

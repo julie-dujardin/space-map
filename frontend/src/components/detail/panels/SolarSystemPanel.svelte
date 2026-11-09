@@ -8,6 +8,7 @@
 	import MemberList from '../members/MemberList.svelte';
 	import PlanetMassChart from '../charts/PlanetMassChart.svelte';
 	import { categoryLabel } from '$lib/format/group';
+	import { massCredits } from '$lib/credits/mass-sources';
 	import type { GlobalGroupData, LocalizedGroupData } from '$lib/fetch/groups/details';
 	import type { MembersState } from '../state/members-state.svelte';
 	import type { LineupHero } from '../charts/lineup-hero.svelte';
@@ -35,11 +36,12 @@
 		</Section>
 		<PlanetMassChart members={planets} localizedNames={members.memberNames} />
 	{/if}
-	<!-- Credits for the lineup above, which this tab draws. -->
+	<!-- Credits for the lineup above and the masses of the chart, which this tab draws. -->
 	<SourcesFooter
 		global={null}
 		pck={lineup.pck}
 		works={lineup.shapeWorks}
+		catalogues={massCredits(planets)}
 		wikidata={lineup.wikidata}
 		imagery={lineup.imagery}
 	/>

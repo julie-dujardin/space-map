@@ -42,7 +42,7 @@
 		gravityLabel,
 		gravityTooltip
 	} from '$lib/format/gravity';
-	import { massKg } from '$lib/format/mass';
+	import { nominalNote } from './kit/body-rows';
 	import { meanRadiusKm } from '$lib/fetch/objects/physical';
 	import { ucfirst } from '$lib/format/quantities';
 	import { ltrIsolate } from '$lib/format/bidi';
@@ -55,22 +55,29 @@
 
 	// Gees rather than the published m/s²: the card answers what standing there
 	// feels like; the tooltip spells out the level and the SI reading. GM/r²
-	// stands in where nothing is published — most small bodies with a mass.
+	// stands in where nothing is published — most small bodies with a mass —
+	// and is as nominal as the mass or size it comes from.
 	let gravityStat = $derived.by<Stat | null>(() => {
 		const published = global?.wikidata?.surface_gravity;
-		const ms2 = (published ? accelMs2(published) : null) ?? derivedMs2();
+		const publishedMs2 = published ? accelMs2(published) : null;
+		const ms2 = publishedMs2 ?? derivedMs2();
 		if (ms2 === null || ms2 <= 0) return null;
+		// A local, not an inline group: Svelte's transform can drop its parens.
+		const nominalInputs = !!global?.mass_nominal || !!global?.radii_nominal;
+		const nominal = publishedMs2 === null && nominalInputs;
 		return {
 			label: gravityLabel(global),
 			value: ltrIsolate(formatGees(ms2)),
-			tooltip: `${gravityTooltip(global)} — ${ltrIsolate(formatMs2(ms2))}`
+			tooltip: `${gravityTooltip(global)} — ${ltrIsolate(formatMs2(ms2))}`,
+			note: nominalNote(nominal)
 		};
 	});
 
+	// A system mass includes the moons, so it says nothing of the pull at the
+	// body's own surface.
 	function derivedMs2(): number | null {
-		const mass = global?.sbdb?.mass ?? global?.wikidata?.mass;
-		const kg = mass ? massKg(mass) : null;
-		if (kg === null) return null;
+		const kg = global?.mass_kg;
+		if (kg == null || global?.mass_system) return null;
 		const radiusKm = meanRadiusKm(global);
 		if (radiusKm == null || radiusKm <= 0) return null;
 		return ((G_KM3_KG_S2 * kg) / (radiusKm * radiusKm)) * 1000;
