@@ -9,8 +9,8 @@ import {
 	type ExtrasolarRecord
 } from '$lib/fetch/extrasolar/lookup';
 import {
-	colourBpRp,
 	drawnAbsoluteG,
+	renderBpRp,
 	starPlace,
 	starRadiusKm,
 	starTeff
@@ -60,7 +60,7 @@ export function makeStarBody(record: ExtrasolarRecord): PositionedBody {
 			tree: pointless ? null : (place?.tree ?? null),
 			absMag: home ? drawnAbsoluteG(home, orbit) : null,
 			point: pointOf(record),
-			colour: home ? colourBpRp(home) : null,
+			colour: home ? renderBpRp(home) : null,
 			radiusKm,
 			teff: home ? starTeff(home) : null
 		}

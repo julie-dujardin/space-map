@@ -27,7 +27,7 @@ import { starPageName } from '$lib/fetch/extrasolar/star-name';
 import { systemNode } from '$lib/fetch/extrasolar/systems';
 import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 import { starCssColour, teffFromBpRp } from '$lib/scene/starfield/colour';
-import { colourBpRp, starRadiusKm, starTeff } from '$lib/scene/starfield/record';
+import { photometricBpRp, starRadiusKm, starTeff } from '$lib/scene/starfield/record';
 import { loadSystemsGlobal, nutPrecFor } from '$lib/fetch/systems-global';
 import { iauAngles } from '$lib/math/orientation';
 import { dateToJD } from '$lib/time/jd';
@@ -146,7 +146,7 @@ async function sizedRecord(record: ExtrasolarRecord): Promise<ExtrasolarRecord |
 function teffOf(record: ExtrasolarRecord): number | null {
 	const row = record.rows.get(POINT_SOURCE_SLUG);
 	if (!row) return systemNode(record)?.star?.teff ?? null;
-	const colour = colourBpRp(row);
+	const colour = photometricBpRp(row);
 	return starTeff(row) ?? (colour === null ? null : teffFromBpRp(colour));
 }
 

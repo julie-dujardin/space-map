@@ -12,9 +12,13 @@
 
 	interface Props {
 		temperatures: Temperatures;
+		/** What the one reading is: its bounds, its source. */
+		valueTooltip?: string;
+		/** Why the readings are estimates, where they are. */
+		estimatedNote?: string;
 	}
 
-	let { temperatures }: Props = $props();
+	let { temperatures, valueTooltip, estimatedNote }: Props = $props();
 
 	const PART_TITLE: Record<TemperaturePart, () => string> = {
 		surface: m.temperature_of_surface,
@@ -166,7 +170,10 @@
 		<!-- Where the number came from, next to the number: nobody has measured
 		     most of these bodies. -->
 		{#if estimated}
-			{@render provenanceBadge(m.temperature_estimated(), m.tooltip_temperature_estimated())}
+			{@render provenanceBadge(
+				m.temperature_estimated(),
+				estimatedNote ?? m.tooltip_temperature_estimated()
+			)}
 		{/if}
 	</div>
 
@@ -206,7 +213,23 @@
 					style:left="{placed[i]}%"
 				>
 					<span class="text-muted-subtle">{reading.label}</span>
-					<span>{reading.text}</span>
+					{#if valueTooltip && readings.length === 1}
+						<Tooltip.Root>
+							<Tooltip.Trigger>
+								{#snippet child({ props })}
+									<span
+										class="cursor-help decoration-dotted underline underline-offset-2"
+										{...props}
+									>
+										{reading.text}
+									</span>
+								{/snippet}
+							</Tooltip.Trigger>
+							<Tooltip.Content>{valueTooltip}</Tooltip.Content>
+						</Tooltip.Root>
+					{:else}
+						<span>{reading.text}</span>
+					{/if}
 				</span>
 			{/each}
 		</div>

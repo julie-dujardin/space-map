@@ -583,6 +583,12 @@ export interface GlobalObjectData {
 	 *  Absent for the bodies whose rings no article illustrates. */
 	ring_images?: ObjectImage[];
 	temperatures?: Temperatures;
+	/** The Sun only: its nominal luminosity, W, and the work that gives it. */
+	luminosity_w?: number;
+	luminosity_reference?: CitedWork;
+	/** g/cm³, from the GM and the radii. Absent where the two give no
+	 *  plausible density. */
+	mean_density_g_cm3?: number;
 	/** Surface panoramas taken on this body, mission by mission in time order. */
 	panoramas?: PanoramaEntry[];
 	images?: ObjectImage[];

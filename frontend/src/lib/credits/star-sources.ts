@@ -32,6 +32,7 @@ import {
 import type { Planet } from '$lib/fetch/extrasolar/planets';
 import type { SystemCitation, SystemNode } from '$lib/fetch/extrasolar/systems';
 import type { GlobalObjectData, ValueReference } from '$lib/fetch/objects/object-data';
+import { starMass } from '$lib/scene/starfield/record';
 import {
 	REFERENCE_SECTIONS,
 	type Credits,
@@ -89,7 +90,9 @@ const SOURCE_NAMES: Record<string, () => string> = {
 	'casagrande-2010': m.source_casagrande_2010_name,
 	'flower-1996': m.source_flower_1996_name,
 	radius: m.source_measured_radius_name,
-	'bolometric-correction': m.source_bolometric_correction_name
+	'mass-gravity': m.source_mass_gravity_name,
+	'bolometric-correction': m.source_bolometric_correction_name,
+	'riello-2021': m.source_riello_2021_name
 };
 
 /** The catalogue a `*_source` column or a panel row names, as a reader knows it. */
@@ -136,7 +139,8 @@ export const CREDIT_PAGES = {
 	mist: MIST_PAGE,
 	casagrande: '/10.1051/0004-6361/200913204',
 	flower: '/10.1086/177785',
-	torres: '/10.1088/0004-6256/140/5/1158'
+	torres: '/10.1088/0004-6256/140/5/1158',
+	riello: '/10.1051/0004-6361/202039587'
 } as const;
 
 type CreditPage = keyof typeof CREDIT_PAGES;
@@ -196,6 +200,9 @@ function systemSources({ sources, members, orbit, star }: SystemNode): (string |
 		orbit?.epochSource ?? null,
 		star?.massSource ?? null,
 		star?.teffSource ?? null,
+		star?.loggSource ?? null,
+		star?.metallicitySource ?? null,
+		star?.ageSource ?? null,
 		star?.spectralTypeSource ?? null
 	];
 }
@@ -281,7 +288,6 @@ export function starCredits(
 			row.text('gspspec_source')
 		)
 			pages.add('gaia');
-		if (row.text('hipparcos_photometry_source')) pages.add('hipparcosPhotometry');
 		if (row.text('fidelity_source')) pages.add('fidelity');
 		if (row.text('orbit_source')) pages.add('gaia').add('orbits');
 		if (oneStar && row.text('xgboost_source')) pages.add('xpMetallicity');
@@ -294,14 +300,69 @@ export function starCredits(
 		if (row.text('atnf_source')) pages.add('atnf').add('simbad');
 		if (oneStar && row.text('xhip_metallicity_source')) pages.add('xhip');
 	}
+	if (home && hipparcosType(record.metadata.spectralType, home)) pages.add('hipparcosPhotometry');
+	const cited: Cited = { pages, papers: [], references };
+	if (home) addSurfaceCredits(home, distance, cited);
 	return [
 		...creditsOf(pages, record.credits),
-		...paperCredits([
-			...(distance?.source === LITERATURE ? (references?.distance ?? []) : []),
-			...(radius?.source === LITERATURE ? (references?.paper_radius ?? []) : []),
-			...(measured?.radiusPapers ?? [])
-		])
+		...paperCredits(
+			unique([
+				...(distance?.source === LITERATURE ? (references?.distance ?? []) : []),
+				...(radius?.source === LITERATURE ? (references?.paper_radius ?? []) : []),
+				...(starMass(home)?.source === 'mass_literature' ? (references?.paper_mass ?? []) : []),
+				...cited.papers,
+				...(measured?.radiusPapers ?? [])
+			])
+		)
 	];
+}
+
+/** Whether the spectral type `shown` is the Hipparcos one. The families read
+ *  SIMBAD's type, then the type of its system, then Hipparcos's. */
+function hipparcosType(shown: string | null, row: TableRow): boolean {
+	return (
+		shown !== null &&
+		row.text('simbad_sp_type') === null &&
+		row.text('simbad_system_sp_type') !== shown &&
+		row.text('sp_type') === shown
+	);
+}
+
+/** The papers of `papers`, each once, by their link. */
+function unique(papers: readonly ValueReference[]): ValueReference[] {
+	return [...new Map(papers.map((paper) => [paper.url, paper])).values()];
+}
+
+/** The credits of a panel's values, and the papers that `references` cites. */
+interface Cited {
+	pages: Set<CreditPage | undefined>;
+	papers: ValueReference[];
+	references: GlobalObjectData['references'];
+}
+
+/** The credits of the V magnitude that `apparent_v_source` names. */
+const V_PAGES: Partial<Record<string, CreditPage[]>> = {
+	'hipparcos-2007': ['hipparcosPhotometry'],
+	'hipparcos-1997': ['hipparcosPhotometry'],
+	simbad: ['simbad'],
+	// Converted from Gaia's G and BP − RP.
+	'riello-2021': ['gaia', 'riello']
+};
+
+/** The credits of the surface values of a Point source row: its Teff, log g,
+ *  luminosity and V magnitudes. The absolute V takes the distance and the
+ *  extinction of its V. */
+function addSurfaceCredits(row: TableRow, distance: StarDistance | null, cited: Cited): void {
+	if (row.number('teff') !== null) addInput('teff', row.text('teff_source'), row, distance, cited);
+	if (row.number('logg') !== null) addInput('logg', row.text('logg_source'), row, distance, cited);
+	if (row.number('luminosity') !== null) {
+		addInput('luminosity', row.text('luminosity_source'), row, distance, cited);
+	}
+	const vSource = row.text('apparent_v_source');
+	if (row.number('apparent_v') !== null && vSource) {
+		for (const page of V_PAGES[vSource] ?? [SOURCE_PAGES[vSource]]) cited.pages.add(page);
+	}
+	if (row.number('absolute_v') !== null) addReddening(row, cited.pages);
 }
 
 function paperCredits(papers: readonly ValueReference[]): StarCredit[] {
@@ -331,35 +392,68 @@ const FIT_INPUT_PAGES: Partial<Record<string, CreditPage[]>> = {
 	'bolometric-correction': ['flower', 'torres']
 };
 
-/** The export takes no extinction for the B − V and V routes within this
- *  distance (pc) or up to this V, and GSP-Phot's A0 beyond. */
-const SMALL_EXTINCTION_PC = 100;
-const SMALL_EXTINCTION_V = 6;
-
 /** B − V and V are Hipparcos's, else SIMBAD's. */
 function photometryPage(row: TableRow, hipparcos: string): CreditPage {
 	return row.number(hipparcos) !== null ? 'hipparcosPhotometry' : 'simbad';
 }
 
+/** GSP-Phot's A0, where the export takes it for the star's V. */
+function addReddening(row: TableRow, pages: Set<CreditPage | undefined>): void {
+	if (row.text('extinction_source') === 'gaia-dr3-gspphot') pages.add('gaia');
+}
+
 /** What gave a fit's distance: a catalogue, a paper, or the parallax of the
  *  star's astrometry or of its orbit solution. */
-function addDistance(
+function addDistance(row: TableRow, distance: StarDistance | null, cited: Cited): void {
+	if (distance?.source === LITERATURE) cited.papers.push(...(cited.references?.distance ?? []));
+	else if (distance?.parallax?.fromOrbit) cited.pages.add('gaia').add('orbits');
+	else if (distance?.parallax) cited.pages.add(SOURCE_PAGES[row.text('astrometry_source') ?? '']);
+	else cited.pages.add(distancePage(distance));
+}
+
+/** The credits of the source of a Teff, a log g or a luminosity. A Teff from
+ *  B − V and a luminosity from V or from a measured radius rest on the
+ *  photometry, distance and radius of the row; a luminosity from a mass and a
+ *  log g on the paper of each. */
+function addInput(
+	quantity: 'teff' | 'logg' | 'luminosity',
+	source: string | null,
 	row: TableRow,
 	distance: StarDistance | null,
-	pages: Set<CreditPage | undefined>,
-	papers: ValueReference[],
-	references: GlobalObjectData['references']
+	cited: Cited
 ): void {
-	if (distance?.source === LITERATURE) papers.push(...(references?.distance ?? []));
-	else if (distance?.parallax?.fromOrbit) pages.add('gaia').add('orbits');
-	else if (distance?.parallax) pages.add(SOURCE_PAGES[row.text('astrometry_source') ?? '']);
-	else pages.add(distancePage(distance));
+	const { pages, papers, references } = cited;
+	for (const page of FIT_INPUT_PAGES[source ?? ''] ?? []) pages.add(page);
+	if (source === 'host-star') pages.add(SOURCE_PAGES[row.text(`host_${quantity}_source`) ?? '']);
+	if (source === LITERATURE) papers.push(...(references?.[`paper_${quantity}`] ?? []));
+	if (source === 'casagrande-2010' || source === 'flower-1996') {
+		pages.add(photometryPage(row, 'b_v'));
+		addReddening(row, pages);
+	}
+	if (source === 'bolometric-correction') {
+		pages.add(photometryPage(row, 'v_mag'));
+		addDistance(row, distance, cited);
+		addReddening(row, pages);
+	}
+	if (source === 'mass-gravity') {
+		papers.push(...(references?.paper_mass ?? []), ...(references?.paper_logg ?? []));
+	}
+	if (source === 'radius') {
+		if ((row.number('radius_literature') ?? 0) > 0) {
+			papers.push(...(references?.paper_radius ?? []));
+		} else {
+			// The diameter's distance: a paper's, else the star's own parallax.
+			pages.add('jmdc');
+			if (row.text('distance_source') === LITERATURE) {
+				papers.push(...(references?.distance ?? []));
+			} else pages.add(SOURCE_PAGES[row.text('astrometry_source') ?? '']);
+		}
+	}
 }
 
 /** The credits of a star's interior: the papers of a curated block, or the
  *  stellar models of a fit, then the catalogues, relations and papers of its
- *  inputs. A Teff from B − V and a luminosity from V or from a measured
- *  radius rest on the photometry, distance and radius of the record. */
+ *  inputs. */
 export function starInteriorCredits(
 	interior: StarInterior,
 	record: ExtrasolarRecord,
@@ -373,46 +467,18 @@ export function starInteriorCredits(
 			note: work.note
 		}));
 	}
-	const { teffSource, luminositySource } = interior;
-	const pages = new Set<CreditPage | undefined>();
-	const papers: ValueReference[] = [];
-	for (const source of [teffSource, luminositySource, interior.fehSource]) {
-		for (const page of FIT_INPUT_PAGES[source ?? ''] ?? []) pages.add(page);
-	}
+	const cited: Cited = { pages: new Set(), papers: [], references };
+	for (const page of FIT_INPUT_PAGES[interior.fehSource ?? ''] ?? []) cited.pages.add(page);
 	const home = homeRow(record);
 	if (home) {
 		const distance = starDistance(home, astrometricOrbit(record));
-		const fromColour = teffSource === 'casagrande-2010' || teffSource === 'flower-1996';
-		const fromV = luminositySource === 'bolometric-correction';
-		if (teffSource === 'host-star') pages.add(SOURCE_PAGES[home.text('host_teff_source') ?? '']);
-		if (fromColour) pages.add(photometryPage(home, 'b_v'));
-		if (fromV) {
-			pages.add(photometryPage(home, 'v_mag'));
-			addDistance(home, distance, pages, papers, references);
-		}
-		const v = home.number('v_mag') ?? home.number('simbad_v_mag');
-		const reddened =
-			distance !== null &&
-			distance.pc > SMALL_EXTINCTION_PC &&
-			(v === null || v > SMALL_EXTINCTION_V) &&
-			home.number('azero_gspphot') !== null;
-		if ((fromColour || fromV) && reddened) pages.add('gaia');
-		if (luminositySource === 'radius') {
-			if ((home.number('radius_literature') ?? 0) > 0) {
-				papers.push(...(references?.paper_radius ?? []));
-			} else {
-				// The diameter's distance: a paper's, else the star's own parallax.
-				pages.add('jmdc');
-				if (home.text('distance_source') === LITERATURE) {
-					papers.push(...(references?.distance ?? []));
-				} else pages.add(SOURCE_PAGES[home.text('astrometry_source') ?? '']);
-			}
-		}
+		addInput('teff', interior.teffSource, home, distance, cited);
+		addInput('luminosity', interior.luminositySource, home, distance, cited);
 	}
 	return [
 		...creditsOf(new Set(['mist']), record.credits),
-		...creditsOf(pages, record.credits),
-		...paperCredits(papers)
+		...creditsOf(cited.pages, record.credits),
+		...paperCredits(unique(cited.papers))
 	];
 }
 
@@ -507,12 +573,7 @@ export function referenceCount(credits: Credits, stars: readonly ExtrasolarCredi
 }
 
 /** The works that only the Interior table rests on. */
-const INTERIOR_PAGES: readonly string[] = [
-	CREDIT_PAGES.mist,
-	CREDIT_PAGES.casagrande,
-	CREDIT_PAGES.flower,
-	CREDIT_PAGES.torres
-];
+const INTERIOR_PAGES: readonly string[] = [CREDIT_PAGES.mist];
 
 /** The credits of the star catalogues for /credits; none where the host
  *  serves no extrasolar export, or may show none of it. */

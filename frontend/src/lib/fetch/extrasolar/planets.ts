@@ -85,6 +85,9 @@ export interface PlanetHost {
 	ra: number | null;
 	dec: number | null;
 	epoch: number | null;
+	/** The Teff of the star's panel: the Point source `teff`, or a held
+	 *  star's `star.teff`; null for a resolved system. `teff_source` names a
+	 *  catalogue Teff by its catalogue. */
 	teff: number | null;
 	teff_source: string | null;
 	radius: number | null;

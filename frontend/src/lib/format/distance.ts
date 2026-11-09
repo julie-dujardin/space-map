@@ -6,6 +6,7 @@ import {
 	formatUnit,
 	joinParts,
 	precisionOptions,
+	quantityParts,
 	sigFigures,
 	type Parts
 } from './quantities';
@@ -33,10 +34,15 @@ export function formatDistance(au: number): string {
  *  for anything smaller, and a layer nobody can read the thickness of may as
  *  well not be drawn. */
 export function formatKm(value: number): string {
+	return joinParts(kmParts(value));
+}
+
+/** The figure and unit of `formatKm`. */
+export function kmParts(value: number): Parts {
 	if (value !== 0 && Math.abs(value) < 1) {
-		return formatQuantity({ value: value * 1000, unit: 'metre' }, true);
+		return quantityParts({ value: value * 1000, unit: 'metre' }, true);
 	}
-	return formatQuantity({ value, unit: 'kilometre' }, true);
+	return quantityParts({ value, unit: 'kilometre' }, true);
 }
 
 /** The size of a body. An estimate reads "≈ 13,050 km". */

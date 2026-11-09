@@ -35,6 +35,7 @@
 	import SystemStars from '../sections/star/SystemStars.svelte';
 	import Discovery from '../sections/Discovery.svelte';
 	import {
+		shownCentreTemperature,
 		starAliases,
 		starIdentifiers,
 		starSections,
@@ -71,6 +72,7 @@
 		type StarSystem
 	} from '$lib/state/star-system';
 	import type { PlanetAnchor } from '$lib/types/objects';
+	import type { StarStructure } from '../state/star-interior.svelte';
 
 	type FocusFeatureEntry = Extract<Focusable, { kind: 'feature' }>['feature'];
 
@@ -104,6 +106,8 @@
 		system?: StarSystem | null;
 		/** The system categories of `star`, for its cross-refs. */
 		systemCategories?: string[];
+		/** The interior of `star`, once it loads. */
+		starStructure?: StarStructure | null;
 	}
 
 	let {
@@ -125,7 +129,8 @@
 		star = null,
 		planet = null,
 		system = null,
-		systemCategories = []
+		systemCategories = [],
+		starStructure = null
 	}: Props = $props();
 
 	let data = $derived(load.data);
@@ -298,6 +303,10 @@
 				? radiusPaperPoint(system, systemRow, star.metadata.radius)
 				: null;
 			out.push(...starCredits(star, data?.global?.references, nodes, measured));
+			// The centre temperature of the Interior section rests on the Structure tab's works.
+			if (!systemRow && starStructure && shownCentreTemperature(starStructure)) {
+				out.push(...starStructure.credits);
+			}
 			out.push(
 				...citationCredits(
 					citedNodes.flatMap((n) => [...(n.orbit?.references ?? []), ...(n.star?.references ?? [])])
@@ -417,7 +426,9 @@
 			/>
 		{:else if star}
 			<StarSections
-				sections={systemRow ? systemSections(star, systemRow, system) : starSections(star)}
+				sections={systemRow
+					? systemSections(star, systemRow, system)
+					: starSections(star, { structure: starStructure })}
 			/>
 			<Discovery
 				global={data?.global ?? null}

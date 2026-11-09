@@ -15,9 +15,9 @@ import {
 } from './planet-rows';
 
 /** The text without its bidi isolates and with plain spaces. */
-const ISOLATES = new RegExp('[\\u2066-\\u2069]', 'g');
+const INVISIBLES = new RegExp('[\\u2060\\u2066-\\u2069]', 'g');
 const NO_BREAK = new RegExp('\\u00a0', 'g');
-const plain = (s: string) => s.replace(ISOLATES, '').replace(NO_BREAK, ' ');
+const plain = (s: string) => s.replace(INVISIBLES, '').replace(NO_BREAK, ' ');
 
 function anchor(p: Planet, star = host(p.host, [p.number])): PlanetAnchor {
 	return { host: p.host, number: p.number, system: p.host, planet: p, hostRecord: star };

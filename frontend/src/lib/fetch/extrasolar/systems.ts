@@ -139,6 +139,10 @@ export interface HeldStarValues {
 	mass: number | null;
 	/** K. */
 	teff: number | null;
+	/** A planet host's log g (log(cm/s²)), [Fe/H] (dex) and age (Gyr), from its catalogue. */
+	logg: number | null;
+	metallicity: number | null;
+	age: number | null;
 	spectralType: string | null;
 	massSource: string | null;
 	/** The source of the row's own radius. The star's radius is its Metadata
@@ -147,6 +151,9 @@ export interface HeldStarValues {
 	/** The error of the planet catalogues' radius of a host, solar radii. */
 	hostRadiusError: number | null;
 	teffSource: string | null;
+	loggSource: string | null;
+	metallicitySource: string | null;
+	ageSource: string | null;
 	spectralTypeSource: string | null;
 	references: SystemCitation[];
 	/** True for the first member of a point when it dominates the point's
@@ -290,11 +297,17 @@ function heldStarValues(item: TableRow): HeldStarValues {
 	return {
 		mass: item.number('star.mass'),
 		teff: item.number('star.teff'),
+		logg: item.number('star.logg'),
+		metallicity: item.number('star.metallicity'),
+		age: item.number('star.age'),
 		spectralType: item.text('star.spectral_type'),
 		massSource: item.text('star.mass_source'),
 		radiusSource: item.text('star.radius_source'),
 		hostRadiusError: item.number('star.host_radius_error'),
 		teffSource: item.text('star.teff_source'),
+		loggSource: item.text('star.logg_source'),
+		metallicitySource: item.text('star.metallicity_source'),
+		ageSource: item.text('star.age_source'),
 		spectralTypeSource: item.text('star.spectral_type_source'),
 		references: citations(item, 'star.references'),
 		dominant: item.flag('star.dominant') === true

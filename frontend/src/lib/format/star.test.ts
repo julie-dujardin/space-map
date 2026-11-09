@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { formatDeclination, formatRightAscension, plusMinus, withBounds, withError } from './star';
-import { ltrIsolate } from './bidi';
-import { errorDecimals, fixed, joinParts } from './quantities';
+import { ltrIsolate, quantityIsolate } from './bidi';
+import { errorDecimals, fixed } from './quantities';
 
-/** The text without its bidi isolates and with plain spaces. */
-const ISOLATES = new RegExp('[\\u2066-\\u2069]', 'g');
+/** The text without its isolates and word joiners, with plain spaces. */
+const INVISIBLES = new RegExp('[\\u2060\\u2066-\\u2069]', 'g');
 const NBSP = String.fromCharCode(0xa0);
 const NO_BREAK = new RegExp(NBSP, 'g');
-const plain = (s: string) => s.replace(ISOLATES, '').replace(NO_BREAK, ' ');
+const plain = (s: string) => s.replace(INVISIBLES, '').replace(NO_BREAK, ' ');
 
 describe('star value formatting', () => {
 	it('keeps two significant figures of the error', () => {
@@ -25,13 +25,35 @@ describe('star value formatting', () => {
 		expect(plain(plusMinus(-3781.741, 0.031))).toBe('-3,781.741 ± 0.031');
 	});
 
-	it('isolates a value with an error as LTR, and writes a plain value and unit as the panels do', () => {
-		expect(plusMinus(379.20999, 1.58, 'mas')).toBe(ltrIsolate(`379.2 ±${NBSP}1.6 mas`));
-		expect(plusMinus(0.489, null, 'mas', 3)).toBe(joinParts({ value: '0.489', unit: 'mas' }));
-		expect(plusMinus(1.141, 0, 'µm⁻¹', 3)).toBe('1.141 µm⁻¹');
+	it('isolates the figures of a value as LTR, with or without an error, and leaves a bare figure plain', () => {
+		expect(plusMinus(379.20999, 1.58, 'mas')).toBe(
+			quantityIsolate(`${ltrIsolate(`379.2 ±${NBSP}1.6`)}${NBSP}mas`)
+		);
+		expect(plusMinus(0.489, null, 'mas', 3)).toBe(
+			quantityIsolate(`${ltrIsolate('0.489')}${NBSP}mas`)
+		);
+		expect(plusMinus(1.141, 0, 'µm⁻¹', 3)).toBe(
+			quantityIsolate(`${ltrIsolate('1.141')}${NBSP}µm⁻¹`)
+		);
 		expect(plusMinus(3.805, null, '', 3)).toBe('3.805');
-		expect(withBounds(1.3, null, null, 'pc')).toBe('1.30 pc');
-		expect(withBounds(301, 258, 360, 'pc')).toBe(ltrIsolate('301 pc (258–360 pc)'));
+		expect(withBounds(1.3, null, null, 'pc')).toBe(
+			quantityIsolate(`${ltrIsolate('1.30')}${NBSP}pc`)
+		);
+		expect(withBounds(301, 258, 360, 'pc')).toBe(
+			quantityIsolate(`${ltrIsolate('301')}${NBSP}pc (${ltrIsolate('258–\u2060360')}${NBSP}pc)`)
+		);
+	});
+
+	it('keeps each span in the order of its figures, with the unit in its own direction', () => {
+		expect(plain(withBounds(13.28, 11.93, 13.5, 'מיליארד שנה'))).toBe(
+			'13.28 מיליארד שנה (11.93–13.50 מיליארד שנה)'
+		);
+		expect(withBounds(13.28, 11.93, 13.5, 'מיליארד שנה')).toContain(
+			`(${ltrIsolate('11.93–\u206013.50')}${NBSP}מיליארד${NBSP}שנה)`
+		);
+		expect(withBounds(1.95e30, 1.8e30, 2.2e30, 'kg', true, 30)).toContain(
+			`(${ltrIsolate('1.80–\u20602.20×10³⁰')}${NBSP}kg)`
+		);
 	});
 
 	it('puts an error in another unit after a coordinate', () => {
@@ -44,7 +66,7 @@ describe('star value formatting', () => {
 	it('uses the shared spacing around units', () => {
 		const text = plusMinus(1.30197, 0.000085, 'pc');
 		expect(text).toContain(`±${NBSP}`);
-		expect(text).toContain(' pc');
+		expect(plain(text)).toContain(' pc');
 	});
 
 	it('writes near-symmetric bounds as an error, the others as a span', () => {

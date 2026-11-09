@@ -1,17 +1,30 @@
 import { describe, expect, it } from 'vitest';
 import { ExtrasolarLookup, type ExtrasolarRecord } from '$lib/fetch/extrasolar/lookup';
 import { HAS_EXPORT, diskSource } from '$lib/fetch/extrasolar/__fixtures__/export';
-import { pointSourceRecord, valueColumns } from '$lib/fetch/extrasolar/__fixtures__/record';
+import {
+	SURFACE_STARS,
+	pointSourceRecord,
+	valueColumns
+} from '$lib/fetch/extrasolar/__fixtures__/record';
+import type { StarInterior } from '$lib/fetch/extrasolar/interior';
+import type { InteriorBlock } from '$lib/fetch/objects/object-data';
 import type { ColumnSpec } from '$lib/fetch/extrasolar/__fixtures__/writer';
 import type { StarRadius } from '$lib/fetch/extrasolar/lookup';
 import { STAR } from '$lib/fetch/extrasolar/__fixtures__/synthetic';
 import { ltrIsolate } from '$lib/format/bidi';
-import { starAliases, starClassLabel, starIdentifiers, starSections, starStats } from './star-rows';
+import {
+	meanDensityRow,
+	starAliases,
+	starClassLabel,
+	starIdentifiers,
+	starSections,
+	starStats
+} from './star-rows';
 
 /** The text without its bidi isolates and with plain spaces. */
-const ISOLATES = new RegExp('[\\u2066-\\u2069]', 'g');
+const INVISIBLES = new RegExp('[\\u2060\\u2066-\\u2069]', 'g');
 const NO_BREAK = new RegExp('\\u00a0', 'g');
-const plain = (s: string) => s.replace(ISOLATES, '').replace(NO_BREAK, ' ');
+const plain = (s: string) => s.replace(INVISIBLES, '').replace(NO_BREAK, ' ');
 
 describe("a star's distance", () => {
 	const UNCERTAIN =
@@ -29,7 +42,7 @@ describe("a star's distance", () => {
 			distance_lower: 4826,
 			distance_upper: 8535,
 			distance_source: 'bailer-jones-2021',
-			teff_gspphot: 5000,
+			teff: 5000,
 			phot_g_mean_mag: 12
 		});
 		const cards = starStats(star).flat();
@@ -207,16 +220,16 @@ describe.skipIf(!HAS_EXPORT)("a star's panel rows from its records", () => {
 	it('shows Sirius from Hipparcos, in V, with no Gaia sections', async () => {
 		const sirius = await record(22137869);
 		const stats = starStats(sirius).map((row) => row.map((s) => [s.label, s.value, s.note]));
-		expect(stats).toEqual([
-			[
-				['Diameter', '2.35M km', undefined],
-				['Distance', '8.61 ly', undefined],
-				['Spectral type', ltrIsolate('A0mA1Va'), undefined]
-			]
+		expect(stats[0].slice(0, 2)).toEqual([
+			['Diameter', '2.35M km', undefined],
+			['Distance', '8.61 ly', undefined]
 		]);
+		// Flower's Teff from the Hipparcos B − V.
+		expect(stats[0][2]).toEqual(['Temperature', '9,132 °C', 'estimated']);
 		const rows = rowsOf(sirius);
-		expect(Object.keys(rows)).toEqual(['classification', 'position', 'brightness', 'physical']);
-		expect(rows.physical['Metallicity source']).toBeUndefined();
+		// No mass: the Interior section has nothing to show.
+		expect(Object.keys(rows)).toEqual(['classification', 'atmosphere', 'surface', 'position']);
+		expect(rows.atmosphere['Metallicity source']).toBeUndefined();
 		expect(
 			Object.fromEntries(starIdentifiers(sirius).map((x) => [x.label, x.value]))
 		).toMatchObject({
@@ -235,9 +248,6 @@ describe.skipIf(!HAS_EXPORT)("a star's panel rows from its records", () => {
 		expect(classification?.rows.find((r) => r.label === 'Spectral type')?.value).toBe(
 			ltrIsolate('A0mA1Va')
 		);
-		// No Gaia colour: the tree's estimate from V − I is not shown as one.
-		expect(rows.brightness['Colour (BP − RP)']).toBeUndefined();
-		expect(rows.brightness['Colour (V − I)']).toBe('-0.02');
 		const hd = starIdentifiers(sirius).find((r) => r.label === 'HD');
 		expect(hd?.href).toBe('https://simbad.cds.unistra.fr/simbad/sim-id?Ident=HD%2048915');
 	});
@@ -265,7 +275,13 @@ describe.skipIf(!HAS_EXPORT)("a star's panel rows from its records", () => {
 				.map((s) => s.label)
 		).toEqual(['Diameter', 'Distance', 'Temperature']);
 		const rows = rowsOf(proxima);
-		expect(Object.keys(rows)).toEqual(['classification', 'position', 'brightness', 'physical']);
+		expect(Object.keys(rows)).toEqual([
+			'classification',
+			'atmosphere',
+			'surface',
+			'interior',
+			'position'
+		]);
 		// Its Wikidata item is in the links section, and the planet catalogues'
 		// keys are not shown.
 		expect(starIdentifiers(proxima).map((x) => x.label)).toEqual([
@@ -278,11 +294,11 @@ describe.skipIf(!HAS_EXPORT)("a star's panel rows from its records", () => {
 		expect(rows.position.Parallax).toBe('768.067 ± 0.050 mas');
 		expect(rows.position['Right ascension']).toMatch(/^14ʰ 29ᵐ 34\.\d+ˢ ± 0\.024 mas$/);
 		expect(rows.position['Radial velocity']).toBe('-21.94 ± 0.22 km/s');
-		expect(rows.brightness['Gaia G']).toMatch(/^8\.98\d* ± 0\.000\d+$/);
 		// FLAME fits its radius from the parallax and gives it no mass; the planet
 		// catalogue does.
-		expect(rows.physical.Diameter).toMatch(/^[\d,]+ ± [\d,]+ km$/);
-		expect(rows.physical.Mass).toBe('2.428×10²⁹ kg');
+		expect(rows.surface.Diameter).toMatch(/^[\d,]+ ± [\d,]+ km$/);
+		expect(rows.interior.Mass).toBe('2.428×10²⁹ kg');
+		expect(rows.surface['Apparent magnitude (V)']).toBe('11.01');
 	});
 
 	it('shows a lone available stat without padding', async () => {
@@ -381,7 +397,7 @@ describe('the metallicity row', () => {
 	const parameter = (r: ExtrasolarRecord, label: string) =>
 		plain(
 			starSections(r)
-				.find((s) => s.key === 'physical')
+				.find((s) => s.key === 'atmosphere')
 				?.rows.find((x) => x.label === label)?.value ?? ''
 		);
 	const metallicity = (r: ExtrasolarRecord) => parameter(r, 'Metallicity [M/H]');
@@ -494,15 +510,17 @@ describe('the identifiers of the catalogues that join the Point source row', () 
 
 /** A record with one Point source row of these columns, the Metadata
  *  `radius` and nothing else. */
+const SYNTHETIC_TYPES = { string: 'string', boolean: 'bool' } as const;
+
 function synthetic(
-	values: Record<string, number | string | null>,
+	values: Record<string, number | string | boolean | null>,
 	orbit?: ColumnSpec[],
 	radius: StarRadius | null = null
 ): ExtrasolarRecord {
 	return pointSourceRecord(
 		Object.entries(values).map(([name, value]) => ({
 			name,
-			type: typeof value === 'string' ? 'string' : 'float32',
+			type: SYNTHETIC_TYPES[typeof value as keyof typeof SYNTHETIC_TYPES] ?? 'float32',
 			values: [value]
 		})),
 		[],
@@ -511,12 +529,12 @@ function synthetic(
 	);
 }
 
-type Values = Record<string, number | string | null>;
+type Values = Record<string, number | string | boolean | null>;
 
 describe("a star's diameter", () => {
 	const row = (values: Values, radius: StarRadius | null) =>
 		starSections(synthetic(values, undefined, radius))
-			.find((s) => s.key === 'physical')
+			.find((s) => s.key === 'surface')
 			?.rows.find((r) => r.label.startsWith('Diameter'));
 	const card = (values: Values, radius: StarRadius | null) =>
 		starStats(synthetic(values, undefined, radius))
@@ -563,30 +581,13 @@ describe("a star's diameter", () => {
 	});
 });
 
-describe("a star's FLAME values", () => {
-	const dwarf = {
-		parallax: 100,
-		parallax_error: 0.1,
-		phot_g_mean_mag: 5,
-		teff_gspphot: 5600,
-		radius_gspphot: 0.8,
-		radius_flame: 0.9,
-		radius_flame_lower: 0.88,
-		radius_flame_upper: 0.92,
-		lum_flame: 0.75,
-		mass_flame: 0.95,
-		mass_flame_lower: 0.9,
-		mass_flame_upper: 1.02,
-		age_flame: 4.5,
-		age_flame_lower: 2,
-		age_flame_upper: 8,
-		evolstage_flame: 250,
-		gravredshift_flame: 0.67,
-		bc_flame: -0.05,
-		flags_flame: '00'
-	};
-	/** The radius that the export picks for these columns. */
+describe("a star's sections", () => {
+	/** The radius that the export picks for these columns (`radius.py`). A
+	 *  paper's comes first, then Gaia's fits, which do not hold for a compact star. */
 	const radiusOf = (values: Values): StarRadius | null => {
+		const paper = values.radius_literature;
+		if (typeof paper === 'number') return { solar: paper, source: 'literature' };
+		if (values.compact === true) return null;
 		const fit = (['', '_spec'] as const).find(
 			(run) => typeof values[`radius_flame${run}`] === 'number'
 		);
@@ -597,66 +598,275 @@ describe("a star's FLAME values", () => {
 		const gspphot = values.radius_gspphot;
 		return typeof gspphot === 'number' ? { solar: gspphot, source: 'gaia-dr3-gspphot' } : null;
 	};
-	const sectionsOf = (values: Values) =>
-		starSections(synthetic(values, undefined, radiusOf(values)));
-	const physical = (values: Values) =>
-		Object.fromEntries(
-			(sectionsOf(values).find((s) => s.key === 'physical')?.rows ?? []).map((r) => [
-				r.label,
-				plain(r.value)
-			])
-		);
+	const sections = (values: Values) => starSections(synthetic(values, undefined, radiusOf(values)));
 	const section = (values: Values, key: string) =>
 		Object.fromEntries(
-			(sectionsOf(values).find((s) => s.key === key)?.rows ?? []).map((r) => [
+			(sections(values).find((s) => s.key === key)?.rows ?? []).map((r) => [
 				r.label,
 				plain(r.value)
 			])
 		);
+	const entry = (values: Values, key: string, label: string) =>
+		sections(values)
+			.find((s) => s.key === key)
+			?.rows.find((r) => r.label === label);
 	const cards = (values: Values) =>
 		starStats(synthetic(values, undefined, radiusOf(values)))
 			.flat()
 			.map((s) => [s.label, plain(s.value)]);
+	const { flame, proxima, tauCeti, arcturus, whiteDwarf, sampleWhiteDwarf, pulsar, farStar } =
+		SURFACE_STARS;
 
-	it("combines a dwarf's preferred fit by meaning", () => {
-		expect(physical(dwarf)).toEqual({
-			'Effective temperature': expect.any(String),
+	it('come in the order of the Sun', () => {
+		expect(sections(flame).map((s) => s.key)).toEqual([
+			'classification',
+			'surface',
+			'interior',
+			'position'
+		]);
+		const metal = { ...flame, feh_pastel: -0.1 };
+		expect(sections(metal).map((s) => s.key)).toEqual([
+			'classification',
+			'atmosphere',
+			'surface',
+			'interior',
+			'position'
+		]);
+	});
+
+	it("show a Gaia star's computed values and FLAME's fit", () => {
+		expect(section(flame, 'classification')).toEqual({
+			'Evolutionary stage': 'Main sequence',
+			Age: '4.5 Ga (2.0–8.0 Ga)'
+		});
+		expect(section(flame, 'surface')).toEqual({
 			Diameter: '1,252,000 ± 28,000 km',
-			Luminosity: '2.87×10²⁶ W',
-			Mass: '1.889×10³⁰ kg (1.790–2.028×10³⁰ kg)',
-			Age: '4.5 Ga (2.0–8.0 Ga)',
+			Gravity: '25.6 g (22.8–28.7 g)',
+			Luminosity: '(2.871 ± 0.038)×10²⁶ W',
+			'Apparent magnitude (V)': '9.50',
+			'Absolute magnitude (V)': '9.50',
 			'Gravitational redshift': '0.67 km/s'
 		});
-		expect(section(dwarf, 'classification')).toEqual({ 'Evolutionary stage': 'Main sequence' });
-		expect(section(dwarf, 'brightness')['Bolometric correction']).toBe('-0.05');
-		expect(cards(dwarf)).toEqual([
+		expect(section(flame, 'interior')).toEqual({
+			Mass: '1.889×10³⁰ kg (1.790–2.028×10³⁰ kg)',
+			density: '1.84 g/cm³'
+		});
+		const gravity = entry(flame, 'surface', 'Gravity')!;
+		expect(plain(gravity.tooltip!)).toBe('250 m/s²');
+		expect(gravity.definition).toBe('Gravity at the photosphere');
+		const luminosity = entry(flame, 'surface', 'Luminosity')!;
+		expect(plain(luminosity.tooltip!)).toBe("75% ± 1% of the Sun's");
+		expect(luminosity.definition).toBe('Total power radiated by the star across all wavelengths');
+		expect(luminosity.note).toBeUndefined();
+		expect(entry(flame, 'surface', 'Apparent magnitude (V)')?.tooltip).toBe(
+			'Converted from the Gaia G magnitude and the BP − RP colour index'
+		);
+		expect(entry(flame, 'surface', 'Absolute magnitude (V)')?.tooltip).toBe(
+			'From a V magnitude converted from the Gaia G magnitude and the BP − RP colour index'
+		);
+		expect(plain(entry(flame, 'interior', 'Mass')!.tooltip!)).toBe("95% (90–102%) of the Sun's");
+		expect(cards(flame)).toEqual([
 			['Diameter', '1.25M km'],
 			['Distance', '32.6 ly'],
 			['Temperature', expect.any(String)]
 		]);
-		expect(physical(dwarf)['Diameter from photometry']).toBeUndefined();
-		const mass = starSections(synthetic(dwarf))
-			.find((s) => s.key === 'physical')!
-			.rows.find((r) => r.label === 'Mass')!;
-		expect(plain(mass.tooltip!)).toBe("95% (90–102%) of the Sun's");
-		const luminosity = starSections(synthetic(dwarf))
-			.find((s) => s.key === 'physical')!
-			.rows.find((r) => r.label === 'Luminosity')!;
-		expect(plain(luminosity.tooltip!)).toBe("75% of the Sun's");
-		expect(luminosity.definition).toBe('Total power radiated by the star across all wavelengths');
+	});
+
+	it('draw the Teff on the scale of the Surface section, with its bounds', () => {
+		const surface = sections(flame).find((s) => s.key === 'surface')!;
+		expect(surface.rows.map((r) => r.label)).not.toContain('Effective temperature');
+		expect(surface.temperature?.temperatures).toEqual({
+			readings: [{ part: 'photosphere', kind: 'mean', k: 5600 }],
+			origin: 'measured'
+		});
+		expect(surface.temperature?.valueTooltip).toBeDefined();
+		expect(surface.temperature?.estimatedNote).toBeUndefined();
+	});
+
+	it("show a red dwarf's catalogue log g and mass", () => {
+		expect(section(proxima, 'surface')).toMatchObject({
+			Diameter: '196,000 km',
+			Gravity: '160 g',
+			'Apparent magnitude (V)': '11.13',
+			'Absolute magnitude (V)': '15.56'
+		});
+		expect(entry(proxima, 'surface', 'Apparent magnitude (V)')?.tooltip).toBeUndefined();
+		expect(entry(proxima, 'surface', 'Absolute magnitude (V)')?.tooltip).toBeUndefined();
+		expect(section(proxima, 'interior')).toEqual({
+			Mass: '2.43×10²⁹ kg',
+			density: '61.4 g/cm³'
+		});
+	});
+
+	it('mark a Teff from a colour and a luminosity from a bolometric correction as estimates', () => {
+		for (const star of [tauCeti, arcturus]) {
+			const surface = sections(star).find((s) => s.key === 'surface')!;
+			expect(surface.temperature?.temperatures.origin).toBe('estimated');
+			expect(surface.temperature?.estimatedNote).toBe('Estimated from the B − V colour index.');
+			expect(surface.rows.find((r) => r.label === 'Gravity')).toBeUndefined();
+		}
+		expect(entry(tauCeti, 'surface', 'Luminosity')?.note).toBeUndefined();
+		expect(entry(arcturus, 'surface', 'Luminosity')?.note).toBe('estimated');
+		expect(section(tauCeti, 'surface').Diameter).toBe('1,100,000 km');
+		// No mass, so no density: the section has nothing to show.
+		expect(sections(tauCeti).find((s) => s.key === 'interior')).toBeUndefined();
+	});
+
+	it('mark the cards of an estimated Teff and luminosity', () => {
+		const notes = (values: Values) =>
+			starStats(synthetic(values, undefined, radiusOf(values)))
+				.flat()
+				.map((s) => [s.label, s.note]);
+		expect(notes(arcturus)).toEqual([
+			['Distance', undefined],
+			['Temperature', 'estimated'],
+			['Luminosity', 'estimated']
+		]);
+		expect(notes(flame)[2]).toEqual(['Temperature', undefined]);
+	});
+
+	it('say what an absolute V without an extinction rests on', () => {
+		expect(entry(farStar, 'surface', 'Absolute magnitude (V)')?.tooltip).toBe(
+			'From a V magnitude converted from the Gaia G magnitude and the BP − RP colour index; ' +
+				'not corrected for extinction, which is not known for this star'
+		);
+		const simbadV = { ...farStar, apparent_v_source: 'simbad' };
+		expect(entry(simbadV, 'surface', 'Absolute magnitude (V)')?.tooltip).toBe(
+			'Not corrected for extinction, which is not known for this star'
+		);
+		expect(entry(simbadV, 'surface', 'Apparent magnitude (V)')?.tooltip).toBeUndefined();
+	});
+
+	it("show a white dwarf's paper values, with their errors", () => {
+		expect(section(whiteDwarf, 'surface')).toEqual({
+			Diameter: '11,300 km',
+			Gravity: '398,000 ± 15,000 g',
+			Luminosity: '9.38×10²⁴ W',
+			'Apparent magnitude (V)': '8.44',
+			'Absolute magnitude (V)': '11.33'
+		});
+		expect(section(whiteDwarf, 'interior')).toEqual({
+			Mass: '(2.024 ± 0.022)×10³⁰ kg',
+			density: '2.7×10⁶ g/cm³'
+		});
+		expect(section(sampleWhiteDwarf, 'interior')).toEqual({ Mass: '(1.193 ± 0.020)×10³⁰ kg' });
+		expect(cards(sampleWhiteDwarf).map(([label]) => label)).toEqual([
+			'Mass',
+			'Distance',
+			'Temperature'
+		]);
+	});
+
+	it("leave out Gaia's main-sequence fits of a white dwarf", () => {
+		for (const star of [whiteDwarf, sampleWhiteDwarf]) {
+			expect(sections(star).map((s) => s.key)).toEqual(['surface', 'interior', 'position']);
+			expect(entry(star, 'surface', 'Gravitational redshift')).toBeUndefined();
+		}
+		expect(section(sampleWhiteDwarf, 'surface').Diameter).toBeUndefined();
+		expect(section(sampleWhiteDwarf, 'surface')['Diameter from photometry']).toBeUndefined();
+		// No paper mass: FLAME's mass is a main-sequence fit too.
+		const noPaperMass = { ...sampleWhiteDwarf, mass_literature: null };
+		expect(sections(noPaperMass).find((s) => s.key === 'interior')).toBeUndefined();
+		// The same fits stand for a star that is not compact.
+		const notWhiteDwarf = { ...sampleWhiteDwarf, compact: false, mass_literature: null };
+		expect(section(notWhiteDwarf, 'surface').Diameter).toBe('626,000 km');
+		expect(section(notWhiteDwarf, 'classification').Age).toBe('9.00 Ga');
+	});
+
+	it('say when the star formed, at the figures of its age row', () => {
+		const tooltip = (values: Values) => plain(entry(values, 'classification', 'Age')!.tooltip!);
+		expect(tooltip(flame)).toBe('Formed 4.5 (2.0–8.0) billion years ago');
+		const young = { ...flame, age_flame: 0.35, age_flame_lower: 0.2, age_flame_upper: 0.6 };
+		expect(section(young, 'classification').Age).toBe('0.35 Ga (0.20–0.60 Ga)');
+		expect(tooltip(young)).toBe('Formed 0.35 (0.20–0.60) billion years ago');
+		const unbounded = { ...flame, age_flame_lower: null, age_flame_upper: null };
+		expect(tooltip(unbounded)).toBe('Formed 4.50 billion years ago');
+		expect(tooltip({ ...unbounded, age_flame: 0.9996 })).toBe('Formed 1.00 billion years ago');
+		const host = { ...flame, age_flame: null, host_age: 0.4 };
+		expect(section(host, 'classification').Age).toBe('0.4 Ga');
+		expect(tooltip(host)).toBe('Formed 0.4 billion years ago');
+	});
+
+	it('compare a metallicity and a density with the Sun and with materials', () => {
+		const metallicity = (values: Values, label: string) =>
+			plain(entry(values, 'atmosphere', label)!.tooltip!);
+		expect(metallicity({ ...flame, feh_pastel: -0.3 }, 'Metallicity [Fe/H]')).toBe(
+			'2× less iron than the Sun'
+		);
+		expect(metallicity({ ...flame, host_metallicity: 0.2 }, 'Metallicity [Fe/H]')).toBe(
+			'1.6× more iron than the Sun'
+		);
+		expect(plain(entry(flame, 'interior', 'density')!.tooltip!)).toBe('68% of crustal rock');
+	});
+
+	it("show a pulsar's mass alone", () => {
+		expect(sections(pulsar).map((s) => s.key)).toEqual(['interior', 'position']);
+		expect(section(pulsar, 'interior')).toEqual({ Mass: '2.8×10³⁰ kg' });
+	});
+
+	it('read a density on its power of ten outside 0.01 to 10,000 g/cm³', () => {
+		expect(plain(meanDensityRow(1, 1)!.value)).toBe('1.41 g/cm³');
+		expect(plain(meanDensityRow(1.1, 25)!.value)).toBe('9.92×10⁻⁵ g/cm³');
+		expect(plain(meanDensityRow(1, 1)!.tooltip!)).toBe('1.41× water');
+		expect(plain(meanDensityRow(1.1, 25)!.tooltip!)).toBe('8.1% of sea-level air');
+		expect(meanDensityRow(1, null)).toBeNull();
+	});
+
+	it('show the centre temperature of an interior, and link to its Structure tab', () => {
+		const interior = {
+			tier: 1,
+			stage: 'main_sequence'
+		} as StarInterior;
+		const block = {
+			layers: [{ role: 'core' }],
+			centre_temperature_range_k: [1.4e7, 1.6e7]
+		} as InteriorBlock;
+		const star = synthetic(flame, undefined, radiusOf(flame));
+		const shown = starSections(star, { structure: { interior, block } }).find(
+			(s) => s.key === 'interior'
+		)!;
+		expect(shown.structure).toBe(true);
+		expect(shown.rows.map((r) => r.label)).toEqual(['Mass', 'density', 'Core temperature']);
+		const rough = starSections(star, { structure: { interior: { ...interior, tier: 3 }, block } });
+		expect(rough.find((s) => s.key === 'interior')!.rows.map((r) => r.label)).toEqual([
+			'Mass',
+			'density'
+		]);
+		expect(starSections(star).find((s) => s.key === 'interior')!.structure).toBeUndefined();
+	});
+
+	it('keep the link to the Structure tab of a star with no interior rows', () => {
+		const interior = { tier: 3, stage: 'main_sequence' } as StarInterior;
+		const block = { layers: [{ role: 'convective_zone' }] } as InteriorBlock;
+		const shown = starSections(synthetic(tauCeti), { structure: { interior, block } }).find(
+			(s) => s.key === 'interior'
+		);
+		expect(shown).toEqual({ key: 'interior', title: 'Interior', rows: [], structure: true });
 	});
 
 	it("drops a giant's mass, age and stage outside 1 to 2 solar masses", () => {
-		const giant = { ...dwarf, mass_flame: 3, evolstage_flame: 600, flags_flame: '10' };
-		expect(Object.keys(physical(giant))).toEqual([
-			'Effective temperature',
-			'Diameter',
-			'Luminosity',
-			'Gravitational redshift'
-		]);
+		const giant = { ...flame, mass_flame: 3, evolstage_flame: 600, flags_flame: '10' };
+		expect(section(giant, 'classification')).toEqual({});
+		expect(section(giant, 'interior')).toEqual({});
 		expect(cards(giant)[0]).toEqual(['Diameter', '1.25M km']);
 		const kept = section({ ...giant, mass_flame: 1.5, flags_flame: '11' }, 'classification');
 		expect(kept['Evolutionary stage']).toBe('Red giant');
+	});
+
+	it("show a paper's mass before FLAME's, with its bounds", () => {
+		const giant = { ...flame, mass_flame: 3, flags_flame: '10', mass_literature: 17.8 };
+		expect(section(giant, 'interior').Mass).toBe('3.54×10³¹ kg');
+		expect(plain(entry(giant, 'interior', 'Mass')!.tooltip!)).toBe('17.8× the Sun');
+		// A 1σ error of 0.06, as the export writes it.
+		const sigma = { ...giant, mass_literature: 1.08 };
+		const withError = { ...sigma, mass_literature_lower: 1.02, mass_literature_upper: 1.14 };
+		expect(section(withError, 'interior').Mass).toBe('(2.15 ± 0.12)×10³⁰ kg');
+		expect(plain(entry(withError, 'interior', 'Mass')!.tooltip!)).toBe('(1.08 ± 0.06)× the Sun');
+		// Published 68% bounds that are not symmetric.
+		const ruchbah = { ...giant, mass_literature: 2.06 };
+		const bounds = { ...ruchbah, mass_literature_lower: 1.8, mass_literature_upper: 2.2 };
+		expect(section(bounds, 'interior').Mass).toBe('4.10×10³⁰ kg (3.58–4.37×10³⁰ kg)');
+		expect(plain(entry(bounds, 'interior', 'Mass')!.tooltip!)).toBe('2.06 (1.80–2.20)× the Sun');
 	});
 
 	it.each([
@@ -667,61 +877,50 @@ describe("a star's FLAME values", () => {
 		[490, 'Red giant']
 	])('names stage %i %s', (stage, name) => {
 		expect(
-			section({ ...dwarf, evolstage_flame: stage }, 'classification')['Evolutionary stage']
+			section({ ...flame, evolstage_flame: stage }, 'classification')['Evolutionary stage']
 		).toBe(name);
 	});
 
-	it('uses the spectroscopic fit as a fallback, with the same giant rule', () => {
+	it('use the spectroscopic fit as a fallback, with the same giant rule', () => {
 		const spec = {
-			teff_gspphot: 5600,
 			radius_flame_spec: 0.95,
-			lum_flame_spec: 0.8,
 			mass_flame_spec: 0.97,
 			age_flame_spec: 3.9,
 			evolstage_flame_spec: 300,
-			bc_flame_spec: -0.04,
 			flags_flame_spec: '0'
 		};
-		expect(physical(spec)).toEqual({
-			'Effective temperature': expect.any(String),
-			Diameter: '1,320,000 km',
-			Luminosity: '3.06×10²⁶ W',
-			Mass: '1.93×10³⁰ kg',
+		expect(section(spec, 'surface')).toEqual({ Diameter: '1,320,000 km' });
+		expect(section(spec, 'interior').Mass).toBe('1.93×10³⁰ kg');
+		expect(section(spec, 'classification')).toEqual({
+			'Evolutionary stage': 'Main sequence',
 			Age: '3.90 Ga'
 		});
-		expect(section(spec, 'classification')['Evolutionary stage']).toBe('Main sequence');
-		expect(section(spec, 'brightness')['Bolometric correction']).toBe('-0.04');
-		const giant = physical({ ...spec, mass_flame_spec: 2.5, flags_flame_spec: '1' });
-		expect(giant.Mass).toBeUndefined();
-		expect(giant.Age).toBeUndefined();
+		const giant = { ...spec, mass_flame_spec: 2.5, flags_flame_spec: '1' };
+		expect(section(giant, 'interior').Mass).toBeUndefined();
+		expect(section(giant, 'classification').Age).toBeUndefined();
 	});
 
-	it('shows no stage where FLAME fitted no mass', () => {
-		const noMass = { ...dwarf, mass_flame: null, age_flame: null, flags_flame: '20' };
+	it('show no stage where FLAME fitted no mass', () => {
+		const noMass = { ...flame, mass_flame: null, age_flame: null, flags_flame: '20' };
 		expect(section(noMass, 'classification')['Evolutionary stage']).toBeUndefined();
-		const spec = { evolstage_flame_spec: 0, flags_flame_spec: '2', lum_flame_spec: 1 };
-		expect(section(spec, 'classification')['Evolutionary stage']).toBeUndefined();
-		expect(physical(spec).Luminosity).toBe('3.83×10²⁶ W');
 	});
 
-	it("does not expose a fit's distance input", () => {
+	it("do not expose a fit's distance input", () => {
 		const orbit: ColumnSpec[] = [
 			{ name: 'nss_solution_type', type: 'dict', values: ['Orbital'] },
 			{ name: 'parallax_nss', type: 'float32', values: [99] },
 			{ name: 'parallax_nss_error', type: 'float32', values: [0.5] }
 		];
-		const section = starSections(synthetic(dwarf, orbit)).find((s) => s.key === 'physical');
-		expect(section?.rows.find((r) => r.label === 'Distance used')).toBeUndefined();
+		const shown = starSections(synthetic(flame, orbit)).flatMap((s) => s.rows);
+		expect(shown.find((r) => r.label === 'Distance used')).toBeUndefined();
 	});
 
-	it('uses photometric properties without FLAME and never pads the stat bar', () => {
-		const plainStar = Object.fromEntries(
-			Object.entries(dwarf).filter(([name]) => !name.includes('_flame'))
-		);
-		expect(physical(plainStar)).toMatchObject({
-			'Effective temperature': expect.any(String),
-			'Diameter from photometry': '1,110,000 km'
-		});
+	it('use the photometric diameter without FLAME and never pad the stat bar', () => {
+		const plainStar = {
+			...Object.fromEntries(Object.entries(flame).filter(([name]) => !name.includes('_flame'))),
+			radius_gspphot: 0.8
+		};
+		expect(section(plainStar, 'surface')['Diameter from photometry']).toBe('1,110,000 km');
 		expect(cards(plainStar).map(([label]) => label)).toEqual([
 			'Diameter',
 			'Distance',
@@ -755,8 +954,8 @@ describe.skipIf(!HAS_EXPORT)("a planet host's catalogue rows from the real expor
 		const lookup = new ExtrasolarLookup(diskSource());
 		const lich = await lookup.lookup('1634188199');
 		if (lich.kind !== 'live') throw new Error('Lich not found');
-		const physical = starSections(lich.record).find((section) => section.key === 'physical')!;
-		expect(Object.fromEntries(physical.rows.map((x) => [x.label, plain(x.value)]))).toMatchObject({
+		const interior = starSections(lich.record).find((section) => section.key === 'interior')!;
+		expect(Object.fromEntries(interior.rows.map((x) => [x.label, plain(x.value)]))).toMatchObject({
 			// A float32 1.4, at the digits the catalogue gave.
 			Mass: '2.8×10³⁰ kg'
 		});

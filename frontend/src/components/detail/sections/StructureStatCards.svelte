@@ -104,7 +104,7 @@
 		const short = headline(value, parts);
 		const full = measurement(value, parts);
 		const tooltip = [lead, full === short ? null : full, note].filter(Boolean).join(' — ');
-		return { value: ltrIsolate(short), tooltip: tooltip || undefined };
+		return { value: short, tooltip: tooltip || undefined };
 	}
 
 	let activityStat = $derived.by<Stat | null>(() => {

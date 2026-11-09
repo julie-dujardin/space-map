@@ -10,6 +10,7 @@ import type { StarInterior } from '$lib/fetch/extrasolar/interior';
 import {
 	ExtrasolarLookup,
 	type ExtrasolarRecord,
+	type StarRadius,
 	type StarRadiusSource
 } from '$lib/fetch/extrasolar/lookup';
 import {
@@ -19,7 +20,11 @@ import {
 	readExportJson,
 	systemKeyOf
 } from '$lib/fetch/extrasolar/__fixtures__/export';
-import { pointSourceRecord, valueColumns } from '$lib/fetch/extrasolar/__fixtures__/record';
+import {
+	SURFACE_STARS,
+	pointSourceRecord,
+	valueColumns
+} from '$lib/fetch/extrasolar/__fixtures__/record';
 import type { PlanetSystem } from '$lib/fetch/extrasolar/planets';
 import {
 	heldValues,
@@ -182,13 +187,14 @@ describe('star credits', () => {
 		expect(starCredits(star, undefined, [], point).map((c) => c.label)).toEqual(['Radii']);
 	});
 	const record = (
-		values: Record<string, number | string>,
-		nameSource: string | null
+		values: Record<string, number | string | boolean>,
+		nameSource: string | null,
+		radius: StarRadius | null = null
 	): ExtrasolarRecord => {
-		const star = pointSourceRecord(valueColumns(values), credits);
+		const star = pointSourceRecord(valueColumns(values), credits, undefined, radius);
 		return { ...star, metadata: { ...star.metadata, nameSource } };
 	};
-	const labels = (values: Record<string, number | string>, nameSource: string | null) =>
+	const labels = (values: Record<string, number | string | boolean>, nameSource: string | null) =>
 		starCredits(record(values, nameSource)).map((c) => c.label);
 	const noParallax = { parallax: 0.01, parallax_error: 0.05 };
 	const smith = { short: 'Smith 2006', title: 'The Homunculus', url: 'https://doi.org/x' };
@@ -229,6 +235,19 @@ describe('star credits', () => {
 			hipparcos_photometry_source: 'hipparcos-1997'
 		};
 		expect(labels(row, 'hipparcos-1997')).toEqual(['hipparcosPhotometry']);
+	});
+
+	it('credits the Hipparcos photometry for the spectral type it gives', () => {
+		const typed = (values: Record<string, string>, shown: string) => {
+			const star = record({ ...noParallax, ...values }, null);
+			const spectral = { ...star, metadata: { ...star.metadata, spectralType: shown } };
+			return starCredits(spectral).map((c) => c.label);
+		};
+		expect(typed({ sp_type: 'K0III' }, 'K0III')).toEqual(['hipparcosPhotometry']);
+		// SIMBAD's type, and the type of its system, come first.
+		expect(typed({ sp_type: 'K0III', simbad_sp_type: 'K0III' }, 'K0III')).toEqual([]);
+		expect(typed({ sp_type: 'K0III', simbad_system_sp_type: 'K0III' }, 'K0III')).toEqual([]);
+		expect(typed({ sp_type: 'K0III' }, 'K1III')).toEqual([]);
 	});
 
 	it('credits the catalogue of each value of a planet host', () => {
@@ -295,6 +314,92 @@ describe('star credits', () => {
 		expect(starCredits(record(parallax, null), { distance: [smith] })).toEqual(found);
 	});
 
+	it('cites the papers of a radius and a mass from the literature table, each once', () => {
+		const radius = {
+			short: 'Arroyo-Torres et al. 2013',
+			title: 'UY Sct',
+			url: 'https://doi.org/a'
+		};
+		const mass = { short: 'Joyce et al. 2020', title: 'Betelgeuse', url: 'https://doi.org/b' };
+		// The export took the paper's radius.
+		const paperRadius = { solar: 1708, source: 'literature' } as const;
+		const cited = (row: Record<string, number>, references: Record<string, (typeof radius)[]>) =>
+			starCredits(record({ ...noParallax, ...row }, null, paperRadius), references).map(
+				(c) => c.note
+			);
+		const paperMass = { mass_literature: 8.5 };
+		expect(cited(paperMass, { paper_radius: [radius], paper_mass: [mass] })).toEqual([
+			'Arroyo-Torres et al. 2013',
+			'Joyce et al. 2020'
+		]);
+		// One work gives both values of UY Sct.
+		expect(cited(paperMass, { paper_radius: [radius], paper_mass: [radius] })).toEqual([
+			'Arroyo-Torres et al. 2013'
+		]);
+		// A FLAME mass that the panel shows cites no paper mass.
+		expect(cited({ mass_flame: 1 }, { paper_mass: [mass] })).toEqual([]);
+	});
+
+	it('credits each surface value by its source', () => {
+		const { flame, proxima, tauCeti, arcturus, twoStars } = SURFACE_STARS;
+		expect(labels(flame, 'gaia-dr3')).toEqual(['gaia', 'riello']);
+		expect(labels(proxima, 'gaia-dr3')).toEqual(['gaia', 'simbad', 'nasaExoplanetArchive']);
+		// B − V and V from Hipparcos, and the paper of the radius.
+		const bond = { short: 'Bond et al. 2017', title: 'Sirius', url: 'https://doi.org/bond' };
+		const tau = starCredits(record(tauCeti, null), { paper_radius: [bond] });
+		expect(tau.map((c) => c.label)).toEqual([
+			'hipparcos',
+			'hipparcosPhotometry',
+			'casagrande',
+			'Sirius'
+		]);
+		// SIMBAD's B − V and V, the relations, and the diameter of JMDC.
+		const jmdc = { solar: 25.4, source: 'jmdc' } as const;
+		expect(starCredits(record(arcturus, null, jmdc)).map((c) => c.label)).toEqual([
+			'jmdc',
+			'simbad',
+			'hipparcos',
+			'flower',
+			'torres'
+		]);
+		expect(labels(twoStars, 'gaia-dr3')).toEqual(['gaia', 'riello']);
+	});
+
+	it("cites the papers of a white dwarf's values, each once", () => {
+		const { whiteDwarf, sampleWhiteDwarf } = SURFACE_STARS;
+		const bond = { short: 'Bond et al. 2017', title: 'Sirius', url: 'https://doi.org/bond' };
+		const obrien = { short: "O'Brien et al. 2024", title: '40 pc', url: 'https://doi.org/obrien' };
+		const all = (paper: typeof bond) => ({
+			paper_teff: [paper],
+			paper_logg: [paper],
+			paper_mass: [paper],
+			paper_radius: [paper]
+		});
+		const sirius = starCredits(record(whiteDwarf, null), all(bond));
+		expect(sirius.map((c) => c.label)).toEqual(['gaia', 'simbad', 'Sirius']);
+		const sample = { paper_teff: [obrien], paper_logg: [obrien], paper_mass: [obrien] };
+		const fromMassAndGravity = starCredits(record(sampleWhiteDwarf, null), sample);
+		expect(fromMassAndGravity.map((c) => c.label)).toEqual(['gaia', 'riello', '40 pc']);
+		// Without the object entry, the panel cites no paper.
+		expect(labels(sampleWhiteDwarf, null)).toEqual(['gaia', 'riello']);
+	});
+
+	it("credits GSP-Phot's extinction of an absolute V where the export takes it", () => {
+		const far = {
+			parallax: 2,
+			parallax_error: 0.01,
+			astrometry_source: 'hipparcos-2007',
+			apparent_v: 9,
+			apparent_v_source: 'simbad',
+			absolute_v: 0.3,
+			extinction_source: 'gaia-dr3-gspphot'
+		};
+		expect(labels(far, null)).toEqual(['gaia', 'simbad', 'hipparcos']);
+		for (const source of ['negligible', 'unknown']) {
+			expect(labels({ ...far, extinction_source: source }, null)).toEqual(['simbad', 'hipparcos']);
+		}
+	});
+
 	it("names the credit of the literature table in the reader's language", () => {
 		const literature = credits.find((c) => c.name === 'literature')!;
 		expect(localizedStarCredit(literature)).toEqual({
@@ -316,31 +421,19 @@ describe.skipIf(!HAS_EXPORT)('star credits from the real export', () => {
 	};
 
 	it('finds a credit in the export for each catalogue', () => {
-		const meta = exportMetadata();
-		const sources = meta.credits.map((c) => c.source);
-		// The export lists a work of the fitted interiors only where a row used it.
-		const interior: string[] = [
-			CREDIT_PAGES.mist,
-			CREDIT_PAGES.casagrande,
-			CREDIT_PAGES.flower,
-			CREDIT_PAGES.torres
-		];
+		const sources = exportMetadata().credits.map((c) => c.source);
 		for (const page of Object.values(CREDIT_PAGES)) {
-			const found = sources.filter((s) => s.includes(page));
-			if (interior.includes(page)) {
-				expect(found.length).toBeLessThanOrEqual(meta.tables.interior ? 1 : 0);
-				continue;
-			}
 			// ORB6's page is under the WDS's.
-			expect(found).toHaveLength(page === CREDIT_PAGES.wds ? 2 : 1);
+			expect(sources.filter((s) => s.includes(page))).toHaveLength(
+				page === CREDIT_PAGES.wds ? 2 : 1
+			);
 		}
-		const works = interior.filter((page) => sources.some((s) => s.includes(page)));
-		// The relations come with the models.
-		if (works.length) expect(works[0]).toBe(CREDIT_PAGES.mist);
 	});
 
 	it('credits the catalogues behind each star', async () => {
-		// Sirius's [Fe/H] is from PASTEL, by its SIMBAD id, beside XHIP's.
+		// Sirius's [Fe/H] is from PASTEL, by its SIMBAD id, beside XHIP's. Its
+		// Teff is from the Hipparcos B − V by Flower's relation, and its V is
+		// Hipparcos's.
 		expect(await labels(22137869)).toEqual([
 			'The PASTEL catalogue, 2020 version (B/pastel)',
 			'JMDC: JMMC Measured Stellar Diameters Catalogue (II/345)',
@@ -348,10 +441,12 @@ describe.skipIf(!HAS_EXPORT)('star credits from the real export', () => {
 			'Hipparcos, the new reduction (I/311)',
 			'The Hipparcos and Tycho Catalogues (I/239)',
 			'Extended Hipparcos Compilation, XHIP (V/137D)',
-			'IAU Catalog of Star Names'
+			'IAU Catalog of Star Names',
+			'Transformations from theoretical Hertzsprung-Russell diagrams to color-magnitude diagrams',
+			'On the use of empirical bolometric corrections for stars'
 		]);
-		// The panel shows Proxima's GCVS name (V645 Cen) and the values of its
-		// exoplanet catalogue.
+		// The panel shows Proxima's GCVS name (V645 Cen), Gaia's fits, its
+		// Hipparcos V and the values of its exoplanet catalogue.
 		expect(await labels(27424668)).toEqual([
 			'Gaia Data Release 3',
 			'Astrometric fidelity of Gaia EDR3',
@@ -362,9 +457,11 @@ describe.skipIf(!HAS_EXPORT)('star credits from the real export', () => {
 			'NASA Exoplanet Archive, Planetary Systems Composite Parameters',
 			'IAU Catalog of Star Names'
 		]);
+		// A faint Gaia star: its V is converted from G and BP − RP.
 		expect(await labels(7544072308)).toEqual([
 			'Gaia Data Release 3',
-			'Astrometric fidelity of Gaia EDR3'
+			'Astrometric fidelity of Gaia EDR3',
+			'Gaia Early Data Release 3: Photometric content and validation'
 		]);
 	});
 });
@@ -707,9 +804,10 @@ describe('the star credits that /credits lists', () => {
 		]
 	} as never as ExtrasolarMetadata;
 
-	it('lists the works of the Interior table only where the host may show it', () => {
+	it('lists the models of the Interior table only where the host may show it', () => {
+		// Flower's relations give the surface values of the Point source table too.
 		configureHost({ textures: 'non-commercial' });
-		expect(shownStarCredits(meta).map((c) => c.name)).toEqual(['Gaia']);
+		expect(shownStarCredits(meta).map((c) => c.name)).toEqual(['Gaia', 'Flower']);
 		configureHost({ textures: 'site-only' });
 		expect(shownStarCredits(meta).map((c) => c.name)).toEqual(['Gaia', 'MIST', 'Flower']);
 		configureHost({ textures: 'open' });

@@ -7,7 +7,7 @@ import {
 	formatQuantity,
 	formatSpan,
 	formatUnit,
-	joinParts,
+	isolatedQuantity,
 	powerOfTen,
 	scientificParts,
 	type MeasuredQuantity
@@ -58,7 +58,7 @@ function massParts(kg: number) {
 }
 
 export function formatMass(kg: number): string {
-	return joinParts(massParts(kg));
+	return isolatedQuantity(massParts(kg));
 }
 
 /** An exported mass in kilograms, and what it comes to against the Sun,

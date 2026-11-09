@@ -24,14 +24,20 @@ export function positiveNumber(row: TableRow, name: string): number | null {
 	return value !== null && Number.isFinite(value) && value > 0 ? value : null;
 }
 
+/** Whether the export's compact-star test holds for a row: a white dwarf or
+ *  a neutron star. Gaia's FLAME and GSP-Phot fit it as a normal star. */
+export function isCompact(row: TableRow): boolean {
+	return row.flag('compact') === true;
+}
+
 /** The star's radius in km, as every view draws it; null for none. */
 export function starRadiusKm({ radius }: MetadataRow): number | null {
 	return radius && radius.solar * SOLAR_RADIUS_KM;
 }
 
-/** Effective temperature (K): a planet host's catalogue's, else GSP-Phot's. */
+/** Effective temperature (K), as the export chooses it. */
 export function starTeff(row: TableRow): number | null {
-	return positiveNumber(row, 'host_teff') ?? positiveNumber(row, 'teff_gspphot');
+	return positiveNumber(row, 'teff');
 }
 
 /** Gaia's validation trusts the FLAME mass of a giant only in this range, in
@@ -52,7 +58,12 @@ export function flameFitHolds(row: TableRow, run: FlameRun = ''): boolean {
 }
 
 /** The column that gives a star's mass. */
-export type StarMassSource = 'mass_flame' | 'mass_flame_spec' | 'host_mass' | 'star_mass';
+export type StarMassSource =
+	| 'mass_literature'
+	| 'mass_flame'
+	| 'mass_flame_spec'
+	| 'host_mass'
+	| 'star_mass';
 
 export interface StarMass {
 	solar: number;
@@ -60,14 +71,20 @@ export interface StarMass {
 }
 
 /**
- * The mass of a star. Every view of a star uses this function. FLAME's mass
- * comes first where its fit holds. Then comes the mass that the catalogue of a
- * planet host gives, then the mass of the star in the fits of `planet`. `row`
- * is the Point source row of the star.
+ * The mass of a star. Every view of a star uses this function. A paper's mass
+ * comes first, then FLAME's where its fit holds and the star is not
+ * compact, then the mass that the catalogue of a planet host gives, then the
+ * mass of the star in the fits of `planet`. `row` is the Point source row of
+ * the star.
  */
 export function starMass(row: TableRow | null, planet: Planet | null = null): StarMass | null {
-	if (row && flameFitHolds(row)) return { solar: row.number('mass_flame')!, source: 'mass_flame' };
-	if (row && flameFitHolds(row, '_spec')) {
+	const paper = row && positiveNumber(row, 'mass_literature');
+	if (paper) return { solar: paper, source: 'mass_literature' };
+	const flame = row !== null && !isCompact(row);
+	if (flame && flameFitHolds(row)) {
+		return { solar: row.number('mass_flame')!, source: 'mass_flame' };
+	}
+	if (flame && flameFitHolds(row, '_spec')) {
 		return { solar: row.number('mass_flame_spec')!, source: 'mass_flame_spec' };
 	}
 	const host = row && positiveNumber(row, 'host_mass');
@@ -194,14 +211,19 @@ export function drawnAbsoluteG(row: TableRow, orbit: TableRow | null): number | 
 	return starDistance(row, orbit) === null ? null : HOST_PLACEHOLDER_ABS_MAG;
 }
 
-/** Gaia BP − RP, else from the Hipparcos V − I, else that of a dwarf of the
- *  star's Teff; null where none. */
-export function colourBpRp(row: TableRow): number | null {
+/** The measured colour: Gaia BP − RP, else from the Hipparcos V − I; null
+ *  where neither. The star kind reads this colour only. */
+export function photometricBpRp(row: TableRow): number | null {
 	const bp = row.number('phot_bp_mean_mag');
 	const rp = row.number('phot_rp_mean_mag');
 	if (bp !== null && rp !== null) return bp - rp;
 	const vi = row.number('v_i');
-	if (vi !== null) return poly(clamp(vi, V_I_RANGE), BP_RP_FROM_V_I);
+	return vi === null ? null : poly(clamp(vi, V_I_RANGE), BP_RP_FROM_V_I);
+}
+
+/** The colour the tree draws: the measured colour, else that of a dwarf of
+ *  the star's Teff; null where neither. */
+export function renderBpRp(row: TableRow): number | null {
 	const teff = starTeff(row);
-	return teff === null ? null : bpRpFromTeff(teff);
+	return photometricBpRp(row) ?? (teff === null ? null : bpRpFromTeff(teff));
 }

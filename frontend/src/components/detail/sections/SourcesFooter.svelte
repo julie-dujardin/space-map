@@ -82,8 +82,15 @@
 		};
 		// A cited work keeps its note: the parenthetical its title ends in is the
 		// journal, which says nothing about what this body took from the paper.
+		// A work cited twice shows once with both notes, as /credits does.
 		const addWork = (work: Omit<CitedWork, 'url'> & { url?: string }) => {
 			const key = work.url ?? work.title;
+			const cited = out.find((source) => source.key === key);
+			if (cited) {
+				const notes = cited.note?.split('; ') ?? [];
+				if (work.note && !notes.includes(work.note)) cited.note = [...notes, work.note].join('; ');
+				return;
+			}
 			if (seen.has(key)) return;
 			seen.add(key);
 			out.push({ key, label: work.title, url: work.url, note: work.note });
@@ -172,6 +179,7 @@
 		// Likewise the measured temperatures. Estimated ones ship no sources —
 		// there is no work to credit for a number we computed here.
 		for (const source of global?.temperatures?.sources ?? []) addWork(source);
+		if (global?.luminosity_reference) addWork(global.luminosity_reference);
 
 		// The interior ships the works behind what its panel draws, so a body
 		// whose composition is a spectral-class estimate credits the meteorite

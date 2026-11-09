@@ -17,7 +17,7 @@ import {
 } from '$lib/fetch/extrasolar/lookup';
 import { starSourceName } from '$lib/credits/star-sources';
 import { PC_AU } from '$lib/scene/starfield/tree';
-import { flameFitHolds, starMass, type FlameRun } from '$lib/scene/starfield/record';
+import { flameFitHolds, isCompact, starMass, type FlameRun } from '$lib/scene/starfield/record';
 import {
 	boundErrors,
 	formatDeclination,
@@ -27,6 +27,7 @@ import {
 	withError
 } from '$lib/format/star';
 import {
+	fixed,
 	formatCatalogueQuantity,
 	formatMeasuredQuantity,
 	formatUnit,
@@ -36,19 +37,29 @@ import {
 } from '$lib/format/quantities';
 import { ltrIsolate } from '$lib/format/bidi';
 import { formatCompactKm } from '$lib/format/distance';
-import { formatTemperature, formatTemperatureRange } from '$lib/format/temperature';
+import {
+	formatKelvin,
+	formatKelvinRange,
+	formatTemperature,
+	formatTemperatureRange
+} from '$lib/format/temperature';
 import { formatMass, massComparison, SOLAR_MASS_KG, sizeComparison } from '$lib/format/mass';
 import { formatLuminosity, luminosityComparison, SOLAR_LUMINOSITY_W } from '$lib/format/light';
+import { formatGees, formatMs2 } from '$lib/format/gravity';
+import { formedAgo } from '$lib/format/age';
+import { densityComparison } from '$lib/format/density';
+import { metallicityComparison } from '$lib/format/metallicity';
 import { SOLAR_RADIUS_KM } from '$lib/math/units';
+import { G0_M_S2 } from '$lib/math/travel/constants';
+import { ROUGH_TIER } from '$lib/fetch/extrasolar/interior';
 import type { Stat } from '../kit/StatCard.svelte';
 import { chooseMetallicity, type MetallicityQuantity } from './metallicity';
-import type { EntityRef } from '$lib/fetch/objects/object-data';
+import type { EntityRef, InteriorBlock, Temperatures } from '$lib/fetch/objects/object-data';
 import type { SystemCitation, SystemNode } from '$lib/fetch/extrasolar/systems';
+import type { StarStructure } from '../../state/star-interior.svelte';
 
 /** Light years in one parsec. */
 export const PC_LY = PC_AU / 63_241.077;
-/** Magnitudes per unit of a flux's relative error. */
-const MAG_PER_FLUX = 2.5 / Math.LN10;
 
 export interface StarRowEntry {
 	label: string;
@@ -69,6 +80,10 @@ export interface StarSection {
 	key: string;
 	title: string;
 	rows: StarRowEntry[];
+	/** The photosphere, as a temperature scale under the rows. */
+	temperature?: StarTemperature;
+	/** The section links to the Structure tab. */
+	structure?: true;
 }
 
 const CATALOGUES: Record<string, { label: () => string; prefix?: string }> = {
@@ -174,11 +189,6 @@ export function units() {
 		km: formatUnit('kilometre', true),
 		gigayear: m.symbol_gigaannum()
 	};
-}
-
-function magnitudeError(row: TableRow, fluxOverError: string): number | null {
-	const foe = row.number(fluxOverError);
-	return foe !== null && foe > 0 ? MAG_PER_FLUX / foe : null;
 }
 
 /** The parts of a tooltip that are there, joined; undefined for none. */
@@ -320,8 +330,8 @@ const SOLAR_LUMINOSITY: SolarQuantity = {
 };
 
 /** A value in solar units, in SI, with what it comes to against the Sun (or
- *  Jupiter or Earth, for a mass). A fit's percentiles bound it; a catalogue
- *  value keeps the figures it was published with. */
+ *  Jupiter or Earth, for a mass). Its `_lower` and `_upper` columns bound it.
+ *  A `catalogue` value keeps the figures that the planet catalogue gives. */
 function solarRow(
 	ps: TableRow,
 	quantity: SolarQuantity,
@@ -336,7 +346,9 @@ function solarRow(
 	const row = catalogue
 		? catalogued(...args, null, quantity.perSolar, power)
 		: bounded(...args, quantity.perSolar, power);
-	const errors = boundErrors(solar, ps.number(`${name}_lower`), ps.number(`${name}_upper`));
+	const errors = catalogue
+		? null
+		: boundErrors(solar, ps.number(`${name}_lower`), ps.number(`${name}_upper`));
 	const inSi = (error: number | undefined) =>
 		error === undefined ? null : error * quantity.perSolar;
 	return {
@@ -355,18 +367,56 @@ const METALLICITY_LABELS: Record<MetallicityQuantity, () => string> = {
 function metallicityRows(ps: TableRow, orbit: TableRow | null, dex: string): StarRowEntry[] {
 	const chosen = chooseMetallicity(ps, orbit, dex);
 	if (chosen === null) return [];
-	return [{ label: METALLICITY_LABELS[chosen.quantity](), value: chosen.value }];
+	return [
+		{
+			label: METALLICITY_LABELS[chosen.quantity](),
+			value: chosen.value,
+			tooltip: metallicityComparison(chosen.dex, chosen.quantity)
+		}
+	];
 }
 
-/** A temperature (K) and its percentiles, in the app's temperature unit. The
- *  bounds go where they round to the value itself. */
-function temperatureWithBounds(kelvin: number, low: number | null, high: number | null): string {
-	const value = formatTemperature({ value: kelvin, unit: 'kelvin' });
-	if (low === null || high === null) return value;
+/** An age in Gyr with its bounds, and when the star formed. */
+function ageRow(ps: TableRow, name: string, u: ReturnType<typeof units>): StarRowEntry | null {
+	const entry = bounded(ps, m.star_row_age(), name, u.gigayear);
+	const gyr = ps.number(name);
+	if (!entry || gyr === null) return entry;
+	const lower = ps.number(`${name}_lower`);
+	const upper = ps.number(`${name}_upper`);
+	// With no bounds, the row shows two decimals of a Ga.
+	const figure =
+		lower === null || upper === null || !(upper > lower)
+			? fixed(gyr, 2)
+			: withBounds(gyr, lower, upper);
+	return { ...entry, tooltip: formedAgo(figure) };
+}
+
+/** A planet catalogue's age of its host in Gyr, and when the star formed. */
+export function hostAgeRow(age: number | null): StarRowEntry | null {
+	const gyr = float32Value(age);
+	if (gyr === null) return null;
+	return {
+		label: m.star_row_age(),
+		value: cataloguedValue(gyr, null, m.symbol_gigaannum(), 1),
+		tooltip: formedAgo(formatMeasuredQuantity({ value: gyr }))
+	};
+}
+
+/** The percentiles of a temperature (K), where they do not round alike. */
+function temperatureBounds(low: number | null, high: number | null): string | undefined {
+	if (low === null || high === null) return undefined;
 	const lowK = { value: low, unit: 'kelvin' };
 	const highK = { value: high, unit: 'kelvin' };
-	if (formatTemperature(lowK) === formatTemperature(highK)) return value;
-	return ltrIsolate(`${value} (${formatTemperatureRange(lowK, highK)})`);
+	if (formatTemperature(lowK) === formatTemperature(highK)) return undefined;
+	return ltrIsolate(formatTemperatureRange(lowK, highK));
+}
+
+/** The centre temperature of an interior block: its range, else its value. */
+export function centreTemperature(block: InteriorBlock): string | null {
+	const range = block.centre_temperature_range_k;
+	if (range) return formatKelvinRange(range[0], range[1]);
+	const value = block.centre_temperature_k;
+	return value === undefined ? null : formatKelvin(value);
 }
 
 export function epochLabel(epoch: number): string {
@@ -392,33 +442,175 @@ function evolutionaryStage(index: number): string {
 	return m.star_stage_giant();
 }
 
-type FlameRows = Record<
-	'luminosity' | 'age' | 'stage' | 'redshift' | 'correction',
-	StarRowEntry | null
->;
+type FlameRows = Record<'age' | 'stage' | 'redshift', StarRowEntry | null>;
 
-/** The rows of one FLAME run. A mass that does not hold takes its age and
- *  stage with it. The mass row is {@link massRow}, the diameter row
- *  {@link diameterRow}. */
+/** The rows of one FLAME run; none for a compact star, which FLAME fits as a
+ *  normal star. A mass that does not hold takes its age and stage with it.
+ *  The mass row is {@link massRow}, the diameter row {@link diameterRow}. */
 function flameRows(ps: TableRow, u: ReturnType<typeof units>, run: FlameRun): FlameRows {
+	if (isCompact(ps)) return { age: null, stage: null, redshift: null };
 	const column = (name: string) => `${name}_flame${run}`;
 	const fit = flameFitHolds(ps, run);
 	const stage = ps.number(column('evolstage'));
 	return {
-		luminosity: solarRow(ps, SOLAR_LUMINOSITY, column('lum')),
-		age: fit ? bounded(ps, m.star_row_age(), column('age'), u.gigayear) : null,
+		age: fit ? ageRow(ps, column('age'), u) : null,
 		stage:
 			fit && stage !== null ? row(m.star_row_evolutionary_stage(), evolutionaryStage(stage)) : null,
-		redshift: bounded(ps, m.star_row_gravitational_redshift(), column('gravredshift'), u.kms),
-		correction: measured(ps, m.star_row_bolometric_correction(), column('bc'), null)
+		redshift: bounded(ps, m.star_row_gravitational_redshift(), column('gravredshift'), u.kms)
 	};
 }
 
-/** The row of the mass that {@link starMass} chooses. A FLAME mass shows its
- *  bounds. */
+/** The row of the mass that {@link starMass} chooses. A FLAME or paper mass
+ *  shows its bounds, a planet catalogue's mass its figures. */
 function massRow(ps: TableRow): StarRowEntry | null {
 	const mass = starMass(ps);
-	return mass && solarRow(ps, SOLAR_MASS, mass.source, mass.source === 'host_mass');
+	if (!mass) return null;
+	return solarRow(ps, SOLAR_MASS, mass.source, mass.source === 'host_mass');
+}
+
+/** The Teff sources that read a B − V colour. Their values are estimates. */
+const ESTIMATED_TEFF = new Set(['casagrande-2010', 'flower-1996']);
+/** The luminosity source that reads a V magnitude through a bolometric correction. */
+const ESTIMATED_LUMINOSITY = 'bolometric-correction';
+/** The V source that converts Gaia's G and BP − RP. */
+const CONVERTED_V = 'riello-2021';
+/** The `extinction_source` of an absolute V that takes no A_V for want of one. */
+const UNKNOWN_EXTINCTION = 'unknown';
+
+function estimatedTeff(ps: TableRow): boolean {
+	return ESTIMATED_TEFF.has(ps.text('teff_source') ?? '');
+}
+
+function estimatedLuminosity(ps: TableRow): boolean {
+	return ps.text('luminosity_source') === ESTIMATED_LUMINOSITY;
+}
+
+/** The photosphere of a star, for a section's temperature scale. */
+export interface StarTemperature {
+	temperatures: Temperatures;
+	/** The bounds of the reading. */
+	valueTooltip?: string;
+	/** Why the reading is an estimate. */
+	estimatedNote?: string;
+}
+
+/** The temperature scale of a Teff in K. */
+export function photosphere(
+	k: number | null,
+	estimated = false,
+	valueTooltip?: string
+): StarTemperature | undefined {
+	if (k === null) return undefined;
+	return {
+		temperatures: {
+			readings: [{ part: 'photosphere', kind: 'mean', k }],
+			origin: estimated ? 'estimated' : 'measured'
+		},
+		valueTooltip,
+		estimatedNote: estimated ? m.tooltip_star_teff_estimated() : undefined
+	};
+}
+
+function teffScale(ps: TableRow): StarTemperature | undefined {
+	return photosphere(
+		ps.number('teff'),
+		estimatedTeff(ps),
+		temperatureBounds(ps.number('teff_lower'), ps.number('teff_upper'))
+	);
+}
+
+/** cm/s² in one m/s². */
+const CM_PER_M = 100;
+
+/** The photosphere gravity of a log g in log(cm/s²) with its bounds, in
+ *  gees as the Sun's reads, and in SI on the value. */
+export function gravityRow(
+	logg: number | null,
+	lower: number | null = null,
+	upper: number | null = null
+): StarRowEntry | null {
+	if (logg === null) return null;
+	const ms2 = 10 ** logg / CM_PER_M;
+	const gees = (log: number) => 10 ** log / CM_PER_M / G0_M_S2;
+	return {
+		label: m.gravity_photosphere(),
+		definition: m.tooltip_gravity_photosphere(),
+		value: ltrIsolate(
+			lower === null || upper === null
+				? formatGees(ms2)
+				: withBounds(gees(logg), gees(lower), gees(upper), m.symbol_standard_gravity(), true)
+		),
+		tooltip: ltrIsolate(formatMs2(ms2))
+	};
+}
+
+function luminosityRow(ps: TableRow): StarRowEntry | null {
+	const entry = solarRow(ps, SOLAR_LUMINOSITY, 'luminosity');
+	if (!entry || !estimatedLuminosity(ps)) return entry;
+	return { ...entry, note: m.exoplanet_estimated() };
+}
+
+/** The tooltip of an absolute V from a converted V or with no known extinction. */
+function absoluteVTooltip(ps: TableRow): string | undefined {
+	const converted = ps.text('apparent_v_source') === CONVERTED_V;
+	const unknown = ps.text('extinction_source') === UNKNOWN_EXTINCTION;
+	if (converted && unknown) return m.star_absolute_v_converted_no_extinction();
+	if (converted) return m.star_absolute_v_converted();
+	return unknown ? m.star_absolute_v_no_extinction() : undefined;
+}
+
+/** The V magnitude and the absolute V magnitude of a point. */
+function magnitudeRows(ps: TableRow): (StarRowEntry | null)[] {
+	const apparent = ps.number('apparent_v');
+	const absolute = ps.number('absolute_v');
+	return [
+		apparent === null
+			? null
+			: {
+					label: m.star_row_apparent_v(),
+					definition: m.tooltip_apparent_magnitude(),
+					value: plusMinus(apparent, null),
+					tooltip: ps.text('apparent_v_source') === CONVERTED_V ? m.star_v_converted() : undefined
+				},
+		absolute === null
+			? null
+			: {
+					label: m.star_row_absolute_v(),
+					definition: m.tooltip_absolute_magnitude(),
+					value: plusMinus(absolute, null),
+					tooltip: absoluteVTooltip(ps)
+				}
+	];
+}
+
+/** Gaia's variability flag of a point. */
+function variabilityRow(ps: TableRow): StarRowEntry | null {
+	const variable = ps.text('phot_variable_flag') === 'VARIABLE';
+	return row(m.star_row_variability(), variable ? m.star_variable() : null);
+}
+
+/** g/cm³ of one solar mass in a sphere of one solar radius. */
+const SOLAR_MEAN_DENSITY =
+	(SOLAR_MASS_KG * 1000) / ((4 / 3) * Math.PI * (SOLAR_RADIUS_KM * 1e5) ** 3);
+/** Densities outside this range (g/cm³) read on their power of ten. A red
+ *  giant is a ten-millionth of water, and a white dwarf a million times it. */
+const PLAIN_DENSITY: [number, number] = [0.01, 1e4];
+
+/** The mean density of `mass` M☉ in a sphere of `radius` R☉. */
+export function meanDensityRow(mass: number | null, radius: number | null): StarRowEntry | null {
+	if (mass === null || radius === null || !(radius > 0)) return null;
+	const density = (mass / radius ** 3) * SOLAR_MEAN_DENSITY;
+	const plain = density >= PLAIN_DENSITY[0] && density < PLAIN_DENSITY[1];
+	return {
+		label: m.property_name_density(),
+		value: formatMeasuredQuantity({
+			value: density,
+			unit: formatUnit('gram_per_cubic_centimetre', true),
+			maxSignificantDigits: 3,
+			power: plain ? undefined : powerOfTen(density, 3)
+		}),
+		tooltip: densityComparison(density)
+	};
 }
 
 /** Distance group sources as sure as a 5σ parallax: a distance chosen from a
@@ -479,32 +671,42 @@ export function starStats(record: ExtrasolarRecord): Stat[][] {
 	}
 	const distance = pointDistanceStat(ps, astrometricOrbit(record));
 	if (distance) out.push(distance);
-	const teff = ps.number('teff_gspphot') ?? ps.number('host_teff');
+	const teff = ps.number('teff');
 	const spType = spectralType(record.metadata.spectralType);
 	if (teff !== null) {
 		out.push({
 			label: m.star_stat_temperature(),
-			value: formatTemperature({ value: teff, unit: 'kelvin' })
+			value: formatTemperature({ value: teff, unit: 'kelvin' }),
+			note: estimatedTeff(ps) ? m.exoplanet_estimated() : undefined
 		});
 	} else if (spType) {
 		out.push({ label: m.star_stat_spectral_type(), value: spType });
 	}
-	const luminosity = ps.number('lum_flame') ?? ps.number('lum_flame_spec');
+	const luminosity = ps.number('luminosity');
 	if (out.length < 3 && luminosity !== null) {
 		out.push({
 			label: m.star_stat_luminosity(),
 			value: formatLuminosity(luminosity * SOLAR_LUMINOSITY_W),
-			tooltip: luminosityComparison(luminosity * SOLAR_LUMINOSITY_W)
+			tooltip: luminosityComparison(luminosity * SOLAR_LUMINOSITY_W),
+			note: estimatedLuminosity(ps) ? m.exoplanet_estimated() : undefined
 		});
 	}
 	const cards = out.filter((card): card is Stat => card !== null).slice(0, 3);
 	return cards.length ? [cards] : [];
 }
 
-/** The sections of rows, in panel order; an empty section is left out. The
- *  point of a `node` holds several stars, so it gives only what is true of the
- *  point: the fits of its row assume one star. */
-export function starSections(record: ExtrasolarRecord, node?: SystemNode): StarSection[] {
+/** The interior of a star that the Structure tab draws. */
+export type StarStructureRows = Pick<StarStructure, 'interior' | 'block'>;
+
+/** The sections of rows, in panel order; an empty section is left out, but
+ *  not one that links to the Structure tab. The point of a `node` holds
+ *  several stars, so it gives only what is true of the point: the fits of its
+ *  row assume one star. `structure` adds the centre of the star and the link
+ *  to its Structure tab. */
+export function starSections(
+	record: ExtrasolarRecord,
+	{ node, structure }: { node?: SystemNode; structure?: StarStructureRows | null } = {}
+): StarSection[] {
 	const ps = pointSource(record);
 	if (!ps) return [];
 	return pointSourceSections(
@@ -513,8 +715,9 @@ export function starSections(record: ExtrasolarRecord, node?: SystemNode): StarS
 		astrometricOrbit(record),
 		spectralType(record.metadata.spectralType),
 		units(),
-		!node
-	).filter((section) => section.rows.length > 0);
+		!node,
+		structure ?? null
+	).filter((section) => section.rows.length > 0 || section.temperature || section.structure);
 }
 
 /** Significant figures a float32 column holds: 1.4 reads back 1.39999998. */
@@ -572,13 +775,51 @@ function distanceValue(distance: StarDistance, ly: string): string {
 	return joinParts({ value: sigFigures(distance.pc * PC_LY), unit: ly });
 }
 
+/** The centre temperature that the Interior section shows. A rough fit shows
+ *  none. */
+export function shownCentreTemperature(structure: StarStructureRows | null): string | null {
+	return structure && structure.interior.tier !== ROUGH_TIER
+		? centreTemperature(structure.block)
+		: null;
+}
+
+/** The interior rows of a star: its mass, its mean density at `radius`, and
+ *  the centre temperature of its interior. A section with layers links to the
+ *  Structure tab. */
+function interiorSection(
+	ps: TableRow,
+	radius: StarRadius | null,
+	structure: StarStructureRows | null
+): Pick<StarSection, 'rows' | 'structure'> {
+	return {
+		rows: rows([
+			massRow(ps),
+			meanDensityRow(starMass(ps)?.solar ?? null, radius?.solar ?? null),
+			row(m.temperature_of_core(), shownCentreTemperature(structure))
+		]),
+		structure: structure?.block.layers?.length ? true : undefined
+	};
+}
+
+/** A planet catalogue's [Fe/H] of its host. */
+export function hostMetallicityRow(metallicity: number | null): StarRowEntry | null {
+	const dex = float32Value(metallicity);
+	if (dex === null) return null;
+	return {
+		label: m.exoplanet_row_metallicity(),
+		value: cataloguedValue(dex, null, m.symbol_dex(), 1),
+		tooltip: metallicityComparison(dex, 'feh')
+	};
+}
+
 function pointSourceSections(
 	ps: TableRow,
 	radius: StarRadius | null,
 	orbit: TableRow | null,
 	spType: string | null,
 	u: ReturnType<typeof units>,
-	oneStar: boolean
+	oneStar: boolean,
+	structure: StarStructureRows | null
 ): StarSection[] {
 	const ra = ps.number('ra');
 	const dec = ps.number('dec');
@@ -624,102 +865,55 @@ function pointSourceSections(
 		measured(ps, m.star_row_radial_velocity(), 'radial_velocity', 'radial_velocity_error', u.kms),
 		oneStar ? bounded(ps, m.star_row_distance_photometric(), 'distance_gspphot', u.ly, PC_LY) : null
 	];
+	const positionSection = {
+		key: 'position',
+		title: m.star_section_position(),
+		rows: rows(position)
+	};
+	if (!oneStar) {
+		return [
+			positionSection,
+			{
+				key: 'brightness',
+				title: m.star_section_brightness(),
+				rows: rows([...magnitudeRows(ps), variabilityRow(ps)])
+			}
+		];
+	}
 
-	const g = ps.number('phot_g_mean_mag');
-	const bp = ps.number('phot_bp_mean_mag');
-	const rp = ps.number('phot_rp_mean_mag');
-	const v = ps.number('v_mag');
 	// TODO: Replace this precedence when the export supplies one canonical stellar fit.
 	const photometricFit = flameRows(ps, u, '');
 	const spectroscopicFit = flameRows(ps, u, '_spec');
 	const fitted = (quantity: keyof FlameRows) =>
 		photometricFit[quantity] ?? spectroscopicFit[quantity];
-	// Gaia's own colour only; the tree's estimate from V − I is not a measurement.
-	const colour = bp !== null && rp !== null ? bp - rp : null;
-	const brightness: (StarRowEntry | null)[] = [
-		g !== null
-			? {
-					label: m.star_band_g(),
-					value: plusMinus(g, magnitudeError(ps, 'phot_g_mean_flux_over_error'))
-				}
-			: null,
-		bp !== null
-			? {
-					label: m.star_band_bp(),
-					value: plusMinus(bp, magnitudeError(ps, 'phot_bp_mean_flux_over_error'))
-				}
-			: null,
-		rp !== null
-			? {
-					label: m.star_band_rp(),
-					value: plusMinus(rp, magnitudeError(ps, 'phot_rp_mean_flux_over_error'))
-				}
-			: null,
-		colour !== null ? { label: m.star_row_bp_rp(), value: plusMinus(colour, null, '', 3) } : null,
-		measured(ps, m.star_band_grvs(), 'grvs_mag', 'grvs_mag_error'),
-		measured(ps, m.star_band_hp(), 'hp_mag', 'hp_mag_error', '', 3),
-		v !== null
-			? measured(ps, m.star_band_v(), 'v_mag', null, '', 2)
-			: catalogued(ps, m.star_band_v(), 'host_v_mag'),
-		g === null ? catalogued(ps, m.star_band_g(), 'host_g_mag') : null,
-		catalogued(ps, m.star_band_k(), 'host_k_mag'),
-		measured(ps, m.star_row_b_v(), 'b_v', 'b_v_error', '', 3),
-		measured(ps, m.star_row_v_i(), 'v_i', 'v_i_error', '', 2),
-		row(
-			m.star_row_variability(),
-			ps.text('phot_variable_flag') === 'VARIABLE' ? m.star_variable() : null
-		),
-		...(oneStar
-			? [
-					bounded(ps, m.star_row_extinction_a0(), 'azero_gspphot'),
-					bounded(ps, m.star_row_extinction_g(), 'ag_gspphot'),
-					bounded(ps, m.star_row_reddening(), 'ebpminrp_gspphot'),
-					fitted('correction')
-				]
-			: [])
-	];
 
-	const teff = ps.number('teff_gspphot');
+	const classification = rows([
+		row(m.star_stat_spectral_type(), spType),
+		fitted('stage'),
+		fitted('age') ?? hostAgeRow(ps.number('host_age')),
+		variabilityRow(ps)
+	]);
+
 	const metallicity = metallicityRows(ps, orbit, u.dex);
-	const physical: (StarRowEntry | null)[] = [
-		teff !== null
-			? {
-					label: m.star_row_teff(),
-					value: temperatureWithBounds(
-						teff,
-						ps.number('teff_gspphot_lower'),
-						ps.number('teff_gspphot_upper')
-					)
-				}
-			: ps.number('host_teff') !== null
-				? {
-						label: m.star_row_teff(),
-						value: formatTemperature({ value: ps.number('host_teff')!, unit: 'kelvin' })
-					}
-				: null,
-		ps.number('logg_gspphot') !== null
-			? bounded(ps, m.star_row_logg(), 'logg_gspphot')
-			: catalogued(ps, m.star_row_logg(), 'host_logg'),
+	const atmosphere = rows([
 		...metallicity,
-		metallicity.length === 0
-			? catalogued(ps, m.exoplanet_row_metallicity(), 'host_metallicity', u.dex)
-			: null,
+		metallicity.length === 0 ? hostMetallicityRow(ps.number('host_metallicity')) : null
+	]);
+
+	const surface = rows([
 		diameterRow(radius, ps, ps.number('host_radius_error')),
-		fitted('luminosity'),
-		massRow(ps),
-		fitted('age') ?? catalogued(ps, m.star_row_age(), 'host_age', m.symbol_gigaannum()),
+		gravityRow(ps.number('logg'), ps.number('logg_lower'), ps.number('logg_upper')),
+		luminosityRow(ps),
+		...magnitudeRows(ps),
 		fitted('redshift'),
 		measured(ps, m.star_row_line_broadening(), 'vbroad', 'vbroad_error', u.kms)
-	];
-
-	const classification = oneStar
-		? rows([row(m.star_stat_spectral_type(), spType), fitted('stage')])
-		: [];
+	]);
 
 	return [
 		{ key: 'classification', title: m.classification(), rows: classification },
-		{ key: 'position', title: m.star_section_position(), rows: rows(position) },
-		{ key: 'brightness', title: m.star_section_brightness(), rows: rows(brightness) },
-		{ key: 'physical', title: m.physical_properties(), rows: oneStar ? rows(physical) : [] }
+		{ key: 'atmosphere', title: m.atmosphere(), rows: atmosphere },
+		{ key: 'surface', title: m.surface(), rows: surface, temperature: teffScale(ps) },
+		{ key: 'interior', title: m.interior(), ...interiorSection(ps, radius, structure) },
+		positionSection
 	];
 }

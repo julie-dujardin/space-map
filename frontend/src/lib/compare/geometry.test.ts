@@ -38,7 +38,7 @@ describe('sizeText', () => {
 
 /** A star whose Point source row has radii the export passed over. */
 function star(radius: StarRadius | null) {
-	const columns = valueColumns({ teff_gspphot: 5000, radius_literature: 3, radius_flame: 2 });
+	const columns = valueColumns({ teff: 5000, radius_literature: 3, radius_flame: 2 });
 	return pointSourceRecord(columns, [], undefined, radius);
 }
 

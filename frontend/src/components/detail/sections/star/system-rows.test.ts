@@ -11,6 +11,7 @@ import {
 	threeStars
 } from '$lib/fetch/extrasolar/__fixtures__/system-node';
 import {
+	SURFACE_STARS,
 	pointSourceRecord,
 	resolvedSystemRecord,
 	valueColumns
@@ -33,14 +34,8 @@ const entry = (rows: StarRowEntry[] | undefined, label: string) =>
 const point = () =>
 	pointSourceRecord(
 		valueColumns({
-			parallax: 13.194,
-			parallax_error: 0.012,
-			phot_g_mean_mag: 11.7,
-			phot_bp_mean_mag: 12.5,
-			phot_rp_mean_mag: 10.8,
-			teff_gspphot: 4416,
+			...SURFACE_STARS.twoStars,
 			radius_flame: 0.68,
-			lum_flame: 0.16,
 			mass_flame: 0.7,
 			age_flame: 3.2,
 			evolstage_flame: 300,
@@ -83,8 +78,11 @@ describe('the sections of a node', () => {
 		expect(entry(position, 'Parallax')).toBeDefined();
 		expect(entry(position, 'Distance from photometry')).toBeUndefined();
 		const brightness = section(sections, 'brightness')?.rows;
-		expect(entry(brightness, 'Gaia G')).toBeDefined();
-		expect(entry(brightness, 'Extinction (A₀)')).toBeUndefined();
+		expect(brightness?.map((r) => [r.label, r.value])).toEqual([
+			['Apparent magnitude (V)', '7.20'],
+			['Absolute magnitude (V)', '5.69'],
+			['Variability', 'Variable']
+		]);
 	});
 
 	it('give no spectral type: that belongs to the members', () => {
@@ -202,16 +200,16 @@ describe('a held star', () => {
 		const archive = heldRecord({ solar: 2, source: 'nasa-exoplanet-archive' });
 		const [cards] = systemStats(archive, held, 0);
 		expect(cards[0].value).toBe('2.78M km');
-		const physical = section(systemSections(archive, held, null), 'physical')?.rows;
-		expect(plain(entry(physical, 'Diameter')!.tooltip!)).toBe(
+		const surface = section(systemSections(archive, held, null), 'surface')?.rows;
+		expect(plain(entry(surface, 'Diameter')!.tooltip!)).toBe(
 			'2× the Sun · Source: NASA Exoplanet Archive'
 		);
 	});
 
 	it("names no paper of its own for the radius of its point's paper", () => {
 		const borrowed = { ...held, star: heldValues({ radiusSource: null, dominant: true }) };
-		const physical = section(systemSections(record, borrowed, null), 'physical')?.rows;
-		const tooltip = entry(physical, 'Diameter')!.tooltip!;
+		const surface = section(systemSections(record, borrowed, null), 'surface')?.rows;
+		const tooltip = entry(surface, 'Diameter')!.tooltip!;
 		expect(tooltip).not.toContain('Doyle');
 		expect(tooltip).toContain('Source: Published paper');
 	});
@@ -219,8 +217,8 @@ describe('a held star', () => {
 	it('gives a catalogue radius as the page of a star gives it, with its error', () => {
 		const host = { ...held, star: heldValues({ hostRadiusError: 0.046 }) };
 		const radius = { solar: 1.657, source: 'nasa-exoplanet-archive' } as const;
-		const physical = section(systemSections(heldRecord(radius), host, null), 'physical')?.rows;
-		expect(plain(entry(physical, 'Diameter')!.value)).toBe('2,306,000 ± 64,000 km');
+		const surface = section(systemSections(heldRecord(radius), host, null), 'surface')?.rows;
+		expect(plain(entry(surface, 'Diameter')!.value)).toBe('2,306,000 ± 64,000 km');
 	});
 
 	it('falls back to mass and spectral type', () => {
@@ -229,11 +227,48 @@ describe('a held star', () => {
 		expect(cards.map((c) => c.label)).toEqual(['Mass', 'Distance', 'Spectral type']);
 	});
 
+	it("shows a held host's catalogue values with their sources", () => {
+		const archive = 'nasa-exoplanet-archive';
+		const star = heldValues({
+			logg: 4.5,
+			loggSource: archive,
+			metallicity: 0.2,
+			metallicitySource: archive,
+			age: 4.5,
+			ageSource: 'exoplanet-eu'
+		});
+		const sections = systemSections(record, { ...held, star }, null);
+		expect(sections.map((s) => s.key)).toEqual([
+			'classification',
+			'atmosphere',
+			'surface',
+			'interior',
+			'position'
+		]);
+		const age = entry(section(sections, 'classification')?.rows, 'Age')!;
+		expect(plain(age.value)).toBe('4.5 Ga');
+		expect(age.tooltip).toContain('Source: exoplanet.eu');
+		const metallicity = section(sections, 'atmosphere')!.rows[0];
+		expect(metallicity.tooltip).toContain('Source: NASA Exoplanet Archive');
+		const gravity = entry(section(sections, 'surface')?.rows, 'Gravity')!;
+		expect(plain(gravity.value)).toBe('32 g');
+		expect(gravity.tooltip).toContain('Source: NASA Exoplanet Archive');
+	});
+
 	it('gives each value with its source', () => {
 		const sections = systemSections(record, held, null);
-		const physical = section(sections, 'physical')?.rows;
-		expect(entry(physical, 'Diameter')?.tooltip).toContain('Source: Doyle et al. 2011');
-		expect(entry(physical, 'Mass')?.tooltip).toContain('Source: Doyle et al. 2011');
+		expect(sections.map((s) => s.key)).toEqual([
+			'classification',
+			'surface',
+			'interior',
+			'position'
+		]);
+		const surface = section(sections, 'surface');
+		expect(entry(surface?.rows, 'Diameter')?.tooltip).toContain('Source: Doyle et al. 2011');
+		expect(surface?.temperature?.valueTooltip).toContain('Source: Doyle et al. 2011');
+		const interior = section(sections, 'interior')?.rows;
+		expect(entry(interior, 'Mass')?.tooltip).toContain('Source: Doyle et al. 2011');
+		expect(entry(interior, 'density')).toBeDefined();
 		expect(section(sections, 'classification')?.rows[0].tooltip).toBe(
 			'Source: Open Exoplanet Catalogue'
 		);

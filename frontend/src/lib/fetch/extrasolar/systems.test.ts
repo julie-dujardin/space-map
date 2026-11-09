@@ -170,11 +170,17 @@ describe('the System row', () => {
 		expect(held.star).toEqual({
 			mass: 0.5,
 			teff: 4500,
+			logg: 4.5,
+			metallicity: 0.125,
+			age: 2.5,
 			spectralType: 'K1V',
 			massSource: 'literature',
 			radiusSource: null,
 			hostRadiusError: 0.0625,
 			teffSource: 'open-exoplanet-catalogue',
+			loggSource: 'nasa-exoplanet-archive',
+			metallicitySource: 'nasa-exoplanet-archive',
+			ageSource: 'exoplanet-eu',
 			spectralTypeSource: 'msc',
 			references: [
 				{

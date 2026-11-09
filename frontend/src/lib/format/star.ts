@@ -12,8 +12,7 @@ import {
 	fixed,
 	formatMeasuredQuantity,
 	formatValueSpan,
-	joinParts,
-	powerUnit
+	joinParts
 } from './quantities';
 
 /** `text` and its error, "06ʰ 45ᵐ 09.25ˢ ± 1.2 mas", as one LTR run. With no
@@ -73,7 +72,8 @@ export function withBounds(
 		low * scale,
 		high * scale,
 		errorDecimals(((high - low) * scale) / 2, roundLarge),
-		power === undefined ? { unit } : powerUnit(unit, power)
+		{ unit },
+		power
 	);
 }
 

@@ -1,6 +1,6 @@
 import * as m from '$lib/paraglide/messages.js';
 import { getLocale } from '$lib/paraglide/runtime.js';
-import { ltrIsolate } from './bidi';
+import { ltrIsolate, quantityIsolate } from './bidi';
 
 export function ucfirst(s: string): string {
 	return s.charAt(0).toUpperCase() + s.slice(1);
@@ -52,6 +52,34 @@ export function joinPartsNoBreak(parts: Parts): string {
 	return parts.tight ? `${parts.value}${parts.unit}` : `${parts.value}\u00a0${parts.unit}`;
 }
 
+/** An en dash between two figures, with no line break after it. */
+const SPAN_DASH = '–\u2060';
+
+/** Figures as an LTR isolate, then their unit, with no line break between
+ *  them. The figures keep the order of their digits, signs and brackets in
+ *  RTL text. A power of ten goes with the figures, before a spaced unit. */
+function isolatedParts(figures: string, unit: Omit<Parts, 'value'>, power?: number): string {
+	const value = ltrIsolate(power === undefined ? figures : `${figures}×10${superscript(power)}`);
+	const word = unit.unit.replaceAll(' ', '\u00a0');
+	return joinPartsNoBreak({ value, unit: word, tight: power === undefined && unit.tight });
+}
+
+/** A figure and its unit in the direction of the unit's script, the figure
+ *  LTR. A bare figure is an LTR isolate. */
+export function isolatedQuantity(parts: Parts): string {
+	return parts.unit ? quantityIsolate(isolatedParts(parts.value, parts)) : ltrIsolate(parts.value);
+}
+
+/** The ends of a span without the isolate of the whole. A span of two units
+ *  can wrap after its dash, but not before it. Unbroken, it is wider than a
+ *  panel's value column. */
+function spanBody(low: Parts, high: Parts): string {
+	if (low.unit === high.unit && low.tight === high.tight) {
+		return isolatedParts(`${low.value}${SPAN_DASH}${high.value}`, high);
+	}
+	return `${isolatedParts(low.value, low)}\u00a0– ${isolatedParts(high.value, high)}`;
+}
+
 /**
  * Two readings as one span, low end first.
  *
@@ -59,12 +87,16 @@ export function joinPartsNoBreak(parts: Parts): string {
  * they do not: Earth's stratosphere runs 0.226 bar to 66.9 Pa, and one unit
  * across that is off by four orders of magnitude. The wider form takes the
  * wider separator, so "250 Ma – 1 Ga" doesn't read as one hyphenated quantity.
+ * The span takes the direction of its unit's script; its figures stay LTR.
  */
 export function formatSpan(low: Parts, high: Parts): string {
-	if (low.unit === high.unit && low.tight === high.tight) {
-		return joinParts({ ...high, value: `${low.value}–${high.value}` });
-	}
-	return `${joinParts(low)} – ${joinParts(high)}`;
+	return quantityIsolate(spanBody(low, high));
+}
+
+/** "500 Ma (250 Ma – 1 Ga)": a reading and its span, in the direction of the
+ *  unit's script. */
+export function formatReadingSpan(value: Parts, low: Parts, high: Parts): string {
+	return quantityIsolate(`${isolatedParts(value.value, value)} (${spanBody(low, high)})`);
 }
 
 /**
@@ -295,6 +327,7 @@ export function formatMeasuredQuantity(q: MeasuredQuantity): string {
 	const error = (e: number | null | undefined) => (e != null && e > 0 ? e * scale : null);
 	const up = error(q.upperError);
 	const low = error(q.lowerError);
+	const unitParts = { unit: q.unit ?? '', tight: q.tight };
 	if (up === null && low === null) {
 		const figure =
 			q.fixedDecimals === undefined
@@ -303,7 +336,7 @@ export function formatMeasuredQuantity(q: MeasuredQuantity): string {
 						Math.min(publishedDigits(q.rawValue ?? value), q.maxSignificantDigits ?? 9)
 					)
 				: fixed(value, q.fixedDecimals);
-		return parts(figure);
+		return q.unit ? quantityIsolate(isolatedParts(figure, unitParts, q.power)) : parts(figure);
 	}
 
 	const hi = up ?? low!;
@@ -317,31 +350,39 @@ export function formatMeasuredQuantity(q: MeasuredQuantity): string {
 		const d = decimals(half);
 		const figure = fixed(value, d);
 		const width = fixed(half, d);
-		if (q.power !== undefined || q.group) return ltrIsolate(parts(`(${figure} ±\u00a0${width})`));
-		return ltrIsolate(
-			tight ? `${parts(figure)} ±\u00a0${parts(width)}` : `${figure} ±\u00a0${parts(width)}`
-		);
+		if (q.power !== undefined || q.group) {
+			return quantityIsolate(isolatedParts(`(${figure} ±\u00a0${width})`, unitParts, q.power));
+		}
+		if (tight) return ltrIsolate(`${parts(figure)} ±\u00a0${parts(width)}`);
+		return quantityIsolate(isolatedParts(`${figure} ±\u00a0${width}`, unitParts));
 	}
 
-	return formatValueSpan(value, value - lo, value + hi, decimals(Math.min(hi, lo)), {
-		unit,
-		tight
-	});
+	return formatValueSpan(
+		value,
+		value - lo,
+		value + hi,
+		decimals(Math.min(hi, lo)),
+		unitParts,
+		q.power
+	);
 }
 
-/** "301 pc (258–360 pc)": a value and the span of its uncertainty. */
+/** "301 pc (258–360 pc)": a value and the span of its uncertainty. The whole
+ *  takes the direction of the unit's script; each figure stays LTR. `power`
+ *  as for `formatMeasuredQuantity`, on figures already scaled to it. */
 export function formatValueSpan(
 	value: number,
 	from: number,
 	to: number,
 	decimals: number,
-	unit: Omit<Parts, 'value'>
+	unit: Omit<Parts, 'value'>,
+	power?: number
 ): string {
-	const parts = (text: string) => joinParts({ ...unit, value: text });
 	// Spaced where an end is negative: "−0.18–−0.17" jams the dash against a sign.
-	const separator = from < 0 || to < 0 ? ' – ' : '–';
+	const separator = from < 0 || to < 0 ? `\u00a0${SPAN_DASH}\u00a0` : SPAN_DASH;
 	const span = `${fixed(from, decimals)}${separator}${fixed(to, decimals)}`;
-	return ltrIsolate(`${parts(fixed(value, decimals))} (${parts(span)})`);
+	const parts = (figures: string) => isolatedParts(figures, unit, power);
+	return quantityIsolate(`${parts(fixed(value, decimals))} (${parts(span)})`);
 }
 
 /** A catalogue quantity at the precision of its published decimals. */
@@ -370,11 +411,14 @@ export function formatCatalogueQuantity(
  * physical density. g/cm³ wins: water is 1, so the number says rock or ice at
  * a glance. */
 export function formatDensity(q: { value: number; unit: string }): string {
-	const grams =
-		q.unit === 'kilogram_per_cubic_metre'
-			? { value: q.value / 1000, unit: 'gram_per_cubic_centimetre' }
-			: q;
-	return formatQuantity(grams);
+	const grams = gramsPerCubicCentimetre(q);
+	return formatQuantity(grams === null ? q : { value: grams, unit: 'gram_per_cubic_centimetre' });
+}
+
+/** A density in g/cm³; null in a unit other than g/cm³ or kg/m³. */
+export function gramsPerCubicCentimetre(q: { value: number; unit: string }): number | null {
+	if (q.unit === 'kilogram_per_cubic_metre') return q.value / 1000;
+	return q.unit === 'gram_per_cubic_centimetre' ? q.value : null;
 }
 
 export function formatCurrency(q: { value: number; currency: string }): string {
@@ -462,9 +506,10 @@ const MULTIPLE_DIGITS = 3;
 const PERCENT_DIGITS = 2;
 const TINY_RATIO = 1e-4;
 
-/** Within rounding of 1, where a comparison says nothing. */
-export function atParity(ratio: number): boolean {
-	return Math.abs(ratio - 1) < 5e-3;
+/** Within rounding of 1 at `digits` significant figures, where a comparison
+ *  says nothing. */
+export function atParity(ratio: number, digits = MULTIPLE_DIGITS): boolean {
+	return Math.abs(ratio - 1) < 0.5 * 10 ** (1 - digits);
 }
 
 export type EarthRatio = { multiple: string } | { percent: string };

@@ -17,12 +17,13 @@ import {
 	ucfirst
 } from './quantities';
 
-const plain = (value: string) => value.replace(/[\u2066-\u2069]/g, '').replace(/\u00a0/g, ' ');
+const plain = (value: string) =>
+	value.replace(/[\u2060\u2066-\u2069]/g, '').replace(/\u00a0/g, ' ');
 
 describe('formatMeasuredQuantity', () => {
 	it('uses the normal quantity path without uncertainty', () => {
 		const measured = formatMeasuredQuantity({ value: 0.693, unit: 'R⊕' });
-		expect(measured).toBe(formatQuantity({ value: 0.693, unit: 'R⊕' }, true));
+		expect(plain(measured)).toBe(formatQuantity({ value: 0.693, unit: 'R⊕' }, true));
 	});
 
 	it('formats symmetric and asymmetric uncertainty', () => {

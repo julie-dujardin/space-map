@@ -4,7 +4,6 @@ import { describe, it, expect } from 'vitest';
 // and stubbing the runtime cuts the messages off from their locale.
 import {
 	activitySummary,
-	ageParts,
 	degreeParts,
 	dipoleMomentNote,
 	fieldParts,
@@ -17,31 +16,33 @@ import {
 	powerParts,
 	qualifier
 } from './activity';
+import { ageParts } from './age';
 import type { ActivityBlock } from '$lib/fetch/objects/object-data';
 
-/** Strip the LRI/PDI isolates the RTL-safe formatters wrap numbers in, so an
- *  assertion reads as the string a user sees. */
-const plain = (s: string | null) => s?.replace(/[\u2066\u2069]/g, '') ?? null;
+/** The string as a reader sees it, with no isolates or word joiners and with
+ *  plain spaces. */
+const plain = (s: string | null) =>
+	s?.replace(/[\u2060\u2066-\u2069]/g, '').replace(/\u00a0/g, ' ') ?? null;
 
 describe('measurement', () => {
 	it('keeps a bare count bare', () => {
-		expect(measurement({ value: 52 })).toBe('52');
+		expect(plain(measurement({ value: 52 }))).toBe('52');
 	});
 
 	it('keeps every digit of a catalogue count', () => {
 		// GVP holds 1,196 Holocene volcanoes. Three significant figures would
 		// publish 1,200 as though the last two digits were unknown.
-		expect(measurement({ value: 1196 })).toBe('1,196');
+		expect(plain(measurement({ value: 1196 }))).toBe('1,196');
 	});
 
 	it('goes scientific before a decimal turns into zeros', () => {
 		// Ceres extrudes 10⁻⁵ km³ of brine a year.
-		expect(measurement({ value: 1e-5 })).toBe('1×10⁻⁵');
-		expect(measurement({ value: 0.04 })).toBe('0.04');
+		expect(plain(measurement({ value: 1e-5 }))).toBe('1×10⁻⁵');
+		expect(plain(measurement({ value: 0.04 }))).toBe('0.04');
 	});
 
 	it('says the unit once across a span', () => {
-		expect(measurement({ value: 4.7e13, range: [4.5e13, 4.9e13] }, powerParts)).toBe(
+		expect(plain(measurement({ value: 4.7e13, range: [4.5e13, 4.9e13] }, powerParts))).toBe(
 			'47 TW (45–49 TW)'
 		);
 	});
@@ -49,37 +50,39 @@ describe('measurement', () => {
 	it('says it twice when the span crosses a prefix', () => {
 		// Venus's surface age: 250 Ma to 1 Ga depending on the crater model, and
 		// "250–1 Ga" would read as a range ending below where it starts.
-		expect(measurement({ value: 6e8, range: [2.5e8, 1e9] }, ageParts)).toBe(
+		expect(plain(measurement({ value: 6e8, range: [2.5e8, 1e9] }, ageParts))).toBe(
 			'600 Ma (250 Ma – 1 Ga)'
 		);
 	});
 
 	it('scales heat down to Enceladus', () => {
-		expect(measurement({ value: 1.58e10 }, powerParts)).toBe('15.8 GW');
+		expect(plain(measurement({ value: 1.58e10 }, powerParts))).toBe('15.8 GW');
 	});
 
 	it('scales a field from Jupiter to the Moon', () => {
-		expect(measurement({ value: 4.177e-4 }, fieldParts)).toBe('418 µT');
-		expect(measurement({ value: 7.18e-7 }, fieldParts)).toBe('718 nT');
+		expect(plain(measurement({ value: 4.177e-4 }, fieldParts))).toBe('418 µT');
+		expect(plain(measurement({ value: 7.18e-7 }, fieldParts))).toBe('718 nT');
 	});
 
 	it('marks a bound and gives it no width', () => {
 		// Titan's moment is a non-detection. A "<" and a bracket would be two
 		// different statements about the same absence.
-		expect(measurement({ value: 7.8e-10, upper_limit: true }, fieldParts)).toBe('< 0.78 nT');
+		expect(plain(measurement({ value: 7.8e-10, upper_limit: true }, fieldParts))).toBe('< 0.78 nT');
 	});
 
 	it('brackets a fixed unit the way it brackets a prefixed one', () => {
 		// Enceladus's plumes, on the same panel as its 15.8 GW. The rate used to
 		// wrap the whole reading in a message of its own and came out
 		// "200 (170–230) kg/s" beside "15.8 GW (12.7–18.9 GW)".
-		expect(measurement({ value: 200, range: [170, 230] }, massRateParts)).toBe(
+		expect(plain(measurement({ value: 200, range: [170, 230] }, massRateParts))).toBe(
 			'200 kg/s (170–230 kg/s)'
 		);
 	});
 
 	it('binds a degree sign to its digits', () => {
-		expect(measurement({ value: 9.6, range: [9.4, 9.9] }, degreeParts)).toBe('9.6° (9.4–9.9°)');
+		expect(plain(measurement({ value: 9.6, range: [9.4, 9.9] }, degreeParts))).toBe(
+			'9.6° (9.4–9.9°)'
+		);
 	});
 });
 
@@ -87,11 +90,11 @@ describe('headline', () => {
 	it('drops a width the card has no room for', () => {
 		// Jupiter's surface field, published 320 µT to 2 mT. The full form is
 		// three lines in a stat card; the tooltip still carries it.
-		expect(headline({ value: 4.177e-4, range: [3.2e-4, 2e-3] }, fieldParts)).toBe('418 µT');
+		expect(plain(headline({ value: 4.177e-4, range: [3.2e-4, 2e-3] }, fieldParts))).toBe('418 µT');
 	});
 
 	it('keeps the bound, which is what the number is', () => {
-		expect(headline({ value: 7.8e-10, upper_limit: true }, fieldParts)).toBe('< 0.78 nT');
+		expect(plain(headline({ value: 7.8e-10, upper_limit: true }, fieldParts))).toBe('< 0.78 nT');
 	});
 
 	it('is the whole reading where there was no width to drop', () => {
@@ -248,12 +251,12 @@ describe('momentParts', () => {
 	it('keeps a 28-digit number readable', () => {
 		// Jupiter. No prefixed form of A m² exists, so this is the one quantity
 		// that stays in scientific notation at every magnitude.
-		expect(measurement({ value: 1.53e27 }, momentParts)).toBe('1.53×10²⁷ A·m²');
+		expect(plain(measurement({ value: 1.53e27 }, momentParts))).toBe('1.53×10²⁷ A·m²');
 	});
 
 	it('marks a moment that is only a bound', () => {
 		// Titan's, which is a non-detection.
-		expect(measurement({ value: 1.33e17, upper_limit: true }, momentParts)).toBe(
+		expect(plain(measurement({ value: 1.33e17, upper_limit: true }, momentParts))).toBe(
 			'< 1.33×10¹⁷ A·m²'
 		);
 	});

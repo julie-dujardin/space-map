@@ -25,6 +25,7 @@ import {
 import { formatTemperature, formatTemperatureRange } from '$lib/format/temperature';
 import { formatMass, formatMeasuredMass, JUPITER_MASS_KG, massComparison } from '$lib/format/mass';
 import { EARTH_IRRADIANCE_W_M2, irradianceUnit } from '$lib/format/light';
+import { densityComparison } from '$lib/format/density';
 import {
 	earliestDate,
 	formatIsoDate,
@@ -172,6 +173,15 @@ function valueRow(
 	scale = 1
 ): PlanetRow | null {
 	return row(label, measured(planet, name, unit, scale), { note: qualifier(planet, name) });
+}
+
+/** The density row, with the material it is nearest. */
+function densityRow(planet: Planet, unit: Unit): PlanetRow | null {
+	const entry = valueRow(planet, m.exoplanet_row_density(), 'density', unit);
+	const density = num(planet, 'density');
+	if (!entry || density === null) return entry;
+	const comparison = densityComparison(density);
+	return { ...entry, tooltip: comparison && bounded(planet, 'density', comparison) };
 }
 
 function rows(entries: (PlanetRow | null)[]): PlanetRow[] {
@@ -583,7 +593,7 @@ export function planetSections(
 					note: qualifier(planet, 'radius')
 				}
 			: null,
-		valueRow(planet, m.exoplanet_row_density(), 'density', u.density),
+		densityRow(planet, u.density),
 		row(m.exoplanet_row_equilibrium_temperature(), temperature(planet, 'equilibrium_temperature'), {
 			note: qualifier(planet, 'equilibrium_temperature')
 		}),

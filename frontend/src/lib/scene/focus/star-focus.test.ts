@@ -17,7 +17,7 @@ function record(
 		dec: 30,
 		parallax: 100,
 		parallax_error: 1,
-		teff_gspphot: 3000,
+		teff: 3000,
 		phot_bp_mean_mag: 8,
 		phot_rp_mean_mag: 5,
 		...extra

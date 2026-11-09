@@ -20,13 +20,13 @@ import type {
 	Measurement,
 	Volcanism
 } from '$lib/fetch/objects/object-data';
-import { ltrIsolate } from './bidi';
+import { spellAge } from './age';
 import {
 	angleParts,
 	earthRatio,
 	formatBound,
-	formatSpan,
-	joinParts,
+	formatReadingSpan,
+	isolatedQuantity,
 	scientificNotation,
 	sigFigures,
 	ucfirst,
@@ -91,15 +91,6 @@ export const volumeRateParts: PartsOf = (km3PerYear) => ({
 /** An angle — the tilt between a magnetic axis and a rotation axis. */
 export const degreeParts: PartsOf = (degrees) => angleParts(bare(degrees).value);
 
-// Geologists' notation, and the only one that fits a stat cell: "53 ka" against
-// "53 thousand years ago", which the row's tooltip says instead. Symbols like
-// every other unit here, so a locale that writes its own can.
-const AGE_UNITS: readonly (readonly [number, () => string])[] = [
-	[1e9, m.symbol_gigaannum],
-	[1e6, m.symbol_megaannum],
-	[1e3, m.symbol_kiloannum]
-];
-
 /**
  * A dipole moment in its own units, which is a 27-digit number on Jupiter.
  *
@@ -112,21 +103,6 @@ export const momentParts: PartsOf = (value) => ({
 	unit: m.symbol_ampere_square_metre()
 });
 
-/** Years before present. */
-export const ageParts: PartsOf = (years) => {
-	for (const [scale, unit] of AGE_UNITS) {
-		if (years >= scale) return { value: sigFigures(years / scale), unit: unit() };
-	}
-	return { value: sigFigures(years), unit: m.symbol_annum() };
-};
-
-/** The same age in words, for the tooltip that unpacks "3.5 Ga". */
-export function spellAge(years: number): string {
-	if (years >= 1e9) return m.activity_age_billion_years({ value: sigFigures(years / 1e9) });
-	if (years >= 1e6) return m.activity_age_million_years({ value: sigFigures(years / 1e6) });
-	return m.activity_age_thousand_years({ value: sigFigures(years / 1e3) });
-}
-
 /**
  * One measurement as the panel draws it: "47 TW (45–49 TW)", "< 0.78 nT".
  *
@@ -137,10 +113,9 @@ export function spellAge(years: number): string {
  * different statements about the same non-detection.
  */
 export function measurement(value: Measurement, parts: PartsOf = bare): string {
-	const text = headline(value, parts);
-	if (value.upper_limit || !value.range) return text;
+	if (value.upper_limit || !value.range) return headline(value, parts);
 	const [low, high] = value.range.map(parts);
-	return `${text} (${formatSpan(low, high)})`;
+	return formatReadingSpan(parts(value.value), low, high);
 }
 
 /**
@@ -152,8 +127,10 @@ export function measurement(value: Measurement, parts: PartsOf = bare): string {
  * as the row below does. The bound stays, because "<" is what the number *is*.
  */
 export function headline(value: Measurement, parts: PartsOf = bare): string {
-	const text = joinParts(parts(value.value));
-	return value.upper_limit ? formatBound(text) : text;
+	const reading = parts(value.value);
+	return isolatedQuantity(
+		value.upper_limit ? { ...reading, value: formatBound(reading.value) } : reading
+	);
 }
 
 /**
@@ -172,6 +149,13 @@ export function qualifier(value: Measurement): string | undefined {
 		value.upper_limit ? m.activity_upper_limit() : null
 	].filter(Boolean);
 	return notes.length ? notes.join(' — ') : undefined;
+}
+
+/** An age in words, then what the source said about it. The words already
+ *  say "less than" for an upper limit. */
+export function ageNote(value: Measurement): string {
+	const said = qualifier({ ...value, upper_limit: undefined });
+	return said ? `${spellAge(value)} — ${said}` : spellAge(value);
 }
 
 const VOLCANISM_KIND: Record<string, () => string> = {
@@ -321,7 +305,7 @@ export function fieldSummary(magnetism: MagneticField | undefined): string | nul
 	const kind = fieldKindLabel(magnetism.kind);
 	const strength = magnetism.surface_field_t;
 	if (!strength || magnetism.kind === 'none') return kind;
-	return `${kind} · ${ltrIsolate(headline(strength, fieldParts))}`;
+	return `${kind} · ${headline(strength, fieldParts)}`;
 }
 
 /**

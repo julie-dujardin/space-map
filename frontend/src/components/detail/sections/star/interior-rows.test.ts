@@ -11,6 +11,9 @@ import { modelRow, starInteriorRows } from './interior-rows';
 
 const NONE: Fitted = { value: null, range: null };
 
+/** The string as a reader sees it, with no isolates or word joiners. */
+const plain = (s: string) => s.replace(/[\u2060\u2066-\u2069]/g, '');
+
 function fitted(over: Partial<StarInterior>): StarInterior {
 	return {
 		id: 1,
@@ -76,7 +79,7 @@ describe('the model row', () => {
 
 describe('the centre rows', () => {
 	it('give the centre as ranges', () => {
-		const rows = Object.fromEntries(rowsOf(fitted({})).map((r) => [r.label, r.value]));
+		const rows = Object.fromEntries(rowsOf(fitted({})).map((r) => [r.label, plain(r.value)]));
 		expect(rows['Evolutionary stage']).toBe('Main sequence');
 		expect(rows['Central temperature']).toMatch(/15M?\D+17M/);
 		expect(rows['Central density']).toContain('100–200');
@@ -96,7 +99,7 @@ describe('the centre rows', () => {
 			]
 		};
 		const interior = fitted({ tier: 0, curated, stage: null });
-		const rows = Object.fromEntries(rowsOf(interior).map((r) => [r.label, r.value]));
+		const rows = Object.fromEntries(rowsOf(interior).map((r) => [r.label, plain(r.value)]));
 		expect(rows['Central density']).toContain('177');
 		expect(rows['Central hydrogen fraction']).toContain('24.1%');
 		expect(rows['Central helium fraction']).toContain('78–79%');

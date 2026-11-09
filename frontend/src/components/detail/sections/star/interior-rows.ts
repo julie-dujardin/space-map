@@ -15,9 +15,9 @@ import {
 import type { InteriorBlock } from '$lib/fetch/objects/object-data';
 import { starSourceName } from '$lib/credits/star-sources';
 import { ltrIsolate } from '$lib/format/bidi';
-import { formatKelvin, formatKelvinRange } from '$lib/format/temperature';
+import { densityComparison } from '$lib/format/density';
 import { formatSpan, joinParts, percentParts, quantityParts } from '$lib/format/quantities';
-import { row, rows, type StarRowEntry } from './star-rows';
+import { centreTemperature, row, rows, type StarRowEntry } from './star-rows';
 
 const STAGE_NAME: Record<string, () => string> = {
 	main_sequence: m.star_stage_main_sequence,
@@ -73,17 +73,23 @@ function fractionText(block: InteriorBlock, material: string): string | null {
 	return entry?.share === undefined ? null : ltrIsolate(joinParts(percentParts(entry.share, 3)));
 }
 
-function densityText(value: number | undefined, range: [number, number] | undefined) {
+function densityText(
+	value: number | undefined,
+	range: [number, number] | undefined
+): string | null {
 	const parts = (v: number) => quantityParts({ value: v, unit: DENSITY_UNIT }, true);
 	if (range) return ltrIsolate(formatSpan(parts(range[0]), parts(range[1])));
 	return value === undefined ? null : ltrIsolate(joinParts(parts(value)));
 }
 
-function temperatureText(block: InteriorBlock): string | null {
-	const range = block.centre_temperature_range_k;
-	if (range) return formatKelvinRange(range[0], range[1]);
-	const value = block.centre_temperature_k;
-	return value === undefined ? null : formatKelvin(value);
+function centreDensityRow(block: InteriorBlock): StarRowEntry | null {
+	const value = block.centre_density_g_cm3;
+	const range = block.centre_density_range_g_cm3;
+	const entry = row(m.star_interior_centre_density(), densityText(value, range));
+	const compared = range ?? value;
+	return entry && compared !== undefined
+		? { ...entry, tooltip: densityComparison(compared) }
+		: entry;
 }
 
 export function starInteriorRows(interior: StarInterior, block: InteriorBlock): StarRowEntry[] {
@@ -92,13 +98,8 @@ export function starInteriorRows(interior: StarInterior, block: InteriorBlock): 
 	return rows([
 		modelRow(interior, block),
 		row(m.star_row_evolutionary_stage(), stage),
-		centre ? row(m.star_interior_centre_temperature(), temperatureText(block)) : null,
-		centre
-			? row(
-					m.star_interior_centre_density(),
-					densityText(block.centre_density_g_cm3, block.centre_density_range_g_cm3)
-				)
-			: null,
+		centre ? row(m.star_interior_centre_temperature(), centreTemperature(block)) : null,
+		centre ? centreDensityRow(block) : null,
 		row(m.star_interior_centre_hydrogen(), fractionText(block, 'hydrogen')),
 		row(m.star_interior_centre_helium(), fractionText(block, 'helium'))
 	]);

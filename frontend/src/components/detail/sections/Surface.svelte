@@ -14,11 +14,20 @@
 	import { NO_SURFACE_BODY_IDS } from '$lib/constants';
 	import { isNaturalBodyType } from '$lib/types/objects';
 	import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
-	import { formatNumber, formatQuantity, formatUnit, joinParts } from '$lib/format/quantities';
+	import {
+		formatMeasuredQuantity,
+		formatNumber,
+		formatQuantity,
+		formatReadingSpan,
+		formatUnit,
+		joinParts,
+		powerOfTen
+	} from '$lib/format/quantities';
 	import { cancerRiskPerYear, formatDoseRate, timeToLethalDose } from '$lib/format/radiation';
 	import { ltrIsolate } from '$lib/format/bidi';
 	import { accelMs2, formatGees, formatMs2, gravityLabel } from '$lib/format/gravity';
 	import { meanRadiusKm } from '$lib/fetch/objects/physical';
+	import { luminosityComparison } from '$lib/format/light';
 	import { diameterKmFromH, BRIGHT_ALBEDO, DARK_ALBEDO } from '$lib/math/h-magnitude';
 	import Section from './kit/Section.svelte';
 	import Row from './kit/Row.svelte';
@@ -153,8 +162,11 @@
 		)
 	);
 
+	let luminosity = $derived(global?.luminosity_w);
+
 	let hasContent = $derived(
-		sbdb?.albedo ||
+		luminosity != null ||
+			sbdb?.albedo ||
 			outsideTemperatures != null ||
 			wd?.absolute_magnitude != null ||
 			sbdb?.H != null ||
@@ -191,15 +203,16 @@
 				{/if}
 			{/if}
 			{#if estimatedDiameterKm}
-				{@const km = formatUnit('kilometre', true)}
-				<!-- LRI…PDI keeps the "(min – max km)" expression from bidi-reordering in RTL. -->
+				{@const km = (value: number) => ({
+					value: formatNumber(value),
+					unit: formatUnit('kilometre', true)
+				})}
+				{@const range = estimatedDiameterKm.range}
 				<Row
 					label={m.diameter()}
-					value={estimatedDiameterKm.range
-						? ltrIsolate(
-								`${formatNumber(estimatedDiameterKm.nominal)} ${km} (${formatNumber(estimatedDiameterKm.range[0])} – ${formatNumber(estimatedDiameterKm.range[1])} ${km})`
-							)
-						: `${formatNumber(estimatedDiameterKm.nominal)} ${km}`}
+					value={range
+						? formatReadingSpan(km(estimatedDiameterKm.nominal), km(range[0]), km(range[1]))
+						: joinParts(km(estimatedDiameterKm.nominal))}
 					valueTooltip={m.tooltip_diameter_estimated()}
 				/>
 			{/if}
@@ -222,6 +235,19 @@
 			{#if wd?.population}
 				<Row label={m.property_name_population()} value={formatNumber(wd.population)} />
 			{/if}
+		{/if}
+		{#if luminosity != null}
+			<Row
+				label={m.star_stat_luminosity()}
+				tooltip={m.tooltip_luminosity()}
+				value={formatMeasuredQuantity({
+					value: luminosity,
+					unit: m.symbol_watt(),
+					maxSignificantDigits: 3,
+					power: powerOfTen(luminosity, 3)
+				})}
+				valueTooltip={luminosityComparison(luminosity)}
+			/>
 		{/if}
 		{#if dose != null}
 			<Row

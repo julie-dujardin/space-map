@@ -15,10 +15,11 @@ import { bpRpFromTeff } from './colour';
 import {
 	absoluteG,
 	apparentG,
-	colourBpRp,
 	drawnAbsoluteG,
 	gEstimate,
+	photometricBpRp,
 	propagate,
+	renderBpRp,
 	starMass,
 	starPlace,
 	starRadiusKm,
@@ -82,6 +83,19 @@ describe('starMass', () => {
 		});
 		const spec = { mass_flame_spec: 0.95, host_mass: 1 };
 		expect(starMass(pointSourceRow(spec))?.source).toBe('mass_flame_spec');
+	});
+
+	it("takes a paper's mass before every fit and catalogue", () => {
+		const row = pointSourceRow({ mass_literature: 17.8, mass_flame: 0.9, host_mass: 1 });
+		expect(starMass(row, fit)).toEqual({
+			solar: expect.closeTo(17.8, 5),
+			source: 'mass_literature'
+		});
+	});
+
+	it('takes no FLAME mass for a compact star', () => {
+		const row = pointSourceRow({ mass_flame: 0.9, host_mass: 1.5, compact: true });
+		expect(starMass(row)).toEqual({ solar: 1.5, source: 'host_mass' });
 	});
 
 	it("passes over a giant's FLAME mass outside 1 to 2 solar masses", () => {
@@ -179,7 +193,7 @@ describe.skipIf(!HAS_EXPORT)('a star from its record, against the render tree', 
 			expect(Math.abs(stored - offset)).toBeLessThanOrEqual(Math.abs(offset) * 2 ** -22 + 1e-9);
 		}
 		expect(container.float32('mag')[found.row]).toBe(absMag);
-		const colour = colourBpRp(row);
+		const colour = renderBpRp(row);
 		if (colour !== null) expect(container.float32('colour')[found.row]).toBeCloseTo(colour, 2);
 		// The position match finds the same row without the ID file.
 		expect(findStarRow(found.node, { tree: place.tree, absMag })).toBe(found.row);
@@ -212,14 +226,18 @@ describe.skipIf(!HAS_EXPORT)('a star from its record, against the render tree', 
 	});
 });
 
-describe('a planet host with no Gaia or Hipparcos colour', () => {
-	it('takes the colour of a dwarf of its Teff, the catalogue Teff first', () => {
-		expect(colourBpRp(pointSourceRow({ host_teff: 6395, teff_gspphot: 5000 }))).toBeCloseTo(
-			bpRpFromTeff(6395),
-			9
-		);
-		expect(colourBpRp(pointSourceRow({ teff_gspphot: 5000 }))).toBeCloseTo(bpRpFromTeff(5000), 9);
-		expect(colourBpRp(pointSourceRow({}))).toBeNull();
+describe('a star with no Gaia or Hipparcos colour', () => {
+	it('draws the colour of a dwarf of its chosen Teff, and has no measured colour', () => {
+		const row = pointSourceRow({ teff: 6395, host_teff: 5000, teff_gspphot: 5000 });
+		expect(renderBpRp(row)).toBeCloseTo(bpRpFromTeff(6395), 9);
+		expect(photometricBpRp(row)).toBeNull();
+		expect(renderBpRp(pointSourceRow({ host_teff: 5000, teff_gspphot: 5000 }))).toBeNull();
+	});
+
+	it('draws its measured colour over its Teff', () => {
+		const row = pointSourceRow({ teff: 6395, phot_bp_mean_mag: 9.5, phot_rp_mean_mag: 8.7 });
+		expect(renderBpRp(row)).toBeCloseTo(0.8, 6);
+		expect(photometricBpRp(row)).toBeCloseTo(0.8, 6);
 	});
 });
 
@@ -263,12 +281,12 @@ describe.skipIf(!HAS_EXPORT)('planet hosts from their records, against the plane
 		const found = findRender(host.id, place.tree)!;
 		expect(found).not.toBeNull();
 		expect(found.node.container.float32('mag')[found.row]).toBe(absMag);
-		const colour = colourBpRp(row);
+		const colour = renderBpRp(row);
 		const stored = found.node.container.float32('colour')[found.row];
 		if (colour === null) expect(stored).toBeNaN();
 		else expect(stored).toBeCloseTo(colour, 2);
 		expect(findStarRow(found.node, { tree: place.tree, absMag })).toBe(found.row);
-		// The disc takes the radius and Teff that the system file gives.
+		// The system file takes the record's Teff, and the disc its radius.
 		if (host.teff === null) expect(starTeff(row)).toBeNull();
 		else expect(starTeff(row)).toBeCloseTo(host.teff, 0);
 		const { radius } = result.record.metadata;

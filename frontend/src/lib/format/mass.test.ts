@@ -10,17 +10,17 @@ import {
 } from './mass';
 
 /** The text without its bidi isolates and with plain spaces. */
-const ISOLATES = new RegExp('[\\u2066-\\u2069]', 'g');
+const INVISIBLES = new RegExp('[\\u2060\\u2066-\\u2069]', 'g');
 const NO_BREAK = new RegExp('\\u00a0', 'g');
-const plain = (value: string | undefined) => value?.replace(ISOLATES, '').replace(NO_BREAK, ' ');
+const plain = (value: string | undefined) => value?.replace(INVISIBLES, '').replace(NO_BREAK, ' ');
 
 describe('a mass', () => {
 	it('reads in kilograms, whatever unit the export gave it in', () => {
-		expect(formatMass(EARTH_MASS_KG)).toBe('5.97×10²⁴ kg');
+		expect(plain(formatMass(EARTH_MASS_KG))).toBe('5.97×10²⁴ kg');
 		const jupiter = massReading({ value: 317.828, unit: 'earth_mass' });
-		expect(jupiter.value).toBe('1.90×10²⁷ kg');
+		expect(plain(jupiter.value)).toBe('1.90×10²⁷ kg');
 		expect(plain(jupiter.tooltip)).toBe('318× Earth');
-		expect(massReading({ value: 10.66, unit: 'exagram' }).value).toBe('1.07×10¹⁶ kg');
+		expect(plain(massReading({ value: 10.66, unit: 'exagram' }).value)).toBe('1.07×10¹⁶ kg');
 	});
 
 	it.each([

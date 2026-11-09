@@ -15,7 +15,7 @@
 	import type { ActivityBlock, Measurement } from '$lib/fetch/objects/object-data';
 	import {
 		activitySummary,
-		ageParts,
+		ageNote,
 		degreeParts,
 		dipoleMomentNote,
 		fieldKindLabel,
@@ -27,11 +27,11 @@
 		type PartsOf,
 		powerParts,
 		qualifier,
-		spellAge,
 		volumeRateParts
 	} from '$lib/format/activity';
-	import { formatKm } from '$lib/format/distance';
-	import { ltrIsolate } from '$lib/format/bidi';
+	import { ageParts } from '$lib/format/age';
+	import { kmParts } from '$lib/format/distance';
+	import { isolatedQuantity } from '$lib/format/quantities';
 
 	interface ActivityRow {
 		/** Reads the whole block, so a row that names its own subject can decide
@@ -46,11 +46,6 @@
 		ref?: (a: ActivityBlock) => string | undefined;
 	}
 
-	// Digits, brackets and a Latin unit symbol reorder inside Arabic or Hebrew
-	// text unless the run is isolated — the same treatment the layer cards give
-	// their depths.
-	const num = (value: Measurement, parts?: PartsOf) => ltrIsolate(measurement(value, parts));
-
 	/** A row stating one published measurement. */
 	function measured(
 		label: () => string,
@@ -62,7 +57,7 @@
 			label,
 			value: (a) => {
 				const value = get(a);
-				return value ? num(value, parts) : undefined;
+				return value ? measurement(value, parts) : undefined;
 			},
 			note: (a) => {
 				const value = get(a);
@@ -101,21 +96,16 @@
 			m.activity_youngest_activity,
 			(a) => a.volcanism?.youngest_activity_years,
 			ageParts,
-			(value) => spellAge(value.value)
+			ageNote
 		),
-		measured(
-			m.activity_surface_age,
-			(a) => a.volcanism?.surface_age_years,
-			ageParts,
-			(value) => spellAge(value.value)
-		),
+		measured(m.activity_surface_age, (a) => a.volcanism?.surface_age_years, ageParts, ageNote),
 		// Kilometres of lost radius, not a rate — the only row the measurement
 		// formatter has nothing to add to.
 		{
 			label: m.activity_radial_contraction,
 			value: (a) => {
 				const value = a.tectonics?.radial_contraction_km;
-				return value ? ltrIsolate(formatKm(value.value)) : undefined;
+				return value ? isolatedQuantity(kmParts(value.value)) : undefined;
 			},
 			note: (a) => {
 				const value = a.tectonics?.radial_contraction_km;
@@ -129,7 +119,7 @@
 			label: (a) => (allTidal(a) ? m.activity_tidal_power() : m.activity_heat_output()),
 			value: (a) => {
 				const value = heat(a);
-				return value ? num(value, powerParts) : undefined;
+				return value ? measurement(value, powerParts) : undefined;
 			},
 			note: (a) => {
 				const value = heat(a);
@@ -155,12 +145,7 @@
 			dipoleMomentNote
 		),
 		measured(m.activity_dipole_tilt, (a) => a.magnetism?.dipole_tilt_deg, degreeParts),
-		measured(
-			m.activity_dynamo_ended,
-			(a) => a.magnetism?.dynamo_ended_years,
-			ageParts,
-			(value) => spellAge(value.value)
-		)
+		measured(m.activity_dynamo_ended, (a) => a.magnetism?.dynamo_ended_years, ageParts, ageNote)
 	];
 </script>
 

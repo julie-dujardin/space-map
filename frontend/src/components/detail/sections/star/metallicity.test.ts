@@ -3,13 +3,13 @@ import { describe, expect, it } from 'vitest';
 import { astrometricOrbit, homeRow, type TableRow } from '$lib/fetch/extrasolar/lookup';
 import { pointSourceRecord } from '$lib/fetch/extrasolar/__fixtures__/record';
 import type { ColumnSpec } from '$lib/fetch/extrasolar/__fixtures__/writer';
-import { absoluteG, colourBpRp } from '$lib/scene/starfield/record';
+import { absoluteG, photometricBpRp } from '$lib/scene/starfield/record';
 import { chooseMetallicity, starKind } from './metallicity';
 
 /** The text without its bidi isolates and with plain spaces. */
-const ISOLATES = new RegExp('[\\u2066-\\u2069]', 'g');
+const INVISIBLES = new RegExp('[\\u2060\\u2066-\\u2069]', 'g');
 const NO_BREAK = new RegExp('\\u00a0', 'g');
-const plain = (s: string) => s.replace(ISOLATES, '').replace(NO_BREAK, ' ');
+const plain = (s: string) => s.replace(INVISIBLES, '').replace(NO_BREAK, ' ');
 
 type Value = number | string | boolean | null;
 const STRINGS = new Set(['flags_gspspec', 'feh_xhip_quality']);
@@ -221,7 +221,7 @@ describe('the stars of the shared fixture', () => {
 		expect(found?.source ?? null).toBe(expected.source);
 		expect(found && leadingNumber(found.value)).toBe(expected.value);
 		for (const [value, wanted] of [
-			[colourBpRp(ps), expected.colour],
+			[photometricBpRp(ps), expected.colour],
 			[absoluteG(ps, null), expected.absolute_g]
 		]) {
 			if (wanted === null) expect(value).toBe(null);

@@ -246,6 +246,12 @@ function systemTile(dominant: boolean): Uint8Array {
 			column('star.host_radius_error', 'float32', [0.0625]),
 			column('star.teff', 'float32', [4500]),
 			column('star.teff_source', 'dict', ['open-exoplanet-catalogue']),
+			column('star.metallicity', 'float32', [0.125]),
+			column('star.metallicity_source', 'dict', ['nasa-exoplanet-archive']),
+			column('star.logg', 'float32', [4.5]),
+			column('star.logg_source', 'dict', ['nasa-exoplanet-archive']),
+			column('star.age', 'float32', [2.5]),
+			column('star.age_source', 'dict', ['exoplanet-eu']),
 			column('star.spectral_type', 'string', ['K1V']),
 			column('star.spectral_type_source', 'dict', ['msc']),
 			column('star.references', 'list', [1]),
@@ -339,7 +345,7 @@ export function syntheticExport(
 }
 
 /** One Point source row of STAR. A number is a float32 column, a string a dict column. */
-export function pointSourceRow(values: Record<string, number | string>): TableRow {
+export function pointSourceRow(values: Record<string, number | string | boolean>): TableRow {
 	const columns: ColumnSpec[] = [
 		{ name: 'id', type: 'id', values: [STAR] },
 		...valueColumns(values)

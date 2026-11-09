@@ -36,7 +36,12 @@ import {
 	diameterRow,
 	distanceStat,
 	epochLabel,
+	gravityRow,
 	hint,
+	hostAgeRow,
+	hostMetallicityRow,
+	meanDensityRow,
+	photosphere,
 	pointDistanceStat,
 	row,
 	rows,
@@ -267,15 +272,6 @@ function positionSection(node: SystemNode): StarSection {
 	return { key: 'position', title: m.star_section_position(), rows: placeRows(node) };
 }
 
-function classification(label: string, value: string | null, note?: string): StarSection {
-	const entry = row(label, value);
-	return {
-		key: 'classification',
-		title: m.classification(),
-		rows: entry ? [{ ...entry, tooltip: note }] : []
-	};
-}
-
 function heldStarSections(
 	node: SystemNode,
 	star: HeldStarValues,
@@ -284,33 +280,52 @@ function heldStarSections(
 ): StarSection[] {
 	const { references } = star;
 	const kg = star.mass === null ? null : star.mass * SOLAR_MASS_KG;
-	const physical = rows([
+	// A paper of the star's own names its radius; its point's paper does not.
+	const diameter = diameterRow(
+		radius,
+		null,
+		star.hostRadiusError,
+		measuresPoint(node, radius) ? [] : references
+	);
+	const mass =
 		kg === null
 			? null
 			: {
 					label: m.star_stat_mass(),
 					value: formatMass(kg),
 					tooltip: hint(massComparison(kg), sourceOf(star.massSource, references))
-				},
-		// A paper of the star's own names its radius; its point's paper does not.
-		diameterRow(radius, null, star.hostRadiusError, measuresPoint(node, radius) ? [] : references),
-		star.teff === null
-			? null
-			: {
-					label: m.star_row_teff(),
-					value: formatTemperature({ value: star.teff, unit: 'kelvin' }),
-					tooltip: sourceOf(star.teffSource, references)
-				}
-	]);
+				};
+	// Each value names its source in its tooltip.
+	const sourced = (entry: StarRowEntry | null, source: string | null) =>
+		entry && { ...entry, tooltip: hint(entry.tooltip, sourceOf(source, references)) };
+	const type = row(m.star_stat_spectral_type(), spectralType(star.spectralType));
 	return [
 		{ key: 'orbit', title: m.orbit(), rows: pairRows(node, system) },
-		classification(
-			m.star_stat_spectral_type(),
-			spectralType(star.spectralType),
-			sourceOf(star.spectralTypeSource, references)
-		),
-		positionSection(node),
-		{ key: 'physical', title: m.physical_properties(), rows: physical }
+		{
+			key: 'classification',
+			title: m.classification(),
+			rows: rows([
+				sourced(type, star.spectralTypeSource),
+				sourced(hostAgeRow(star.age), star.ageSource)
+			])
+		},
+		{
+			key: 'atmosphere',
+			title: m.atmosphere(),
+			rows: rows([sourced(hostMetallicityRow(star.metallicity), star.metallicitySource)])
+		},
+		{
+			key: 'surface',
+			title: m.surface(),
+			rows: rows([diameter, sourced(gravityRow(star.logg), star.loggSource)]),
+			temperature: photosphere(star.teff, false, sourceOf(star.teffSource, references))
+		},
+		{
+			key: 'interior',
+			title: m.interior(),
+			rows: rows([mass, meanDensityRow(star.mass, radius?.solar ?? null)])
+		},
+		positionSection(node)
 	];
 }
 
@@ -322,10 +337,10 @@ export function systemSections(
 ): StarSection[] {
 	if (node.star) {
 		return heldStarSections(node, node.star, record.metadata.radius, system).filter(
-			({ rows }) => rows.length > 0
+			({ rows, temperature }) => rows.length > 0 || temperature
 		);
 	}
-	const point = starSections(record, node);
+	const point = starSections(record, { node });
 	return [
 		{ key: 'orbit', title: m.orbital_elements(), rows: node.orbit ? orbitRows(node.orbit) : [] },
 		...(point.length > 0 ? point : [positionSection(node)])

@@ -548,6 +548,7 @@
 		{planet}
 		system={starSystem.system}
 		systemCategories={starSystem.categories}
+		starStructure={starInterior.structure}
 	/>
 {/snippet}
 
