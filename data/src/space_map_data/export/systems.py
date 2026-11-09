@@ -10,7 +10,7 @@ from collections import Counter
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, fields
 from pathlib import Path
-from typing import ClassVar
+from typing import ClassVar, NamedTuple
 
 import orjson
 from sqlalchemy.orm import Session
@@ -673,47 +673,67 @@ def ring_block(meta: dict) -> dict:
     return block
 
 
-def load_radii(download_dir: Path) -> dict[int, dict]:
-    """Load triaxial radii, SPICE radii.csv merged with the measured ellipsoids
-    of the small bodies no kernel covers.
+class RadiusTable(NamedTuple):
+    """The triaxial radii (km, body-fixed X, Y, Z) by NAIF id."""
 
-    Returns {naif_id: {a, b, c}} in km along body-fixed X, Y, Z. PCK radii win
-    where both exist.
-    """
+    radii: dict[int, dict]
+    # The file name of the kernel that sets each radius of radii.csv.
+    kernels: dict[int, str]
+
+
+def load_radii(download_dir: Path) -> RadiusTable:
+    """Load SPICE radii.csv merged with the measured ellipsoids of the small
+    bodies no kernel covers. PCK radii win where both exist."""
     csv_path = download_dir / "derived" / "position" / "tables" / "radii.csv"
+    radii: dict[int, dict] = dict(measured_radii())
+    kernels: dict[int, str] = {}
     if not csv_path.exists():
         logger.warning("No radii CSV at %s", csv_path)
-        return dict(measured_radii())
-    result: dict[int, dict] = dict(measured_radii())
+        return RadiusTable(radii, kernels)
     with csv_path.open(newline="") as f:
         for row in csv.DictReader(f):
             naif_id = int(row["naif_id"])
-            result[naif_id] = {
+            radii[naif_id] = {
                 "a": float(row["radius_a_km"]),
                 "b": float(row["radius_b_km"]),
                 "c": float(row["radius_c_km"]),
             }
-    logger.info("Loaded %d radii records", len(result))
-    return result
+            kernels[naif_id] = row["kernel"]
+    logger.info("Loaded %d radii records", len(radii))
+    return RadiusTable(radii, kernels)
 
 
-def load_gms(download_dir: Path) -> dict[int, float]:
-    """Load gravitational parameters (km^3/s^2) from SPICE gm.csv.
+class GmTable(NamedTuple):
+    """The GMs (km^3/s^2) of gm.csv by NAIF id."""
 
-    Returns {naif_id: gm_km3_s2}. The CSV includes a synthesized SSB row
-    (naif_id 0) reusing the Sun's GM — see `_extract_gms` in the SPICE
-    download module.
-    """
+    gms: dict[int, float]
+    # The file name of the kernel that sets each GM.
+    kernels: dict[int, str]
+    # The GM and kernel of the primary alone, where gms holds a binary system.
+    primaries: dict[int, tuple[float, str]]
+
+
+def load_gms(download_dir: Path) -> GmTable:
+    """Load SPICE gm.csv. Its naif-0 row is the Sun's GM (`extract_gms`)."""
     csv_path = download_dir / "derived" / "position" / "tables" / "gm.csv"
     if not csv_path.exists():
         logger.warning("No GM CSV at %s", csv_path)
-        return {}
-    result: dict[int, float] = {}
+        return GmTable({}, {}, {})
+    gms: dict[int, float] = {}
+    kernels: dict[int, str] = {}
+    primaries: dict[int, tuple[float, str]] = {}
     with csv_path.open(newline="") as f:
         for row in csv.DictReader(f):
-            result[int(row["naif_id"])] = float(row["gm_km3_s2"])
-    logger.info("Loaded %d GM records", len(result))
-    return result
+            naif_id = int(row["naif_id"])
+            gms[naif_id] = float(row["gm_km3_s2"])
+            kernels[naif_id] = row["kernel"]
+            if row["primary_gm_km3_s2"]:
+                primaries[naif_id] = (
+                    float(row["primary_gm_km3_s2"]),
+                    row["primary_kernel"],
+                )
+    logger.info("Loaded %d GM records", len(gms))
+    return GmTable(gms, kernels, primaries)
 
 
 def planet_elements_path(download_dir: Path) -> Path:
@@ -968,14 +988,14 @@ def export_systems_only(engine) -> None:
             session,
             out_dir,
             load_orientation(DOWNLOAD_DIR),
-            load_radii(DOWNLOAD_DIR),
+            load_radii(DOWNLOAD_DIR).radii,
             load_nut_prec(DOWNLOAD_DIR),
             layers,
             load_ring_metadata(out_dir),
         )
         write_systems_global(
             out_dir,
-            load_gms(DOWNLOAD_DIR),
+            load_gms(DOWNLOAD_DIR).gms,
             load_nut_prec_angles(DOWNLOAD_DIR),
             load_nut_prec_phase_degrees(DOWNLOAD_DIR),
         )

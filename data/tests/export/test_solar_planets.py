@@ -6,12 +6,18 @@ from space_map_data.constants.planets.families import (
     EARTH_MASSES_PER_JUPITER,
     EARTH_RADII_PER_JUPITER,
 )
+from space_map_data.export.objects.body_mass import (
+    EPHEMERIS_GM_KERNEL,
+    BodyMasses,
+    kernel_masses,
+)
 from space_map_data.export.solar_planets import (
     PLANET_NAIF_IDS,
     heavy_element_fraction,
     page_families,
     solar_planet_records,
 )
+from space_map_data.export.systems import GmTable
 
 # km³/s², the planet's own GM (DE440).
 GMS = {
@@ -36,6 +42,8 @@ EQUATORIAL = {
     899: 24764.0,
 }
 RADII = {n: {"a": a, "b": a, "c": a * 0.99} for n, a in EQUATORIAL.items()}
+GM_TABLE = GmTable(GMS, dict.fromkeys(GMS, EPHEMERIS_GM_KERNEL), {})
+MASSES = BodyMasses(ephemeris=kernel_masses(GM_TABLE)[0])
 # Horizons mean elements: AU, deg, 1, d.
 ELEMENTS = {
     199: {"a": 0.387098, "i": 7.005, "e": 0.205631, "period": 87.9691},
@@ -51,7 +59,7 @@ ELEMENTS = {
 
 @pytest.fixture
 def records() -> dict[str, dict]:
-    return solar_planet_records(RADII, GMS, ELEMENTS)
+    return solar_planet_records(RADII, MASSES, ELEMENTS)
 
 
 class TestRecords:
@@ -78,7 +86,7 @@ class TestRecords:
         assert values["radius"] == 1.0
 
     def test_a_missing_source_leaves_the_value_out(self):
-        found = solar_planet_records({}, {}, {})["naif-399"]["values"]
+        found = solar_planet_records({}, BodyMasses(), {})["naif-399"]["values"]
         assert found == {"heavy_element_fraction": pytest.approx(1.0, abs=0.01)}
 
 

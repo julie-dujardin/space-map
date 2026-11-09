@@ -24,12 +24,18 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session
 
+from space_map_data.constants import body_literature
 from space_map_data.constants.providers import LANGUAGES
 from space_map_data.export.groups.planet_family import served_planet_families_stamp
 from space_map_data.export.groups.sky_pages import served_sky_pages_stamp
 from space_map_data.export.groups.star_family import served_families_stamp
 from space_map_data.export.groups.system_pages import served_system_pages_stamp
 from space_map_data.export.names import system_titles
+from space_map_data.export.objects.body_mass import (
+    NOMINAL_GM_KERNELS,
+    SYSTEM_GM_KERNELS,
+)
+from space_map_data.export.objects.body_radius import PLACEHOLDER_KERNELS
 from space_map_data.export.objects.position_sources import (
     load_probe_position_sources,
 )
@@ -74,7 +80,7 @@ logger = logging.getLogger(__name__)
 
 # Bump to invalidate all tier-B outputs (bundle/label/feature/message shape
 # changes that no input fingerprint captures).
-TIER_B_VERSION = 20
+TIER_B_VERSION = 21
 
 _TIER_B_META = "tier_b.meta.json"
 _CHEB_META = "position/chebyshev.meta.json"
@@ -140,6 +146,8 @@ def tier_b_fingerprint(
       only grows rewrites none.
     - `system_titles`: the app's titles of a planetary system, which name the
       barycenters.
+    - `body_values`: the paper sizes and GMs and the kernel lists that rank
+      the body radii and masses.
     - `stars`: the star entries, which each registry ingest links again, and
       the works that the literature table cites for them.
     - `planets`: the planet entries, which each registry ingest links again,
@@ -170,6 +178,17 @@ def tier_b_fingerprint(
             for probe_id, works in sorted(load_probe_position_sources().items())
         },
         "system_titles": _digest(system_titles()),
+        "body_values": _digest(
+            [
+                body_literature.RADII,
+                body_literature.GMS,
+                body_literature.SYSTEM_GMS,
+                body_literature.REFERENCES,
+                PLACEHOLDER_KERNELS,
+                sorted(NOMINAL_GM_KERNELS),
+                sorted(SYSTEM_GM_KERNELS),
+            ]
+        ),
         "stars": _digest(
             [
                 (star.id, star.qid, star.name, star.iau_named, star_references(star))

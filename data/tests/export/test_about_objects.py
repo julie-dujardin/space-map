@@ -148,8 +148,67 @@ class TestEntrySources:
         assert keys == {"spacetrack", "celestrak", "jonathan", "commons"}
 
     def test_pole_and_radii_from_the_kernels(self):
-        keys = entry_sources({"orientation": {"source": "pck"}, "radii": {}}, set())
+        keys = entry_sources(
+            {
+                "orientation": {"source": "pck"},
+                "radii": {"a": 1},
+                "radii_source": "pck",
+            },
+            set(),
+        )
         assert keys == {"pck"}
+
+    def test_catalogue_sizes_and_masses_are_their_own_sources(self):
+        keys = entry_sources(
+            {
+                "radii": {"a": 1},
+                "radii_source": "ssodnet",
+                "mass_kg": 1.0,
+                "mass_source": "astersat",
+            },
+            set(),
+        )
+        assert keys == {"ssodnet", "nsdb"}
+
+    def test_a_jpl_satellite_mass(self):
+        keys = entry_sources(
+            {"mass_kg": 1.0, "mass_source": "jpl_satellite_physical"}, set()
+        )
+        assert keys == {"jpl-satellite-physical"}
+
+    def test_a_size_from_a_paper_is_a_work(self):
+        works: set[str] = set()
+        keys = entry_sources(
+            {
+                "radii": {"a": 1},
+                "radii_source": "literature",
+                "radii_reference": {"title": "Grav", "url": "https://doi.org/g"},
+            },
+            works,
+        )
+        assert keys == set()
+        assert works == {"https://doi.org/g"}
+
+    def test_a_mass_from_a_paper_is_a_work(self):
+        """Lutetia: Pätzold et al. 2011."""
+        works: set[str] = set()
+        keys = entry_sources(
+            {
+                "mass_kg": 1.7e18,
+                "mass_source": "literature",
+                "mass_reference": {"title": "Pätzold", "url": "https://doi.org/p"},
+            },
+            works,
+        )
+        assert keys == set()
+        assert works == {"https://doi.org/p"}
+
+    def test_an_estimated_mass_credits_no_one(self):
+        """Halley: volume x an assumed density, made here."""
+        works: set[str] = set()
+        keys = entry_sources({"mass_kg": 2.2e14, "mass_source": "estimate"}, works)
+        assert keys == set()
+        assert works == set()
 
 
 class TestPositionFileBytes:

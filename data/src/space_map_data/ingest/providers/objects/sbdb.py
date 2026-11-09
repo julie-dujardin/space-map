@@ -212,11 +212,8 @@ SBDB_CLASS_MAP: dict[str, ObjectType] = {
 }
 
 
-def mass_kg_from_gm(gm_km3_s2: float | None) -> float | None:
-    """The mass of a body, M = GM / G. The GM is that of the body
-    (BODY599_GM), not that of its barycenter."""
-    if gm_km3_s2 is None:
-        return None
+def mass_kg_from_gm(gm_km3_s2: float) -> float:
+    """The mass of a GM, M = GM / G."""
     return gm_km3_s2 / G_KM3_PER_KG_S2
 
 

@@ -12,6 +12,7 @@ from pathlib import Path
 import orjson
 from sqlalchemy.orm import Session
 
+from space_map_data.constants import body_literature
 from space_map_data.constants.activity.references import ACTIVITY_SOURCES
 from space_map_data.constants.atmosphere.references import (
     ATMOSPHERE_FACT_SOURCES,
@@ -116,8 +117,24 @@ def _atmosphere_references() -> list[dict]:
     return out
 
 
+def _body_literature_rows(
+    values: Mapping[int, body_literature.Radii | body_literature.Gm],
+    contribution: str,
+) -> list[dict]:
+    """The papers that ``values`` of `constants.body_literature` cite, once each."""
+    keys = dict.fromkeys(value.reference for value in values.values())
+    return [
+        {
+            "title": body_literature.REFERENCES[key].title,
+            "url": body_literature.REFERENCES[key].url,
+            "contribution": contribution,
+        }
+        for key in keys
+    ]
+
+
 def _orientation_references() -> list[dict]:
-    """The papers behind the poles and ellipsoids of the small bodies, which
+    """The papers behind the poles, ellipsoids and radii of the bodies, which
     name no archive the page could credit instead."""
     out = []
     for shape in MEASURED_SHAPES:
@@ -127,7 +144,19 @@ def _orientation_references() -> list[dict]:
             out.append(
                 {"title": ref.title, "url": ref.url, "contribution": "spin pole"}
             )
+    out.extend(_body_literature_rows(body_literature.RADII, "radii"))
     return out
+
+
+def _interior_references() -> list[dict]:
+    """The works behind the interiors, and the papers of the body masses that
+    the Interior section shows."""
+    return [
+        *(_bibliography_row(r) for r in INTERIOR_SOURCES.values()),
+        *_body_literature_rows(
+            {**body_literature.GMS, **body_literature.SYSTEM_GMS}, "mass"
+        ),
+    ]
 
 
 def _star_references() -> list[dict]:
@@ -497,7 +526,7 @@ def write_credits(
             "spacecraft": [_bibliography_row(r) for r in SPACECRAFT_SOURCES.values()],
             "ring": [r._asdict() for r in RING_REFERENCES],
             "activity": [_bibliography_row(r) for r in ACTIVITY_SOURCES.values()],
-            "interior": [_bibliography_row(r) for r in INTERIOR_SOURCES.values()],
+            "interior": _interior_references(),
             "temperature": [_bibliography_row(r) for r in TEMPERATURE_SOURCES.values()],
             "radiation": [_bibliography_row(r) for r in RADIATION_SOURCES.values()],
             "traverse": [_bibliography_row(r) for r in TRAVERSE_SOURCES.values()],

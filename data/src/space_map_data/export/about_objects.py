@@ -87,6 +87,15 @@ _WORK_BLOCKS = ("atmosphere", "temperatures", "interior", "activity", "radiation
 
 # A pole or a shape from a paper is a cited work.
 _NAMED_FITS = ("occultation", "photometry")
+# A size from `constants.body_literature` is a cited work too.
+_CITED_SIZES = (*_NAMED_FITS, "literature")
+# A mass estimated here credits no one.
+_UNCREDITED_MASSES = ("estimate",)
+# The source-list key of a `radii_source` or a `mass_source` that differs from it.
+_VALUE_SOURCE_KEYS = {
+    "astersat": "nsdb",
+    "jpl_satellite_physical": "jpl-satellite-physical",
+}
 
 _SATCAT_PREFIX = f"{ID_TYPES.NORAD_SATCAT}-"
 _SATCAT_ORDINAL = ID_TYPE_ORDINAL[ID_TYPES.NORAD_SATCAT]
@@ -175,10 +184,16 @@ def entry_sources(entry: dict, works: set[str]) -> set[str]:
     elif pole is not None:
         keys.add("pck")
     if entry.get("radii"):
-        if (entry.get("radii_source") or pole) in _NAMED_FITS:
+        source = entry["radii_source"]
+        if source in _CITED_SIZES:
             _cited(works, [entry.get("radii_reference") or {}])
         else:
-            keys.add("pck")
+            keys.add(_VALUE_SOURCE_KEYS.get(source, source))
+    mass = entry.get("mass_source")
+    if mass == "literature":
+        _cited(works, [entry.get("mass_reference") or {}])
+    elif mass is not None and mass not in _UNCREDITED_MASSES:
+        keys.add(_VALUE_SOURCE_KEYS.get(mass, mass))
     for taxonomy in (entry.get("interior") or {}).get("taxonomy_sources") or ():
         keys.add(f"taxonomy:{taxonomy}")
     for block in _WORK_BLOCKS:

@@ -1,8 +1,9 @@
 """Wikidata claim extraction and entity-reference resolution."""
 
 import logging
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from functools import cache
 from typing import Literal, NamedTuple
 from urllib.parse import quote, urlparse
 
@@ -653,6 +654,15 @@ def _has_any_reference(stmt: dict) -> bool:
     return False
 
 
+def _cites_a_source(stmt: dict) -> bool:
+    """Check whether a statement cites a work (P248) or a URL (P854)."""
+    for ref in stmt.get("references", []):
+        snaks = ref.get("snaks", {})
+        if snaks.get("P248") or snaks.get("P854"):
+            return True
+    return False
+
+
 def _has_nasa_ref_url(stmt: dict) -> bool:
     """Check whether a statement has a P854 (reference URL) on a nasa.gov domain."""
     for ref in stmt.get("references", []):
@@ -995,6 +1005,41 @@ def diameter_km_from_claims(
 ) -> float | None:
     """Diameter in km from raw Wikidata claims (P2386), or None."""
     return _length_km_from_claims(claims, "P2386", units, qid)
+
+
+def referenced_mass_kg_from_claims(
+    claims: dict, units: UnitConverter, qid: str
+) -> float | None:
+    """Mass in kg from the P2067 statements that cite a source, or None.
+
+    A statement with no reference, or only "imported from Wikimedia project",
+    does not count.
+    """
+    cited = [s for s in undeprecated_statements(claims, "P2067") if _cites_a_source(s)]
+    pairs = _drop_component_mass(_qty_pairs(prefer_rank(cited), needs_unit=True))
+    qty = _resolve_quantity(pairs, "P2067", qid=qid)
+    if not isinstance(qty, dict):
+        return None
+    kg = units.convert_to_base(float(qty["value"]), qty["unit"], expected_type="mass")
+    if kg is None:
+        logger.warning("P2067 of %s: unknown mass unit %s, skipping", qid, qty["unit"])
+    return kg
+
+
+def claim_reader[T](
+    entities: WikidataEntityCache,
+    units: UnitConverter,
+    read: Callable[[dict, UnitConverter, str], T | None],
+) -> Callable[[str], T | None]:
+    """``read`` of the claims of a QID, by QID. Each QID is read once, so a
+    claim warning is logged once."""
+
+    @cache
+    def of(qid: str) -> T | None:
+        entity = entities.get_entity(qid)
+        return None if entity is None else read(entity["claims"], units, qid)
+
+    return of
 
 
 def discovery_year_from_claims(

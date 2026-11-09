@@ -20,7 +20,6 @@ from pathlib import Path
 
 import orjson
 
-from space_map_data.constants.physics import G
 from space_map_data.constants.planets.families import (
     NOMINAL_SOLAR_VALUES,
     SUN_LUMINOSITY_W,
@@ -39,8 +38,10 @@ from space_map_data.export.names import (
     overrides_in,
     resolve_wikidata_qid,
 )
+from space_map_data.export.objects import body_density, body_mass
 from space_map_data.export.objects.activity import activity_block
 from space_map_data.export.objects.atmosphere import atmosphere_block
+from space_map_data.export.objects.body_mass import BodyMasses
 from space_map_data.export.objects.body_radius import (
     BodyRadii,
     BodyRadius,
@@ -128,25 +129,7 @@ K_LOCALIZED = 5500
 
 _QID_CURRENCY = "Q8142"
 
-# A mean density keeps the digits that GM and the radii support at best.
-_DENSITY_DIGITS = 4
-# The mean densities of known bodies lie in this range (g/cm³). A value
-# outside it comes from a GM or radii that are not measured.
-_DENSITY_RANGE = (0.1, 30.0)
 SUN_LUMINOSITY_REFERENCE = {**NOMINAL_SOLAR_VALUES, "note": "nominal solar luminosity"}
-
-
-def mean_density(gm_km3_s2: float, radii_km: Mapping[str, float]) -> float | None:
-    """The mean density (g/cm³) of a body of this GM and triaxial radii, None
-    where one of them is not positive or the density is outside
-    _DENSITY_RANGE."""
-    axes = [radii_km[axis] for axis in ("a", "b", "c")]
-    if gm_km3_s2 <= 0 or min(axes) <= 0:
-        return None
-    mass_g = gm_km3_s2 * 1e9 / G * 1e3
-    density = mass_g / (4 / 3 * math.pi * math.prod(axes) * 1e15)
-    low, high = _DENSITY_RANGE
-    return float(f"{density:.{_DENSITY_DIGITS}g}") if low <= density <= high else None
 
 
 def hash_bucket(obj_id: str, n_buckets: int) -> int:
@@ -253,6 +236,7 @@ def build_chunk_object_data(
     nasa_science_urls: dict[str, str],
     orientation: dict[int, dict],
     body_radii: BodyRadii,
+    body_masses: BodyMasses,
     gms: dict[int, float],
     nut_prec: dict[int, dict[str, list[float]]],
     layers: TextureLayers,
@@ -310,6 +294,7 @@ def build_chunk_object_data(
             nasa_science_urls,
             orientation,
             body_radii,
+            body_masses,
             gms,
             nut_prec,
             layers,
@@ -538,6 +523,7 @@ def _build_global(
     nasa_science_urls: dict[str, str],
     orientation: dict[int, dict],
     body_radii: BodyRadii,
+    body_masses: BodyMasses,
     gms: dict[int, float],
     nut_prec: dict[int, dict[str, list[float]]],
     layers: TextureLayers,
@@ -701,17 +687,16 @@ def _build_global(
     if obj.naif_id is not None and obj.naif_id in nut_prec:
         data["nut_prec"] = nut_prec[obj.naif_id]
 
-    # The size, with its source for the sidebar credit.
+    # The size, the mass and the density from them, each with its source.
     data.update(bundle_fields(size))
+    mass = body_masses.of(obj)
+    data.update(body_mass.bundle_fields(mass))
+    density = body_density.density_of(obj, mass, size, body_masses, body_radii)
+    data.update(body_density.bundle_fields(density))
 
     # Gravitational parameter (km^3/s^2) from SPICE PCK
     if obj.naif_id is not None and obj.naif_id in gms:
         data["gm"] = gms[obj.naif_id]
-    # Wikidata's density can be another quantity, such as the Sun's centre.
-    if "gm" in data and "radii" in data:
-        density = mean_density(data["gm"], data["radii"])
-        if density is not None:
-            data["mean_density_g_cm3"] = density
 
     # Cited atmospheric facts — only the two dozen bodies with a measured
     # envelope have one.
@@ -784,7 +769,8 @@ def _build_global(
     # Wikidata claims (non-localized, excluding image fields handled above)
     if extracted:
         wikidata_section: dict = {}
-        # The radius is in `radii`, from `body_radius`.
+        # The radius is in `radii`.
+        # Body mass/density stay for the deployed frontend until it reads `mass_kg`.
         wikidata_keys = [c.key for c in GLOBAL_CLAIMS if c.key != "radius"]
         for key in wikidata_keys:
             if key in _IMAGE_KEYS:

@@ -10,6 +10,7 @@ import pytest
 
 from space_map_data.export.names import Names
 from space_map_data.export.objects import writer
+from space_map_data.export.objects.body_mass import BodyMass, BodyMasses, Satellite
 from space_map_data.export.objects.body_radius import (
     BodyRadii,
     BodyRadius,
@@ -27,6 +28,7 @@ from space_map_data.export.objects.writer import (
     render_quality,
     write_object_bundles,
 )
+from space_map_data.ingest.providers.objects.sbdb import mass_kg_from_gm
 from space_map_data.models.object import ModelProvenance, ObjectType
 from tests.conftest import EntityStub, make_object
 from tests.export.conftest import layers_of
@@ -438,6 +440,102 @@ class TestBundleRadius:
         assert "radii" not in data
 
 
+class TestBundleMass:
+    """The bundle writes the `body_mass` pick and the density of it."""
+
+    _WIKIDATA_MASS: ClassVar[dict] = {
+        "mass": {"value": 3.0, "unit": "kilogram"},
+        "density": {"value": 1.0, "unit": "gram per cubic centimetre"},
+    }
+
+    @pytest.fixture(autouse=True)
+    def _no_images(self, monkeypatch):
+        monkeypatch.setattr(writer, "collect_object_images", lambda object_id: None)
+        monkeypatch.setattr(writer, "panoramas_block", lambda object_id: None)
+
+    @staticmethod
+    def _kerberos():
+        return make_object(
+            id="naif-904", name="Kerberos", naif_id=904, object_type=ObjectType.moon
+        )
+
+    @staticmethod
+    def _global(obj, mass: BodyMass | None, size: BodyRadius | None) -> dict:
+        radii = BodyRadii(shapes={904: size} if size else {})
+        masses = BodyMasses(jpl={904: mass} if mass else {})
+        return TestPlanetFamilies._global(
+            obj,
+            {},
+            body_radii=radii,
+            body_masses=masses,
+            extracted=TestBundleMass._WIKIDATA_MASS,
+        )
+
+    def test_mass_and_density(self):
+        # A 10 km sphere of 4.18879e18 g is 1 g/cm³.
+        data = self._global(
+            self._kerberos(),
+            BodyMass(4.18879e15, "jpl_satellite_physical", False, "PLU060"),
+            BodyRadius(10.0, 10.0, 10.0, "literature"),
+        )
+        assert data["mass_kg"] == 4.18879e15
+        assert data["mass_source"] == "jpl_satellite_physical"
+        assert data["mass_reference"] == "PLU060"
+        assert "mass_nominal" not in data
+        assert data["mean_density_g_cm3"] == 1.0
+        assert "mean_density_nominal" not in data
+
+    def test_a_nominal_mass_makes_the_density_nominal(self):
+        data = self._global(
+            self._kerberos(),
+            BodyMass(4.18879e15, "jpl_satellite_physical", True, "PLU060"),
+            BodyRadius(10.0, 10.0, 10.0, "literature"),
+        )
+        assert data["mass_nominal"] is True
+        assert data["mean_density_nominal"] is True
+
+    def test_a_body_keeps_the_wikidata_mass_and_density(self):
+        """The deployed frontend reads them until it reads `mass_kg`."""
+        data = self._global(self._kerberos(), None, None)
+        assert {"mass", "density"} <= data["wikidata"].keys()
+        assert "mass_kg" not in data
+        assert "mean_density_g_cm3" not in data
+
+    def test_a_system_mass_is_over_the_moons_too(self):
+        """Two 10 km spheres share a 2 g/cm³ x one-sphere mass."""
+        primary = make_object(
+            id="spkid-20065803", naif_id=2065803, object_type=ObjectType.asteroid
+        )
+        sphere = BodyRadius(10.0, 10.0, 10.0, "pck")
+        data = TestPlanetFamilies._global(
+            primary,
+            {},
+            body_radii=BodyRadii(shapes={2065803: sphere, 120065803: sphere}),
+            body_masses=BodyMasses(
+                ephemeris={
+                    2065803: BodyMass(
+                        2 * 4.18879e15, "pck", False, "gm_de440.tpc", system=True
+                    )
+                },
+                satellites={
+                    "spkid-20065803": (
+                        Satellite("spkid-120065803", 120065803, None, ObjectType.moon),
+                    )
+                },
+            ),
+        )
+        assert data["mass_system"] is True
+        assert data["mean_density_g_cm3"] == 1.0
+
+    def test_a_craft_keeps_its_wikidata_mass(self):
+        craft = make_object(
+            id="probe-98", name="New Horizons", object_type=ObjectType.spacecraft
+        )
+        data = self._global(craft, None, None)
+        assert "mass" in data["wikidata"]
+        assert "mass_kg" not in data
+
+
 class TestPlanetFamilies:
     """A Solar System planet's page carries its planet families."""
 
@@ -447,6 +545,7 @@ class TestPlanetFamilies:
         planet_families: dict[str, list[str]],
         body_radii: BodyRadii | None = None,
         extracted: dict | None = None,
+        body_masses: BodyMasses | None = None,
     ) -> dict:
         entities = MagicMock()
         entities.get_entity.return_value = None
@@ -474,6 +573,7 @@ class TestPlanetFamilies:
             entities,
             MagicMock(),
             body_radii=body_radii or BodyRadii(),
+            body_masses=body_masses or BodyMasses(),
             layers=layers_of(),
             nomenclature_body_ids=set(),
             planet_families=planet_families,
@@ -510,22 +610,41 @@ class TestPlanetFamilies:
         assert "iau_named" not in self._global(make_object(), {})
 
 
-class TestMeanDensity:
-    """The mean density from GM and the triaxial radii."""
+class TestBundleDensity:
+    """A body's density is its mass over the volume of its radii."""
 
-    def test_earth_and_the_sun(self):
-        earth = {"a": 6378.1366, "b": 6378.1366, "c": 6356.7519}
-        assert writer.mean_density(398600.4355070226, earth) == 5.513
-        sun = dict.fromkeys("abc", 695_700.0)
-        assert writer.mean_density(132712440041.27939, sun) == 1.41
+    @pytest.fixture(autouse=True)
+    def _no_images(self, monkeypatch):
+        monkeypatch.setattr(writer, "collect_object_images", lambda object_id: None)
+        monkeypatch.setattr(writer, "panoramas_block", lambda object_id: None)
 
-    def test_no_mass_or_size_gives_none(self):
-        assert writer.mean_density(0.0, dict.fromkeys("abc", 100.0)) is None
-        assert writer.mean_density(1.0, {"a": 1.0, "b": 1.0, "c": 0.0}) is None
+    @staticmethod
+    def _global(obj, gm: float, radii: tuple[float, float, float]) -> dict:
+        return TestPlanetFamilies._global(
+            obj,
+            {},
+            body_radii=BodyRadii(shapes={obj.naif_id: BodyRadius(*radii, "pck")}),
+            body_masses=BodyMasses(
+                ephemeris={
+                    obj.naif_id: BodyMass(
+                        mass_kg_from_gm(gm), "pck", False, "gm_de440.tpc"
+                    )
+                }
+            ),
+        )
 
-    def test_an_impossible_density_gives_none(self):
-        # Kerberos: a GM of 0.00111 km³/s² on the PCK's 100 km radii.
-        assert writer.mean_density(0.00111, dict.fromkeys("abc", 100.0)) is None
+    def test_earth(self):
+        earth = make_object(id="naif-399", name="Earth", naif_id=399)
+        data = self._global(earth, 398600.4355070226, (6378.1366, 6378.1366, 6356.7519))
+        assert data["mean_density_g_cm3"] == 5.513
+
+    def test_the_sun_keeps_its_density_and_luminosity(self):
+        sun = make_object(
+            id="naif-10", name="Sun", naif_id=10, object_type=ObjectType.star
+        )
+        data = self._global(sun, 132712440041.27939, (695_700.0, 695_700.0, 695_700.0))
+        assert data["mean_density_g_cm3"] == 1.41
+        assert data["luminosity_w"] == 3.828e26
 
 
 def test_the_sun_luminosity_is_the_iau_nominal_value():

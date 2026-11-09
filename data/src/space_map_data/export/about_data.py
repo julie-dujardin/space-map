@@ -649,7 +649,7 @@ def export_about_data_only(engine) -> None:
             session,
             ObjectNames(WikidataEntityCache(), session),
             out_dir,
-            load_radii(DOWNLOAD_DIR),
+            load_radii(DOWNLOAD_DIR).radii,
             TextureLayers.load(out_dir),
             load_ring_metadata(out_dir),
             load_model_metadata(out_dir),

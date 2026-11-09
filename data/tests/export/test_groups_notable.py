@@ -1,5 +1,6 @@
 """Tests for notable-member selection and shared bundle-entry building."""
 
+from dataclasses import replace
 from typing import ClassVar
 
 import pytest
@@ -41,6 +42,7 @@ from space_map_data.export.names import Names, ObjectNames
 from space_map_data.export.notable import NotableObject
 from space_map_data.export.objects.activity import collection_row
 from space_map_data.export.objects.atmosphere import atmosphere_block, pressure_block
+from space_map_data.export.objects.body_mass import BodyMass, BodyMasses
 from space_map_data.export.objects.body_radius import BodyRadii, BodyRadius
 from space_map_data.export.objects.interior import ocean_block
 from space_map_data.export.objects.radiation import (
@@ -303,7 +305,9 @@ class TestDwarfPlanets:
 
     def test_the_card_takes_the_catalogue_diameter(self, session: Session) -> None:
         radii = self._eris(session)
-        (eris,) = _dwarf_planet_members(session, _names(session), radii, {}, {})
+        (eris,) = _dwarf_planet_members(
+            session, _names(session), radii, BodyMasses(), {}
+        )
         assert eris.diameter_km == 2326.0
         assert eris.radii == {
             "a": 1163.0,
@@ -323,7 +327,9 @@ class TestDwarfPlanets:
         haumea = BodyRadius(1050.0, 840.0, 537.0, "occultation")
         radii = BodyRadii(sizes={"spkid-20136199": haumea})
         (body,) = solar_system_map._dwarf_planets(session, _names(session), radii, {})
-        (member,) = _dwarf_planet_members(session, _names(session), radii, {}, {})
+        (member,) = _dwarf_planet_members(
+            session, _names(session), radii, BodyMasses(), {}
+        )
         assert body.diameter_km == member.diameter_km == haumea.diameter_km
         assert haumea.diameter_km == pytest.approx(1618.0)
 
@@ -391,7 +397,9 @@ class TestProbeMembers:
         )
         _add_member(session, 99)  # an asteroid — must be excluded too
 
-        members, total = _probe_members(session, _names(session), BodyRadii(), {}, {})
+        members, total = _probe_members(
+            session, _names(session), BodyRadii(), BodyMasses(), {}
+        )
         assert total == 3
         assert [m.object_id for m in members] == ["probe-2", "probe-1", "probe-3"]
 
@@ -400,7 +408,7 @@ class TestProbeMembers:
         sp = OrbitalSource.spice_probe
         _add_spacecraft(session, "probe-170", orbital_source=sp, qid="Q186447")
         radii = BodyRadii(wikidata_km=lambda qid: 0.00325)
-        (jwst,), _ = _probe_members(session, _names(session), radii, {}, {})
+        (jwst,), _ = _probe_members(session, _names(session), radii, BodyMasses(), {})
         assert jwst.radii is None
 
 
@@ -601,6 +609,18 @@ class TestNotableEntries:
         entries = notable.notable_entries(members)
         assert "texture" not in entries[0]
 
+    def test_a_mass_carries_its_source(self, monkeypatch) -> None:
+        monkeypatch.setattr(notable, "collect_object_images", lambda object_id: None)
+        member = replace(
+            _obj("naif-705", None, "Miranda"),
+            mass=BodyMass(6.47e19, "pck", True, "gm_de440.tpc"),
+        )
+        (entry,) = notable.notable_entries([member])
+        assert entry["mass_kg"] == 6.47e19
+        assert entry["mass_source"] == "pck"
+        assert entry["mass_reference"] == "gm_de440.tpc"
+        assert entry["mass_nominal"] is True
+
     def test_localized_names_only_when_differing(self) -> None:
         members = [
             _obj("spkid-1", "Q1", "Ceres", {"ru": "Церера"}),
@@ -679,7 +699,9 @@ class TestPlanetarySystemMembers:
         session.commit()
         jupiter = labelled({"en": "Jupiter", "fr": "Jupiter", "ru": "Юпитер"})
         names = ObjectNames(EntityStub({"Q319": jupiter}), session)
-        (member,) = _planetary_system_members(session, names, BodyRadii(), {}, {})
+        (member,) = _planetary_system_members(
+            session, names, BodyRadii(), BodyMasses(), {}
+        )
         assert (member.object_id, member.image_of) == ("naif-5", "naif-599")
         (entry,) = notable.notable_entries([member])
         assert (entry["name"], entry["system_name"]) == ("Jupiter", "Jupiter system")

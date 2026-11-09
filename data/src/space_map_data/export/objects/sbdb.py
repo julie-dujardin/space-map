@@ -39,7 +39,6 @@ _SBDB_FIELDS = (
     "last_obs",
     "data_arc",
     "n_obs_used",
-    "mass_kg",
     "condition_code",
 )
 
@@ -61,6 +60,7 @@ def build_sbdb(sbdb: SBDB, units: UnitConverter) -> dict:
             data["class"] = val.name
         else:
             data[attr.rstrip("_")] = val
+    # Stays for the deployed frontend until it reads `mass_kg`.
     if sbdb.mass_kg is not None:
         converted = units.best_unit(sbdb.mass_kg, "mass")
         if converted is not None:

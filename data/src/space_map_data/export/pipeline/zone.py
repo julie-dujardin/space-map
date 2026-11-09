@@ -9,6 +9,7 @@ from pathlib import Path
 
 from space_map_data.export.earth_sat_filter import is_docked
 from space_map_data.export.names import Names, ObjectNames, resolve_wikidata_qid
+from space_map_data.export.objects.body_mass import BodyMasses
 from space_map_data.export.objects.body_radius import BodyRadii
 from space_map_data.export.objects.moon_sources import MoonSourceBlocks
 from space_map_data.export.objects.rings import RingMoon
@@ -61,6 +62,8 @@ class ObjectDataContext:
     orientation: dict[int, dict]
     # The size of each body, by the source order of `body_radius`.
     body_radii: BodyRadii
+    # The mass of each body, by the source order of `body_mass`.
+    body_masses: BodyMasses
     gms: dict[int, float]
     nut_prec: dict[int, dict[str, list[float]]]
     texture_layers: TextureLayers
@@ -152,6 +155,7 @@ def build_zone_object_data(
         ctx.nasa_science_urls,
         orientation=ctx.orientation,
         body_radii=ctx.body_radii,
+        body_masses=ctx.body_masses,
         gms=ctx.gms,
         nut_prec=ctx.nut_prec,
         layers=ctx.texture_layers,

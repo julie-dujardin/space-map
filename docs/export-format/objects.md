@@ -330,8 +330,16 @@ interface GlobalObjectData {
   radii?: {                           // semi-axes (km, body-fixed X/Y/Z) from `export/objects/body_radius.py`; a = b = c for a source that gives one size. Absent where SBDB's diameter is the best size (it stays in `sbdb.diameter`)
     a: number; b: number; c: number;
   };
-  radii_source?: "pck" | "occultation" | "photometry" | "astersat" | "johnston" | "wikidata"; // with `radii`, best source first: the SPICE PCK or a fitted ellipsoid, then SBDB (not written here), AsterSat for a satellite, Johnston's Archive, AsterSat for a primary, Wikidata P2120 (else half of P2386)
-  radii_reference?: { title: string; url: string }; // the work that fitted an `occultation` or `photometry` ellipsoid
+  radii_source?: "literature" | "pck" | "occultation" | "photometry" | "ssodnet" | "astersat" | "johnston" | "wikidata"; // with `radii`, best source first: a paper (`constants/body_literature.py`), the SPICE PCK or a fitted ellipsoid, the SsODNet best estimate, SBDB (not written here), AsterSat for a satellite, Johnston's Archive, AsterSat for a primary, Wikidata P2120 (else half of P2386), then nominal only: a Johnston diameter the archive estimated, a radius from a placeholder kernel (JUICE `juice_jup*`, Cassini `cpck_rock_*`, New Horizons `nh_stars_kbo_centaur_*`)
+  radii_reference?: { title: string; url: string }; // the work behind a `literature`, `occultation` or `photometry` size
+  radii_nominal?: true;               // the size is a placeholder or an estimate, not a measurement
+  mass_kg?: number;                   // the body's mass from `export/objects/body_mass.py`. Absent on craft (their launch mass stays in `wikidata.mass`)
+  mass_source?: "jpl_satellite_physical" | "pck" | "literature" | "sbdb" | "ssodnet" | "astersat" | "johnston" | "estimate" | "wikidata"; // with `mass_kg`, best source first: JPL's satellite physical parameters table (`pck` where `gm_de440.tpc` holds the same GM to more digits), `gm_de440.tpc`, another kernel (mission target PCKs; `literature` for the paper GMs of `constants/body_literature.py`, which the project's own `smallbody_gm_patch.tpc`/`smallbody_gm_systems.tpc` carry), SBDB GM, SsODNet, the AsterSat system mass, the Johnston system mass, then nominal: SsODNet with no error, Johnston `[*A]`/`[*E]`, `Gravity.tpc` (NAIF), `estimate` (volume × an assumed density, made for the probe fits: no work to credit), and last Wikidata P2067 with a P248/P854 reference. A binary primary that a kernel gives apart from its system (`gm_de440.tpc` `9_20xxxxxx`) takes its own GM. Never on a barycentre
+  mass_reference?: string | { title: string; url: string }; // the ephemeris of a `jpl_satellite_physical` GM ("PLU060"), the kernel file of a `pck` GM ("gm_de440.tpc"), or the paper of a `literature` GM
+  mass_nominal?: true;                // the mass is an upper limit, an estimate or a value its source does not constrain
+  mass_system?: true;                 // the mass of the body and its satellites together: AsterSat, Johnston, `smallbody_gm_systems.tpc`, a `gm_de440.tpc` system GM equal to its primary's
+  mean_density_g_cm3?: number;        // `mass_kg` over the volume 4/3·π·a·b·c of the shown size (`radii`, else the sphere of `sbdb.diameter`); with `mass_system`, over the summed volumes of the body and its moons. 4 significant digits. No range check
+  mean_density_nominal?: true;        // `mass_nominal`, a nominal size, or a moon of a system mass with no size
   pointing?: {                        // hand-edited per-spacecraft attitude (spacecraft-orientation.yaml)
     // The frontend aims the focused model's `primary.axis` exactly at the
     // `primary.target` direction, then rolls so `secondary.axis` points as
@@ -339,8 +347,7 @@ interface GlobalObjectData {
     primary:    { axis: "+x"|"-x"|"+y"|"-y"|"+z"|"-z"; target: "parent"|"sun"|"velocity" };
     secondary?: { axis: "+x"|"-x"|"+y"|"-y"|"+z"|"-z"; target: "parent"|"sun"|"velocity" };
   };
-  gm?: number;                        // SPICE PCK gravitational parameter (km^3/s^2)
-  mean_density_g_cm3?: number;        // mean density (g/cm³, 4 significant digits) from `gm` and `radii`, G = 6.67430e-11; absent where either is missing or the result is outside 0.1–30 g/cm³ (an unmeasured GM or radius). Wikidata's `density` can be another quantity (the Sun's is its centre)
+  gm?: number;                        // SPICE PCK gravitational parameter (km^3/s^2), for the dynamics: the whole system of a binary; the body's mass is `mass_kg`
   luminosity_w?: number;              // the Sun only — the IAU 2015 Resolution B3 nominal solar luminosity, 3.828e26 W
   luminosity_reference?: { title: string; url: string; note: string }; // the Sun only — the credit of `luminosity_w`
   orbit?: {
@@ -368,8 +375,8 @@ interface GlobalObjectData {
     class?: string;  // OrbitClass enum *name* (e.g. "MBA", "APO") — same id used to name the export zone
     sats?: number;   diameter?: number;  // km
     extent?: string; albedo?: number; rot_per?: number;  // hours
-    GM?: number;     // km^3/s^2
-    mass?: { value: number; unit: string };
+    GM?: number;     // km^3/s^2; the body's mass is the top-level `mass_kg`
+    mass?: { value: number; unit: string };  // for the deployed frontend until it reads `mass_kg`
     H?: number; G?: number;
     spec_B?: string; spec_T?: string;
     color?: string;  // #rrggbb surface colour: the best hue known at a luminance of the V-band geometric albedo (see "Surface colour" below). Absent → frontend generic tint
@@ -409,8 +416,8 @@ interface GlobalObjectData {
   wikidata?: {
     discovery_date?: string;  // ISO 8601
     launch_date?: string;
-    mass?: QuantityWithUnit;
-    density?: QuantityWithUnit;
+    mass?: QuantityWithUnit;        // a craft's launch mass; on a body only until the frontend reads `mass_kg`
+    density?: QuantityWithUnit;     // on a body only until the frontend reads `mean_density_g_cm3`
     surface_gravity?: QuantityWithUnit;
     absolute_magnitude?: number;
     apparent_magnitude?: number;

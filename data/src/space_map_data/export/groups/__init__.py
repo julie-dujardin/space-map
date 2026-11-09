@@ -89,7 +89,8 @@ from space_map_data.export.notable import (
     shape_model_slugs,
     textured_object_ids,
 )
-from space_map_data.export.objects.body_radius import load_body_radii
+from space_map_data.export.objects.body_mass import BodyMasses, load_body_masses
+from space_map_data.export.objects.body_radius import BodyRadii, load_body_radii
 from space_map_data.export.objects.fragments import build_comet_families
 from space_map_data.export.objects.missions import build_probe_missions
 from space_map_data.export.objects.stars import (
@@ -365,7 +366,8 @@ def run_groups_tier(
     out_dir: Path,
     wikidata_entities: WikidataEntityCache,
     radii: dict[int, dict],
-    gms: dict[int, float],
+    body_radii: BodyRadii,
+    body_masses: BodyMasses,
     displacement_metadata: dict[str, dict] | None = None,
     model_metadata: dict[str, dict] | None = None,
     star_objects: list[StarObject] | None = None,
@@ -373,12 +375,13 @@ def run_groups_tier(
 ) -> dict[str, int]:
     """Build + write the groups tier; returns bucket counts for metadata.json.
 
-    ``radii``/``gms`` (SPICE PCK) give the category planet + moon members their
-    mass + triaxial radii for the planets/moons-page charts. ``model_metadata``
-    arrives raw because the two meshes it yields are read differently: a body's
-    shape model keys off the bundle, a spacecraft's off ``Object.model_name``.
-    ``star_objects`` and ``planet_objects`` are the entries of the served stars
-    and planets, which the lists name as their pages do.
+    ``radii`` are the PCK ellipsoids of `load_radii`, which the Solar System
+    map and the planet records read. ``body_radii`` and ``body_masses`` are the
+    size and the mass of each member, as the object bundles have them.
+    ``model_metadata`` arrives raw because a body's shape model keys off the
+    bundle and a spacecraft's off ``Object.model_name``. ``star_objects`` and
+    ``planet_objects`` are the entries of the served stars and planets, which
+    the lists name as their pages do.
     """
     from space_map_data.export.systems import (
         load_nut_prec,
@@ -391,7 +394,6 @@ def run_groups_tier(
     )
     from space_map_data.utils.paths import DOWNLOAD_DIR
 
-    units = UnitConverter(wikidata_entities)
     # Poles for the lineup hero's true tilt — loaded here rather than widening
     # the orchestrator→tier interface for a tier-internal render detail.
     poles = j2000_poles(
@@ -409,14 +411,13 @@ def run_groups_tier(
         )
         craft_models = craft_model_slugs(session, model_metadata or {})
         gallery_subjects = _gallery_subjects(session, names)
-        body_radii = load_body_radii(session, radii, wikidata_entities, units)
         build = build_earth_groups_data(session)
         small_body_stats = build_small_body_group_stats(
             session, names, body_radii, poles
         )
         earth_orbit_stats = build_earth_orbit_classes(session, names)
         feature_types = build_feature_type_groups(session, names)
-        sun = star_member(session, names, body_radii, gms, poles)
+        sun = star_member(session, names, body_radii, body_masses, poles)
         build.membership[GroupType.EARTH_ORBIT_CLASS] = earth_orbit_stats.membership
         build.stats[GroupType.EARTH_ORBIT_CLASS] = earth_orbit_stats.satcat_stats
 
@@ -440,7 +441,7 @@ def run_groups_tier(
             small_body_stats.largest_bodies,
             earth_orbit_stats,
             body_radii,
-            gms,
+            body_masses,
             poles,
             wikidata_entities,
             planet_elements,
@@ -473,7 +474,7 @@ def run_groups_tier(
         names,
         SolarPlanets(
             category_data.notable_members.get(PLANETS_SLUG, []),
-            solar_planet_records(radii, gms, planet_elements),
+            solar_planet_records(radii, body_masses, planet_elements),
         ),
     )
     planets_page = planet_families.planets
@@ -694,16 +695,24 @@ def export_groups_only(engine: Engine) -> None:
     if not out_dir.exists():
         raise SystemExit(f"Export dir {out_dir} missing — run a full export first.")
     wikidata_entities = WikidataEntityCache()
+    units = UnitConverter(wikidata_entities)
     radii = load_radii(DOWNLOAD_DIR)
-    gms = load_gms(DOWNLOAD_DIR)
+    with Session(engine) as session:
+        body_radii = load_body_radii(
+            session, radii.radii, radii.kernels, wikidata_entities, units
+        )
+        body_masses = load_body_masses(
+            session, load_gms(DOWNLOAD_DIR), wikidata_entities, units
+        )
     displacement_metadata = TextureLayers.load(out_dir).displacement
     star_objects, planet_objects = available_extrasolar_objects()
     group_bundles = run_groups_tier(
         engine,
         out_dir,
         wikidata_entities,
-        radii,
-        gms,
+        radii.radii,
+        body_radii,
+        body_masses,
         displacement_metadata,
         load_model_metadata(out_dir),
         star_objects,

@@ -51,6 +51,7 @@ from space_map_data.export.notable import (
     j2000_poles,
     shape_model_slugs,
 )
+from space_map_data.export.objects.body_mass import load_body_masses
 from space_map_data.export.objects.body_radius import BodyRadii, load_body_radii
 from space_map_data.export.objects.features import attach_notable_features
 from space_map_data.export.objects.fragments import (
@@ -1180,8 +1181,10 @@ def _export(engine: Engine, names_session: Session, limit_per_zone: int) -> None
         )
     units = UnitConverter(wikidata_entities)
     orientation = load_orientation(DOWNLOAD_DIR)
-    radii = load_radii(DOWNLOAD_DIR)
-    gms = load_gms(DOWNLOAD_DIR)
+    radius_table = load_radii(DOWNLOAD_DIR)
+    radii = radius_table.radii
+    gm_table = load_gms(DOWNLOAD_DIR)
+    gms = gm_table.gms
     nut_prec = load_nut_prec(DOWNLOAD_DIR)
     nut_prec_angles = load_nut_prec_angles(DOWNLOAD_DIR)
     nut_prec_phase_degrees = load_nut_prec_phase_degrees(DOWNLOAD_DIR)
@@ -1207,7 +1210,10 @@ def _export(engine: Engine, names_session: Session, limit_per_zone: int) -> None
     probe_ephemeris_accuracy = load_probe_ephemeris_accuracy()
     probe_position_sources = load_probe_position_sources()
 
-    body_radii = load_body_radii(session, radii, wikidata_entities, units)
+    body_radii = load_body_radii(
+        session, radii, radius_table.kernels, wikidata_entities, units
+    )
+    body_masses = load_body_masses(session, gm_table, wikidata_entities, units)
     ctx = ObjectDataContext(
         wikidata_entities=wikidata_entities,
         names=names,
@@ -1215,6 +1221,7 @@ def _export(engine: Engine, names_session: Session, limit_per_zone: int) -> None
         nasa_science_urls=_load_nasa_science_urls(),
         orientation=orientation,
         body_radii=body_radii,
+        body_masses=body_masses,
         gms=gms,
         nut_prec=nut_prec,
         texture_layers=texture_layers,
@@ -1230,7 +1237,7 @@ def _export(engine: Engine, names_session: Session, limit_per_zone: int) -> None
         ring_moons=ring_moons,
         ring_metadata=ring_metadata,
         planet_families=page_families(
-            solar_planet_records(radii, gms, load_planet_elements(DOWNLOAD_DIR))
+            solar_planet_records(radii, body_masses, load_planet_elements(DOWNLOAD_DIR))
         ),
     )
 
@@ -1444,7 +1451,8 @@ def _export(engine: Engine, names_session: Session, limit_per_zone: int) -> None
             out_dir,
             wikidata_entities,
             radii,
-            gms,
+            body_radii,
+            body_masses,
             texture_layers.displacement,
             model_metadata,
             star_objects,

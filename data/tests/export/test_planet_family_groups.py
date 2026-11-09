@@ -32,11 +32,12 @@ from space_map_data.export.notable import (
     notable_entries,
     notable_names,
 )
+from space_map_data.export.objects.body_mass import MASS_SOURCE_PCK, BodyMass
 from space_map_data.export.objects.stars import PlanetObject, StarObject
 from space_map_data.export.objects.wikipedia import WikipediaSummary
 from space_map_data.export.solar_planets import solar_planet_records
 from tests.conftest import EntityStub, labelled
-from tests.export.test_solar_planets import ELEMENTS, GMS, RADII
+from tests.export.test_solar_planets import ELEMENTS, MASSES, RADII
 from tests.export.test_star_family_groups import _entities
 from tests.extrasolar.export_registry import planet, star, write_registry
 from tests.extrasolar.test_export_planets import _StarStub
@@ -111,13 +112,15 @@ def _id(host: int, number: int) -> str:
 
 
 def _body(object_id: str, qid: str, name: str) -> NotableObject:
-    return NotableObject(object_id, qid, Names(name), None, None, mass_kg=1.0)
+    return NotableObject(
+        object_id, qid, Names(name), None, None, mass=BodyMass(1.0, MASS_SOURCE_PCK)
+    )
 
 
 # Earth and Jupiter, with test QIDs.
 SOLAR = planet_family.SolarPlanets(
     [_body("naif-399", "Q399", "Earth"), _body("naif-599", "Q599", "Jupiter")],
-    solar_planet_records(RADII, GMS, ELEMENTS),
+    solar_planet_records(RADII, MASSES, ELEMENTS),
 )
 # Sitelinks of the test items: the Solar System planets have the most.
 SITELINKS = {
@@ -193,7 +196,7 @@ class TestBuild:
         assert [m.sitelinks_count for m in gas] == [251, 40, 5, None, None]
         assert [m.wikidata_qid for m in gas] == ["Q599", "Q3", "Q1", "Q2", None]
         assert [m.extrasolar for m in gas] == [False, True, True, True, True]
-        assert gas[0].mass_kg == 1.0
+        assert gas[0].mass == BodyMass(1.0, MASS_SOURCE_PCK)
         hot = groups.notable_members["planet-hot-jupiter"]
         assert [m.object_id for m in hot] == [_id(ids[1], 1), _id(ids[0], 2)]
         earth = groups.notable_members["planet-goldilocks-planet"]

@@ -10,9 +10,12 @@ from space_map_data.export.objects.body_radius import (
     BodyRadius,
     bundle_fields,
     catalogue_sizes,
+    is_placeholder_kernel,
     kernel_shapes,
     lineup_radii,
+    literature_shapes,
     load_body_radii,
+    placeholder_shapes,
 )
 from space_map_data.export.wikidata import WikidataEntity
 from space_map_data.models.object import (
@@ -21,6 +24,7 @@ from space_map_data.models.object import (
     JohnstonSystem,
     Object,
     ObjectType,
+    SsODNet,
 )
 from space_map_data.models.object.sbdb import SBDB, OrbitClass
 from tests.conftest import EntityStub
@@ -29,10 +33,13 @@ _PLUTO = {"a": 1188.3, "b": 1188.3, "c": 1188.3}
 # Varuna, a light-curve ellipsoid that no kernel holds.
 _VARUNA_NAIF = 2020000
 _VARUNA = {"a": 500.0, "b": 330.0, "c": 300.0}
+# Kerberos in the New Horizons catch-all kernel: a synthetic 100 km sphere.
+_SYNTHETIC = {"a": 100.0, "b": 100.0, "c": 100.0}
+_NH_CATCH_ALL = "nh_stars_kbo_centaur_v005.tpc"
 
 
-def _sphere(radius_km: float, source: str) -> BodyRadius:
-    return BodyRadius(radius_km, radius_km, radius_km, source)
+def _sphere(radius_km: float, source: str, nominal: bool = False) -> BodyRadius:
+    return BodyRadius(radius_km, radius_km, radius_km, source, nominal=nominal)
 
 
 def _resolver(**kwargs) -> BodyRadii:
@@ -40,11 +47,13 @@ def _resolver(**kwargs) -> BodyRadii:
         kwargs.get("shapes", {}),
         kwargs.get("sizes", {}),
         lambda qid: kwargs.get("wikidata", {}).get(qid),
+        kwargs.get("nominal_sizes", {}),
+        kwargs.get("placeholders", {}),
     )
 
 
 class TestPick:
-    """A kernel shape, then the catalogue sizes, then Wikidata."""
+    """A kernel shape, the catalogue sizes, Wikidata, then the nominal sizes."""
 
     def test_kernel_shape_wins(self):
         radii = _resolver(
@@ -68,6 +77,29 @@ class TestPick:
         radii = _resolver(wikidata={"Q18481": 36.0})
         size = radii.pick("naif-716", 716, "Q18481", ObjectType.moon)
         assert size == _sphere(36.0, "wikidata")
+
+    def test_wikidata_beats_a_nominal_catalogue_size(self):
+        radii = _resolver(
+            nominal_sizes={"spkid-20508788": _sphere(89.5, "johnston", nominal=True)},
+            wikidata={"Q1": 80.0},
+        )
+        size = radii.pick("spkid-20508788", None, "Q1", ObjectType.asteroid_tno)
+        assert size == _sphere(80.0, "wikidata")
+
+    def test_a_nominal_catalogue_size_beats_a_placeholder(self):
+        radii = _resolver(
+            nominal_sizes={"naif-904": _sphere(9.0, "johnston", nominal=True)},
+            placeholders=placeholder_shapes({904: _SYNTHETIC}, {904: _NH_CATCH_ALL}),
+        )
+        size = radii.pick("naif-904", 904, None, ObjectType.moon)
+        assert size == _sphere(9.0, "johnston", nominal=True)
+
+    def test_a_placeholder_is_the_last_fallback(self):
+        radii = _resolver(
+            placeholders=placeholder_shapes({904: _SYNTHETIC}, {904: _NH_CATCH_ALL})
+        )
+        size = radii.pick("naif-904", 904, None, ObjectType.moon)
+        assert size == _sphere(100.0, "pck", nominal=True)
 
     def test_no_source_gives_none(self):
         assert _resolver().pick("naif-716", 716, "Q18481", ObjectType.moon) is None
@@ -107,6 +139,31 @@ class TestPick:
 class TestKernelShapes:
     """Each ellipsoid of `load_radii` names the table it came from."""
 
+    def test_a_placeholder_kernel_is_left_out(self):
+        assert kernel_shapes({904: _SYNTHETIC}, {904: _NH_CATCH_ALL}) == {}
+
+    def test_a_placeholder_is_nominal(self):
+        shapes = placeholder_shapes({904: _SYNTHETIC}, {904: _NH_CATCH_ALL})
+        assert shapes == {904: _sphere(100.0, "pck", nominal=True)}
+
+    def test_a_measured_kernel_has_no_placeholder(self):
+        assert placeholder_shapes({999: _PLUTO}, {999: "pck00011.tpc"}) == {}
+
+    @pytest.mark.parametrize(
+        ("kernel", "placeholder"),
+        [
+            ("juice_jup015.tpc", True),
+            ("cpck_rock_21Jan2011_merged.tpc", True),
+            ("nh_stars_kbo_centaur_v005.tpc", True),
+            ("cpck01Dec2012.tpc", False),
+            ("pck00011.tpc", False),
+            ("", False),
+            (None, False),
+        ],
+    )
+    def test_the_placeholder_kernels(self, kernel, placeholder):
+        assert is_placeholder_kernel(kernel) is placeholder
+
     def test_a_kernel_body_is_pck_with_no_reference(self):
         assert kernel_shapes({999: _PLUTO})[999] == BodyRadius(
             1188.3, 1188.3, 1188.3, "pck"
@@ -118,8 +175,36 @@ class TestKernelShapes:
         assert shape.reference is not None and shape.reference["url"]
 
 
+class TestLiteratureShapes:
+    """A size from a paper cites the paper."""
+
+    def test_kerberos_is_the_new_horizons_ellipsoid(self):
+        kerberos = literature_shapes()[904]
+        assert kerberos.axes() == {"a": 9.5, "b": 5.0, "c": 4.5}
+        assert kerberos.source == "literature"
+        assert kerberos.reference is not None
+        assert kerberos.reference["url"] == "https://doi.org/10.1126/science.aae0030"
+
+    def test_himalia_is_the_neowise_diameter(self):
+        assert literature_shapes()[506].mean_km == pytest.approx(69.8)
+
+    def test_a_paper_beats_the_kernel(self):
+        radii = _resolver(
+            shapes={
+                **kernel_shapes({506: {"a": 85.0, "b": 85.0, "c": 85.0}}),
+                **literature_shapes(),
+            }
+        )
+        size = radii.pick("naif-506", 506, None, ObjectType.moon)
+        assert size is not None and size.source == "literature"
+
+
+def _sizes(session: Session) -> dict[str, BodyRadius]:
+    return catalogue_sizes(session)[0]
+
+
 class TestCatalogueSizes:
-    """SBDB, then the moon catalogues, from the ingested tables."""
+    """SsODNet, SBDB, then the moon catalogues, from the ingested tables."""
 
     @staticmethod
     def _body(session: Session, object_id: str, object_type=ObjectType.moon):
@@ -165,7 +250,7 @@ class TestCatalogueSizes:
         )
         session.add(self._astersat("spkid-120050000", "spkid-20050000", 40.5))
         session.commit()
-        sizes = catalogue_sizes(session)
+        sizes = _sizes(session)
         assert sizes["spkid-120050000"] == _sphere(40.5, "astersat")
 
     def test_astersat_sizes_the_primary_too(self, session: Session):
@@ -176,7 +261,7 @@ class TestCatalogueSizes:
         moon.primary_radius_km = 74.0
         session.add(moon)
         session.commit()
-        sizes = catalogue_sizes(session)
+        sizes = _sizes(session)
         assert sizes["spkid-50031846"] == _sphere(74.0, "astersat")
         assert sizes["spkid-150031846"] == _sphere(61.5, "astersat")
 
@@ -195,7 +280,7 @@ class TestCatalogueSizes:
         moon.primary_radius_km = 1200.0
         session.add(moon)
         session.commit()
-        assert catalogue_sizes(session)["spkid-20136199"] == _sphere(1163.0, "johnston")
+        assert _sizes(session)["spkid-20136199"] == _sphere(1163.0, "johnston")
 
     def test_johnston_diameters_are_halved(self, session: Session):
         """Eris's primary and a companion with no AsterSat fit."""
@@ -219,7 +304,7 @@ class TestCatalogueSizes:
             )
         )
         session.commit()
-        sizes = catalogue_sizes(session)
+        sizes = _sizes(session)
         assert sizes["spkid-20136199"] == _sphere(1163.0, "johnston")
         assert sizes["spkid-120136199"] == _sphere(350.0, "johnston")
 
@@ -243,7 +328,7 @@ class TestCatalogueSizes:
             )
         )
         session.commit()
-        assert catalogue_sizes(session)["spkid-20042355"] == _sphere(96.0, "sbdb")
+        assert _sizes(session)["spkid-20042355"] == _sphere(96.0, "sbdb")
 
     def test_a_row_with_no_size_is_skipped(self, session: Session):
         self._body(session, "spkid-20042355", ObjectType.asteroid_tno)
@@ -251,7 +336,39 @@ class TestCatalogueSizes:
             SBDB(spkid="20042355", object_id="spkid-20042355", class_=OrbitClass.TNO)
         )
         session.commit()
-        assert catalogue_sizes(session) == {}
+        assert catalogue_sizes(session) == ({}, {})
+
+    def test_ssodnet_beats_sbdb(self, session: Session):
+        """Gonggong: SsODNet 1239.5 km, SBDB 1535 km."""
+        self._body(session, "spkid-20225088", ObjectType.dwarf_planet)
+        session.add(
+            SBDB(
+                spkid="20225088",
+                object_id="spkid-20225088",
+                class_=OrbitClass.TNO,
+                diameter=1535.0,
+            )
+        )
+        session.add(SsODNet(object_id="spkid-20225088", diameter_km=1239.5))
+        session.commit()
+        assert _sizes(session)["spkid-20225088"] == _sphere(619.75, "ssodnet")
+
+    def test_an_estimated_johnston_diameter_is_nominal(self, session: Session):
+        """2000 CQ114: the archive estimates its primary from an albedo."""
+        self._body(session, "spkid-20508788", ObjectType.asteroid_tno)
+        session.add(
+            JohnstonSystem(
+                object_id="spkid-20508788",
+                page="am-508788",
+                designation="2000 CQ114",
+                primary_diameter_km=179.0,
+                primary_diameter_km_nominal=True,
+            )
+        )
+        session.commit()
+        sizes, nominal = catalogue_sizes(session)
+        assert sizes == {}
+        assert nominal["spkid-20508788"] == _sphere(89.5, "johnston", nominal=True)
 
 
 class TestBundleFields:
@@ -274,6 +391,10 @@ class TestBundleFields:
             "radii_source": "astersat",
         }
 
+    def test_a_nominal_size_says_so(self):
+        fields = bundle_fields(_sphere(100.0, "pck", nominal=True))
+        assert fields["radii_nominal"] is True
+
     @pytest.mark.parametrize("size", [None, _sphere(96.0, "sbdb")])
     def test_sbdb_or_nothing_writes_nothing(self, size):
         assert bundle_fields(size) == {}
@@ -295,6 +416,24 @@ class TestLineupRadii:
             "b": 36.0,
             "c": 36.0,
             "source": "wikidata",
+        }
+
+    def test_a_placeholder_names_its_source_and_says_nominal(self):
+        assert lineup_radii(_sphere(100.0, "pck", nominal=True)) == {
+            "a": 100.0,
+            "b": 100.0,
+            "c": 100.0,
+            "source": "pck",
+            "nominal": True,
+        }
+
+    def test_a_ssodnet_sphere_names_ssodnet(self):
+        """As the bundle's `radii_source`, so the footer can credit it."""
+        assert lineup_radii(_sphere(469.7, "ssodnet")) == {
+            "a": 469.7,
+            "b": 469.7,
+            "c": 469.7,
+            "source": "ssodnet",
         }
 
     def test_sbdb_rides_in_diameter_km(self):
@@ -323,7 +462,7 @@ class TestLoadBodyRadii:
         units.convert_to_base.side_effect = lambda value, unit, expected_type: (
             value * 1000
         )
-        return load_body_radii(session, {}, EntityStub({"Q15610": entity}), units)
+        return load_body_radii(session, {}, {}, EntityStub({"Q15610": entity}), units)
 
     def test_the_radius_claim(self, session: Session):
         radii = self._radii(session, self._quantity("P2120", "+500"))

@@ -2,8 +2,8 @@
 
 import orjson
 
+from space_map_data.constants import body_literature
 from space_map_data.constants.activity.references import ACTIVITY_SOURCES
-from space_map_data.constants.interior.references import INTERIOR_SOURCES
 from space_map_data.constants.radiation.references import RADIATION_SOURCES
 from space_map_data.constants.rings.references import RING_REFERENCES
 from space_map_data.constants.spacecraft import SPACECRAFT_SOURCES
@@ -13,6 +13,7 @@ from space_map_data.export.credits import (
     _REFERENCE_SECTIONS,
     _atmosphere_references,
     _build_model_contributors,
+    _interior_references,
     _merge_references,
     _orientation_references,
     _star_references,
@@ -29,7 +30,7 @@ def _sections() -> dict[str, list[dict]]:
         "spacecraft": [r._asdict() for r in SPACECRAFT_SOURCES.values()],
         "ring": [r._asdict() for r in RING_REFERENCES],
         "activity": [r._asdict() for r in ACTIVITY_SOURCES.values()],
-        "interior": [r._asdict() for r in INTERIOR_SOURCES.values()],
+        "interior": _interior_references(),
         "temperature": [r._asdict() for r in TEMPERATURE_SOURCES.values()],
         "radiation": [r._asdict() for r in RADIATION_SOURCES.values()],
         "traverse": [r._asdict() for r in TRAVERSE_SOURCES.values()],
@@ -43,6 +44,29 @@ def _pair(section: str, other: str, contribution: str, other_contribution: str) 
     empty[section] = [{"title": "W", "url": "u", "contribution": contribution}]
     empty[other] = [{"title": "W", "url": "u", "contribution": other_contribution}]
     return empty
+
+
+def _cited(values: dict) -> set[str]:
+    return {body_literature.REFERENCES[v.reference].url for v in values.values()}
+
+
+class TestBodyLiteratureReferences:
+    def test_the_papers_of_the_body_sizes_are_listed(self):
+        rows = [r for r in _orientation_references() if r["contribution"] == "radii"]
+        assert {r["url"] for r in rows} == _cited(body_literature.RADII)
+        assert len(rows) == len(_cited(body_literature.RADII))
+
+    def test_the_papers_of_the_body_masses_are_listed(self):
+        """Lutetia's Pätzold et al. 2011 to Patroclus' Marchis et al. 2006."""
+        rows = [r for r in _interior_references() if r["contribution"] == "mass"]
+        gms = {**body_literature.GMS, **body_literature.SYSTEM_GMS}
+        assert {r["url"] for r in rows} == _cited(gms)
+        marchis = body_literature.REFERENCES["marchis_2006"]
+        assert {
+            "title": marchis.title,
+            "url": marchis.url,
+            "contribution": "mass",
+        } in rows
 
 
 class TestMergeReferences:

@@ -23,6 +23,8 @@ from space_map_data.export.images import (
     pick_thumbnail,
 )
 from space_map_data.export.names import Names
+from space_map_data.export.objects import body_mass
+from space_map_data.export.objects.body_mass import BodyMass
 from space_map_data.export.objects.body_radius import BodyRadius, lineup_radii
 from space_map_data.export.systems import displacement_block
 from space_map_data.export.wikidata import WikidataEntityCache
@@ -58,7 +60,8 @@ class NotableObject:
     # pictures are found by QID.
     extrasolar: bool = False
     sitelinks_count: int | None = None  # Wikidata prominence, for cross-member ranking
-    mass_kg: float | None = None  # from PCK GM; major bodies only
+    # The `body_mass` pick, as the object bundle has it.
+    mass: BodyMass | None = None
     # Probe-on-target only: {kind, arrival, end?} — what the probe did there.
     visit: dict | None = None
     # Probe-on-collection only: the members it was sent to, latest arrival
@@ -299,8 +302,7 @@ def notable_entries(
             entry["system_name"] = member.system_names.name
         if member.diameter_km is not None:
             entry["diameter_km"] = member.diameter_km
-        if member.mass_kg is not None:
-            entry["mass_kg"] = member.mass_kg
+        entry.update(body_mass.bundle_fields(member.mass))
         if member.radii is not None:
             entry["radii"] = member.radii
         if member.teff is not None:

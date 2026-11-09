@@ -60,8 +60,12 @@ interface NotableEntry {
   group?: string;                   // group slug; route /g/<slug> instead of an object (featured constellations in notable_satellites)
   feature_id?: number;              // IAU feature id (feature_type groups); `id` holds the host body — route /<type>/<id>/f/<feature_id>. Label/description overrides key on "<id>:<feature_id>"
   diameter_km?: number;             // equivalent-sphere diameter (members) / mean diameter of `radii` (moons, dwarf planets) / equatorial diameter of a measured radius (exoplanets, 4 significant digits)
-  mass_kg?: number;                 // body mass from PCK GM (major bodies only — e.g. category planet/moon members)
-  radii?: { a: number; b: number; c: number; source?: "occultation" | "photometry" | "astersat" | "johnston" | "wikidata"; reference?: { title: string; url: string } }; // semi-axes km, body-fixed X/Y/Z (equatorial a, polar c), the object bundle's `radii`. `source` is absent for the PCK; `reference` names the work of a fitted ellipsoid. Absent where SBDB's diameter is the best size (it is then `diameter_km`)
+  mass_kg?: number;                 // body mass, the object bundle's `mass_kg` (category body members)
+  mass_source?: string;             // with `mass_kg`, the object bundle's `mass_source`, `mass_reference`, `mass_nominal` and `mass_system`
+  mass_reference?: string | { title: string; url: string };
+  mass_nominal?: true;
+  mass_system?: true;
+  radii?: { a: number; b: number; c: number; source?: "literature" | "pck" | "occultation" | "photometry" | "ssodnet" | "astersat" | "johnston" | "wikidata"; reference?: { title: string; url: string }; nominal?: true }; // semi-axes km, body-fixed X/Y/Z (equatorial a, polar c), the object bundle's `radii`. `source` is absent for a measured PCK shape; `reference` names the work of a paper size or a fitted ellipsoid; `nominal` as the bundle's `radii_nominal`. Absent where SBDB's diameter is the best size (it is then `diameter_km`)
   estimated_diameter_km?: number;   // exoplanets: diameter of the catalogue's estimated radius, when it has no measured one (4 significant digits)
   pole?: { ra: number; dec: number; source?: "lightcurve" | "occultation" }; // IAU J2000 pole RA/Dec (deg); the lineup's true axial tilt. `source` is present only when the pole isn't the PCK's — small-body members tilt on DAMIT lightcurve poles, which the footer credits to DAMIT rather than to the IAU/NAIF
   albedo?: number;                  // SBDB geometric albedo (small bodies only); see `color`
