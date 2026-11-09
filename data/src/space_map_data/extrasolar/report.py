@@ -14,6 +14,7 @@ def render_report(
     conflicts: list[str],
     examples: int,
     joins: Sequence[str] = (),
+    moved: Sequence[str] = (),
 ) -> str:
     """Counts of the ingest, and up to `examples` of each kind of event."""
     counts = entry["counts"]
@@ -49,4 +50,6 @@ def render_report(
     lines += [f"  {id_}" for id_ in retired[:examples]]
     lines.append(f"conflicts: {_count(len(conflicts))}")
     lines += [f"  {text}" for text in conflicts[:examples]]
+    lines.append(f"moved claims: {_count(len(moved))}")
+    lines += [f"  {text}" for text in moved[:examples]]
     return "\n".join(lines) + "\n"

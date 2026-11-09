@@ -17,12 +17,17 @@ registry and the earlier passes, the neighbouring regions included:
    another row of the pass took, or that holds another id of the row's own
    catalogue, is a conflict. The ingest logs and counts it, and does not
    apply it. `unreached_claims` gives the rows whose claims linked nothing.
+   A row of a source of labels has no id of its own to keep its object by,
+   so its claims in the source's own catalogue of an object that another row
+   took move to its own object, unless the two rows share a claim of it or
+   the row never mints. The ingest logs and counts each move.
 3. A row with no link goes to the source's matcher, which searches the
    positions of the registry and of the earlier passes. The pairs of the
    whole pass are assigned together, so the result does not depend on the
-   order of the regions. A row that claims an id nobody holds does not match
-   an object that holds another id of that catalogue, unless the source of
-   that catalogue is a subset. The claimed id then joins the matched object.
+   order of the regions. A row that claims an id nobody holds, or one that
+   moves to it, does not match an object that holds another id of that
+   catalogue, unless the source of that catalogue is a subset. The claimed
+   id then joins the matched object.
    A source can name catalogues that its rows reach only by a claim; its
    rows never match an object that holds an id of one. A row never matches
    an object that its `match_exclude` names.
@@ -204,6 +209,9 @@ RUN_XIDS = pa.schema(
         ("score", pa.float32()),
     ]
 )
+# Pass directories of the claimed ids that the object of a row takes: those
+# that nothing holds, and those that move to it.
+CLAIM_DIR, MOVE_DIR = "claims", "moves"
 CLAIM_MISSES = pa.schema(
     [
         ("row", pa.int64()),
@@ -391,6 +399,9 @@ class PassState:
     counts: dict[str, int] = field(default_factory=lambda: defaultdict(int))
     # Keys that a row of this pass took by a claim, with that row.
     claimed: dict[int, str] = field(default_factory=dict)
+    # The row of a source of labels that took or moved each key, by (key,
+    # claim) of each of its claims of it.
+    took: dict[tuple[int, str], str] = field(default_factory=dict)
     # (catalogue id, claim) of each conflict of this pass.
     refused: list[tuple[str, str]] = field(default_factory=list)
     # Catalogue ids of the rows whose claims another row keeps.
@@ -611,6 +622,8 @@ class IngestRun:
         # Run keys that a minting row joined after their own pass.
         self.mintable_joins: set[int] = set()
         self.conflicts: list[str] = []
+        # Claims that moved to the object of the row that makes them.
+        self.moved: list[str] = []
         # Claimed id, as `catalogue/release/id` → the work that gives it.
         self.citations: dict[str, str] = {}
         # The evidence of each join of two objects.
@@ -1088,7 +1101,7 @@ class IngestRun:
         for row_id, claim in state.refused:
             found[row_id].append(claim)
         for region in sorted(state.regions):
-            path = region_file(self._pass_dir(state.number) / "claims", region)
+            path = region_file(self._pass_dir(state.number) / CLAIM_DIR, region)
             if not path.exists():
                 continue
             misses = pq.read_table(path)
@@ -1188,7 +1201,7 @@ class IngestRun:
         mints = _bools(rows, "mint")
         self.mintable_joins.update(keys[(keys < 0) & mints].tolist())
 
-        claim_hit, misses = self._claims(state, region, view, rows, keys, mints)
+        claim_hit, misses, moves = self._claims(state, region, view, rows, keys, mints)
         state.counts["by_claim"] += int(claim_hit.sum())
         free = np.flatnonzero(keys == 0)
         deferred = np.zeros(0, np.int64)
@@ -1198,14 +1211,23 @@ class IngestRun:
             and source.matcher is not None
             and view.candidates.num_rows
         ):
-            deferred = self._pairs(state, region, view, rows, free, misses)
-        if misses is not None:
-            misses = misses.set_column(
-                0, "row", pa.array(order[misses["row"].to_numpy()], pa.int64())
+            found = [table for table in (misses, moves) if table is not None]
+            deferred = self._pairs(
+                state,
+                region,
+                view,
+                rows,
+                free,
+                pa.concat_tables(found) if found else None,
             )
-            write_parquet(
-                misses, region_file(self._pass_dir(state.number) / "claims", region)
-            )
+        for kind, found in ((CLAIM_DIR, misses), (MOVE_DIR, moves)):
+            if found is not None:
+                found = found.set_column(
+                    0, "row", pa.array(order[found["row"].to_numpy()], pa.int64())
+                )
+                write_parquet(
+                    found, region_file(self._pass_dir(state.number) / kind, region)
+                )
         fresh = np.setdiff1d(free, deferred)
         keys[fresh] = self._new_objects(state, region, rows, fresh, "0")
 
@@ -1231,19 +1253,20 @@ class IngestRun:
         rows: pa.Table,
         keys: np.ndarray,
         mints: np.ndarray,
-    ) -> tuple[np.ndarray, pa.Table | None]:
+    ) -> tuple[np.ndarray, pa.Table | None, pa.Table | None]:
         """Link rows through their claims; `keys` is updated in place.
 
         Without a view, the claims take the keys that `_settle` found.
-        Returns the rows that a claim alone linked, and the claimed ids that
-        nothing holds yet, with their sorted row.
+        Returns the rows that a claim alone linked, the claimed ids that
+        nothing holds yet, and the claimed ids that move, each with its
+        sorted row.
         """
         source = state.source
         own = (source.catalogue, source.release)
         claim_hit = np.zeros(rows.num_rows, bool)
         claims = rows["claims"].combine_chunks()
         if not pc.sum(pc.list_value_length(claims)).as_py():
-            return claim_hit, None
+            return claim_hit, None, None
         flat, parent, hit, usable = self._claim_hits(source, view, claims)
         if view is None:
             hit = state.hits.pop(region)
@@ -1267,6 +1290,17 @@ class IngestRun:
         texts = pc.binary_join_element_wise(
             catalogue, release, claimed_id, "/"
         ).to_pylist()
+        moves = source.labels and source.permanent
+        # Only the claims of a minting row in the source's own catalogue move:
+        # those of other catalogues name objects that are not the source's.
+        movable = (
+            moves
+            & pc.equal(catalogue, source.catalogue)
+            .fill_null(False)
+            .to_numpy(zero_copy_only=False)
+            & mints[parent]
+        )
+        moved: list[int] = []
         for start, end, row_id in zip(starts, ends, row_ids):
             at = int(parent[start])
             own_key = int(keys[at])
@@ -1278,11 +1312,17 @@ class IngestRun:
             )
             # A rejected link is a conflict. It never joins two objects.
             links: dict[int, str] = {}
+            # The claims of each object that another row took, if they can
+            # move, by text.
+            taken: dict[int, dict[str, int]] = defaultdict(dict)
             for c in range(start, end):
                 target = int(hit[c])
                 if not target or target == own_key or target in links:
                     continue
                 if target in state.claimed:
+                    if movable[c]:
+                        taken[target].setdefault(texts[c], c)
+                        continue
                     self._conflict(
                         f"{name} claims {texts[c]} → {target}, which"
                         f" {state.claimed[target]} took in this pass"
@@ -1296,6 +1336,29 @@ class IngestRun:
                     links[target] = texts[c]
                     continue
                 state.refused.append((row_id, texts[c]))
+            for target, by_text in taken.items():
+                # Rows that share a claim cannot be told apart, and a move
+                # would make one of them join the two objects at the next
+                # ingest.
+                sharing = [
+                    state.took[target, t] for t in by_text if (target, t) in state.took
+                ]
+                for text in by_text:
+                    if sharing:
+                        self._conflict(
+                            f"{name} claims {text} → {target}, which"
+                            f" {sharing[0]} also claims in this pass"
+                        )
+                        state.refused.append((row_id, text))
+                    else:
+                        self._move(
+                            f"{name} claims {text} → {target}, which"
+                            f" {state.claimed[target]} took in this pass"
+                        )
+                        state.took[target, text] = name
+                if not sharing:
+                    moved += by_text.values()
+                    state.counts["moved_claims"] += len(by_text)
             if not own_key and not links:
                 continue
             primary = own_key or next(iter(links))
@@ -1306,6 +1369,12 @@ class IngestRun:
                     self.mintable_joins.add(primary)
             for target in links:
                 state.claimed[target] = name
+            if moves:
+                state.took.update(
+                    ((int(hit[c]), texts[c]), name)
+                    for c in range(start, end)
+                    if int(hit[c]) in links
+                )
             evidence = "; ".join(
                 ([f"{name} → {own_key}"] if own_key else [name])
                 + [
@@ -1321,20 +1390,24 @@ class IngestRun:
                         view, primary, target, None if source.labels else own, evidence
                     )
 
-        missed = np.flatnonzero((hit == 0) & usable)
+        def of(at: np.ndarray) -> pa.Table | None:
+            if not at.size:
+                return None
+            return pa.table(
+                [
+                    pa.array(parent[at], pa.int64()),
+                    catalogue.take(at),
+                    release.take(at),
+                    claimed_id.take(at),
+                ],
+                schema=CLAIM_MISSES,
+            )
+
         # A row that never mints has no use for the ids that nothing holds.
-        if not missed.size or not source.permanent:
-            return claim_hit, None
-        misses = pa.table(
-            [
-                pa.array(parent[missed], pa.int64()),
-                catalogue.take(missed),
-                release.take(missed),
-                claimed_id.take(missed),
-            ],
-            schema=CLAIM_MISSES,
-        )
-        return claim_hit, misses
+        if not source.permanent:
+            return claim_hit, None, None
+        missed = np.flatnonzero((hit == 0) & usable)
+        return claim_hit, of(missed), of(np.array(moved, np.int64))
 
     def _cited(self, claim: str) -> str:
         work = self.citations.get(claim)
@@ -1447,6 +1520,10 @@ class IngestRun:
         logger.warning("conflict: %s", text)
         self.conflicts.append(text)
 
+    def _move(self, text: str) -> None:
+        logger.warning("moved claim: %s; it moves to the claiming row's object", text)
+        self.moved.append(text)
+
     def _pairs(
         self,
         state: PassState,
@@ -1458,7 +1535,8 @@ class IngestRun:
     ) -> np.ndarray:
         """Score the candidates of the free rows; returns the rows with a pair.
 
-        `misses` are the claimed ids that nothing holds, by sorted row.
+        `misses` are the claimed ids that nothing holds or that move, by sorted
+        row.
         """
         source = state.source
         matcher = source.matcher
@@ -1619,10 +1697,14 @@ class IngestRun:
             self._assign_pairs(state)
         source = state.source
         for region in sorted(state.regions):
-            path = region_file(self._pass_dir(state.number) / "claims", region)
-            if not path.exists():
+            paths = [
+                region_file(self._pass_dir(state.number) / kind, region)
+                for kind in (CLAIM_DIR, MOVE_DIR)
+            ]
+            found = [pq.read_table(path) for path in paths if path.exists()]
+            if not found:
                 continue
-            misses = pq.read_table(path)
+            misses = pa.concat_tables(found)
             keys = self._read_keys(state.number, region)[misses["row"].to_numpy()]
             xids = pa.table(
                 [
@@ -1838,7 +1920,7 @@ class IngestRun:
                 for extension, result in zip(self.extensions, built)
             }
         report = render_report(
-            entry, merges, retired, self.conflicts, examples, self.joins
+            entry, merges, retired, self.conflicts, examples, self.joins, self.moved
         )
         report += "".join(result.report for result in built)
         (segment / REPORT_FILE).write_text(report)

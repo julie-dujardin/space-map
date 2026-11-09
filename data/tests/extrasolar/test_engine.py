@@ -15,7 +15,9 @@ from space_map_data.extrasolar import engine, ids, sky
 from space_map_data.extrasolar.engine import ExtensionResult, IngestRun, Source
 from space_map_data.extrasolar.match import PositionMatcher
 from space_map_data.extrasolar.registry import Registry, RegistryError
+from space_map_data.extrasolar.tables import ColumnGroup, TableDef
 from tests.extrasolar.conftest import (
+    CLAIMS,
     GAIA,
     HIP,
     META,
@@ -112,6 +114,132 @@ class TestUnreachedClaims:
         hip = hip_rows([star(5, 100, mag=3.0, claims=[claim("gaia", "dr3", 1)])])
         ingest([(GAIA, gaia), (HIP, hip)])
         assert self.unreached(root, backup, (GAIA, gaia), (HIP, hip)) == {}
+
+
+NODES = Source("nodes", "node", "row", home=1, labels=True)
+NODE_TABLE = TableDef(
+    number=1,
+    slug="node",
+    groups=(ColumnGroup("label", (pa.field("label", pa.string()),), ("nodes",)),),
+)
+
+
+def node_rows(rows: list[dict]) -> pa.Table:
+    """Rows of a source of labels: id, arcsec from the centre, claims (a text
+    of node/wds, or a (catalogue, release, id)); optional mint."""
+    places = [near(r["arcsec"]) for r in rows]
+    return pa.table(
+        {
+            "catalogue_id": [r["id"] for r in rows],
+            "mint": [r.get("mint", True) for r in rows],
+            "match_ra": [ra for ra, _ in places],
+            "match_dec": [dec for _, dec in places],
+            "claims": pa.array(
+                [
+                    [
+                        claim(*text)
+                        if isinstance(text, tuple)
+                        else claim("node", "wds", text)
+                        for text in r["claims"]
+                    ]
+                    for r in rows
+                ],
+                CLAIMS,
+            ),
+            "label": [r["id"] for r in rows],
+        }
+    )
+
+
+# One node that holds the ids of AB and of AB,C, as one point.
+WHOLE = [{"id": "AB,C", "arcsec": 100, "claims": ["1 AB", "1 AB,C"]}]
+SPLIT = [
+    {"id": "AB", "arcsec": 100, "claims": ["1 AB"]},
+    {"id": "AB,C", "arcsec": 200, "claims": ["1 AB,C"]},
+]
+
+
+class TestASplitNode:
+    """A node whose ids split over two rows keeps an ID for each row, unless
+    the rows share an id."""
+
+    def ingest(
+        self, root, backup, rows: list[dict], retired: int = 0
+    ) -> tuple[int, int]:
+        """Ingest `rows`, retiring at most `retired` IDs; returns the
+        conflicts and the moved claims."""
+        with IngestRun.start(root, backup, (NODE_TABLE,), META) as run:
+            run.add(NODES, [node_rows(rows)])
+            result = run.commit(retired)
+        moved = result.entry["sources"][0].get("moved_claims", 0)
+        assert f"moved claims: {moved}" in result.report
+        return result.entry["counts"]["conflicts"], moved
+
+    def holder(self, root, text: str, catalogue: str = "node", release="wds") -> int:
+        return int(Registry(root).lookup(catalogue, release, [text])[0])
+
+    def test_the_other_row_takes_its_claim_and_keeps_it(self, root, backup):
+        self.ingest(root, backup, WHOLE)
+        whole = self.holder(root, "1 AB")
+        assert self.ingest(root, backup, SPLIT) == (0, 1)
+        outer = self.holder(root, "1 AB,C")
+        assert self.holder(root, "1 AB") == whole
+        assert outer not in (0, whole)
+        assert self.ingest(root, backup, SPLIT) == (0, 0)
+        assert self.holder(root, "1 AB") == whole
+        assert self.holder(root, "1 AB,C") == outer
+
+    @pytest.mark.parametrize(
+        "first, second",
+        [(["1 AB", "1 AB,C"], ["1 AB,C"]), (["1 AB,C"], ["1 AB", "1 AB,C"])],
+        ids=["the taker makes the claim", "the other row makes the taker's claim"],
+    )
+    def test_rows_that_share_a_claim_leave_it(self, root, backup, first, second):
+        self.ingest(root, backup, WHOLE)
+        whole = self.holder(root, "1 AB")
+        split = [
+            {"id": "AB", "arcsec": 100, "claims": first},
+            {"id": "AB,C", "arcsec": 200, "claims": second},
+        ]
+        # The other row gets a new ID at every ingest.
+        for _ in range(2):
+            conflicts, moved = self.ingest(root, backup, split, retired=1)
+            assert conflicts and not moved
+            assert self.holder(root, "1 AB") == whole
+            assert self.holder(root, "1 AB,C") == whole
+
+    def test_a_row_that_never_mints_leaves_its_claim(self, root, backup):
+        self.ingest(root, backup, WHOLE)
+        whole = self.holder(root, "1 AB")
+        split = [SPLIT[0], {**SPLIT[1], "mint": False}]
+        assert self.ingest(root, backup, split) == (1, 0)
+        assert self.holder(root, "1 AB,C") == whole
+
+    def test_a_claim_of_another_catalogue_stays(self, root, backup):
+        other = ("other", "cat", "9")
+        self.ingest(root, backup, [{**WHOLE[0], "claims": ["1 AB", other]}])
+        whole = self.holder(root, "1 AB")
+        split = [SPLIT[0], {**SPLIT[1], "claims": [other]}]
+        assert self.ingest(root, backup, split) == (1, 0)
+        assert self.holder(root, "9", *other[:2]) == whole
+
+    def test_a_claim_made_twice_moves_once(self, root, backup):
+        self.ingest(root, backup, WHOLE)
+        split = [SPLIT[0], {**SPLIT[1], "claims": ["1 AB,C", "1 AB,C"]}]
+        assert self.ingest(root, backup, split) == (0, 1)
+
+    def test_a_claim_moves_once(self, root, backup):
+        self.ingest(root, backup, WHOLE)
+        whole = self.holder(root, "1 AB")
+        split = [*SPLIT, {"id": "AB,C2", "arcsec": 300, "claims": ["1 AB,C"]}]
+        assert self.ingest(root, backup, split) == (1, 1)
+        outer = self.holder(root, "1 AB,C")
+        assert outer not in (0, whole)
+        assert self.ingest(root, backup, split, retired=1) == (1, 0)
+        assert (self.holder(root, "1 AB"), self.holder(root, "1 AB,C")) == (
+            whole,
+            outer,
+        )
 
 
 class TestFirstIngest:
