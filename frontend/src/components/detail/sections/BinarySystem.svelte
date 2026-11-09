@@ -16,7 +16,7 @@
 	import { formatDuration } from '$lib/format/duration';
 	import { formatNumber } from '$lib/format/quantities';
 	import { massReading } from '$lib/format/mass';
-	import { binarySystemMass } from './kit/body-rows';
+	import { binarySystemMass, binarySystemMassNote } from './kit/body-rows';
 
 	const CONFIDENCE_LABEL: Record<string, () => string> = {
 		permanent: m.binary_confidence_permanent,
@@ -50,6 +50,8 @@
 		get: (g: GlobalObjectData) => unknown;
 		/** The figure, formatted; undefined leaves the row out. */
 		value: (g: GlobalObjectData) => string | undefined;
+		/** The word after a figure that is not a measurement. */
+		note?: (g: GlobalObjectData) => string | undefined;
 	}
 
 	function row<T>(
@@ -130,12 +132,15 @@
 			(g) => g.johnston?.rotation_h,
 			(hours) => formatDuration(hours / 24)
 		),
-		row(
-			m.binary_system_mass,
-			m.tooltip_binary_system_mass,
-			binarySystemMass,
-			(mass) => massReading(mass).value
-		)
+		{
+			...row(
+				m.binary_system_mass,
+				m.tooltip_binary_system_mass,
+				binarySystemMass,
+				(mass) => massReading(mass).value
+			),
+			note: binarySystemMassNote
+		}
 	];
 </script>
 
@@ -157,7 +162,7 @@
 	let rows = $derived.by(() => {
 		const g = global;
 		if (!g) return [];
-		return ROWS.map((entry) => ({ entry, value: entry.value(g) })).filter(
+		return ROWS.map((entry) => ({ entry, value: entry.value(g), note: entry.note?.(g) })).filter(
 			(rendered) => rendered.value !== undefined
 		);
 	});
@@ -172,8 +177,8 @@
 
 {#if hasContent}
 	<Section title={m.binary_system()}>
-		{#each rows as { entry, value }, i (i)}
-			<Row label={entry.label()} tooltip={entry.tooltip()} {value} />
+		{#each rows as { entry, value, note }, i (i)}
+			<Row label={entry.label()} tooltip={entry.tooltip()} {value} {note} />
 		{/each}
 		{#if page}
 			<Row label={m.binary_catalogue_entry()}>

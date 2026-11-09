@@ -787,6 +787,8 @@ export interface GlobalObjectData extends BodyMassFields {
 		albedo_sigma?: number;
 		taxonomy?: string;
 		mass?: QuantityWithUnit;
+		/** The archive marks the mass assumed or estimated (`[*A]`, `[*E]`). */
+		mass_nominal?: true;
 		density_g_cm3?: number;
 		density_g_cm3_sigma?: number;
 		hill_radius_km?: number;

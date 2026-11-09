@@ -46,6 +46,13 @@ export function binarySystemMass(global: GlobalObjectData): QuantityWithUnit | u
 	return global.astersat?.system_mass ?? global.johnston?.mass;
 }
 
+/** The word on `binarySystemMass` where it is Johnston's assumed or
+ *  estimated mass. */
+export function binarySystemMassNote(global: GlobalObjectData): string | undefined {
+	if (!binarySystemMass(global) || global.astersat?.system_mass) return undefined;
+	return nominalNote(global.johnston?.mass_nominal);
+}
+
 export function densityRow(global: GlobalObjectData | null): BodyValueRow | null {
 	const density = global?.mean_density_g_cm3;
 	if (density == null) return null;

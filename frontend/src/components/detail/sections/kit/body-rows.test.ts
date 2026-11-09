@@ -4,7 +4,13 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { getLocale, overwriteGetLocale } from '$lib/paraglide/runtime.js';
 import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
 import { ltrIsolate, quantityIsolate } from '$lib/format/bidi';
-import { binarySystemMass, densityRow, massRow, nominalNote } from './body-rows';
+import {
+	binarySystemMass,
+	binarySystemMassNote,
+	densityRow,
+	massRow,
+	nominalNote
+} from './body-rows';
 
 /** The text without its bidi isolates and with plain spaces. */
 const INVISIBLES = new RegExp('[\\u2060\\u2066-\\u2069]', 'g');
@@ -113,5 +119,19 @@ describe('binarySystemMass', () => {
 			johnston: { mass: pair }
 		});
 		expect(binarySystemMass(eris)).toBeUndefined();
+	});
+
+	it("says estimated where it is Johnston's assumed or estimated mass", () => {
+		const estimated = body({ johnston: { mass: pair, mass_nominal: true } });
+		expect(binarySystemMassNote(estimated)).toBe(nominalNote(true));
+		expect(binarySystemMassNote(body({ johnston: { mass: pair } }))).toBeUndefined();
+	});
+
+	it("says nothing where AsterSat's fitted mass stands before Johnston's", () => {
+		const fitted = body({
+			astersat: { frame: 'ICRF', system_mass: pair },
+			johnston: { mass: pair, mass_nominal: true }
+		});
+		expect(binarySystemMassNote(fitted)).toBeUndefined();
 	});
 });
