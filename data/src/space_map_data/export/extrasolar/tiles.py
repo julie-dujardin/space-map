@@ -127,6 +127,7 @@ COMPUTED = {
     METADATA.slug: (*families.FIELDS, *radius.FIELDS),
     POINT_SOURCE.slug: surface.FIELDS,
 }
+_ID = pa.field("id", pa.int64())
 # Columns of the registry that no client reads, so the tiles leave them out.
 DROPPED = {
     POINT_SOURCE.slug: frozenset(
@@ -615,7 +616,12 @@ def build_unit(job: UnitJob) -> UnitResult:
     if job.scratch is not None:
         radius.save(job.scratch, job.unit.regions, rows)
     if job.computed_dir is not None:
-        rows = with_computed(rows, job.unit.regions, job.computed_dir)
+        rows = with_computed(
+            rows,
+            job.unit.regions,
+            job.computed_dir,
+            schema=pa.schema([_ID, *COMPUTED[job.slug]]),
+        )
 
     ids = rows["id"].to_numpy()
     first = first_cell(job.unit.level, job.unit.pixel)
@@ -754,7 +760,12 @@ def _star_masks(
     are the interior step's, in `families_dir`, so no row is classified
     twice. A held star's come from its `held_rows` row and its class in the
     Metadata `rows`."""
-    saved = with_computed(points.select(["id"]), regions, families_dir)
+    saved = with_computed(
+        points.select(["id"]),
+        regions,
+        families_dir,
+        schema=pa.schema([_ID, *families.MASK_FIELDS]),
+    )
     saved_published, saved_estimated = (
         saved[field.name].to_numpy() for field in families.MASK_FIELDS
     )

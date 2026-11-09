@@ -38,7 +38,7 @@ import pyarrow.compute as pc
 from space_map_data.export.extrasolar.tiles import Problems
 from space_map_data.extrasolar.ids import CELL_MASK
 from space_map_data.extrasolar.registry import Registry
-from space_map_data.extrasolar.sky import REGION_COUNT, region_of
+from space_map_data.extrasolar.sky import region_of
 from space_map_data.extrasolar.systems import assemble
 from space_map_data.extrasolar.tables import SYSTEM, SYSTEM_TABLE
 from space_map_data.utils.arrays import find_sorted
@@ -136,7 +136,7 @@ class Systems:
     @classmethod
     def read(cls, registry: Registry, run: Runner) -> Systems:
         """The System rows of every region."""
-        jobs = [(registry, region) for region in range(REGION_COUNT)]
+        jobs = [(registry, region) for region in registry.table_regions(SYSTEM.slug)]
         parts = run(read_region, jobs, "system trees")
         parts = [part for part in parts if part is not None]
         if not parts:

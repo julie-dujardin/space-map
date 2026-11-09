@@ -35,7 +35,7 @@ from space_map_data.export.atmospheres.rayleigh import (
 
 @pytest.fixture(scope="module")
 def payload():
-    # The Mie phase precompute makes this expensive (~1 min) — build once.
+    # Once: the Mie phase LUTs take seconds.
     return build_atmospheres()
 
 

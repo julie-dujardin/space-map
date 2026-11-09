@@ -40,13 +40,22 @@ def with_computed(
     regions: tuple[int, ...],
     directory: Path,
     columns: list[str] | None = None,
+    *,
+    schema: pa.Schema | None = None,
 ) -> pa.Table:
     """`rows` with the computed `columns` (default: all) of their IDs, from
-    the scratch files of `regions` in `directory`."""
+    the scratch files of `regions` in `directory`. A region with no rows has
+    no file; when none of `regions` has one, `schema`, that of the files,
+    types the columns."""
     read = None if columns is None else ["id", *columns]
-    found = pa.concat_tables(
-        [pq.read_table(region_file(directory, r), columns=read) for r in regions]
-    )
+    paths = [region_file(directory, r) for r in regions]
+    parts = [pq.read_table(path, columns=read) for path in paths if path.exists()]
+    if parts:
+        found = pa.concat_tables(parts)
+    elif schema is not None:
+        found = schema.empty_table().select(read or schema.names)
+    else:
+        raise FileNotFoundError(f"{directory}: no scratch file of regions {regions}")
     at = pc.index_in(rows["id"], value_set=found["id"])
     if at.null_count:
         raise ValueError(f"{directory}: {at.null_count} rows have no computed values")

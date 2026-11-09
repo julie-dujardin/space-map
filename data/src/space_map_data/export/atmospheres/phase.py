@@ -10,6 +10,7 @@ samples on the forward peak, each normalised to integrate to 1 over the sphere.
 """
 
 import math
+import os
 
 import numpy as np
 
@@ -38,6 +39,9 @@ def _finish(phase: np.ndarray) -> tuple[list[float], float]:
 
 
 def _mie_phase(mode: LogNormalMie, wavelength_um: float) -> np.ndarray:
+    # Without this, miepython runs its pure-Python solver, ten times slower
+    # than its numba one for the same numbers.
+    os.environ.setdefault("MIEPYTHON_USE_JIT", "1")
     import miepython
 
     # sigma from log-normal effective variance; radii sampled +-3 sigma in log

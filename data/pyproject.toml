@@ -53,6 +53,7 @@ dev = [
     "ipython>=9.10.0",
     "pre-commit>=4.5.1",
     "pytest>=9.0.3",
+    "pytest-xdist>=3.8.0",
     "ruff>=0.17.2",
     "ty>=0.0.91",
 ]
@@ -64,6 +65,10 @@ replace-imports-with-any = ["pyarrow.compute"]
 [tool.pytest.ini_options]
 # Python hides ResourceWarning by default, so leaked connections and files went unnoticed.
 filterwarnings = ["default::ResourceWarning"]
+# A data check reads the real downloads or registry, which take minutes to read
+# and which CI does not have. `pytest -m data` runs them.
+markers = ["data: checks the real data, not the code"]
+addopts = "-m 'not data'"
 
 [tool.ruff.lint]
 # A batch logs the item that failed and goes on, so those handlers catch

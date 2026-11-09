@@ -424,6 +424,14 @@ class Registry:
             return []
         return sorted(int(path.stem) for path in directory.glob("*.parquet"))
 
+    def regions(self) -> list[int]:
+        """The regions that hold rows in any current table: the only ones a
+        pass over the tables needs to visit."""
+        found: set[int] = set()
+        for slug in self.manifest.get("tables", {}):
+            found.update(self.table_regions(slug))
+        return sorted(found)
+
     def read_table(
         self, slug: str, region: int, columns: list[str] | None = None
     ) -> pa.Table | None:

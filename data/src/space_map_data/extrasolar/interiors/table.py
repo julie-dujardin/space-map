@@ -43,7 +43,7 @@ from space_map_data.extrasolar.interiors import grid, inputs, photometry
 from space_map_data.extrasolar.interiors.fit import fit
 from space_map_data.extrasolar.interiors.schema import INTERIOR
 from space_map_data.extrasolar.registry import Registry
-from space_map_data.extrasolar.sky import REGION_COUNT, region_of
+from space_map_data.extrasolar.sky import region_of
 from space_map_data.extrasolar.store import region_file
 from space_map_data.extrasolar.tables import (
     BINARY_ORBIT,
@@ -405,9 +405,13 @@ def write_rows(
     for directory in (out, surface_out, families_out):
         directory.mkdir(parents=True, exist_ok=True)
     stars = curated(registry)
+    # A curated star's region runs even with no Point source rows, so that
+    # with_curated refuses the star.
+    regions = set(registry.table_regions(POINT_SOURCE.slug))
+    regions.update(region_of(np.array(list(stars), np.int64) & CELL_MASK).tolist())
     jobs = [
         RegionJob(registry, region, out, surface_out, families_out, stars, tables_dir)
-        for region in range(REGION_COUNT)
+        for region in sorted(regions)
     ]
     counts: Counter = Counter()
     for found in run(region_rows, jobs, "interior rows"):

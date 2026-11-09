@@ -33,7 +33,8 @@ class TestSmoothBase:
 
 
 class TestSplitField:
-    @pytest.fixture
+    # Once: a split of the whole sky takes seconds, and no test changes it.
+    @pytest.fixture(scope="class")
     def split(self):
         rng = np.random.default_rng(5)
         scale = 1e-3 * np.exp(rng.normal(0.0, 0.15, SIGHTLINES))

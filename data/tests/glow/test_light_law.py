@@ -137,10 +137,12 @@ class TestSkyMap:
         assert near[0] == 0.0
         assert far[0] == pytest.approx(3000.0, abs=1e-2)
 
-    def _flat_nest(self, density: float) -> sky_map.Nest:
+    # Once: a map takes seconds, and the tests only read it.
+    @pytest.fixture(scope="class")
+    def even_sky(self) -> np.ndarray:
+        """The map from the origin of a box of even dust, 0.001 mag/pc."""
         floor = 1e-6
-        top = density
-        span = float(np.log1p(top / floor))
+        span = float(np.log1p(0.001 / floor))
         level = sky_map.NestLevel(
             sky_map.BOX,
             np.array((4, 4, 4)),
@@ -148,19 +150,16 @@ class TestSkyMap:
             span,
             np.full((4, 4, 4), 255, np.uint8),
         )
-        return sky_map.Nest((level,), np.eye(3), "t")
+        nest = sky_map.Nest((level,), np.eye(3), "t")
+        return sky_map.build_map(nest, np.zeros(3), 2)
 
-    def test_a_column_through_even_dust_is_density_times_length(self):
-        nest = self._flat_nest(0.001)
-        sky = sky_map.build_map(nest, np.zeros(3), 2)
+    def test_a_column_through_even_dust_is_density_times_length(self, even_sky):
         at = np.array([[100.0, 0.0, 0.0], [0.0, 2000.0, 100.0], [30.0, 40.0, -50.0]])
-        got = sky_map.read_map(sky, np.zeros(3), at)
+        got = sky_map.read_map(even_sky, np.zeros(3), at)
         want = np.linalg.norm(at, axis=1) * 0.001
         # A read is linear between slices that are even in the log: up to 1% high.
         assert got == pytest.approx(want, rel=0.015)
 
-    def test_the_map_saturates_past_the_box(self):
-        nest = self._flat_nest(0.001)
-        sky = sky_map.build_map(nest, np.zeros(3), 2)
-        got = sky_map.read_map(sky, np.zeros(3), np.array([[0.0, 0.0, 50_000.0]]))
+    def test_the_map_saturates_past_the_box(self, even_sky):
+        got = sky_map.read_map(even_sky, np.zeros(3), np.array([[0.0, 0.0, 50_000.0]]))
         assert got[0] == pytest.approx(3.0, rel=1e-3)

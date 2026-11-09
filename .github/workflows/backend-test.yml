@@ -26,5 +26,8 @@ jobs:
       - name: Install dependencies
         run: cd data && uv sync --locked --dev
 
+      # The suite takes a few minutes; past ten, a test is doing heavy work.
+      # The durations name the slowest tests.
       - name: Run tests
-        run: cd data && uv run pytest
+        timeout-minutes: 10
+        run: cd data && uv run pytest -n auto --durations=20

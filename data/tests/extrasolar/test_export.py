@@ -471,7 +471,12 @@ class TestExport:
         assert tokens["tables"]["metadata"]["token"] == first["tokens"]["metadata"]
 
     def test_only_the_tiles_read_every_column(self, tmp_path, out, monkeypatch):
-        built = write_registry(tmp_path / "reg", random_stars(30, seed=15))
+        # A system, so that the readers of System rows run.
+        built = write_registry(
+            tmp_path / "reg",
+            random_stars(30, seed=15),
+            systems=[Node((("star", 0, "A"), ("star", 1, "B")))],
+        )
         reads = set()
         real = Registry.read_table
 

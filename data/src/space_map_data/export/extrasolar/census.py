@@ -22,7 +22,6 @@ from space_map_data.extrasolar.exoplanets.table import GROUPS as PLANET_GROUPS
 from space_map_data.extrasolar.ids import table_of
 from space_map_data.extrasolar.interiors.schema import SLUG as INTERIOR_SLUG
 from space_map_data.extrasolar.registry import Registry
-from space_map_data.extrasolar.sky import REGION_COUNT
 from space_map_data.extrasolar.sources.wikidata import WIKIDATA
 from space_map_data.extrasolar.systems.assemble import NODE_CLASSES
 from space_map_data.extrasolar.tables import (
@@ -187,7 +186,7 @@ def _planet_sources(table: pa.Table) -> Counter[str]:
 def census(registry: Registry, run: Runner, planets: pa.Table | None) -> Census:
     """The objects of each kind, the sources most objects first. Each live
     ID has one Metadata row. `planets` is the planets table."""
-    jobs = [(registry, region) for region in range(REGION_COUNT)]
+    jobs = [(registry, region) for region in registry.regions()]
     rows: Counter[tuple[str, str]] = Counter()
     sources: defaultdict[str, Counter[str]] = defaultdict(Counter)
     for part_rows, part_sources in run(region_census, jobs, "census"):

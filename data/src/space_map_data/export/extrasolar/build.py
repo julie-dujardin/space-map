@@ -486,12 +486,18 @@ def _build_tables(
     results = []
     family_stars = tiles.FamilyStars(np.zeros((2, len(FAMILIES)), np.int64), {})
     names = [METADATA.schema.empty_table().select(tiles.NAME_COLUMNS)]
+    # The export tables' rows come from the registry's, so they hold no other region.
+    held = registry.regions()
     for table in (METADATA, *TABLES, *tiles.EXPORT_TABLES):
         slug = table.slug
         rows_dir = rows_dirs.get(slug)
-        jobs = [(registry, slug, region, rows_dir) for region in range(REGION_COUNT)]
-        counts = _run(workers, _count_job, jobs, f"{slug}: cell counts")
-        split = Split.build(np.concatenate(counts), MAX_ROWS[slug])
+        jobs = [(registry, slug, region, rows_dir) for region in held]
+        counts = np.zeros(REGION_COUNT << REGION_SHIFT, np.int64)
+        for region, found in zip(
+            held, _run(workers, _count_job, jobs, f"{slug}: cell counts"), strict=True
+        ):
+            counts[region << REGION_SHIFT : (region + 1) << REGION_SHIFT] = found
+        split = Split.build(counts, MAX_ROWS[slug])
         logger.info(
             "%s: %d tiles from %d split bits", slug, split.level.size, split.bits.size
         )
@@ -567,10 +573,8 @@ def _build_tree(
     `hidden` are the stars drawn as planets, `surface_dir` holds the surface
     values of the interior step."""
     scratch = layout.scratch
-    jobs = [
-        render.RowsJob(registry, r, scratch, hidden, surface_dir)
-        for r in range(REGION_COUNT)
-    ]
+    regions = registry.table_regions(POINT_SOURCE.slug)
+    jobs = [render.RowsJob(registry, r, scratch, hidden, surface_dir) for r in regions]
     counts: Counter = Counter()
     for _, region_counts in _run(workers, render.region_rows, jobs, "render rows"):
         counts.update(region_counts)
@@ -580,19 +584,19 @@ def _build_tree(
     started = time.monotonic()
     sizes = [
         np.load(render.scratch_file(scratch, r, "key"), mmap_mode="r").size
-        for r in range(REGION_COUNT)
+        for r in regions
     ]
     keys = np.empty(sum(sizes), np.uint64)
     ranges = np.empty(sum(sizes), np.float32)
     at = 0
-    for region, size in enumerate(sizes):
+    for region, size in zip(regions, sizes, strict=True):
         keys[at : at + size] = np.load(render.scratch_file(scratch, region, "key"))
         ranges[at : at + size] = np.load(render.scratch_file(scratch, region, "range"))
         at += size
     node_of, nodes = render.assign(keys, ranges)
     del keys, ranges
     at = 0
-    for region, size in enumerate(sizes):
+    for region, size in zip(regions, sizes, strict=True):
         np.save(render.scratch_file(scratch, region, "node"), node_of[at : at + size])
         at += size
     del node_of
@@ -605,7 +609,7 @@ def _build_tree(
 
     groups = render.batches(nodes) if nodes else []
     edges = tuple([group.start for group in groups] + [len(nodes)])
-    split_jobs = [render.SplitJob(scratch, r, edges) for r in range(REGION_COUNT)]
+    split_jobs = [render.SplitJob(scratch, r, edges) for r in regions]
     _run(workers, render.split_region, split_jobs, "render batches")
     batch_jobs = [
         render.BatchJob(

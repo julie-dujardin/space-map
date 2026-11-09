@@ -155,6 +155,7 @@ def test_alpha_cen_a_core_carries_both_sides():
     assert set(core.standing_sources) == {"demeulenaer_2010", "nsamba_2018"}
 
 
+@pytest.mark.data
 def test_each_key_is_the_star_that_its_comment_names():
     """In the registry, the star of each HIP number has the HD number of its
     comment among its cross-ids."""
