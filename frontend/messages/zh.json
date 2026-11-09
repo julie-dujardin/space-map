@@ -1501,6 +1501,7 @@
 	"star_row_radial_velocity": "视向速度",
 	"star_distance_uncertain": "不确定。此恒星没有可靠的视差，因此距离取自其他来源。",
 	"star_distance_suspect": "不确定。此恒星的天体测量结果可能有误。",
+	"star_distance_system": "取自所属恒星系统",
 	"star_row_bp_rp": "色指数 (BP − RP)",
 	"star_row_b_v": "色指数 (B − V)",
 	"star_row_v_i": "色指数 (V − I)",

@@ -14,8 +14,10 @@ import {
 } from '$lib/fetch/extrasolar/lookup';
 import {
 	measuresPoint,
+	pairMembers,
 	type HeldStarValues,
 	type PairOrbit,
+	type SystemMember,
 	type SystemNode
 } from '$lib/fetch/extrasolar/systems';
 import type { EntityRef } from '$lib/fetch/objects/object-data';
@@ -63,6 +65,11 @@ const JD_DECIMALS = 5;
 /** An object's link in a row. */
 function objectRef(id: number, name: string): EntityRef {
 	return { name, primary_type: 'x', primary_id: String(id) };
+}
+
+/** The note of a held star's distance, which is that of its node. */
+function distanceNote(node: SystemNode): string | undefined {
+	return node.star ? m.star_distance_system() : undefined;
 }
 
 function rowDistanceStat(node: SystemNode): Stat | null {
@@ -203,22 +210,29 @@ function orbitRows(orbit: PairOrbit): StarRowEntry[] {
 	return [period, axis, ...shape];
 }
 
-/** The pair of a held star, its orbit partner, and the size of their orbit. A
- *  node of three or more members is no pair. */
+/** The two members of a node that make a pair. They are the members of its
+ *  orbit, else its only two. None for a node of three or more with no orbit. */
+function pairOf(node: SystemNode): readonly (SystemMember | undefined)[] {
+	if (node.orbit) return pairMembers(node, node.orbit);
+	return node.members.length === 2 ? node.members : [];
+}
+
+/** The pair of a held star, its orbit partner, and the size of their orbit.
+ *  The third star of a point of three is only part of the point. */
 function pairRows(node: SystemNode, system: StarSystem | null): StarRowEntry[] {
 	const pair = node.parent === null ? undefined : system?.nodes.get(node.parent);
 	if (!system || !pair) return [];
 	const name = system.names.get(pair.id) || String(pair.id);
 	const link = [objectRef(pair.id, name)];
-	if (pair.members.length !== 2) {
-		return [{ label: m.property_name_part_of(), value: '', entities: link }];
-	}
+	const [first, second] = pairOf(pair);
+	const partner = first?.id === node.id ? second : second?.id === node.id ? first : undefined;
+	if (!partner) return [{ label: m.property_name_part_of(), value: '', entities: link }];
 	const other = systemRows(system, pair.id).find(
-		({ depth, member }) => depth === 0 && member.id !== node.id
+		({ depth, member }) => depth === 0 && member === partner
 	);
 	const out: StarRowEntry[] = [{ label: m.system_row_pair(), value: '', entities: link }];
 	if (other) {
-		const { id } = other.member;
+		const { id } = partner;
 		out.push({
 			label: m.system_row_partner(),
 			value: '',
@@ -233,16 +247,18 @@ function pairRows(node: SystemNode, system: StarSystem | null): StarRowEntry[] {
 }
 
 /** The place of a row with no Point source row. */
-function placeRows({ ra, dec, distance }: SystemNode): StarRowEntry[] {
+function placeRows(node: SystemNode): StarRowEntry[] {
+	const { ra, dec, distance } = node;
 	return rows([
 		ra !== null && dec !== null ? row(m.star_row_ra(), formatRightAscension(ra, dec, null)) : null,
 		dec !== null ? row(m.star_row_dec(), formatDeclination(dec, null)) : null,
 		dec !== null ? row(m.orbit_epoch(), epochLabel(SYSTEM_EPOCH)) : null,
 		distance !== null
-			? row(
-					m.star_row_distance(),
-					joinParts({ value: sigFigures(distance * PC_LY), unit: units().ly })
-				)
+			? {
+					label: m.star_row_distance(),
+					value: joinParts({ value: sigFigures(distance * PC_LY), unit: units().ly }),
+					note: distanceNote(node)
+				}
 			: null
 	]);
 }

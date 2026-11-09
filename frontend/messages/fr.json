@@ -1644,6 +1644,7 @@
 	"star_row_radial_velocity": "Vitesse radiale",
 	"star_distance_uncertain": "Incertaine. Cette étoile n'a pas de parallaxe fiable ; la distance provient donc d'une autre source.",
 	"star_distance_suspect": "Incertaine. L'astrométrie de cette étoile est peut-être erronée.",
+	"star_distance_system": "d'après son système stellaire",
 	"star_row_bp_rp": "Couleur (BP − RP)",
 	"star_row_b_v": "Couleur (B − V)",
 	"star_row_v_i": "Couleur (V − I)",

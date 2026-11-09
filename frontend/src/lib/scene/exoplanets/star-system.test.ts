@@ -56,7 +56,14 @@ function body(id: number, scene: [number, number, number] | null, root = ROOT): 
 
 function orbit(fields: Partial<PairOrbit> = {}): PairOrbit {
 	const elements = { a: 2, e: 0, i: 0, om: 0, w: 0, ma: 0, n: 1, epoch: 0 };
-	return { ...elements, period: 360, barycentre: 0.25, ...fields } as PairOrbit;
+	return {
+		first: 0,
+		second: 1,
+		...elements,
+		period: 360,
+		barycentre: 0.25,
+		...fields
+	} as PairOrbit;
 }
 
 function held(id: number, values: Partial<HeldStarValues> = {}): SystemNode {
@@ -85,11 +92,28 @@ function pointPair(): Map<number, SystemNode> {
 	]);
 }
 
+const HELD_C = 13;
+
+/** A point of three held stars that draws its pair of A and B, as HD 286955
+ *  draws Aa1 and Ab. C stays with the point. */
+function pointOfThree(): Map<number, SystemNode> {
+	const nodes = pointPair();
+	const point = nodes.get(POINT)!;
+	const third = { id: HELD_C, kind: 'held star', gMag: null, vMag: null, mass: null };
+	const members = [point.members[0], third, point.members[1]] as SystemNode['members'];
+	nodes.set(POINT, { ...point, orbit: orbit({ second: 2 }), members });
+	nodes.set(HELD_C, held(HELD_C, { mass: 1 }));
+	return nodes;
+}
+
+/** With masses 2, 1 and 1, C has 1 of 2^3.5 + 2 of the light. */
+const THIRD_SHARE = 1 / (2 ** 3.5 + 2);
+
 function planOf(nodes: Map<number, SystemNode>, points: number[]): StarSystemPlan {
 	const pairs = drawnPairs(nodes);
 	const members = pairs.flatMap((p) => [p.node.id, p.first, p.second]);
 	const ids = [...new Set([...points, ...members])];
-	return { root: ROOT, nodes, points, pairs, heldHosts: new Map(), ids };
+	return { root: ROOT, nodes, points, pairs, heldHosts: new Map(), keptLight: new Map(), ids };
 }
 
 /** A scene that holds `bodies`. A body stays at its `position`. */
@@ -174,6 +198,26 @@ describe('holdStarSystem', () => {
 		expect(light(a.extrasolar!.absMag!) + light(b.extrasolar!.absMag!)).toBeCloseTo(light(5), 9);
 		expect(b.extrasolar!.absMag! - a.extrasolar!.absMag!).toBeCloseTo(8.75 * Math.log10(2), 9);
 		expect(a.data.starColor).toMatch(/^rgb/);
+	});
+
+	it('splits the light of a point of three stars over all three, and keeps that of the third', async () => {
+		const bodies = [POINT, HELD_A, HELD_B, HELD_C].map((id) => body(id, [0, 0, 0]));
+		const plan = planOf(pointOfThree(), [POINT]);
+		expect(plan.pairs.map((p) => [p.first, p.second])).toEqual([[HELD_A, HELD_B]]);
+		const held = await holdStarSystem(scene(bodies, plan).ctx, plan);
+		const [, a, b, c] = bodies.map((star) => star.extrasolar!);
+		const light = (mag: number) => 10 ** (-0.4 * mag);
+		expect(light(a.absMag!) + light(b.absMag!)).toBeCloseTo((1 - THIRD_SHARE) * light(5), 9);
+		expect(b.absMag! - a.absMag!).toBeCloseTo(8.75 * Math.log10(2), 9);
+		expect(held.keptLight.get(POINT)).toBeCloseTo(THIRD_SHARE, 12);
+		expect(c.absMag).toBe(5);
+	});
+
+	it('keeps no light in a point of two', async () => {
+		const bodies = [POINT, HELD_A, HELD_B].map((id) => body(id, [0, 0, 0]));
+		const plan = planOf(pointPair(), [POINT]);
+		const held = await holdStarSystem(scene(bodies, plan).ctx, plan);
+		expect(held.keptLight.size).toBe(0);
 	});
 
 	it('puts a resolved pair at the weighted places of its members', async () => {
@@ -713,6 +757,23 @@ describe('FocusedStarSystem', () => {
 		expect(share).toBeGreaterThan(0);
 		expect(share).toBeLessThan(1);
 		expect(point.extrasolar!.light).toBeCloseTo(1 - share, 9);
+	});
+
+	it('keeps the light of the third star of a point of three in the point', async () => {
+		const point = body(POINT, [0, 0, 0]);
+		const a = body(HELD_A, [0, 0, 0]);
+		const b = body(HELD_B, [0, 10, 0]);
+		a.extrasolar!.tree = null;
+		b.extrasolar!.tree = null;
+		const plan = planOf(pointOfThree(), [POINT]);
+		const held = await holdStarSystem(scene([point, a, b], plan).ctx, plan);
+		const system = new FocusedStarSystem(scene([point, a, b], held).ctx, () => {});
+		system.update(frame(point, 1e6));
+		await landed();
+		for (let i = 0; i < 20; i++) system.update(frame(point, 433));
+		expect(a.extrasolar!.light).toBe(1);
+		expect(b.extrasolar!.light).toBe(1);
+		expect(point.extrasolar!.light).toBeCloseTo(THIRD_SHARE, 12);
 	});
 
 	it('shows the halos and the lines while the orbit is wide enough on screen', async () => {

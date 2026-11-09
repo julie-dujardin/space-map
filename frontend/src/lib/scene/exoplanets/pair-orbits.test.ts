@@ -14,6 +14,7 @@ import {
 	framedPair,
 	haloCarrier,
 	heldHosts,
+	keptLight,
 	listedMass,
 	memberMu,
 	nodePlace,
@@ -28,6 +29,8 @@ const YEAR = 365.25;
 
 function orbit(fields: Partial<PairOrbit> = {}): PairOrbit {
 	return {
+		first: 0,
+		second: 1,
 		a: 2,
 		e: 0.3,
 		i: 40,
@@ -100,10 +103,6 @@ describe('barycentreOf', () => {
 	it('weighs the two places by the share of the second', () => {
 		expect(barycentreOf([10, 0, 0], [0, 10, 0], 0.25)).toEqual([7.5, 2.5, 0]);
 		expect(barycentreOf([1, 2, 3], [4, 8, 12], 0)).toEqual([1, 2, 3]);
-	});
-
-	it('takes the distance of the first, whatever the parallax of the second', () => {
-		expect(barycentreOf([10, 0, 0], [0, 200, 0], 0.5)).toEqual([5, 5, 0]);
 	});
 });
 
@@ -221,9 +220,21 @@ describe('drawnPairs', () => {
 		expect(drawnPairs(byId(pair))).toEqual([]);
 	});
 
-	it('leaves out a flat list and a node with no orbit', () => {
-		const three = node(1, { orbit: orbit(), members: [member(3), member(4), member(5)] });
-		expect(drawnPairs(byId(three, node(2, { members: [member(6), member(7)] })))).toEqual([]);
+	it('leaves out a node with no orbit', () => {
+		expect(drawnPairs(byId(node(2, { members: [member(6), member(7)] })))).toEqual([]);
+	});
+
+	it('draws the pair of a point of three stars, and leaves its third star with the point', () => {
+		const three = (second: number, third: SystemMember) =>
+			node(1, {
+				point: true,
+				orbit: orbit({ second }),
+				members: [member(5, 'held star'), member(6, 'held star'), third]
+			});
+		const ids = (n: SystemNode) => drawnPairs(byId(n)).map((p) => [p.first, p.second]);
+		expect(ids(three(1, member(7, 'held star')))).toEqual([[5, 6]]);
+		expect(ids(three(1, member(null, 'entry')))).toEqual([[5, 6]]);
+		expect(ids(three(2, member(7, 'held star')))).toEqual([[5, 7]]);
 	});
 
 	it('takes a point with no orbit as a member, but no resolved node', () => {
@@ -388,6 +399,20 @@ describe('heldHosts', () => {
 		expect(hostsOf(nodes, 5, 8).size).toBe(0);
 		expect([...hostsOf(nodes, 5, 6)]).toEqual([[2, 5]]);
 	});
+
+	it('gives no point whose pair draws to its third star', () => {
+		const three = (pairOrbit: PairOrbit | null) =>
+			byId(
+				node(2, {
+					point: true,
+					primary: 2,
+					orbit: pairOrbit,
+					members: [member(5, 'held star'), member(6, 'held star'), member(7, 'held star')]
+				})
+			);
+		expect(hostsOf(three(orbit()), 7).size).toBe(0);
+		expect([...hostsOf(three(null), 7)]).toEqual([[2, 7]]);
+	});
 });
 
 describe('splitLight', () => {
@@ -433,6 +458,46 @@ describe('splitLight', () => {
 	it('leaves each star its own with no light in the point', () => {
 		expect(splitLight(null, [4, null], [1, 1])).toEqual([4, null]);
 	});
+
+	describe('over three stars', () => {
+		const total = (light: (number | null)[]) =>
+			-2.5 * Math.log10(light.reduce<number>((s, mag) => s + 10 ** (-0.4 * mag!), 0));
+
+		it('keeps the ratio of three magnitudes', () => {
+			const light = splitLight(1, [2, 3, 4], [null, null, null]);
+			expect(total(light)).toBeCloseTo(1, 9);
+			expect(light[1]! - light[0]!).toBeCloseTo(1, 9);
+			expect(light[2]! - light[0]!).toBeCloseTo(2, 9);
+		});
+
+		it('shares by mass with three masses', () => {
+			const light = splitLight(5, [5.5, 6, null], [2, 1, 1]);
+			expect(total(light)).toBeCloseTo(5, 9);
+			expect(light[1]! - light[0]!).toBeCloseTo(8.75 * Math.log10(2), 9);
+			expect(light[2]).toBeCloseTo(light[1]!, 9);
+		});
+
+		it('keeps the magnitudes it has, and shares the rest equally', () => {
+			const light = splitLight(5, [6, null, null], [1, 0.5, null]);
+			expect(light[0]).toBe(6);
+			expect(light[1]).toBeCloseTo(light[2]!, 9);
+			expect(total(light)).toBeCloseTo(5, 9);
+		});
+	});
+});
+
+describe('keptLight', () => {
+	it('keeps the light of the stars on no orbit with the point', () => {
+		const light = splitLight(5, [6, 7, 6], [null, null, null]);
+		const third = 10 ** (-0.4 * 7) / (2 * 10 ** (-0.4 * 6) + 10 ** (-0.4 * 7));
+		expect(keptLight(5, light, orbit({ second: 2 }))).toBeCloseTo(third, 12);
+		expect(keptLight(5, light, orbit({ first: 1, second: 2 }))).toBeCloseTo((1 - third) / 2, 12);
+	});
+
+	it('keeps none for a pair of two, or with no light in the point', () => {
+		expect(keptLight(5, splitLight(5, [6, 7], [null, null]), orbit())).toBe(0);
+		expect(keptLight(null, [6, 7, 8], orbit())).toBe(0);
+	});
 });
 
 describe('starsShare', () => {
@@ -457,7 +522,7 @@ describe('starsShare', () => {
 describe('pairLight', () => {
 	const held = (id: number) => member(id, 'held star');
 	const drawn = (handed: number, ...all: SystemNode[]) =>
-		drawnPairs(byId(...all)).map((pair) => ({ pair, handed }));
+		drawnPairs(byId(...all)).map((pair) => ({ pair, handed, kept: 0 }));
 
 	it('gives a point and its stars one whole between them', () => {
 		const point = node(1, { point: true, orbit: orbit(), members: [held(5), held(6)] });
@@ -466,6 +531,21 @@ describe('pairLight', () => {
 			expect(light.get(1)).toBeCloseTo(1 - handed, 12);
 			expect(light.get(5)).toBeCloseTo(handed, 12);
 			expect(light.get(6)).toBeCloseTo(handed, 12);
+		}
+	});
+
+	it('keeps the light of the third star of a point of three with the point', () => {
+		const point = node(1, {
+			point: true,
+			orbit: orbit({ second: 2 }),
+			members: [held(5), held(7), held(6)]
+		});
+		for (const handed of [0, 0.4, 1]) {
+			const light = pairLight(drawn(handed, point).map((p) => ({ ...p, kept: 0.25 })));
+			expect(light.get(1)).toBeCloseTo(1 - 0.75 * handed, 12);
+			expect(light.get(5)).toBeCloseTo(handed, 12);
+			expect(light.get(6)).toBeCloseTo(handed, 12);
+			expect(light.has(7)).toBe(false);
 		}
 	});
 
@@ -550,11 +630,20 @@ describe.skipIf(!HAS_EXPORT)('real pairs', () => {
 		// Pourbaix & Boffin 2016, A&A 586, A90: 1.133 ± 0.005. The ratio is the MSC's.
 		expect(await solar(597894079, 27468735)).toBeCloseTo(1.139, 3);
 		// Bond et al. 2017, ApJ 840, 70: 2.063 ± 0.023.
-		expect(await solar(55692301, 22137869)).toBeCloseTo(2.058, 3);
+		expect(await solar(55692301, 22137869)).toBeCloseTo(2.063, 3);
 	});
 
 	it('lists the mass of Sirius A in its tables', async () => {
 		expect(listedMass(22137869, await nodesOf(55692301))).toBeCloseTo(2.063, 5);
+	});
+
+	it('draws the outer pair of a point of three stars', async () => {
+		// Alrescha: A and Ba, and Bb stays with the point.
+		const alrescha = drawnPairs(await nodesOf(54911106)).find((p) => p.node.id === 21356674);
+		expect(alrescha && [alrescha.first, alrescha.second]).toEqual([1128652930, 1665523842]);
+		// HD 286955: Aa1 and Ab, and Aa2 stays with the point.
+		const hd = drawnPairs(await nodesOf(56322517)).find((p) => p.node.id === 22768085);
+		expect(hd && [hd.first, hd.second]).toEqual([1666935253, 2203806165]);
 	});
 
 	it('nests the three pairs of Castor under its root', async () => {

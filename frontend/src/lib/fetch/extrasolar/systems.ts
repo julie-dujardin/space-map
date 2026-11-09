@@ -78,6 +78,10 @@ export interface SystemTreeNode {
  * `inclination` to `arg_periastron` are on the plane of the sky.
  */
 export interface PairOrbit {
+	/** The places of the two members in the node's `members`, from 0. A point
+	 *  of three stars holds the pair of two of them. */
+	first: number;
+	second: number;
 	/** Semi-major axis of the relative orbit (AU). */
 	a: number;
 	e: number;
@@ -246,6 +250,8 @@ function treeNode(item: TableRow): SystemTreeNode {
 
 function pairOrbit(item: TableRow): PairOrbit {
 	return {
+		first: item.number('orbit.first')!,
+		second: item.number('orbit.second')!,
 		a: item.number('orbit.a')!,
 		e: item.number('orbit.e')!,
 		i: item.number('orbit.i')!,
@@ -302,6 +308,14 @@ export function measuresPoint(held: SystemNode, radius: StarRadius | null): bool
 	if (!held.star?.dominant) return false;
 	if (radius?.source === 'jmdc') return true;
 	return radius?.source === LITERATURE && held.star.radiusSource !== LITERATURE;
+}
+
+/** The first and the second member of the pair on `orbit`. */
+export function pairMembers(
+	{ members }: Pick<SystemNode, 'members'>,
+	orbit: PairOrbit
+): readonly [SystemMember, SystemMember] {
+	return [members[orbit.first], members[orbit.second]];
 }
 
 /** The System row of a record, or null for an ID with none. */

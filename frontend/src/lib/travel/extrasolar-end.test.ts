@@ -555,6 +555,8 @@ describe('resolving an end from the export', () => {
 		const STAR = 11;
 		const OTHER_PAIR = [31, 32];
 		const ORBIT = {
+			first: 0,
+			second: 1,
 			a: 2,
 			e: 0.3,
 			i: 40,

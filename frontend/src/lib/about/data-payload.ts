@@ -3,6 +3,8 @@
  * Mirror of `data/src/space_map_data/export/about_data.py`.
  */
 
+import { LITERATURE, STAR_SYSTEMS } from '$lib/fetch/extrasolar/lookup';
+
 export type MapLayer = 'surface' | 'clouds' | 'night' | 'specular' | 'topography';
 
 /** Where a ring or a model comes from. */
@@ -331,7 +333,7 @@ export interface DataTotals {
 }
 
 // Object source keys that stand for many works or catalogues, not for one.
-const UMBRELLA_SOURCES = new Set(['literature', 'star-systems']);
+const UMBRELLA_SOURCES = new Set([LITERATURE, STAR_SYSTEMS]);
 
 /** The distinct sources of the objects, maps, rings and world shapes. A craft
  *  model is a model, not a dataset. */

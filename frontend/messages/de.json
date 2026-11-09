@@ -1500,6 +1500,7 @@
 	"star_row_radial_velocity": "Radialgeschwindigkeit",
 	"star_distance_uncertain": "Unsicher. Dieser Stern hat keine verlässliche Parallaxe, daher stammt die Entfernung aus einer anderen Quelle.",
 	"star_distance_suspect": "Unsicher. Die Astrometrie dieses Sterns ist möglicherweise fehlerhaft.",
+	"star_distance_system": "aus seinem Sternsystem",
 	"star_row_bp_rp": "Farbe (BP − RP)",
 	"star_row_b_v": "Farbe (B − V)",
 	"star_row_v_i": "Farbe (V − I)",

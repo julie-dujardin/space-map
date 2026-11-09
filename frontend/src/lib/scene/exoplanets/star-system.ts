@@ -44,6 +44,7 @@ import {
 	framedPair,
 	haloCarrier,
 	heldHosts,
+	keptLight,
 	nodePlace,
 	pairElements,
 	pairLight,
@@ -67,6 +68,9 @@ export interface StarSystemPlan {
 	/** The held host that took over each point, by point ID: the one source
 	 *  of that link (see {@link heldHosts}). */
 	heldHosts: ReadonlyMap<number, number>;
+	/** The share of its light that each point of a drawn pair keeps, by point
+	 *  ID. It is the light of its stars on no orbit (see {@link keptLight}). */
+	keptLight: ReadonlyMap<number, number>;
 	/** Every ID that needs a body: the root, the points, the drawn pairs and
 	 *  members, and the held hosts. */
 	ids: readonly number[];
@@ -80,6 +84,8 @@ interface PairState {
 	fade: SwitchFade;
 	/** The share of the light of its point that its two stars draw. */
 	handed: number;
+	/** The share of the light of its point that stays with the point. */
+	kept: number;
 }
 
 /** A system whose stars are on their orbits. */
@@ -98,7 +104,7 @@ export async function loadStarSystem(root: number): Promise<StarSystemPlan> {
 	const pairs = drawnPairs(nodes);
 	const members = pairs.flatMap(({ node, first, second }) => [node.id, first, second]);
 	const ids = [...new Set([root, ...points, ...members])];
-	return { root, nodes, points, pairs, heldHosts: new Map(), ids };
+	return { root, nodes, points, pairs, heldHosts: new Map(), keptLight: new Map(), ids };
 }
 
 /** The points of a system on no drawn orbit, or their held hosts, but for the
@@ -141,10 +147,12 @@ export async function holdStarSystem(
 			placeOf(node.id) !== null && anchor(first) !== undefined && anchor(second) !== undefined
 	);
 	const insidePoints = new Map<number, number | null>();
+	const keptLight = new Map<number, number>();
 	for (const pair of pairs) {
 		const star = anchor(pair.node.id);
 		if (star && !pair.node.point) star.scene = placeOf(pair.node.id);
-		describeMembers(ctx, plan, pair, insidePoints);
+		const kept = describeMembers(ctx, plan, pair, insidePoints);
+		if (kept > 0) keptLight.set(pair.node.id, kept);
 	}
 	// A node with no drawn orbit of its own sits at the pair it frames.
 	for (const id of plan.nodes.keys()) {
@@ -165,7 +173,7 @@ export async function holdStarSystem(
 		hosts.set(point, host);
 	}
 	const ids = [...new Set([...plan.ids, ...hosts.values()])];
-	return { ...plan, pairs, heldHosts: hosts, ids };
+	return { ...plan, pairs, heldHosts: hosts, keptLight, ids };
 }
 
 /** A held host draws at its point's place and row with its point's light, in
@@ -196,19 +204,21 @@ function absoluteAt(node: SystemNode, apparent: number | null): number | null {
 	return apparent - 5 * Math.log10(node.distance) + 5;
 }
 
-/** The light, colour and size of the two members of a pair. `insidePoints`
- *  holds the absolute G of each node inside a point, which its stars split. */
+/** The light, colour and size of the two members of a pair. A point splits
+ *  its light over all its stars. The result is the share of a point's light
+ *  that its stars on no orbit keep. `insidePoints` holds the absolute G of
+ *  each node inside a point, which its stars split. */
 function describeMembers(
 	ctx: ContextManager,
 	plan: StarSystemPlan,
 	pair: DrawnPair,
 	insidePoints: Map<number, number | null>
-): void {
-	const { node } = pair;
+): number {
+	const { node, orbit } = pair;
 	const body = (id: number) => ctx.getBody(extrasolarObjectId(id));
 	const primary = body(node.primary!)?.extrasolar;
-	const members = node.members;
-	const values = members.map((m) => plan.nodes.get(m.id!)?.star ?? null);
+	const { members } = node;
+	const values = members.map((m) => (m.id === null ? null : (plan.nodes.get(m.id)?.star ?? null)));
 	const home = primary && homeRow(primary.record);
 	const inPoint = node.point || insidePoints.has(node.id);
 	const bv = inPoint && home ? colourBv(home) : null;
@@ -217,18 +227,14 @@ function describeMembers(
 		return absoluteAt(node, m.gMag ?? v);
 	});
 	const total = node.point ? (primary?.absMag ?? null) : (insidePoints.get(node.id) ?? null);
-	const light = inPoint
-		? splitLight(
-				total,
-				[magnitudes[0], magnitudes[1]],
-				[values[0]?.mass ?? members[0].mass, values[1]?.mass ?? members[1].mass]
-			)
-		: magnitudes;
-	members.forEach((member, i) => {
+	const masses = members.map((m, i) => values[i]?.mass ?? m.mass);
+	const light = inPoint ? splitLight(total, magnitudes, masses) : magnitudes;
+	for (const i of [orbit.first, orbit.second]) {
+		const member = members[i];
 		if (inPoint && member.kind === 'system') insidePoints.set(member.id!, light[i]);
 		const star = body(member.id!);
 		const anchor = star?.extrasolar;
-		if (!star || !anchor) return;
+		if (!star || !anchor) continue;
 		const held = values[i];
 		if (held) {
 			anchor.absMag = light[i];
@@ -239,7 +245,8 @@ function describeMembers(
 		const inner = plan.nodes.get(member.id!)?.primary;
 		const look = inner ? body(inner)?.extrasolar : anchor;
 		star.data.starColor = starCssColour(look?.teff ?? null, look?.colour ?? null);
-	});
+	}
+	return node.point ? keptLight(total, light, orbit) : 0;
 }
 
 export class FocusedStarSystem {
@@ -428,7 +435,8 @@ export class FocusedStarSystem {
 				pair,
 				shown: false,
 				fade: new SwitchFade(false),
-				handed: 0
+				handed: 0,
+				kept: plan.keptLight.get(pair.node.id) ?? 0
 			})),
 			stars: members.filter((id) => !isResolved(plan, id))
 		});

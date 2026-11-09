@@ -117,6 +117,8 @@ describe('the System row', () => {
 		const lookup = syntheticLookup();
 		const { orbit } = await node(lookup, SYSTEM);
 		expect(orbit).toEqual({
+			first: 0,
+			second: 1,
 			a: 23.5,
 			e: 0.5,
 			i: 80,

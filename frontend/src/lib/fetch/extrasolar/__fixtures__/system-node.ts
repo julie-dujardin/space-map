@@ -59,6 +59,8 @@ export function systemNodeOf(id: number, values: Partial<SystemNode> = {}): Syst
 
 export function pairOrbit(values: Partial<PairOrbit> = {}): PairOrbit {
 	return {
+		first: 0,
+		second: 1,
 		a: 0.22431,
 		e: 0.15944,
 		i: 90,

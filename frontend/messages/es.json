@@ -1523,6 +1523,7 @@
 	"star_row_radial_velocity": "Velocidad radial",
 	"star_distance_uncertain": "Incierta. Esta estrella no tiene una paralaje fiable, por lo que la distancia procede de otra fuente.",
 	"star_distance_suspect": "Incierta. La astrometría de esta estrella puede ser errónea.",
+	"star_distance_system": "de su sistema estelar",
 	"star_row_bp_rp": "Color (BP − RP)",
 	"star_row_b_v": "Color (B − V)",
 	"star_row_v_i": "Color (V − I)",

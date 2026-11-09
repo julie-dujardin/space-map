@@ -1546,6 +1546,7 @@
 	"star_row_radial_velocity": "מהירות רדיאלית",
 	"star_distance_uncertain": "לא ודאי. לכוכב זה אין פרלקסה אמינה, ולכן המרחק לקוח ממקור אחר.",
 	"star_distance_suspect": "לא ודאי. ייתכן שהאסטרומטריה של כוכב זה שגויה.",
+	"star_distance_system": "ממערכת הכוכבים שלו",
 	"star_row_bp_rp": "צבע (BP − RP)",
 	"star_row_b_v": "צבע (B − V)",
 	"star_row_v_i": "צבע (V − I)",

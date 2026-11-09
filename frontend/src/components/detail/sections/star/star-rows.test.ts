@@ -81,6 +81,30 @@ describe("a star's distance", () => {
 		expect(plain(position(star).find((r) => r.label === 'Distance')!.value)).toBe('7,660 ly');
 	});
 
+	it("says that a distance is its star system's, and keeps the parallax of the star", () => {
+		const star = record({
+			parallax: 100,
+			parallax_error: 1,
+			distance: 9.5,
+			distance_lower: 9.4,
+			distance_upper: 9.6,
+			distance_method: 'system',
+			distance_source: 'star-systems'
+		});
+		const [card] = starStats(star).flat();
+		expect([card.label, plain(card.value), card.tooltip, card.note]).toEqual([
+			'Distance',
+			'31 ly',
+			undefined,
+			undefined
+		]);
+		const rows = position(star);
+		const distance = rows.find((r) => r.label === 'Distance')!;
+		expect(plain(distance.value)).toBe('30.98 ± 0.33 ly');
+		expect([distance.tooltip, distance.note]).toEqual([undefined, 'from its star system']);
+		expect(plain(rows.find((r) => r.label === 'Parallax')!.value)).toBe('100.0 ± 1.0 mas');
+	});
+
 	it('trusts a 5σ SIMBAD parallax without a provenance row', () => {
 		const star = record({
 			parallax: 0.1,
@@ -185,8 +209,8 @@ describe.skipIf(!HAS_EXPORT)("a star's panel rows from its records", () => {
 		const stats = starStats(sirius).map((row) => row.map((s) => [s.label, s.value, s.note]));
 		expect(stats).toEqual([
 			[
-				['Diameter', '2.34M km', undefined],
-				['Distance', '8.6 ly', undefined],
+				['Diameter', '2.35M km', undefined],
+				['Distance', '8.61 ly', undefined],
 				['Spectral type', ltrIsolate('A0mA1Va'), undefined]
 			]
 		]);
@@ -200,9 +224,10 @@ describe.skipIf(!HAS_EXPORT)("a star's panel rows from its records", () => {
 			HIP: '32349',
 			'IAU name': 'Sirius'
 		});
+		// Bond et al. 2017's parallax gives the distance. The parallax row is Hipparcos's.
 		expect(rows.position).toMatchObject({
 			Parallax: '379.2 ± 1.6 mas',
-			Distance: '8.601 ± 0.036 ly',
+			Distance: '8.608 ± 0.032 ly',
 			Epoch: 'J1991.25'
 		});
 		// SIMBAD's type, which gives the families, as an LTR isolate for RTL text.
@@ -215,6 +240,21 @@ describe.skipIf(!HAS_EXPORT)("a star's panel rows from its records", () => {
 		expect(rows.brightness['Colour (V − I)']).toBe('-0.02');
 		const hd = starIdentifiers(sirius).find((r) => r.label === 'HD');
 		expect(hd?.href).toBe('https://simbad.cds.unistra.fr/simbad/sim-id?Ident=HD%2048915');
+	});
+
+	it('shows Sirius B at the distance of its system, with its own parallax', async () => {
+		const siriusB = await record(559008781);
+		const card = starStats(siriusB)
+			.flat()
+			.find((s) => s.label === 'Distance');
+		expect([card?.value, card?.tooltip, card?.note]).toEqual(['8.61 ly', undefined, undefined]);
+		const position = starSections(siriusB).find((s) => s.key === 'position')!.rows;
+		const distance = position.find((r) => r.label === 'Distance')!;
+		expect([plain(distance.value), distance.note]).toEqual([
+			'8.608 ± 0.032 ly',
+			'from its star system'
+		]);
+		expect(plain(position.find((r) => r.label === 'Parallax')!.value)).toBe('374.49 ± 0.23 mas');
 	});
 
 	it('shows Proxima Centauri from Gaia, with every section and its errors', async () => {

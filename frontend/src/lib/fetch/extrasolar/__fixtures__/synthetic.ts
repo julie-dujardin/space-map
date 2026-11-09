@@ -198,6 +198,8 @@ function systemTile(dominant: boolean): Uint8Array {
 			column('tree.class', 'dict', ['multiple star', 'star', 'binary star']),
 			column('tree.label', 'string', ['AB', 'Aa', null]),
 			column('orbit', 'list', [1, null, null]),
+			column('orbit.first', 'int8', [0]),
+			column('orbit.second', 'int8', [1]),
 			column('orbit.a', 'float64', [23.5]),
 			column('orbit.e', 'float64', [0.5]),
 			column('orbit.i', 'float64', [80]),

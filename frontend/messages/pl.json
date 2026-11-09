@@ -1546,6 +1546,7 @@
 	"star_row_radial_velocity": "Prędkość radialna",
 	"star_distance_uncertain": "Niepewna. Ta gwiazda nie ma wiarygodnej paralaksy, dlatego odległość pochodzi z innego źródła.",
 	"star_distance_suspect": "Niepewna. Astrometria tej gwiazdy może być błędna.",
+	"star_distance_system": "z jej układu gwiazd",
 	"star_row_bp_rp": "Barwa (BP − RP)",
 	"star_row_b_v": "Barwa (B − V)",
 	"star_row_v_i": "Barwa (V − I)",

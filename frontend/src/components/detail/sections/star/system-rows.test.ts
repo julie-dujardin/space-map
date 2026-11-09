@@ -103,6 +103,7 @@ describe('the sections of a node', () => {
 			'Distance'
 		]);
 		expect(entry(rows, 'Epoch')?.value).toBe('J2016.0');
+		expect(entry(rows, 'Distance')?.note).toBeUndefined();
 	});
 });
 
@@ -190,6 +191,13 @@ describe('a held star', () => {
 		expect(cards.map((c) => c.label)).toEqual(['Diameter', 'Distance', 'Temperature']);
 	});
 
+	it("says that its distance is its star system's on its row", () => {
+		const [cards] = systemStats(record, held, 0);
+		expect(cards[1].note).toBeUndefined();
+		const position = section(systemSections(record, held, null), 'position')?.rows;
+		expect(entry(position, 'Distance')?.note).toBe('from its star system');
+	});
+
 	it('shows its Metadata radius and that source, not the radius of its System row', () => {
 		const archive = heldRecord({ solar: 2, source: 'nasa-exoplanet-archive' });
 		const [cards] = systemStats(archive, held, 0);
@@ -256,13 +264,33 @@ describe('a held star', () => {
 		expect(rows[1].entities).toEqual([{ name: 'Gliese 1 B' }]);
 	});
 
-	it('has no pair in a node of three members', () => {
+	it('has no pair in a node of three members with no orbit', () => {
 		const base = inPair();
 		const pair = base.nodes.get(AB)!;
 		const members = [member(A), member(B), member(300)];
-		const nodes = new Map([...base.nodes, [AB, { ...pair, members }]]);
+		const nodes = new Map([...base.nodes, [AB, { ...pair, members, orbit: null }]]);
 		const rows = section(systemSections(record, held, { ...base, nodes }), 'orbit')!.rows;
 		expect(rows.map((r) => r.label)).toEqual(['part of']);
+	});
+
+	it('names the pair of a point of three by its orbit, and its third star is part of it', () => {
+		const base = inPair(pairOrbit({ second: 2 }));
+		const pair = base.nodes.get(AB)!;
+		const members = [member(A), member(300, { kind: 'held star' }), member(B)];
+		const system = { ...base, nodes: new Map([...base.nodes, [AB, { ...pair, members }]]) };
+		const rows = section(systemSections(record, held, system), 'orbit')!.rows;
+		expect(rows.map((r) => r.label)).toEqual([
+			'Pair',
+			'Orbit partner',
+			'Orbital period',
+			'Semi-major axis'
+		]);
+		expect(rows[1].entities).toEqual([
+			{ name: 'Toliman', primary_type: 'x', primary_id: String(B) }
+		]);
+		const third = { ...held, id: 300 };
+		const thirdRows = section(systemSections(record, third, system), 'orbit')!.rows;
+		expect(thirdRows.map((r) => r.label)).toEqual(['part of']);
 	});
 
 	it('has no pair rows before the system loads', () => {

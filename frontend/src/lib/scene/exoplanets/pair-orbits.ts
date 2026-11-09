@@ -6,7 +6,12 @@
  * reads the scene.
  */
 
-import type { PairOrbit, SystemNode } from '$lib/fetch/extrasolar/systems';
+import {
+	pairMembers,
+	type PairOrbit,
+	type SystemMember,
+	type SystemNode
+} from '$lib/fetch/extrasolar/systems';
 import { muFromElements } from '$lib/math/travel/body';
 import type { Vec3 } from '$lib/scene/animation/math';
 import type { OrbitalElements } from '$lib/types/objects';
@@ -42,15 +47,12 @@ export function pairElements(orbit: PairOrbit): Both<OrbitalElements> {
 	return [{ ...second, a: a * barycentre, w: (w + 180) % 360 }, second];
 }
 
-/** The barycentre of a pair from the places of its members. The second takes
- *  the distance of the first: two parallaxes disagree by far more than the
- *  orbit is wide. */
+/** The barycentre of a pair from the places of its members. */
 export function barycentreOf(first: Readonly<Vec3>, second: Readonly<Vec3>, share: number): Vec3 {
-	const depth = Math.hypot(...first) / Math.hypot(...second);
 	return [
-		first[0] + share * (second[0] * depth - first[0]),
-		first[1] + share * (second[1] * depth - first[1]),
-		first[2] + share * (second[2] * depth - first[2])
+		first[0] + share * (second[0] - first[0]),
+		first[1] + share * (second[1] - first[1]),
+		first[2] + share * (second[2] - first[2])
 	];
 }
 
@@ -113,30 +115,30 @@ export function memberMu(id: number, pairs: readonly DrawnPair[]): number | null
 }
 
 /**
- * The nodes of `nodes` that draw, outermost first. Each member needs an ID,
- * and a member node needs something to draw: its own point, or a pair of its
- * own. Their members stay at their catalogue places otherwise.
+ * The nodes of `nodes` that draw, outermost first. Each member of the pair
+ * needs an ID, and a member node needs something to draw: its own point, or a
+ * pair of its own. The members stay at their catalogue places otherwise. A
+ * point of three stars draws its pair, and its third star stays with the point.
  */
 export function drawnPairs(nodes: ReadonlyMap<number, SystemNode>): DrawnPair[] {
-	const draws = ({ orbit, members }: SystemNode): boolean =>
-		orbit !== null &&
-		orbit.period <= MAX_PERIOD_DAYS &&
-		members.length === 2 &&
-		members.every((member) => {
-			if (member.id === null) return false;
-			if (member.kind !== 'system') return true;
-			const inner = nodes.get(member.id);
-			return inner !== undefined && (inner.point || draws(inner));
-		});
+	const drawable = ({ id, kind }: SystemMember): boolean => {
+		if (id === null) return false;
+		if (kind !== 'system') return true;
+		const inner = nodes.get(id);
+		return inner !== undefined && (inner.point || draws(inner));
+	};
+	const draws = (node: SystemNode): boolean =>
+		node.orbit !== null &&
+		node.orbit.period <= MAX_PERIOD_DAYS &&
+		pairMembers(node, node.orbit).every(drawable);
 	return [...nodes.values()]
 		.filter(draws)
 		.sort((a, b) => a.depth - b.depth)
-		.map((node) => ({
-			node,
-			orbit: node.orbit!,
-			first: node.members[0].id!,
-			second: node.members[1].id!
-		}));
+		.map((node) => {
+			const orbit = node.orbit!;
+			const [first, second] = pairMembers(node, orbit);
+			return { node, orbit, first: first.id!, second: second.id! };
+		});
 }
 
 /**
@@ -180,23 +182,24 @@ export function haloCarrier(
 }
 
 /**
- * The held star that takes over each point, by point ID: the one held member
- * that hosts planets, with neither on a drawn orbit. Its planets need its
- * sphere to circle, so it draws in the point's stead with the point's light.
- * A point with two such members stays a point: one sphere would stand for
- * both.
+ * The held star that takes over each point, by point ID. It is the one held
+ * member that hosts planets. Its planets need its sphere to circle, so it
+ * draws in the point's stead with the point's light. A point with two such
+ * members stays a point, because one sphere would stand for both. No star
+ * takes over a point on a drawn orbit or a point whose own pair draws. Such a
+ * point sits at its pair's barycentre and hands its light to its two stars.
  */
 export function heldHosts(
 	nodes: ReadonlyMap<number, SystemNode>,
 	pairs: readonly DrawnPair[],
 	hostsPlanets: (id: number) => boolean
 ): Map<number, number> {
-	const onOrbit = new Set(pairs.flatMap(({ first, second }) => [first, second]));
+	const drawn = new Set(pairs.flatMap(({ node, first, second }) => [node.id, first, second]));
 	const out = new Map<number, number>();
 	for (const node of nodes.values()) {
-		if (!node.point || onOrbit.has(node.id)) continue;
+		if (!node.point || drawn.has(node.id)) continue;
 		const hosts = node.members.flatMap(({ id, kind }) =>
-			kind === 'held star' && id !== null && !onOrbit.has(id) && hostsPlanets(id) ? [id] : []
+			kind === 'held star' && id !== null && hostsPlanets(id) ? [id] : []
 		);
 		if (hosts.length === 1) out.set(node.id, hosts[0]);
 	}
@@ -212,31 +215,48 @@ function magnitude(light: number): number {
 }
 
 /**
- * Absolute magnitudes of the two stars inside a point, which sum to `total`,
- * the point's. Two stars with magnitudes of their own keep their ratio. Two
- * masses give shares by the mass-luminosity law. One magnitude and no masses
- * leaves the rest of the light to the other star, and with nothing better the
- * stars share equally. A point with no magnitude leaves each star its own.
+ * Absolute magnitudes of the stars inside a point, which sum to `total`, the
+ * point's. Stars that all have magnitudes of their own keep their ratio. Stars
+ * that all have masses share by the mass-luminosity law. Else the stars with a
+ * magnitude keep it, and the others share the rest of the light equally. With
+ * nothing better, or when those stars are brighter than the point, all stars
+ * share equally. A point with no magnitude leaves each star its own.
  */
 export function splitLight(
 	total: number | null,
-	own: Both<number | null>,
-	masses: Both<number | null>
-): Both<number | null> {
-	if (total === null) return own;
+	own: readonly (number | null)[],
+	masses: readonly (number | null)[]
+): (number | null)[] {
+	if (total === null) return [...own];
 	const all = flux(total);
-	const shares = (a: number, b: number): Both<number> => [
-		magnitude((all * a) / (a + b)),
-		magnitude((all * b) / (a + b))
-	];
-	const [a, b] = own;
-	if (a !== null && b !== null) return shares(flux(a), flux(b));
-	const [ma, mb] = masses;
-	if (ma !== null && mb !== null) return shares(ma ** MASS_LUMINOSITY, mb ** MASS_LUMINOSITY);
-	const known = a ?? b;
-	if (known === null || flux(known) >= all) return shares(1, 1);
-	const rest = magnitude(all - flux(known));
-	return a === null ? [rest, known] : [known, rest];
+	const shares = (weights: readonly number[]): number[] => {
+		const sum = weights.reduce((a, b) => a + b, 0);
+		return weights.map((weight) => magnitude((all * weight) / sum));
+	};
+	if (own.every((mag): mag is number => mag !== null)) return shares(own.map(flux));
+	if (masses.every((mass): mass is number => mass !== null)) {
+		return shares(masses.map((mass) => mass ** MASS_LUMINOSITY));
+	}
+	const known = own.filter((mag): mag is number => mag !== null);
+	const lit = known.reduce((sum, mag) => sum + flux(mag), 0);
+	if (known.length === 0 || lit >= all) return shares(own.map(() => 1));
+	const rest = magnitude((all - lit) / (own.length - known.length));
+	return own.map((mag) => mag ?? rest);
+}
+
+/** The share of the light `total` of a point that its stars on no drawn orbit
+ *  keep, from the magnitudes that {@link splitLight} gives its members. */
+export function keptLight(
+	total: number | null,
+	light: readonly (number | null)[],
+	{ first, second }: PairOrbit
+): number {
+	if (total === null) return 0;
+	const kept = light.reduce<number>(
+		(sum, mag, i) => (i === first || i === second || mag === null ? sum : sum + flux(mag)),
+		0
+	);
+	return kept / flux(total);
 }
 
 /** The share of a pair's light that its two stars draw at a separation on
@@ -249,19 +269,21 @@ export function starsShare(separationPx: number): number {
 
 /**
  * The share of its own light that each object of a system draws. `handed` is
- * the share that a pair's point gives to its two stars. A point and its stars
- * sum to the share that the point has. A resolved node has no light to keep, so
- * its members take its whole share. `pairs` go outermost first.
+ * the share that a pair's point gives to its two stars. `kept` is the share of
+ * the point's light that its stars on no orbit hold, and it stays with the
+ * point. A point and its stars sum to the share that the point has. A resolved
+ * node has no light to keep, so its members take its whole share. `pairs` go
+ * outermost first.
  */
 export function pairLight(
-	pairs: readonly { pair: DrawnPair; handed: number }[]
+	pairs: readonly { pair: DrawnPair; handed: number; kept: number }[]
 ): Map<number, number> {
 	const light = new Map<number, number>();
-	for (const { pair, handed } of pairs) {
+	for (const { pair, handed, kept } of pairs) {
 		const { node, first, second } = pair;
 		const own = light.get(node.id) ?? 1;
 		const stars = node.point ? handed : 1;
-		light.set(node.id, own * (1 - stars));
+		light.set(node.id, own * (1 - stars * (1 - kept)));
 		light.set(first, own * stars);
 		light.set(second, own * stars);
 	}

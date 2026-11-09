@@ -1609,6 +1609,7 @@
 	"star_row_radial_velocity": "السرعة الشعاعية",
 	"star_distance_uncertain": "غير مؤكدة. ليس لهذا النجم اختلاف منظر موثوق، لذا أُخذت المسافة من مصدر آخر.",
 	"star_distance_suspect": "غير مؤكدة. قد يكون القياس الفلكي لهذا النجم زائفًا.",
+	"star_distance_system": "من نظامه النجمي",
 	"star_row_bp_rp": "اللون (BP − RP)",
 	"star_row_b_v": "اللون (B − V)",
 	"star_row_v_i": "اللون (V − I)",

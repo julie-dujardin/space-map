@@ -1629,6 +1629,7 @@
 	"star_row_radial_velocity": "視線速度",
 	"star_distance_uncertain": "不確かな値です。この恒星には信頼できる年周視差がないため、距離は別の出典によります。",
 	"star_distance_suspect": "不確かな値です。この恒星のアストロメトリは誤っている可能性があります。",
+	"star_distance_system": "所属する恒星系から",
 	"star_row_bp_rp": "色指数 (BP − RP)",
 	"star_row_b_v": "色指数 (B − V)",
 	"star_row_v_i": "色指数 (V − I)",

@@ -6,6 +6,7 @@ import {
 	astrometricOrbit,
 	distanceParallax,
 	LITERATURE,
+	STAR_SYSTEMS,
 	starDistance,
 	type ExtrasolarRecord,
 	type StarDistance,
@@ -421,10 +422,10 @@ function massRow(ps: TableRow): StarRowEntry | null {
 }
 
 /** Distance group sources as sure as a 5σ parallax: a distance chosen from a
- *  paper, and a 5σ SIMBAD parallax. */
-const SURE_SOURCES = new Set([LITERATURE, 'simbad-parallax']);
+ *  paper, a 5σ SIMBAD parallax, and the shared distance of the star's system. */
+const SURE_SOURCES = new Set([LITERATURE, 'simbad-parallax', STAR_SYSTEMS]);
 
-/** Why a distance is uncertain; undefined for one from a 5σ parallax or a paper. */
+/** Why a distance is uncertain; undefined for one from a 5σ parallax or a sure source. */
 function uncertainty(distance: StarDistance | null): string | undefined {
 	if (!distance || distance.from === 'parallax' || SURE_SOURCES.has(distance.source ?? '')) {
 		return undefined;
@@ -432,6 +433,13 @@ function uncertainty(distance: StarDistance | null): string | undefined {
 	return distance.from === 'suspect parallax'
 		? m.star_distance_suspect()
 		: m.star_distance_uncertain();
+}
+
+/** The note of a distance from the star's system. The parallax row shows the
+ *  star's own parallax, so the two do not agree. Only rows carry it: a card
+ *  note is one line, too narrow for it. */
+function systemNote(distance: StarDistance | null): string | undefined {
+	return distance?.source === STAR_SYSTEMS ? m.star_distance_system() : undefined;
 }
 
 /** A distance card. */
@@ -607,7 +615,8 @@ function pointSourceSections(
 			? {
 					label: m.star_row_distance(),
 					value: distanceValue(distance, u.ly),
-					tooltip: uncertainty(distance)
+					tooltip: uncertainty(distance),
+					note: systemNote(distance)
 				}
 			: catalogued(ps, m.star_row_distance(), 'host_distance', u.ly, 'host_distance_error', PC_LY),
 		measured(ps, m.star_row_pm_ra(), 'pmra', 'pmra_error', u.masPerYear),

@@ -1523,6 +1523,7 @@
 	"star_row_radial_velocity": "Velocidade radial",
 	"star_distance_uncertain": "Incerta. Esta estrela não tem uma paralaxe fiável, pelo que a distância provém de outra fonte.",
 	"star_distance_suspect": "Incerta. A astrometria desta estrela pode ser espúria.",
+	"star_distance_system": "a partir do seu sistema estelar",
 	"star_row_bp_rp": "Cor (BP − RP)",
 	"star_row_b_v": "Cor (B − V)",
 	"star_row_v_i": "Cor (V − I)",

@@ -61,7 +61,7 @@ function body(id: number): PositionedBody {
 
 function setup(barycentre: number) {
 	const member = (id: number, kind: string) => ({ id, kind, gMag: null, vMag: null, mass: null });
-	const orbit = { a: 5, i: 30, om: 40, w: 0, period: 100, barycentre };
+	const orbit = { first: 0, second: 1, a: 5, i: 30, om: 40, w: 0, period: 100, barycentre };
 	nodes.rows = [
 		{
 			id: ROOT,
@@ -93,7 +93,7 @@ describe('the view of a node', () => {
 		const { store, bodies } = setup(0.25);
 		await store.ensureStarSystem(ROOT);
 		expect(store.view(`x-${PAIR}`)?.distance).toBeCloseTo(FRAME_OUTER_ORBITS * 5 * AU_SCALE, 6);
-		expect(bodies.get(`x-${PAIR}`)?.extrasolar?.scene).toEqual([100, 0, 0]);
+		expect(bodies.get(`x-${PAIR}`)?.extrasolar?.scene).toEqual([150, 0, 0]);
 	});
 
 	it('frames a root by the pair of its primary, and sits there', async () => {

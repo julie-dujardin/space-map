@@ -216,6 +216,8 @@ const MIN_PARALLAX_SNR = 5;
 const MIN_FIDELITY = 0.5;
 /** The source of the values that the literature table gives. */
 export const LITERATURE = 'literature';
+/** The source of the values of a star's system, as its tree and its shared distance. */
+export const STAR_SYSTEMS = 'star-systems';
 /** The `distance_method` of a distance that a measured parallax gives. */
 const MEASURED_PARALLAX = 'parallax';
 /** How many times more precise than a Gaia parallax a group must be to win. */
@@ -307,18 +309,20 @@ function fromParallax(used: DistanceParallax, from: StarDistance['from']): StarD
 
 /**
  * The distance of a star by the rule of the render tree
- * (`docs/export-format/extrasolar.md`): a distance from a paper, a 5σ
- * parallax that is not flagged and that no more precise measured parallax in
- * the group beats, the distance group, a planet host's catalogue distance,
- * then a flagged 5σ parallax. A row is flagged when its Gaia astrometry has a
- * fidelity under 0.5. A flagged row has a distance only from a paper or when
- * Hipparcos, SIMBAD or an exoplanet catalogue saw it. `orbit` is the record's
- * `astrometricOrbit`, whose 5σ parallax stands for the row's.
+ * (`docs/export-format/extrasolar.md`): a distance from a paper, the shared
+ * distance of its star system, a 5σ parallax that is not flagged and that no
+ * more precise measured parallax in the group beats, the distance group, a
+ * planet host's catalogue distance, then a flagged 5σ parallax. A row is
+ * flagged when its Gaia astrometry has a fidelity under 0.5. A flagged row has
+ * a distance only from a paper or its system, or when Hipparcos, SIMBAD or an
+ * exoplanet catalogue saw it. `orbit` is the record's `astrometricOrbit`, whose
+ * 5σ parallax stands for the row's.
  */
 export function starDistance(row: TableRow, orbit: TableRow | null): StarDistance | null {
 	const group = groupDistance(row);
-	// A distance from a paper was chosen on purpose, so it beats any parallax.
-	if (group?.source === LITERATURE) return group;
+	// A paper's distance is chosen on purpose. Parallax noise puts the stars of a
+	// system further apart in depth than the system is wide.
+	if (group?.source === LITERATURE || group?.source === STAR_SYSTEMS) return group;
 	const fidelity = row.number('fidelity_v2');
 	const flagged =
 		GAIA_ASTROMETRY.has(row.text('astrometry_source') ?? '') &&

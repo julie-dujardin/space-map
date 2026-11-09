@@ -20,6 +20,7 @@ import {
 import { CURATED_TIER, INTERIOR_SLUG, type StarInterior } from '$lib/fetch/extrasolar/interior';
 import {
 	LITERATURE,
+	STAR_SYSTEMS,
 	SYSTEM_SLUG,
 	astrometricOrbit,
 	homeRow,
@@ -68,7 +69,7 @@ const SOURCE_NAMES: Record<string, () => string> = {
 	'magellanic-clouds': m.source_magellanic_clouds_name,
 	'bailer-jones-2021': m.source_bailer_jones_2021_name,
 	'rybizki-2022': m.source_rybizki_2022_name,
-	'star-systems': m.source_star_systems_name,
+	[STAR_SYSTEMS]: m.source_star_systems_name,
 	[LITERATURE]: m.source_literature_name,
 	msc: m.source_msc_name,
 	wds: m.source_wds_name,

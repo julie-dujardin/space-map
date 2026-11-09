@@ -15,7 +15,15 @@ const load = vi.hoisted(() => ({
 async function planOf(root: number) {
 	const points = await load.points(root);
 	await Promise.all(points.map((id) => load.body(null, `x-${id}`)));
-	return { root, nodes: new Map(), points, pairs: [], heldHosts: new Map(), ids: points };
+	return {
+		root,
+		nodes: new Map(),
+		points,
+		pairs: [],
+		heldHosts: new Map(),
+		keptLight: new Map(),
+		ids: points
+	};
 }
 
 function star(id: number, root: number | null = null, row?: TableRow): PositionedBody {

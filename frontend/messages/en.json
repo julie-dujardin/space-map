@@ -1684,6 +1684,7 @@
 	"star_row_radial_velocity": "Radial velocity",
 	"star_distance_uncertain": "Uncertain. This star has no reliable parallax, so the distance comes from another source.",
 	"star_distance_suspect": "Uncertain. The astrometry of this star may be spurious.",
+	"star_distance_system": "from its star system",
 	"star_row_bp_rp": "Colour (BP − RP)",
 	"star_row_b_v": "Colour (B − V)",
 	"star_row_v_i": "Colour (V − I)",
