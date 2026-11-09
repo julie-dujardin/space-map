@@ -12,10 +12,11 @@ from space_map_data.export.extrasolar.radius import (
     COLUMNS,
     FLAME,
     FLAME_SPEC,
+    GAIA_COLUMNS,
     GSPPHOT,
     held_columns,
-    measuring_points,
     star_radius,
+    stood_for,
 )
 from space_map_data.extrasolar import families
 from space_map_data.extrasolar.exoplanets.catalogues import ARCHIVE, EU, OEC
@@ -156,7 +157,8 @@ class TestCompactStars:
 
 
 class TestHeldStars:
-    """A held star reads its System `star` and the measurement of its point."""
+    """A held star reads its System `star`, and the measurement and the Gaia
+    radii of the point it stands for."""
 
     def held(
         self,
@@ -182,10 +184,16 @@ class TestHeldStars:
                 "id": pa.array([1], pa.int64()),
                 **{
                     name: pa.array(
-                        [{"angular_diameter": 10.0, "distance": 100.0}.get(name)],
+                        [
+                            {
+                                "angular_diameter": 10.0,
+                                "distance": 100.0,
+                                "radius_flame": 2.5,
+                            }.get(name)
+                        ],
                         POINT_SOURCE.schema.field(name).type,
                     )
-                    for name in MEASURED_COLUMNS
+                    for name in (*MEASURED_COLUMNS, *GAIA_COLUMNS)
                 },
             }
         )
@@ -215,7 +223,27 @@ class TestHeldStars:
         assert source[0].as_py() == "jmdc"
 
     def test_a_star_whose_light_can_blend_keeps_it_on_the_point(self) -> None:
-        assert self.held(None, None)["angular_diameter"] is None
+        found = self.held(None, None)
+        assert found["angular_diameter"] is None
+        assert found["radius_flame"] is None
+
+    def test_a_dominant_star_takes_the_gaia_radii_of_its_point(self) -> None:
+        """Mu Centauri: Gaia's fit of a point is that of the star whose light
+        it is."""
+        found = self.held(None, None, dominant=True)
+        assert found["radius_flame"] == pytest.approx(2.5)
+        row = table({**found, "angular_diameter": None})
+        size, source = star_radius(row, np.zeros(1, np.uint64), np.zeros(1, bool))
+        assert (size[0].as_py(), source[0].as_py()) == (
+            pytest.approx(2.5),
+            "gaia-dr3-flame",
+        )
+
+    def test_its_own_paper_still_comes_before_gaia(self) -> None:
+        found = self.held(0.65, "literature", dominant=True)
+        assert found["radius_flame"] == pytest.approx(2.5)
+        _, source = star_radius(table(found), np.zeros(1, np.uint64), np.zeros(1, bool))
+        assert source[0].as_py() == "literature"
 
     def test_a_paper_keeps_the_catalogue_radius(self) -> None:
         """A transit host takes the catalogue's radius before its paper's."""
@@ -236,7 +264,7 @@ class TestHeldStars:
         assert found["radius_literature"] == pytest.approx(0.65)
         assert found["angular_diameter"] is None
 
-    def test_the_points_that_they_measure(self) -> None:
+    def test_the_points_that_they_stand_for(self) -> None:
         held = pa.table(
             {
                 "parent": pa.array([1, 1, 1, None], pa.int64()),
@@ -251,7 +279,7 @@ class TestHeldStars:
                 ),
             }
         )
-        assert measuring_points(held).to_pylist() == [1, None, None, None]
+        assert stood_for(held).to_pylist() == [1, None, 1, None]
 
 
 def test_every_column_is_a_point_source_column() -> None:

@@ -467,7 +467,7 @@ interface GlobalGroupData {
   parent_families?: string[];       // the star- or planet- pages of the families that contain this one; the breadcrumb takes the first; `cat-stars` on a star family without a parent family; `cat-planets` on a planet family without a parent family
   published_star_count?: number;    // stars that a catalogued classification puts in the family
   estimated_star_count?: number;    // the other stars, which only an estimate (Gaia DR3 or a SIMBAD candidate type) puts there
-  largest_star?: { primary_type: "object"; primary_id: string; name: string; radius_sun: number }; // cat-stars only: the star with an entry and the largest Metadata `radius` that is precise: a measurement (`literature`, `jmdc`), a planet catalogue's radius whose larger error (`host_radius_error`, a held star's `star.host_radius_error`) is within 10%, or FLAME (either run) with both bounds within 10%; never GSP-Phot; a node of a star system has none
+  largest_star?: { primary_type: "object"; primary_id: string; name: string; radius_sun: number }; // cat-stars only: the star with an entry and the largest Metadata `radius` that is precise: a measurement (`literature`, `jmdc`), a planet catalogue's radius whose larger error (`host_radius_error`, a held star's `star.host_radius_error`) is within 10%, or FLAME (either run) with both bounds within 10% (for a held star, those of the point it stands for); never GSP-Phot; a point that stands for a held star has none
 
   // Planet families (planet-<family>, one per family of the planet records'
   // `families` lists) only. The exoplanet counts are the `families` entry of

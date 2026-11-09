@@ -1281,6 +1281,31 @@ class TestRadius:
         assert self._radius(reader, built.ids[0]) == (None, None)
         assert self._radius(reader, built.held[0, "A"]) == (1.0, "literature")
 
+    def test_a_dominant_held_star_takes_the_gaia_radius_of_its_point(
+        self, tmp_path, out
+    ):
+        """Mu Centauri: with no paper of its own, the star that a point
+        stands for draws at the point's FLAME radius."""
+        built = write_registry(
+            tmp_path / "reg",
+            [star(20.0, 5.0) | {"radius_flame": 2.0}],
+            systems=[
+                Node(
+                    (("held", None, "A"), ("held", None, "B")),
+                    point=0,
+                    held={
+                        "A": Held("Point A", {"dominant": True}, v_mag=4.0),
+                        "B": Held("Point B", {"mass": 0.2}, v_mag=9.0),
+                    },
+                ),
+            ],
+        )
+        export_extrasolar(built.root, out, workers=1)
+        reader = ExportReader(out / "v1" / "x")
+        assert self._radius(reader, built.ids[0]) == (None, None)
+        assert self._radius(reader, built.held[0, "A"]) == (2.0, "gaia-dr3-flame")
+        assert self._radius(reader, built.held[0, "B"]) == (None, None)
+
     def test_a_point_of_entries_keeps_its_radius(self, tmp_path, out):
         """Megrez: a point whose members are entries only draws at its own
         radius, as no held star can take it."""
@@ -1317,6 +1342,51 @@ class TestRadius:
         point_id = built.ids[0]
         drawable = star_lineup.drawable_star_radii(reader, [point_id])
         assert drawable == {point_id: pytest.approx(12.0 * SOLAR_RADIUS_KM, rel=1e-3)}
+
+    def test_a_compact_point_gives_no_gaia_radius(self, tmp_path, out):
+        """A white dwarf that its point's SIMBAD type names, though its own
+        System row has no type: Gaia's fit is not of it."""
+        built = write_registry(
+            tmp_path / "reg",
+            [star(20.0, 5.0) | {"radius_flame": 1.2, "simbad_otype": "WD*"}],
+            systems=[
+                Node(
+                    (("held", None, "A"), ("held", None, "B")),
+                    point=0,
+                    held={
+                        "A": Held("Point A", {"dominant": True}, v_mag=4.0),
+                        "B": Held("Point B", {"mass": 0.2}, v_mag=9.0),
+                    },
+                ),
+            ],
+        )
+        export_extrasolar(built.root, out, workers=1)
+        reader = ExportReader(out / "v1" / "x")
+        assert self._radius(reader, built.held[0, "A"]) == (None, None)
+
+    def test_the_gaia_radius_of_a_point_in_another_region(self, tmp_path, out):
+        point = star(20.0, 5.0) | {"radius_flame": 2.0, "_minted_at": (200.0, -40.0)}
+        built = write_registry(
+            tmp_path / "reg",
+            [point, star(20.0, 6.0)],
+            systems=[
+                Node(
+                    (("held", None, "A"), ("held", None, "B")),
+                    point=0,
+                    held={
+                        "A": Held("Point A", {"dominant": True}, v_mag=4.0),
+                        "B": Held("Point B", {"mass": 0.2}, v_mag=9.0),
+                    },
+                ),
+            ],
+        )
+        a = built.held[0, "A"]
+        regions = sky.region_of(np.array([built.ids[0], a]) & ids.CELL_MASK)
+        assert regions[0] != regions[1]
+        export_extrasolar(built.root, out, workers=1)
+        reader = ExportReader(out / "v1" / "x")
+        assert self._radius(reader, a) == (2.0, "gaia-dr3-flame")
+        assert self._radius(reader, built.ids[0]) == (None, None)
 
     def test_the_measurement_of_a_point_in_another_region(self, tmp_path, out):
         """The point's ID was minted far from its position, where its held

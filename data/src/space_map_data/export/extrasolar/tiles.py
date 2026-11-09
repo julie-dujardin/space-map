@@ -130,8 +130,8 @@ FAMILY_SCHEMA = pa.schema([POINT_SOURCE.schema.field(name) for name in FAMILY_CO
 # The System columns of the held stars, and of the points that hold them.
 HELD_COLUMNS = ("id", "parent", "star")
 NODE_COLUMNS = (*HELD_COLUMNS, "point", "members")
-# The Point source columns of the points whose measurement a held star takes.
-MEASURED_POINT_COLUMNS = ("id", *MEASURED_COLUMNS)
+# The Point source columns of the points that a held star stands for.
+LED_POINT_COLUMNS = ("id", *MEASURED_COLUMNS, *radius.GAIA_COLUMNS)
 # The length of each family list. A family page lists as many stars.
 LISTED_STARS = 20
 # The G, ID and name of a star of a family list.
@@ -621,32 +621,46 @@ def _read(
     )
 
 
-def measured_points(
+def led_point_rows(
     registry: Registry, regions: tuple[int, ...], system: pa.Table, points: pa.Table
 ) -> pa.Table:
-    """MEASURED_POINT_COLUMNS of the points whose measurement a held star of
-    `system` takes (`radius.measuring_points`): from `points`, the Point
-    source rows of `regions`, else from the region of the point's ID. A held
-    star's ID has the cell of its point's position, which can be outside the
-    region of the cell where the point's ID was minted."""
-    wanted = pc.unique(radius.measuring_points(system).drop_null())
-    names = list(MEASURED_POINT_COLUMNS)
+    """LED_POINT_COLUMNS of the points that a held star of `system` stands
+    for (`radius.led_points`): from `points`, the Point source rows of
+    `regions`, else from the region of the point's ID. A held star's ID has
+    the cell of its point's position, which can be outside the region of the
+    cell where the point's ID was minted.
+
+    A compact point gives no Gaia radius: its type is the star's, and the
+    star's own type may not say it (`radius.COMPACT`)."""
+    wanted = radius.led_points(system)
+    names = list(FAMILY_COLUMNS)
     found = points.select(names).filter(pc.is_in(points["id"], value_set=wanted))
     missing = np.setdiff1d(wanted.to_numpy(), found["id"].to_numpy())
     others = set(region_of(missing & CELL_MASK).tolist()) - set(regions)
-    if not others:
-        return found
-    rows = _read(registry, POINT_SOURCE, tuple(sorted(others)), MEASURED_POINT_COLUMNS)
-    rows = rows.filter(pc.is_in(rows["id"], value_set=pa.array(missing)))
-    return pa.concat_tables([found, rows])
+    if others:
+        rows = _read(registry, POINT_SOURCE, tuple(sorted(others)), FAMILY_COLUMNS)
+        rows = rows.filter(pc.is_in(rows["id"], value_set=pa.array(missing)))
+        found = pa.concat_tables([found, rows])
+    if lost := len(wanted) - found.num_rows:
+        logger.warning("held stars stand for %d points with no Point source row", lost)
+    published, estimated = families.masks(found, pa.nulls(found.num_rows, pa.string()))
+    compact = pa.array(((published | estimated) & radius.COMPACT) != 0)
+    for name in radius.GAIA_COLUMNS:
+        column = found[name]
+        found = found.set_column(
+            found.schema.get_field_index(name),
+            name,
+            pc.if_else(compact, pa.scalar(None, column.type), column),
+        )
+    return found.select(list(LED_POINT_COLUMNS))
 
 
-def led_points(
+def led_point_ids(
     registry: Registry, regions: tuple[int, ...], system: pa.Table
 ) -> np.ndarray:
-    """The IDs of the points of `system` that a held star dominates
-    (`radius.led_points`). A held star outside `regions` is read from the
-    region of its ID, as `measured_points` reads a point."""
+    """The IDs of the points of `system` that a held star stands for
+    (`radius.led_points`), also a held star whose System row is outside
+    `regions`: it is read from the region of its ID."""
     points = system.filter(system["point"].fill_null(False))
     members = pc.list_flatten(points["members"])
     is_held = pc.equal(pc.struct_field(members, "kind"), HELD)
@@ -663,7 +677,7 @@ def led_points(
 
 def held_rows(system: pa.Table, points: pa.Table) -> pa.Table:
     """Family rows of the held stars in the System rows `system`. `points`
-    are the measured points that they take (`measured_points`).
+    are the points that they stand for (`led_point_rows`).
 
     A held star has no Point source row, so its row is null but for its ID,
     its spectral type, its magnitudes and the columns of its radius
@@ -697,13 +711,13 @@ def with_families(
 
     A held star reads its System row. A point that holds several stars has
     no family or type, and no radius when it stands for a held star
-    (`led_points`). Another row without a Point source row, such as a
+    (`led_point_ids`). Another row without a Point source row, such as a
     resolved system or an alias, has none of them.
     """
     points = _read(registry, POINT_SOURCE, regions, FAMILY_COLUMNS)
     system = _read(registry, SYSTEM, regions, NODE_COLUMNS)
-    measured = measured_points(registry, regions, system, points)
-    stars = pa.concat_tables([points, held_rows(system, measured)])
+    led_rows = led_point_rows(registry, regions, system, points)
+    stars = pa.concat_tables([points, held_rows(system, led_rows)])
     published = np.zeros(rows.num_rows, np.uint64)
     estimated = np.zeros(rows.num_rows, np.uint64)
     spectral = pa.nulls(rows.num_rows, pa.string())
@@ -727,7 +741,7 @@ def with_families(
         size, size_source = radius.star_radius(
             stars, star_published | star_estimated, transits
         )
-        led = np.isin(stars["id"].to_numpy(), led_points(registry, regions, system))
+        led = np.isin(stars["id"].to_numpy(), led_point_ids(registry, regions, system))
         place = _places(at, rows.num_rows)
         unsized = pa.array(node & led)
         size = pc.if_else(unsized, pa.scalar(None, size.type), size)

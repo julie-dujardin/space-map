@@ -5,16 +5,15 @@ of it from `star_radius`. The Metadata tiles save these radii in the export's
 scratch (`save`), and the planet files read their hosts' radii from there
 (`load`). Other parts of the export read the Metadata rows. The order:
 1. a measurement (`measured_radius`): a paper's radius, then JMDC's angular
-   diameter at the star's distance. A held star with no paper of its own
-   takes the measurement of its point when it dominates the point's light
-   (`measuring_points`);
+   diameter at the star's distance;
 2. the radius of a planet host in the exoplanet catalogues, each catalogue
    in its order;
 3. Gaia DR3 FLAME, then FLAME on GSP-Spec, then GSP-Phot.
 A point that holds several stars stands for its first member when that held
-star dominates its light (`led_points`), so it has no radius of its own.
-Else it keeps its own, as no one star can take it: a point whose light can
-blend draws at the size it was measured at.
+star dominates its light (`stood_for`): the point's light is the star's, so
+the star takes the point's measurement and Gaia radii, and the point has
+none. Else the point keeps its radius: its light can blend, and no one star
+can take it.
 A host of a transiting planet (`transit_hosts`) takes the catalogue's radius
 before a measurement. The catalogue derives the planet's radius from that
 star radius, so the two stay consistent.
@@ -48,15 +47,10 @@ GSPPHOT = "gaia-dr3-gspphot"
 COMPACT = families.BIT["neutron-star"] | families.BIT["white-dwarf"]
 NEUTRON_STAR = families.BIT["neutron-star"]
 
+# The Gaia radii, in their order.
+GAIA_COLUMNS = ("radius_flame", "radius_flame_spec", "radius_gspphot")
 # The Point source columns that `star_radius` reads.
-COLUMNS = (
-    *MEASURED_COLUMNS,
-    "host_radius",
-    "host_radius_source",
-    "radius_flame",
-    "radius_flame_spec",
-    "radius_gspphot",
-)
+COLUMNS = (*MEASURED_COLUMNS, "host_radius", "host_radius_source", *GAIA_COLUMNS)
 # The planets table columns that `transit_hosts` reads.
 TRANSIT_COLUMNS = ("host", "transits")
 FIELDS = (
@@ -122,49 +116,52 @@ def _paper(star: pa.Array) -> pa.Array:
     return paper.fill_null(False)
 
 
-def measuring_points(held: pa.Table) -> pa.Array:
-    """The point whose measurement each `held` star takes, else null: its
-    parent, when it dominates the point's light (`star.dominant`) and no
-    paper gives its own radius. `held` has `parent` and `star`."""
+def stood_for(held: pa.Table) -> pa.Array:
+    """The point that each `held` star stands for, else null: its parent,
+    when it dominates the point's light (`star.dominant`). `held` has
+    `parent` and `star`."""
     star = held["star"].combine_chunks()
-    takes = pc.and_(
-        pc.struct_field(star, "dominant").fill_null(False), pc.invert(_paper(star))
-    )
+    dominant = pc.struct_field(star, "dominant").fill_null(False)
     return pc.if_else(
-        takes, held["parent"].combine_chunks(), pa.scalar(None, pa.int64())
+        dominant, held["parent"].combine_chunks(), pa.scalar(None, pa.int64())
     )
 
 
 def led_points(held: pa.Table) -> pa.Array:
-    """The points that a `held` star dominates (`star.dominant`): each one
-    stands for that star. `held` has `parent` and `star`."""
-    star = held["star"].combine_chunks()
-    dominant = pc.struct_field(star, "dominant").fill_null(False)
-    return pc.unique(held["parent"].combine_chunks().filter(dominant).drop_null())
+    """The IDs of the points that the `held` rows stand for (`stood_for`)."""
+    return pc.unique(stood_for(held).drop_null())
 
 
 def held_columns(held: pa.Table, points: pa.Table) -> dict[str, pa.Array]:
     """COLUMNS of held stars from their System `star` values: a paper's
-    `radius` is a measurement, and `host_radius` is a host's. A star takes
-    the measurement of its point (`measuring_points`) from `points`, which
-    have `id` and MEASURED_COLUMNS. `held` has `parent` and `star`."""
+    `radius` is a measurement, and `host_radius` is a host's. A star that
+    stands for a point (`stood_for`) takes the point's Gaia radii and, with no
+    paper of its own, its measurement, from `points`, which have `id`,
+    MEASURED_COLUMNS and GAIA_COLUMNS. `held` has `parent` and `star`."""
     star = held["star"].combine_chunks()
     paper = _paper(star)
-    by = pc.struct_field(star, "host_radius_source")
-    at = pc.index_in(measuring_points(held), value_set=points["id"])
-    out = {
-        name: points[name].take(at).cast(points.schema.field(name).type)
-        for name in MEASURED_COLUMNS
-    }
+    at = pc.index_in(stood_for(held), value_set=points["id"])
+
+    def taken(names: Iterable[str], at: pa.Array) -> dict[str, pa.Array]:
+        return {
+            name: points[name].take(at).cast(points.schema.field(name).type)
+            for name in names
+        }
+
+    out = taken(MEASURED_COLUMNS, pc.if_else(paper, pa.scalar(None, at.type), at))
     value = pc.struct_field(star, "radius")
     out["radius_literature"] = pc.coalesce(
         pc.if_else(paper, value, None).cast(pa.float32()),
         out["radius_literature"].cast(pa.float32()),
     )
-    return out | {
-        "host_radius": pc.struct_field(star, "host_radius"),
-        "host_radius_source": by,
-    }
+    return (
+        out
+        | {
+            "host_radius": pc.struct_field(star, "host_radius"),
+            "host_radius_source": pc.struct_field(star, "host_radius_source"),
+        }
+        | taken(GAIA_COLUMNS, at)
+    )
 
 
 def scratch_file(scratch: Path, region: int) -> Path:

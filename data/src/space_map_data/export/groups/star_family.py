@@ -203,8 +203,9 @@ def _card_radius(size: dict, error: float | None) -> float | None:
 def _radius_errors(reader: ExportReader, sizes: dict[int, dict]) -> dict[int, float]:
     """The larger error of the Metadata radius of each star of `sizes` that a
     FLAME or a planet catalogue radius has: FLAME's bounds or the catalogue's
-    error, on the Point source row, else on the held star's System row.
-    FLAME stands for either FLAME run."""
+    error, on the Point source row, else on the held star's System row. A held
+    star's FLAME radius is that of the point it stands for, so the bounds are
+    on that point's row. FLAME stands for either FLAME run."""
     wanted = [
         id_
         for id_, size in sizes.items()
@@ -213,21 +214,34 @@ def _radius_errors(reader: ExportReader, sizes: dict[int, dict]) -> dict[int, fl
     ]
     columns = [c for bounds in FLAME_BOUNDS.values() for c in bounds]
     points = reader.rows(POINT_SOURCE.slug, wanted, [*columns, "host_radius_error"])
+    held = reader.rows(
+        SYSTEM.slug, [i for i in wanted if i not in points], ["parent", "star"]
+    )
+    fitted = {
+        id_: row["parent"]
+        for id_, row in held.items()
+        if sizes[id_]["radius_source"] in FLAME_BOUNDS
+    }
+    fits = reader.rows(POINT_SOURCE.slug, sorted(set(fitted.values())), columns)
     out: dict[int, float] = {}
-    for id_, row in points.items():
+    for id_ in wanted:
         value, source = sizes[id_]["radius"], sizes[id_]["radius_source"]
+        if id_ in points:
+            row = points[id_]
+        elif id_ in fitted:
+            row = fits.get(fitted[id_], {})
+        elif id_ in held:
+            # The tiles serve a struct as a list of at most one item.
+            row = held[id_]["star"][0]
+        else:
+            continue
         if source not in FLAME_BOUNDS:
-            error = row["host_radius_error"]
-        elif None not in (bounds := [row[c] for c in FLAME_BOUNDS[source]]):
+            error = row.get("host_radius_error")
+        elif None not in (bounds := [row.get(c) for c in FLAME_BOUNDS[source]]):
             error = max(bounds[1] - value, value - bounds[0])
         else:
             error = None
         if error is not None:
-            out[id_] = error
-    held = reader.rows(SYSTEM.slug, [i for i in wanted if i not in points], ["star"])
-    # The tiles serve a struct as a list of at most one item.
-    for id_, row in held.items():
-        if (error := row["star"][0]["host_radius_error"]) is not None:
             out[id_] = error
     return out
 

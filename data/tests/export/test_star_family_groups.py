@@ -150,7 +150,7 @@ class TestBuild:
     def test_the_error_is_that_of_the_chosen_radius(self):
         """The bounds of its FLAME run for a FLAME radius, the catalogue's
         error for a catalogue's, on the Point source row or the held star's
-        System row."""
+        System row. A held star's FLAME radius has the bounds of its point."""
         tables = {
             "point-source": {
                 1: {"radius_flame_lower": 1.9, "radius_flame_upper": 2.2},
@@ -158,7 +158,10 @@ class TestBuild:
                 | {"host_radius_error": 0.3},
                 5: {"radius_flame_spec_lower": 0.95, "radius_flame_spec_upper": 1.1},
             },
-            "system": {3: {"star": [{"host_radius_error": 0.04}]}},
+            "system": {
+                3: {"parent": 7, "star": [{"host_radius_error": 0.04}]},
+                6: {"parent": 1, "star": [{"host_radius_error": None}]},
+            },
         }
 
         class Reader:
@@ -171,9 +174,10 @@ class TestBuild:
             3: {"radius": 0.9, "radius_source": "open-exoplanet-catalogue"},
             4: {"radius": 9.0, "radius_source": "jmdc"},
             5: {"radius": 1.0, "radius_source": "gaia-dr3-flame-spec"},
+            6: {"radius": 2.0, "radius_source": "gaia-dr3-flame"},
         }
         errors = star_family._radius_errors(Reader(), sizes)  # ty: ignore[invalid-argument-type]
-        assert errors == pytest.approx({1: 0.2, 2: 0.3, 3: 0.04, 5: 0.1})
+        assert errors == pytest.approx({1: 0.2, 2: 0.3, 3: 0.04, 5: 0.1, 6: 0.2})
 
     def test_the_largest_star_is_no_system(self, session):
         """A system has no Metadata radius, so the card never names one."""
