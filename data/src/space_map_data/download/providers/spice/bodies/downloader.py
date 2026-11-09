@@ -107,9 +107,15 @@ _ORIENTATION_FIELDNAMES = [
     "w1",
     "w2",
 ]
-_RADII_FIELDNAMES = ["naif_id", "radius_a_km", "radius_b_km", "radius_c_km"]
+_RADII_FIELDNAMES = ["naif_id", "radius_a_km", "radius_b_km", "radius_c_km", "kernel"]
 _GRAVITY_FIELDNAMES = ["naif_id", "j2", "j3", "j4", "r_eq_km"]
-_GM_FIELDNAMES = ["naif_id", "gm_km3_s2"]
+_GM_FIELDNAMES = [
+    "naif_id",
+    "gm_km3_s2",
+    "kernel",
+    "primary_gm_km3_s2",
+    "primary_kernel",
+]
 
 
 def _make_row(body: MajorBody, epoch_jd: float, elts: dict) -> dict:

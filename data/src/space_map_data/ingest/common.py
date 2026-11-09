@@ -18,6 +18,7 @@ from space_map_data.ingest.providers.objects import (
     celestrak,
     johnston,
     jpl_satellite_discovery,
+    jpl_satellite_physical,
     launch_site,
     launch_vehicle,
     launchlog,
@@ -62,6 +63,7 @@ def ingest_objects(download_dir: Path) -> None:
     # Taxonomic classes, keyed on the SPK-IDs sbdb just wrote.
     ssodnet.ingest(download_dir)
     jpl_satellite_discovery.ingest(download_dir)
+    jpl_satellite_physical.ingest(download_dir)
     # --- Artificial / earth-sat objects ---
     satcat.ingest(download_dir)
     # IDs are `probe-<int>` not `naif-<int>` because NAIF IDs are recycled.

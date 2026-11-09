@@ -15,17 +15,20 @@ sb441-n373) need no entry here.
 """
 
 import logging
+from collections.abc import Mapping
 from pathlib import Path
 
 import httpx
 import spiceypy
+
+from space_map_data.constants import body_literature
 
 from ..naif_http import stream_to
 from .layout import MISSIONS_DIR
 
 logger = logging.getLogger(__name__)
 
-_KERNELS_ROOT = MISSIONS_DIR.parent.parent
+_KERNELS_ROOT = MISSIONS_DIR.parent
 SMALL_BODY_SPK_DIR = _KERNELS_ROOT / "spk" / "small-bodies"
 PCK_DIR = _KERNELS_ROOT / "pck"
 
@@ -73,35 +76,54 @@ PCK_URLS: dict[str, str] = {
 }
 
 GM_PATCH_NAME = "smallbody_gm_patch.tpc"
+# A file of its own, so that the kernel name of a GM tells it is the GM of a
+# whole binary system.
+GM_SYSTEMS_NAME = "smallbody_gm_systems.tpc"
 
-GM_PATCH_CONTENT = """KPL/PCK
 
-GM values for probe-visited small bodies absent from every other PCK in
-this pool (gm_de440, Gravity.tpc, mission PCKs). Used by the probe export's
-`small-bodies` zone: mu feeds Kepler-eligibility and period estimates only,
-so order-of-magnitude values are fine for flyby-only targets (their fits
-promote to Chebyshev regardless). Rendezvous targets carry measured values.
+def _gm_kernel(intro: str, gms: Mapping[int, body_literature.Gm]) -> str:
+    """A text kernel of ``gms``, with the URL of the paper of each in its
+    comments: a title can hold non-ASCII ("Pätzold"), a text kernel is ASCII."""
+    ids = {naif_id: gm.spice_id or naif_id for naif_id, gm in gms.items()}
+    cited = "\n".join(
+        f"  BODY{ids[naif_id]}: {body_literature.REFERENCES[gm.reference].url}"
+        for naif_id, gm in gms.items()
+    )
+    data = "\n".join(
+        f"   BODY{ids[naif_id]}_GM = ( {gm.gm} )" for naif_id, gm in gms.items()
+    )
+    return f"KPL/PCK\n\n{intro}\n\n{cited}\n\n\\begindata\n\n{data}\n\n\\begintext\n"
 
-Measured:
-  Lutetia     1.134e-1  (Paetzold et al. 2011, Rosetta flyby, m=1.700e18 kg)
-  Mathilde    6.89e-3   (Yeomans et al. 1997, NEAR flyby, m=1.033e17 kg)
-  Bennu       4.892e-9  (Scheeres et al. 2019, OSIRIS-REx)
-  Itokawa     2.36e-9   (Abe et al. 2006, Hayabusa, m=3.54e10 kg)
-  67P         6.662e-7  (Paetzold et al. 2016, Rosetta, 666.2 m3/s2)
-  Patroclus   9.08e-2   (Marchis et al. 2006, binary orbit, m=1.36e18 kg)
 
-Estimates (volume x assumed density; flyby targets, Chebyshev-fit anyway):
+GM_PATCH_CONTENT = _gm_kernel(
+    "Measured GM values for probe-visited small bodies absent from every other\n"
+    "PCK in this pool (gm_de440, Gravity.tpc, mission PCKs). The probe export's\n"
+    "`small-bodies` zone uses mu for Kepler eligibility and period estimates.",
+    body_literature.GMS,
+)
+
+GM_SYSTEMS_CONTENT = _gm_kernel(
+    "GM values of probe-visited binary systems absent from every other PCK in\n"
+    "this pool, from the orbit of the satellite. Each is the GM of the primary\n"
+    "and the satellite together.",
+    body_literature.SYSTEM_GMS,
+)
+
+# A file of its own, so that the kernel name of a GM tells it is an estimate.
+GM_ESTIMATES_NAME = "smallbody_gm_estimates.tpc"
+
+GM_ESTIMATES_CONTENT = """KPL/PCK
+
+Estimated GM values (volume x assumed density) for probe-visited small
+bodies absent from every other PCK in this pool. They are flyby targets with
+Chebyshev fits, so mu only needs the right order of magnitude.
+
   Apophis, Halley, Tempel 1, Arrokoth, Dinkinesh, Donaldjohanson,
   Eurybates, Polymele, Leucus, Orus.
 
 \\begindata
 
-   BODY2000021_GM   = ( 1.134E-1 )
-   BODY2000253_GM   = ( 6.89E-3 )
-   BODY2101955_GM   = ( 4.892E-9 )
    BODY2099942_GM   = ( 4.07E-9 )
-   BODY2025143_GM   = ( 2.36E-9 )
-   BODY1000012_GM   = ( 6.662E-7 )
    BODY1000036_GM   = ( 1.5E-5 )
    BODY1000093_GM   = ( 4.8E-6 )
    BODY2486958_GM   = ( 5.0E-5 )
@@ -111,7 +133,6 @@ Estimates (volume x assumed density; flyby targets, Chebyshev-fit anyway):
    BODY20015094_GM  = ( 3.3E-4 )
    BODY20011351_GM  = ( 1.3E-3 )
    BODY20021900_GM  = ( 4.7E-3 )
-   BODY20000617_GM  = ( 9.08E-2 )
 
 \\begintext
 """
@@ -157,7 +178,7 @@ def _subset_dinkinesh(client: httpx.Client) -> None:
 
 
 def download_target_bodies(client: httpx.Client) -> tuple[int, float]:
-    """Fetch every small-body target kernel + write the GM patch.
+    """Fetch every small-body target kernel + write the GM patches.
 
     Returns `(n_files, total_mib)` over everything now on disk.
     """
@@ -186,9 +207,14 @@ def download_target_bodies(client: httpx.Client) -> tuple[int, float]:
             logger.warning("target-body PCK download failed for %s: %s", name, exc)
             continue
         paths.append(local)
-    gm_path = PCK_DIR / GM_PATCH_NAME
-    if not gm_path.exists() or gm_path.read_text() != GM_PATCH_CONTENT:
-        gm_path.write_text(GM_PATCH_CONTENT)
-    paths.append(gm_path)
+    for name, content in (
+        (GM_PATCH_NAME, GM_PATCH_CONTENT),
+        (GM_SYSTEMS_NAME, GM_SYSTEMS_CONTENT),
+        (GM_ESTIMATES_NAME, GM_ESTIMATES_CONTENT),
+    ):
+        gm_path = PCK_DIR / name
+        if not gm_path.exists() or gm_path.read_text() != content:
+            gm_path.write_text(content)
+        paths.append(gm_path)
     total_mib = sum(p.stat().st_size for p in paths) / 1024 / 1024
     return len(paths), total_mib

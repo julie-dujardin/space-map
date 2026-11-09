@@ -11,6 +11,7 @@ class PROVIDERS(StrEnum):
     JOHNSTON = "johnston"
     SSODNET = "ssodnet"
     JPL_SATELLITE_DISCOVERY = "jpl_satellite_discovery"
+    JPL_SATELLITE_PHYSICAL = "jpl_satellite_physical"
     EXOPLANET_ARCHIVE = "exoplanet_archive"
     EXOPLANET_EU = "exoplanet_eu"
     OPEN_EXOPLANET_CATALOGUE = "open_exoplanet_catalogue"

@@ -1,9 +1,8 @@
 """Ingest SsODNet best-estimate rows from the Big Flat Table.
 
-Only asteroids carrying a taxonomic class are kept — that is the column the
-interior block consumes, and it prunes 1.55 M rows to ~171 k. Albedo, density
-and diameter ride along for those objects because they arrive in the same
-read and constrain the same question (what is this thing made of).
+Only rows with a taxonomic class, a diameter or a mass are kept: the interior
+block reads the class, the radius and mass choosers read the diameter and the
+mass. That prunes 1.56 M rows to about 260 k. Albedo and density ride along.
 
 Numbered asteroids join on `spkid == 20000000 + number`, the SBDB convention
 our Object IDs already use. Unnumbered ones join on the provisional
@@ -37,7 +36,17 @@ _COLUMNS = [
     "albedo.value",
     "density.value",
     "diameter.value",
+    "mass.value",
+    "mass.error.min",
+    "mass.error.max",
 ]
+
+
+def mass_sigma(error_min: float | None, error_max: float | None) -> float | None:
+    """Half the BFT's error interval on a mass, None when it gives no error."""
+    if error_min is None or error_max is None:
+        return None
+    return (error_max - error_min) / 2
 
 
 def ingest(download_dir: Path) -> None:
@@ -69,12 +78,14 @@ def ingest(download_dir: Path) -> None:
         }
 
         rows: list[dict] = []
-        classified = unmatched_numbered = unmatched_unnumbered = 0
+        kept = unmatched_numbered = unmatched_unnumbered = 0
         for i in tqdm(range(total), desc="SsODNet", unit="row"):
             taxonomy = table["taxonomy.class"][i]
-            if taxonomy is None:
+            diameter = table["diameter.value"][i]
+            mass = table["mass.value"][i]
+            if taxonomy is None and diameter is None and mass is None:
                 continue
-            classified += 1
+            kept += 1
 
             number = table["number"][i]
             if number is not None:
@@ -97,7 +108,11 @@ def ingest(download_dir: Path) -> None:
                     "taxonomy_scheme": table["taxonomy.scheme"][i],
                     "albedo": table["albedo.value"][i],
                     "density": table["density.value"][i],
-                    "diameter_km": table["diameter.value"][i],
+                    "diameter_km": diameter,
+                    "mass_kg": mass,
+                    "mass_kg_sigma": mass_sigma(
+                        table["mass.error.min"][i], table["mass.error.max"][i]
+                    ),
                 }
             )
 
@@ -108,9 +123,9 @@ def ingest(download_dir: Path) -> None:
             session.execute(insert(SsODNet), rows[start : start + 5000])
 
     logger.info(
-        "SsODNet: %d classified of %d rows, %d ingested "
+        "SsODNet: %d of %d rows with a class, a diameter or a mass, %d ingested "
         "(unmatched: %d numbered, %d unnumbered)",
-        classified,
+        kept,
         total,
         len(rows),
         unmatched_numbered,

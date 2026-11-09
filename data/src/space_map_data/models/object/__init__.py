@@ -9,6 +9,7 @@ from space_map_data.models.object.johnston import (
     JohnstonMoon,
     JohnstonSystem,
 )
+from space_map_data.models.object.jpl_satellite_physical import JPLSatellitePhysical
 from space_map_data.models.object.launch_site import LaunchPad, LaunchSite
 from space_map_data.models.object.launch_vehicle import LaunchVehicle
 from space_map_data.models.object.launchlog import Launchlog
@@ -34,6 +35,7 @@ __all__ = [
     "CometPrefix",
     "ElementsScale",
     "Horizons",
+    "JPLSatellitePhysical",
     "JohnstonConfidence",
     "JohnstonMoon",
     "JohnstonSystem",

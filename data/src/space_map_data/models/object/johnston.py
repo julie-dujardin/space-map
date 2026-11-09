@@ -54,6 +54,8 @@ class JohnstonSystem(Base):
     taxonomy: Mapped[str | None] = mapped_column(default=None)
     mass_kg: Mapped[float | None] = mapped_column(default=None)
     mass_kg_sigma: Mapped[float | None] = mapped_column(default=None)
+    # The archive flags the mass assumed or estimated.
+    mass_kg_nominal: Mapped[bool] = mapped_column(default=False)
     density_g_cm3: Mapped[float | None] = mapped_column(default=None)
     density_g_cm3_sigma: Mapped[float | None] = mapped_column(default=None)
     hill_radius_km: Mapped[float | None] = mapped_column(default=None)
@@ -65,6 +67,8 @@ class JohnstonSystem(Base):
     # Primary body
     primary_diameter_km: Mapped[float | None] = mapped_column(default=None)
     primary_diameter_km_sigma: Mapped[float | None] = mapped_column(default=None)
+    # The archive flags the diameter assumed or estimated (from an albedo).
+    primary_diameter_km_nominal: Mapped[bool] = mapped_column(default=False)
     primary_dimensions: Mapped[str | None] = mapped_column(default=None)
     primary_axial_ratios: Mapped[str | None] = mapped_column(default=None)
     primary_rotation_h: Mapped[float | None] = mapped_column(default=None)
@@ -138,6 +142,8 @@ class JohnstonMoon(Base):
     # Component
     diameter_km: Mapped[float | None] = mapped_column(default=None)
     diameter_km_sigma: Mapped[float | None] = mapped_column(default=None)
+    # The archive flags the diameter assumed or estimated (from an albedo).
+    diameter_km_nominal: Mapped[bool] = mapped_column(default=False)
     diameter_ratio: Mapped[float | None] = mapped_column(default=None)
     diameter_ratio_sigma: Mapped[float | None] = mapped_column(default=None)
     dimensions: Mapped[str | None] = mapped_column(default=None)

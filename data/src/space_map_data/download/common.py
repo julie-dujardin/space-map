@@ -90,6 +90,9 @@ from space_map_data.download.providers.objects.johnston import JohnstonDownloade
 from space_map_data.download.providers.objects.jpl_satellite_discovery import (
     JPLSatelliteDiscoveryDownloader,
 )
+from space_map_data.download.providers.objects.jpl_satellite_physical import (
+    JPLSatellitePhysicalDownloader,
+)
 from space_map_data.download.providers.objects.sbdb import SBDBDownloader
 from space_map_data.download.providers.objects.sbdb_moons import (
     SBDBMoonsDownloader,
@@ -195,6 +198,7 @@ PROVIDERS_CLASSES = [
     JohnstonDownloader,
     SsODNetDownloader,
     JPLSatelliteDiscoveryDownloader,
+    JPLSatellitePhysicalDownloader,
     # Ordered: SIMBAD reads the three catalogues, and Gaia reads SIMBAD.
     ExoplanetArchiveDownloader,
     ExoplanetEUDownloader,

@@ -150,6 +150,11 @@ SOURCE_CATALOG: dict[str, SourceInfo] = {
         "https://ssd.jpl.nasa.gov/sats/discovery.html",
         "orbits",
     ),
+    PROVIDERS.JPL_SATELLITE_PHYSICAL: SourceInfo(
+        "JPL planetary satellite physical parameters",
+        "https://ssd.jpl.nasa.gov/sats/phys_par/",
+        "orbits",
+    ),
     PROVIDERS.EXOPLANET_ARCHIVE: SourceInfo(
         "NASA Exoplanet Archive",
         "https://exoplanetarchive.ipac.caltech.edu/",

@@ -6,10 +6,10 @@ unit, and a bracketed source code. Tags are collapsed to ``|`` so a label like
 ``diameter <b>d<sub>p</sub>:</b>`` reads as ``diameter |d|p|:|`` and can be
 matched literally.
 
-Values the archive doesn't have are printed as ``?``; assumed, derived and
-estimated ones are flagged ``[*A]``, ``[*D]``, ``[*E]``. We keep all of them —
-the source code travels with the number in ``*_ref`` columns nowhere yet, so
-for now a derived value is not distinguished from a measured one.
+Values the archive doesn't have are printed as ``?``. Assumed, derived and
+estimated ones have the source code ``[*A]``, ``[*D]``, ``[*E]``. All of them
+are kept. The mass and the diameters also keep a ``*_nominal`` flag, true for
+an assumed or an estimated value.
 """
 
 import html
@@ -34,6 +34,16 @@ _VALUE = r"\s*\|?\s*\(?\s*(\?|[-+]?[\d.]+(?:x10\|-?\d+\|)?)"
 # An angle carries its degree sign on the value *and* on the sigma
 # ("94.18° ± 0.42°"), where a length puts the unit after both ("1098.6 ± 6.1 km").
 _SIGMA = r"(?:°?\s*±\s*([\d.]+(?:x10\|-?\d+\|)?))?"
+# The source code after the value, its unit and a second sigma. A label ends in
+# a colon, so the search stops before the next label.
+_SOURCE = r"[^\[:]*?\[([^\]]*)\]"
+
+# Source codes of a value that is assumed, or estimated (a diameter from an
+# albedo). A derived value comes from measured ones, so it is measured. Only the
+# bare codes count: `[*A17]`, `[*A#]`, `[*N16]` and `[*M]` stand on albedos and
+# effective diameters that carry a sigma or a measured work's diameter, so they
+# are references, not the assumed code.
+_NOMINAL_CODES = frozenset(("*A", "*E"))
 
 
 def flatten(page: str) -> str:
@@ -61,6 +71,14 @@ def _field(text: str, label: str) -> tuple[float | None, float | None]:
     if found is None:
         return None, None
     return _number(found.group(1)), _number(found.group(2))
+
+
+def source_code(text: str, label: str) -> str | None:
+    """The bracketed source code of a numeric label's value, None when absent."""
+    found = re.search(label + _VALUE + _SIGMA + _SOURCE, text)
+    if found is None or found.group(1) == "?":
+        return None
+    return found.group(3)
 
 
 def _text_field(text: str, label: str) -> str | None:
@@ -113,6 +131,7 @@ def parse_system(text: str) -> dict:
     )
     row["albedo"], row["albedo_sigma"] = _field(combined, r"geometric albedo\|:\|")
     row["mass_kg"], row["mass_kg_sigma"] = _field(combined, r"mass \|m:\|")
+    row["mass_kg_nominal"] = source_code(combined, r"mass \|m:\|") in _NOMINAL_CODES
     row["density_g_cm3"], row["density_g_cm3_sigma"] = _field(
         combined, r"density \|ρ:\|"
     )
@@ -140,6 +159,9 @@ def parse_system(text: str) -> dict:
 
     row["primary_diameter_km"], row["primary_diameter_km_sigma"] = _field(
         primary, r"diameter \|d\|p\|:\|"
+    )
+    row["primary_diameter_km_nominal"] = (
+        source_code(primary, r"diameter \|d\|p\|:\|") in _NOMINAL_CODES
     )
     row["primary_dimensions"] = _text_field(primary, r"dimensions \|:\|")
     row["primary_axial_ratios"] = _text_field(primary, r"axial ratios \|a/b, b/c:\|")
@@ -190,6 +212,9 @@ def parse_companion(text: str, label: str) -> dict:
 
     row["diameter_km"], row["diameter_km_sigma"] = _field(
         other, r"diameter \|d\|s\|:\|"
+    )
+    row["diameter_km_nominal"] = (
+        source_code(other, r"diameter \|d\|s\|:\|") in _NOMINAL_CODES
     )
     row["diameter_ratio"], row["diameter_ratio_sigma"] = _field(
         other, r"diameter ratio \|d\|s\|/d\|p\|:\|"

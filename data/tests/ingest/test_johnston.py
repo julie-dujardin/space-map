@@ -9,6 +9,7 @@ from space_map_data.ingest.providers.objects.johnston_parse import (
     parse_companion,
     parse_discoveries,
     parse_system,
+    source_code,
 )
 
 # A page in the archive's own shape: labels are <b>/<sub> runs, values carry
@@ -125,6 +126,60 @@ class TestParseSystem:
         row = parse_system(text)
         assert row["primary_diameter_km"] == 166.2
         assert row["primary_rotation_h"] == 4.1482003
+
+
+class TestNominalFlags:
+    """The source code after a value says whether the archive measured it."""
+
+    def test_the_source_code_of_a_value(self, text):
+        assert source_code(text, r"mass \|m:\|") == "D21a"
+        assert source_code(text, r"density \|ρ:\|") == "*D"
+
+    def test_the_source_code_of_an_unknown_value_is_none(self, text):
+        assert source_code(text, r"rotation period \|RP\|s\|:\|") is None
+
+    def test_a_cited_mass_is_measured(self, text):
+        assert parse_system(text)["mass_kg_nominal"] is False
+
+    @pytest.mark.parametrize(
+        ("code", "nominal"), [("*A", True), ("*E", True), ("*D", False)]
+    )
+    def test_an_assumed_or_estimated_mass_is_nominal(self, code, nominal):
+        """Thymbraeus: 2.26x10^16 kg [*D], from a measured density and diameter."""
+        page = _combined(f"mass <b>m:</b> 2.26x10<sup>16</sup> kg [{code}]<br>")
+        assert parse_system(page)["mass_kg_nominal"] is nominal
+
+    @pytest.mark.parametrize("code", ["*A17", "*A#"])
+    def test_a_code_that_starts_like_assumed_is_a_reference(self, code):
+        """am-01727 prints its albedo 0.544 [*A17] beside a WISE diameter
+        [A17c], am-08077 its albedo 0.169 ± 0.03 [*A#]: both measured."""
+        page = _combined(f"mass <b>m:</b> 2.26x10<sup>16</sup> kg [{code}]<br>")
+        assert parse_system(page)["mass_kg_nominal"] is False
+
+    @pytest.mark.parametrize(("code", "nominal"), [("*E", True), ("*D", False)])
+    def test_an_estimated_primary_diameter_is_nominal(self, code, nominal):
+        """2000 CQ114: 179 km [*E], from an assumed albedo. A diameter derived
+        from measured ones is measured."""
+        page = flatten(
+            "<b>other data, primary:</b><br>"
+            f"diameter <b>d<sub>p</sub>:</b> 179 km [{code}]<br>"
+        )
+        row = parse_system(page)
+        assert row["primary_diameter_km"] == 179.0
+        assert row["primary_diameter_km_nominal"] is nominal
+
+    def test_an_estimated_companion_diameter_is_nominal(self):
+        page = flatten(
+            "<b>other data, secondary:</b><br>"
+            "diameter <b>d<sub>s</sub>:</b> 181 km [*E]<br>"
+            "diameter ratio <b>d<sub>s</sub>/d<sub>p</sub>:</b> 0.9 [B20b]<br>"
+        )
+        row = parse_companion(page, "secondary")
+        assert row["diameter_km"] == 181.0
+        assert row["diameter_km_nominal"] is True
+
+    def test_a_cited_companion_diameter_is_measured(self, text):
+        assert parse_companion(text, "secondary")["diameter_km_nominal"] is False
 
 
 class TestParseCompanion:

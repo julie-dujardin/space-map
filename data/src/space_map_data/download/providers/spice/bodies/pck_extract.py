@@ -8,6 +8,7 @@ docstring for the rules.
 
 import logging
 import re
+from pathlib import Path
 
 import spiceypy
 
@@ -17,6 +18,42 @@ logger = logging.getLogger(__name__)
 
 # pck00011 Galileo-flyby asteroid ids → SBDB-canonical naif (2_000_000 + number).
 _GALILEO_ERA_NAIF = {9511010: 2000951, 2431010: 2000243}
+
+# The rank of each id form of a numbered body in a GM kernel: the canonical id,
+# then the SBDB spkid, then the primary of a binary (`9_20xxxxxx`). `gm_de440`
+# gives the spkid to the system of a binary. The probe export fits its chunks
+# with that GM, and the frontend reads it under the canonical id.
+_GM_FORM_CANONICAL, _GM_FORM_SPKID, _GM_FORM_PRIMARY = range(3)
+
+
+def _data_lines(text: str) -> str:
+    """The data blocks of a text kernel, without its comment blocks."""
+    lines: list[str] = []
+    in_data = False
+    for line in text.splitlines():
+        marker = line.strip()
+        if marker.startswith("\\begindata"):
+            in_data = True
+        elif marker.startswith("\\begintext"):
+            in_data = False
+        elif in_data:
+            lines.append(line)
+    return "\n".join(lines)
+
+
+def defining_kernels(key: str) -> dict[int, str]:
+    """The file name of the loaded text kernel that sets ``BODY<n>_<key>``, by n.
+
+    SPICE keeps the value of the kernel loaded last, so the last file wins.
+    """
+    assignment = re.compile(rf"BODY(-?\d+)_{key}\s*\+?=")
+    out: dict[int, str] = {}
+    for index in range(spiceypy.ktotal("TEXT")):
+        path = Path(spiceypy.kdata(index, "TEXT", fillen=1024)[0])
+        data = _data_lines(path.read_text(errors="replace"))
+        for match in assignment.finditer(data):
+            out[int(match.group(1))] = path.name
+    return out
 
 
 def extract_orientation() -> list[dict]:
@@ -186,7 +223,9 @@ def extract_radii() -> list[dict]:
     Donaldjohanson); we map those down so downstream `Object.naif_id`
     lookups match. If both forms are present in the pool, the NAIF-
     canonical one wins (preserves the generic-PCK > mission-PCK policy).
+    ``kernel`` is the file name of the kernel that sets the value.
     """
+    kernels = defining_kernels("RADII")
     matches = spiceypy.gnpool("BODY*_RADII", 0, 5000)
     naif_ids: set[int] = set()
     for var in matches:
@@ -210,6 +249,7 @@ def extract_radii() -> list[dict]:
             "radius_a_km": radii[0],
             "radius_b_km": radii[1],
             "radius_c_km": radii[2],
+            "kernel": kernels.get(naif_id),
         }
     return sorted(rows_by_canonical.values(), key=lambda r: r["naif_id"])
 
@@ -217,11 +257,19 @@ def extract_radii() -> list[dict]:
 def extract_gms() -> list[dict]:
     """Extract PCK gravitational parameters (GM, km^3/s^2) for every body.
 
-    Sourced from `gm_de440.tpc`. SPICE has no GM for the SSB (naif 0), but
-    downstream consumers walk the parent chain through it for chebyshev-only
-    bodies — so we synthesize a row for naif 0 reusing the Sun's GM (the
-    SSB-relative motion of bodies orbiting the Sun is what matters there).
+    Rows are keyed by the canonical NAIF id, as `extract_radii` keys them. A
+    body that a kernel gives in several id forms keeps the GM of its best form
+    (`_GM_FORM_CANONICAL` first), so a binary keeps the GM of its system. A GM
+    of 0 is no value. ``kernel`` is the file name of the kernel that sets the
+    value. When the kept GM is that of a binary system and the kernel also
+    gives its primary (`9_20xxxxxx`), ``primary_gm_km3_s2`` and
+    ``primary_kernel`` are the GM of the primary alone and its kernel.
+
+    SPICE has no GM for the SSB (naif 0), but downstream consumers walk the
+    parent chain through it for chebyshev-only bodies. So a row for naif 0
+    takes the Sun's GM, with no kernel: it is not a body value.
     """
+    kernels = defining_kernels("GM")
     matches = spiceypy.gnpool("BODY*_GM", 0, 5000)
     naif_ids: set[int] = set()
     for var in matches:
@@ -229,7 +277,8 @@ def extract_gms() -> list[dict]:
         if m:
             naif_ids.add(int(m.group(1)))
 
-    rows: list[dict] = []
+    best: dict[int, tuple[int, int, dict]] = {}
+    primaries: dict[int, tuple[float, str | None]] = {}
     skipped: list[int] = []
     for naif_id in sorted(naif_ids):
         try:
@@ -237,7 +286,23 @@ def extract_gms() -> list[dict]:
         except spiceypy.exceptions.SpiceyError:
             skipped.append(naif_id)
             continue
-        rows.append({"naif_id": naif_id, "gm_km3_s2": gm})
+        if gm == 0:
+            logger.debug("GM of %d is 0 in %s: no value", naif_id, kernels.get(naif_id))
+            continue
+        canonical = _canonical_naif(naif_id)
+        if canonical is None:
+            continue
+        form = _gm_form(naif_id, canonical)
+        if form == _GM_FORM_PRIMARY:
+            primaries[canonical] = (gm, kernels.get(naif_id))
+        row = {"naif_id": canonical, "gm_km3_s2": gm, "kernel": kernels.get(naif_id)}
+        kept = best.get(canonical)
+        if kept is None or form < kept[0]:
+            if kept is not None:
+                logger.debug("GM of %d replaces that of %d", naif_id, kept[1])
+            best[canonical] = (form, naif_id, row)
+        else:
+            logger.debug("GM of %d loses to that of %d", naif_id, kept[1])
 
     if skipped:
         logger.warning(
@@ -246,13 +311,37 @@ def extract_gms() -> list[dict]:
             skipped,
         )
 
-    try:
-        gm_sun = spiceypy.bodvrd("10", "GM", 1)[1][0]
-        rows.insert(0, {"naif_id": 0, "gm_km3_s2": gm_sun})
-    except spiceypy.exceptions.SpiceyError:
+    rows: list[dict] = []
+    for canonical, (form, _, row) in sorted(best.items()):
+        primary = primaries.get(canonical) if form != _GM_FORM_PRIMARY else None
+        primary_gm, primary_kernel = primary or (None, None)
+        rows.append(
+            {**row, "primary_gm_km3_s2": primary_gm, "primary_kernel": primary_kernel}
+        )
+    sun = best.get(10)
+    if sun is not None:
+        rows.insert(
+            0,
+            {
+                "naif_id": 0,
+                "gm_km3_s2": sun[2]["gm_km3_s2"],
+                "kernel": None,
+                "primary_gm_km3_s2": None,
+                "primary_kernel": None,
+            },
+        )
+    else:
         logger.warning("Could not read Sun GM; SSB row not synthesized")
-
     return rows
+
+
+def _gm_form(naif_id: int, canonical: int) -> int:
+    """The rank of the id form ``naif_id`` among the forms of ``canonical``."""
+    if 920_000_000 <= naif_id < 930_000_000:
+        return _GM_FORM_PRIMARY
+    if naif_id == canonical:
+        return _GM_FORM_CANONICAL
+    return _GM_FORM_SPKID
 
 
 def extract_gravity_field() -> list[dict]:

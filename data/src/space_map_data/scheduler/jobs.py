@@ -126,6 +126,7 @@ JOBS: list[Job] = [
             PROVIDERS.JOHNSTON,
             PROVIDERS.SSODNET,
             PROVIDERS.JPL_SATELLITE_DISCOVERY,
+            PROVIDERS.JPL_SATELLITE_PHYSICAL,
         ),
         schedule=DailyAt(dtime(hour=3, minute=0)),
     ),
