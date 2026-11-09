@@ -39,7 +39,7 @@ from space_map_data.extrasolar.measured_radius import MEASURED_COLUMNS
 from space_map_data.extrasolar.registry import ALIAS, LIVE, RETIRED, Registry
 from space_map_data.extrasolar.sky import REGION_LEVEL, REGION_SHIFT, region_of
 from space_map_data.extrasolar.store import region_file
-from space_map_data.extrasolar.systems.assemble import NODE_CLASSES
+from space_map_data.extrasolar.systems.assemble import HELD, NODE_CLASSES
 from space_map_data.extrasolar.tables import (
     METADATA,
     POINT_SOURCE,
@@ -127,8 +127,9 @@ FAMILY_COLUMNS = tuple(
     dict.fromkeys((*families.COLUMNS, *render.MAG_COLUMNS, *radius.COLUMNS))
 )
 FAMILY_SCHEMA = pa.schema([POINT_SOURCE.schema.field(name) for name in FAMILY_COLUMNS])
-# The System columns of the held stars.
+# The System columns of the held stars, and of the points that hold them.
 HELD_COLUMNS = ("id", "parent", "star")
+NODE_COLUMNS = (*HELD_COLUMNS, "point", "members")
 # The Point source columns of the points whose measurement a held star takes.
 MEASURED_POINT_COLUMNS = ("id", *MEASURED_COLUMNS)
 # The length of each family list. A family page lists as many stars.
@@ -640,6 +641,26 @@ def measured_points(
     return pa.concat_tables([found, rows])
 
 
+def led_points(
+    registry: Registry, regions: tuple[int, ...], system: pa.Table
+) -> np.ndarray:
+    """The IDs of the points of `system` that a held star dominates
+    (`radius.led_points`). A held star outside `regions` is read from the
+    region of its ID, as `measured_points` reads a point."""
+    points = system.filter(system["point"].fill_null(False))
+    members = pc.list_flatten(points["members"])
+    is_held = pc.equal(pc.struct_field(members, "kind"), HELD)
+    held = pc.struct_field(members, "id").filter(is_held).drop_null().to_numpy()
+    missing = np.setdiff1d(held, system["id"].to_numpy())
+    others = set(region_of(missing & CELL_MASK).tolist()) - set(regions)
+    stars = system.select(list(HELD_COLUMNS))
+    if others:
+        rows = _read(registry, SYSTEM, tuple(sorted(others)), HELD_COLUMNS)
+        rows = rows.filter(pc.is_in(rows["id"], value_set=pa.array(missing)))
+        stars = pa.concat_tables([stars, rows])
+    return radius.led_points(stars).to_numpy()
+
+
 def held_rows(system: pa.Table, points: pa.Table) -> pa.Table:
     """Family rows of the held stars in the System rows `system`. `points`
     are the measured points that they take (`measured_points`).
@@ -674,12 +695,13 @@ def with_families(
     """Metadata `rows` with their family masks, spectral type and radius
     (`radius.star_radius`), and the stars of each family.
 
-    A held star reads its System row. A node of a star system has no family,
-    type or radius, and neither has another row without a Point source row,
-    such as an alias.
+    A held star reads its System row. A point that holds several stars has
+    no family or type, and no radius when it stands for a held star
+    (`led_points`). Another row without a Point source row, such as a
+    resolved system or an alias, has none of them.
     """
     points = _read(registry, POINT_SOURCE, regions, FAMILY_COLUMNS)
-    system = _read(registry, SYSTEM, regions, HELD_COLUMNS)
+    system = _read(registry, SYSTEM, regions, NODE_COLUMNS)
     measured = measured_points(registry, regions, system, points)
     stars = pa.concat_tables([points, held_rows(system, measured)])
     published = np.zeros(rows.num_rows, np.uint64)
@@ -696,21 +718,26 @@ def with_families(
         stars = stars.filter(pa.array(found))
         at = at.filter(pa.array(found)).to_numpy()
         classes = rows["class"].take(pa.array(at))
-        is_star = pc.invert(pc.is_in(classes, value_set=pa.array(NODE_CLASSES)))
-        stars, classes = stars.filter(is_star), classes.filter(is_star)
-        at = at[is_star.to_numpy(zero_copy_only=False)]
-        published[at], estimated[at] = families.masks(stars, classes)
-        star_of = np.full(rows.num_rows, -1)
-        star_of[at] = np.arange(at.size)
-        place = pa.array(star_of, mask=star_of < 0)
-        spectral = families.spectral_type(stars).take(place)
+        node = pc.is_in(classes, value_set=pa.array(NODE_CLASSES))
+        node = node.to_numpy(zero_copy_only=False)
+        star_published, star_estimated = families.masks(stars, classes)
         transits = pc.is_in(
             stars["id"], value_set=radius.transit_hosts(registry, regions)
         ).to_numpy(zero_copy_only=False)
         size, size_source = radius.star_radius(
-            stars, published[at] | estimated[at], transits
+            stars, star_published | star_estimated, transits
         )
+        led = np.isin(stars["id"].to_numpy(), led_points(registry, regions, system))
+        place = _places(at, rows.num_rows)
+        unsized = pa.array(node & led)
+        size = pc.if_else(unsized, pa.scalar(None, size.type), size)
+        size_source = pc.if_else(unsized, pa.scalar(None, pa.string()), size_source)
         sizes, size_sources = size.take(place), size_source.take(place)
+        is_star = ~node
+        stars, at = stars.filter(pa.array(is_star)), at[is_star]
+        published[at] = star_published[is_star]
+        estimated[at] = star_estimated[is_star]
+        spectral = families.spectral_type(stars).take(_places(at, rows.num_rows))
         # Only a star with a published family can be listed.
         listed = published[at] != 0
         mag[at[listed]] = render.magnitudes(stars.filter(pa.array(listed)))[0]
@@ -722,6 +749,13 @@ def with_families(
     unranked = held & np.isnan(mag) & (published != 0)
     ranked = np.where(unranked, families.NONE, published)
     return rows, FamilyStars(counts, brightest(rows, ranked, mag), int(unranked.sum()))
+
+
+def _places(at: np.ndarray, n: int) -> pa.Array:
+    """The index into `at` of each of `n` rows, null for a row not in it."""
+    index = np.full(n, -1)
+    index[at] = np.arange(at.size)
+    return pa.array(index, mask=index < 0)
 
 
 def brightest(

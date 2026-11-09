@@ -183,8 +183,8 @@ class TestPlanetFiles:
     def test_a_point_that_keeps_its_planets_has_the_catalogue_radius(
         self, tmp_path, out
     ):
-        """A point of two stars has no Metadata radius, but its planets' host
-        is the catalogue's star."""
+        """A point of two stars that holds no held star keeps its radius, so
+        its Metadata row and its planets' host agree (GJ 747)."""
         built = write_registry(
             tmp_path / "reg",
             [star(100.0, 20.0, 50.0, name="Pair") | HOST],
@@ -196,7 +196,11 @@ class TestPlanetFiles:
         host = reader.system(built.ids[0])["hosts"][0]
         assert (host["radius"], host["radius_source"]) == (1.1, ARCHIVE)
         metadata = reader.row(METADATA.slug, built.ids[0])
-        assert metadata is not None and metadata["radius"] is None
+        assert metadata is not None
+        assert (metadata["radius"], metadata["radius_source"]) == (
+            pytest.approx(1.1),
+            ARCHIVE,
+        )
 
     def test_a_host_has_its_age(self):
         """The tidal lock reads the host's age, also on a held star."""

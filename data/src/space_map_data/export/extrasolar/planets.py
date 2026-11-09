@@ -29,9 +29,9 @@ with its values from its System row. A held star or a resolved system takes
 the render position and distance of its point, else of the first member point
 of the system that the render tree draws, so that its planets are drawn
 there. A host's radius and its source are those of its Metadata row
-(`radius.load`). A point that holds several stars has none there, so it
-takes the planet catalogues' radius (`radius.host_radius`). A resolved
-system has none.
+(`radius.load`). A point that holds several stars has none there when it
+stands for a held star, and then takes the planet catalogues' radius
+(`radius.host_radius`). A resolved system has none.
 
 The checks: every host and system ID is live and has a Metadata row and a
 Point source or System row, every host is in one system, a host in a star
@@ -416,17 +416,15 @@ def host_rows(job: HostJob) -> HostRows:
         if meta["system"] is not None or meta["mask"] & SYSTEM_BIT:
             out.roots[id_] = meta["system"] or id_
         if id_ in places.points:
-            # A point of several stars has no Metadata radius. Its planets'
-            # host is the catalogues' star.
-            size = (
-                places.host_radii.get(id_, NO_RADIUS)
-                if meta["class"] in NODE_CLASSES
-                else sizes.get(id_, NO_RADIUS)
-            )
+            size = sizes.get(id_)
+            if size is None and meta["class"] in NODE_CLASSES:
+                # It stands for a held star; its planets' host is the
+                # catalogues' star.
+                size = places.host_radii.get(id_)
             out.hosts[id_] = _host(
                 meta,
                 places.points[id_],
-                size,
+                size or NO_RADIUS,
                 places.placed.get(id_),
                 places.distances.get(id_),
                 places.positions.get(id_),

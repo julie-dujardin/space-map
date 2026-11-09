@@ -11,6 +11,10 @@ scratch (`save`), and the planet files read their hosts' radii from there
 2. the radius of a planet host in the exoplanet catalogues, each catalogue
    in its order;
 3. Gaia DR3 FLAME, then FLAME on GSP-Spec, then GSP-Phot.
+A point that holds several stars stands for its first member when that held
+star dominates its light (`led_points`), so it has no radius of its own.
+Else it keeps its own, as no one star can take it: a point whose light can
+blend draws at the size it was measured at.
 A host of a transiting planet (`transit_hosts`) takes the catalogue's radius
 before a measurement. The catalogue derives the planet's radius from that
 star radius, so the two stay consistent.
@@ -129,6 +133,14 @@ def measuring_points(held: pa.Table) -> pa.Array:
     return pc.if_else(
         takes, held["parent"].combine_chunks(), pa.scalar(None, pa.int64())
     )
+
+
+def led_points(held: pa.Table) -> pa.Array:
+    """The points that a `held` star dominates (`star.dominant`): each one
+    stands for that star. `held` has `parent` and `star`."""
+    star = held["star"].combine_chunks()
+    dominant = pc.struct_field(star, "dominant").fill_null(False)
+    return pc.unique(held["parent"].combine_chunks().filter(dominant).drop_null())
 
 
 def held_columns(held: pa.Table, points: pa.Table) -> dict[str, pa.Array]:

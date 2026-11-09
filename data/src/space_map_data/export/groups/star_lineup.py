@@ -187,7 +187,7 @@ def stand_ins(reader: ExportReader, ids: list[int]) -> dict[int, int]:
     resolved star system its primary, and a point that holds several stars
     its first member when that held star dominates the point's light
     (`star.dominant`). A point whose light can blend stands for no one star,
-    so it stands for itself and has no size."""
+    so it stands for itself, at its own radius."""
     nodes = reader.rows(SYSTEM.slug, ids, ["primary"])
     main = {
         id_: node["primary"] if node["primary"] is not None else id_

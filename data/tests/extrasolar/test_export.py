@@ -7,6 +7,7 @@ import numpy as np
 import pyarrow as pa
 import pytest
 
+from space_map_data.constants.planets.families import SOLAR_RADIUS_KM
 from space_map_data.constants.stars import binaries
 from space_map_data.constants.stars.binaries import BINARIES
 from space_map_data.constants.stars.families import FAMILIES
@@ -478,7 +479,7 @@ class TestExport:
             ("binary-orbit", placement.ORBIT_PARALLAX_COLUMNS),
             ("system", ("id",)),
             ("system", None),
-            ("system", tiles.HELD_COLUMNS),
+            ("system", tiles.NODE_COLUMNS),
             ("system", systems.READ_COLUMNS),
             ("system", census.HELD_COLUMNS),
             ("point-source", inputs.COLUMNS),
@@ -1243,12 +1244,79 @@ class TestRadius:
             a: binaries.REFERENCES["doyle_2011"]
         }
 
-    def test_a_node_has_none_and_its_first_star_takes_its_measurement(self, exported):
+    def test_a_point_gives_its_measurement_to_its_dominant_star(self, exported):
         built, reader = exported
         assert self._radius(reader, built.ids[2]) == (None, None)
         assert self._radius(reader, built.held[0, "A"]) == (1.5, "literature")
         size, source = self._radius(reader, built.held[0, "B"])
         assert (size, source) == (pytest.approx(0.4), "open-exoplanet-catalogue")
+
+    def test_a_point_that_stands_for_a_held_star_has_none(self, tmp_path, out):
+        """Its dominant held star's paper, not the point's Gaia radius, sizes
+        it."""
+        built = write_registry(
+            tmp_path / "reg",
+            [star(20.0, 5.0) | {"radius_flame": 2.0}],
+            systems=[
+                Node(
+                    (("held", None, "A"), ("held", None, "B")),
+                    point=0,
+                    held={
+                        "A": Held(
+                            "Point A",
+                            {
+                                "dominant": True,
+                                "radius": 1.0,
+                                "radius_source": "literature",
+                            },
+                            v_mag=4.0,
+                        ),
+                        "B": Held("Point B", {"mass": 0.2}, v_mag=9.0),
+                    },
+                ),
+            ],
+        )
+        export_extrasolar(built.root, out, workers=1)
+        reader = ExportReader(out / "v1" / "x")
+        assert self._radius(reader, built.ids[0]) == (None, None)
+        assert self._radius(reader, built.held[0, "A"]) == (1.0, "literature")
+
+    def test_a_point_of_entries_keeps_its_radius(self, tmp_path, out):
+        """Megrez: a point whose members are entries only draws at its own
+        radius, as no held star can take it."""
+        built = write_registry(
+            tmp_path / "reg",
+            [star(20.0, 5.0) | {"radius_flame": 2.0}],
+            systems=[Node((("entry", None, "A"), ("entry", None, "B")), point=0)],
+        )
+        export_extrasolar(built.root, out, workers=1)
+        reader = ExportReader(out / "v1" / "x")
+        assert self._radius(reader, built.ids[0]) == (2.0, "gaia-dr3-flame")
+
+    def test_a_measurement_that_no_held_star_takes_stays(self, tmp_path, out):
+        """Capella: neither held star dominates the point's light, so the
+        point keeps its measured radius and the held stars have none."""
+        built = write_registry(
+            tmp_path / "reg",
+            [star(20.0, 5.0) | {"radius_literature": 12.0, "radius_flame": 9.0}],
+            systems=[
+                Node(
+                    (("held", None, "A"), ("held", None, "B")),
+                    point=0,
+                    held={
+                        "A": Held("Point A", {"dominant": False}, v_mag=0.9),
+                        "B": Held("Point B", {"dominant": False}, v_mag=1.0),
+                    },
+                ),
+            ],
+        )
+        export_extrasolar(built.root, out, workers=1)
+        reader = ExportReader(out / "v1" / "x")
+        assert self._radius(reader, built.ids[0]) == (12.0, "literature")
+        assert self._radius(reader, built.held[0, "A"]) == (None, None)
+        point_id = built.ids[0]
+        drawable = star_lineup.drawable_star_radii(reader, [point_id])
+        assert drawable == {point_id: pytest.approx(12.0 * SOLAR_RADIUS_KM, rel=1e-3)}
 
     def test_the_measurement_of_a_point_in_another_region(self, tmp_path, out):
         """The point's ID was minted far from its position, where its held
@@ -1277,6 +1345,7 @@ class TestRadius:
         export_extrasolar(built.root, out, workers=1)
         reader = ExportReader(out / "v1" / "x")
         assert self._radius(reader, a) == (1.5, "literature")
+        assert self._radius(reader, built.ids[0]) == (None, None)
         # The point stands for A, with the point's colour.
         point_id = built.ids[0]
         drawable = star_lineup.drawable_star_radii(reader, [point_id, a])
