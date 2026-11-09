@@ -17,10 +17,10 @@ can take it.
 A host of a transiting planet (`transit_hosts`) takes the catalogue's radius
 before a measurement. The catalogue derives the planet's radius from that
 star radius, so the two stay consistent.
-Gaia fits a normal star, so its radii do not count for a compact star: what
-it sees of a pulsar is mostly the companion. The exoplanet catalogues give a
-pulsar the radius of a model neutron star, so theirs do not count for a
-neutron star. A star with none of these has no radius. A radius keeps the
+Gaia fits a normal star, so its radii do not count for a compact star
+(`families.compact`): what it sees of a pulsar is mostly the companion. The
+exoplanet catalogues give a pulsar the radius of a model neutron star, so
+theirs do not count for a neutron star. A star with none of these has no radius. A radius keeps the
 digits of its source, so it is rounded only once, where it is shown.
 """
 
@@ -44,7 +44,6 @@ from space_map_data.utils.arrays import floats
 FLAME = "gaia-dr3-flame"
 FLAME_SPEC = "gaia-dr3-flame-spec"
 GSPPHOT = "gaia-dr3-gspphot"
-COMPACT = families.BIT["neutron-star"] | families.BIT["white-dwarf"]
 NEUTRON_STAR = families.BIT["neutron-star"]
 
 # The Gaia radii, in their order.
@@ -87,7 +86,7 @@ def star_radius(
     fill(np.where(transits, host, np.nan), catalogue)
     fill(*measured_radius(rows))
     fill(host, catalogue)
-    compact = (masks & COMPACT) != 0
+    compact = families.compact(masks)
     fill(np.where(compact, np.nan, floats(rows, "radius_flame")), FLAME)
     fill(np.where(compact, np.nan, floats(rows, "radius_flame_spec")), FLAME_SPEC)
     fill(np.where(compact, np.nan, floats(rows, "radius_gspphot")), GSPPHOT)

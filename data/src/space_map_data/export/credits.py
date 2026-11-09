@@ -19,6 +19,7 @@ from space_map_data.constants.atmosphere.references import (
 )
 from space_map_data.constants.interior.references import INTERIOR_SOURCES
 from space_map_data.constants.measured_shapes import MEASURED_SHAPES
+from space_map_data.constants.planets.families import NOMINAL_SOLAR_VALUES
 from space_map_data.constants.radiation.references import RADIATION_SOURCES
 from space_map_data.constants.rings.attribution import RingSource
 from space_map_data.constants.rings.catalog import RING_CATALOGS
@@ -130,12 +131,16 @@ def _orientation_references() -> list[dict]:
 
 
 def _star_references() -> list[dict]:
-    """The papers behind the hand-curated star values. `title` is the name a
-    star's page gives the work, so the page reads like the catalogue papers."""
+    """The papers behind the hand-curated star values, and the work of the
+    Sun's luminosity. `title` is the name a star's page gives the work, so
+    the page reads like the catalogue papers."""
     papers = {**literature.REFERENCES, **binaries.REFERENCES}
     return [
-        {"title": ref.short, "url": ref.url, "contribution": ref.title}
-        for ref in papers.values()
+        *(
+            {"title": ref.short, "url": ref.url, "contribution": ref.title}
+            for ref in papers.values()
+        ),
+        {**NOMINAL_SOLAR_VALUES, "contribution": "nominal solar luminosity"},
     ]
 
 

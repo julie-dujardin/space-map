@@ -178,16 +178,16 @@ class TestFamilies:
         assert "goldilocks-planet" not in _published(_planet(insolation=5.0))
 
     def test_goldilocks_from_the_star_is_an_estimate(self):
-        record = _planet(star_radius=1.0, star_teff=5772.0, semi_major_axis=1.0)
-        assert _estimated(record) == {"goldilocks-planet"}
-
-    def test_goldilocks_from_the_host_radius(self):
-        """HD 1461 d: no star radius in the planet's catalogue."""
-        record = _planet(star_teff=5772.0, semi_major_axis=1.0)
-        assert _estimated(record, STAR | {"radius": 1.0}) == {
-            "goldilocks-planet",
-        }
+        record = _planet(semi_major_axis=1.0)
+        assert _estimated(record, STAR | {"radius": 1.0}) == {"goldilocks-planet"}
         assert families_of(record, STAR) == ([], [])
+
+    def test_goldilocks_takes_the_host_record_only(self):
+        """Teff and radius both come from the host: the planet's own catalogue
+        values of its star do not count."""
+        record = _planet(star_radius=1.0, star_teff=5772.0, semi_major_axis=1.0)
+        assert families_of(record, STAR) == ([], [])
+        assert _estimated(record, STAR | {"teff": 3000.0, "radius": 1.0}) == set()
 
     def test_goldilocks_needs_a_teff_in_the_zone(self):
         record = _planet(insolation=0.9)

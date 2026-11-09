@@ -165,7 +165,7 @@ class TestPlanetFiles:
         assert host["catalogue_name"] == "HD 1"
         assert host["placement"] == render.PARALLAX
         assert host["distance"] == pytest.approx(20.0, rel=1e-6)
-        assert (host["teff"], host["teff_source"]) == (5800.0, "nasa-exoplanet-archive")
+        assert (host["teff"], host["teff_source"]) == (5800.0, ARCHIVE)
         assert (host["radius"], host["mass"]) == (1.1, 1.05)
         assert (host["radius_source"], host["mass_source"]) == (ARCHIVE, ARCHIVE)
         assert host["bp_rp"] == pytest.approx(0.9)
@@ -206,7 +206,7 @@ class TestPlanetFiles:
         """The tidal lock reads the host's age, also on a held star."""
         meta = {"id": 1, "name": "A", "name_source": None, "class": "star"}
         meta["cross_ids"] = None
-        point = dict.fromkeys(planets.POINT_COLUMNS)
+        point = dict.fromkeys([*planets.POINT_COLUMNS, *planets.SURFACE_COLUMNS])
         point |= {"host_age": 4.5, "host_age_source": ARCHIVE}
         record = planets._host(meta, point, planets.NO_RADIUS, None, None, None)
         assert (record["age"], record["age_source"]) == (4.5, ARCHIVE)

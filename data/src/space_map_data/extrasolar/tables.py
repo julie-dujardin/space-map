@@ -406,7 +406,6 @@ POINT_SOURCE = TableDef(
             _fields(pa.float32(), "teff_esphs", "logg_esphs"),
             ("gaia-dr3", "gaia-dr3-named"),
         ),
-        # FLAME, from the GSP-Phot temperature and the G luminosity.
         # What a star's size was measured at, above the model radii. A paper's
         # radius in solar radii, and JMDC's angular diameter in mas, which the
         # reader takes to a radius at the star's distance.
@@ -423,6 +422,28 @@ POINT_SOURCE = TableDef(
             ),
             ("jmdc",),
         ),
+        # A paper's Teff in K and log g in log(cm/s²) with the 1σ error, and
+        # its mass in M☉ with the lower and upper bound. Gaia fits no white
+        # dwarf, so the Teff and log g are for white dwarfs.
+        *(
+            ColumnGroup(
+                f"paper_{name}",
+                _fields(pa.float32(), f"{name}_literature", f"{name}_literature_error"),
+                ("literature",),
+            )
+            for name in ("teff", "logg")
+        ),
+        ColumnGroup(
+            "paper_mass",
+            _fields(
+                pa.float32(),
+                "mass_literature",
+                "mass_literature_lower",
+                "mass_literature_upper",
+            ),
+            ("literature",),
+        ),
+        # FLAME, from the GSP-Phot temperature and the G luminosity.
         ColumnGroup("flame", _flame(""), ("gaia-dr3", "gaia-dr3-named")),
         # FLAME again, from the GSP-Spec parameters of the RVS spectra.
         ColumnGroup("flame_spec", _flame("_spec"), ("gaia-dr3", "gaia-dr3-named")),

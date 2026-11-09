@@ -1,5 +1,5 @@
 {
-	"description": "Point source rows of one star each, and what the star's panel shows for them: the kind and metallicity of frontend/src/components/detail/sections/star/metallicity.ts, the colourBpRp and absoluteG of frontend/src/lib/scene/starfield/record.ts. data/src/space_map_data/extrasolar/interiors/metallicity.py and inputs.py port these rules. tests/extrasolar/test_interiors.py and metallicity.test.ts both check this file. A string value is a string column, a boolean a bool column, a number a float32 column. A kind of null means no colour or no absolute G.",
+	"description": "Point source rows of one star each, and what the star's panel shows for them: the kind and metallicity of frontend/src/components/detail/sections/star/metallicity.ts, the photometric BP − RP (Gaia, else from V − I, never from Teff) and absoluteG of frontend/src/lib/scene/starfield/record.ts. data/src/space_map_data/extrasolar/interiors/metallicity.py and inputs.py port these rules. tests/extrasolar/test_interiors.py and metallicity.test.ts both check this file. A string value is a string column, a boolean a bool column, a number a float32 column. `compact` is the export's computed column (`families.compact`), which the frontend reads; the data test checks that the row's inputs give it. A kind of null means no colour or no absolute G.",
 	"stars": [
 		{
 			"name": "an FGK dwarf takes PASTEL first",
@@ -365,7 +365,7 @@
 			}
 		},
 		{
-			"name": "a star with no BP and RP takes the colour of its Teff",
+			"name": "a star with no BP, RP or V - I has no colour and no kind, whatever its Teff",
 			"row": {
 				"parallax": 100.0,
 				"parallax_error": 0.1,
@@ -378,10 +378,10 @@
 				"feh_pastel_max": 0.05
 			},
 			"expected": {
-				"kind": "fgkDwarf",
+				"kind": null,
 				"source": "pastel-2020",
 				"value": 0.0,
-				"colour": 0.8163,
+				"colour": null,
 				"absolute_g": 5.0
 			}
 		},
@@ -407,6 +407,32 @@
 				"value": -0.6,
 				"colour": 1.2,
 				"absolute_g": 3.0
+			}
+		},
+		{
+			"name": "a compact star has a kind of its own and takes no metallicity",
+			"row": {
+				"parallax": 100.0,
+				"parallax_error": 0.1,
+				"astrometry_source": "gaia-dr3",
+				"fidelity_v2": 1.0,
+				"phot_g_mean_mag": 12.0,
+				"phot_bp_mean_mag": 12.3,
+				"phot_rp_mean_mag": 11.7,
+				"simbad_otype": "WD*",
+				"compact": true,
+				"in_oba_golden_sample": false,
+				"mh_xgboost": -0.3,
+				"mh_gspphot": -0.5,
+				"mh_gspphot_lower": -0.6,
+				"mh_gspphot_upper": -0.4
+			},
+			"expected": {
+				"kind": "compact",
+				"source": null,
+				"value": null,
+				"colour": 0.6,
+				"absolute_g": 12.0
 			}
 		}
 	]

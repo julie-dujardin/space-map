@@ -32,13 +32,13 @@ import pyarrow.parquet as pq
 from space_map_data.constants.stars.families import FAMILIES, ROOT_FAMILY
 from space_map_data.export.extrasolar import citations, container, radius, render
 from space_map_data.export.extrasolar.container import Column, Written
-from space_map_data.extrasolar import families
+from space_map_data.extrasolar import families, surface
 from space_map_data.extrasolar.ids import CELL_LEVEL, CELL_MASK, table_of
 from space_map_data.extrasolar.interiors.schema import INTERIOR
 from space_map_data.extrasolar.measured_radius import MEASURED_COLUMNS
 from space_map_data.extrasolar.registry import ALIAS, LIVE, RETIRED, Registry
 from space_map_data.extrasolar.sky import REGION_LEVEL, REGION_SHIFT, region_of
-from space_map_data.extrasolar.store import region_file
+from space_map_data.extrasolar.store import region_file, with_computed
 from space_map_data.extrasolar.systems.assemble import HELD, NODE_CLASSES
 from space_map_data.extrasolar.tables import (
     METADATA,
@@ -95,6 +95,9 @@ DICTIONARY = frozenset(
         "feh_source",
         "teff_source",
         "luminosity_source",
+        "logg_source",
+        "apparent_v_source",
+        "extinction_source",
         "sources.item",
         "members.kind",
         "members.letter",
@@ -120,7 +123,33 @@ DICTIONARY = frozenset(
     }
 )
 # Columns that the export computes, after the columns of the table.
-COMPUTED = {METADATA.slug: (*families.FIELDS, *radius.FIELDS)}
+COMPUTED = {
+    METADATA.slug: (*families.FIELDS, *radius.FIELDS),
+    POINT_SOURCE.slug: surface.FIELDS,
+}
+# Columns of the registry that no client reads, so the tiles leave them out.
+DROPPED = {
+    POINT_SOURCE.slug: frozenset(
+        {
+            "phot_g_mean_flux_over_error",
+            "phot_bp_mean_flux_over_error",
+            "phot_rp_mean_flux_over_error",
+            "grvs_mag",
+            "grvs_mag_error",
+            "hp_mag_error",
+            "b_v_error",
+            "v_i_error",
+            "host_k_mag",
+            *(
+                f"{name}_gspphot{bound}"
+                for name in ("ag", "ebpminrp")
+                for bound in ("", "_lower", "_upper")
+            ),
+            "bc_flame",
+            "bc_flame_spec",
+        }
+    )
+}
 # The Point source columns of the family masks, of the brightest stars and of
 # the radius, each once: they share some.
 FAMILY_COLUMNS = tuple(
@@ -199,7 +228,8 @@ def served_values(field_: pa.Field, values: pa.Array | pa.ChunkedArray) -> pa.Ar
 
 
 def tile_schema(table: TableDef) -> pa.Schema:
-    schema = pa.schema([served_field(f) for f in table.schema])
+    dropped = DROPPED.get(table.slug, frozenset())
+    schema = pa.schema([served_field(f) for f in table.schema if f.name not in dropped])
     for computed in COMPUTED.get(table.slug, ()):
         schema = schema.append(computed)
     return schema
@@ -371,6 +401,11 @@ class UnitJob:
     rows_dir: Path | None = None
     # Metadata only: the export's scratch, for the radii (`radius.save`).
     scratch: Path | None = None
+    # The scratch files of COMPUTED columns that an earlier step wrote.
+    computed_dir: Path | None = None
+    # Metadata only: the family masks of the Point source rows, which the
+    # interior step wrote.
+    families_dir: Path | None = None
 
 
 @dataclass
@@ -573,10 +608,14 @@ def build_unit(job: UnitJob) -> UnitResult:
     family_stars = names = None
     if job.names is not None:
         names = names_of(rows, job.names)
-    if job.slug == METADATA.slug:
-        rows, family_stars = with_families(registry, job.unit.regions, rows, problems)
+    if job.families_dir is not None:
+        rows, family_stars = with_families(
+            registry, job.unit.regions, rows, problems, job.families_dir
+        )
     if job.scratch is not None:
         radius.save(job.scratch, job.unit.regions, rows)
+    if job.computed_dir is not None:
+        rows = with_computed(rows, job.unit.regions, job.computed_dir)
 
     ids = rows["id"].to_numpy()
     first = first_cell(job.unit.level, job.unit.pixel)
@@ -631,7 +670,7 @@ def led_point_rows(
     cell where the point's ID was minted.
 
     A compact point gives no Gaia radius: its type is the star's, and the
-    star's own type may not say it (`radius.COMPACT`)."""
+    star's own type may not say it (`families.compact`)."""
     wanted = radius.led_points(system)
     names = list(FAMILY_COLUMNS)
     found = points.select(names).filter(pc.is_in(points["id"], value_set=wanted))
@@ -644,7 +683,7 @@ def led_point_rows(
     if lost := len(wanted) - found.num_rows:
         logger.warning("held stars stand for %d points with no Point source row", lost)
     published, estimated = families.masks(found, pa.nulls(found.num_rows, pa.string()))
-    compact = pa.array(((published | estimated) & radius.COMPACT) != 0)
+    compact = pa.array(families.compact(published | estimated))
     for name in radius.GAIA_COLUMNS:
         column = found[name]
         found = found.set_column(
@@ -703,11 +742,40 @@ def held_rows(system: pa.Table, points: pa.Table) -> pa.Table:
     )
 
 
+def _star_masks(
+    points: pa.Table,
+    held: pa.Table,
+    rows: pa.Table,
+    regions: tuple[int, ...],
+    families_dir: Path,
+) -> tuple[np.ndarray, np.ndarray]:
+    """The published and the estimated family masks of the Point source rows
+    `points`, then of the held stars `held`. Those of the Point source rows
+    are the interior step's, in `families_dir`, so no row is classified
+    twice. A held star's come from its `held_rows` row and its class in the
+    Metadata `rows`."""
+    saved = with_computed(points.select(["id"]), regions, families_dir)
+    saved_published, saved_estimated = (
+        saved[field.name].to_numpy() for field in families.MASK_FIELDS
+    )
+    at = pc.index_in(held["id"], value_set=rows["id"].combine_chunks())
+    published, estimated = families.masks(held, rows["class"].take(at))
+    return (
+        np.concatenate([saved_published, published]),
+        np.concatenate([saved_estimated, estimated]),
+    )
+
+
 def with_families(
-    registry: Registry, regions: tuple[int, ...], rows: pa.Table, problems: Problems
+    registry: Registry,
+    regions: tuple[int, ...],
+    rows: pa.Table,
+    problems: Problems,
+    families_dir: Path,
 ) -> tuple[pa.Table, FamilyStars]:
     """Metadata `rows` with their family masks, spectral type and radius
-    (`radius.star_radius`), and the stars of each family.
+    (`radius.star_radius`), and the stars of each family. `families_dir`
+    holds the masks of the Point source rows (`_star_masks`).
 
     A held star reads its System row. A point that holds several stars has
     no family or type, and no radius when it stands for a held star
@@ -717,7 +785,8 @@ def with_families(
     points = _read(registry, POINT_SOURCE, regions, FAMILY_COLUMNS)
     system = _read(registry, SYSTEM, regions, NODE_COLUMNS)
     led_rows = led_point_rows(registry, regions, system, points)
-    stars = pa.concat_tables([points, held_rows(system, led_rows)])
+    held_stars = held_rows(system, led_rows)
+    stars = pa.concat_tables([points, held_stars])
     published = np.zeros(rows.num_rows, np.uint64)
     estimated = np.zeros(rows.num_rows, np.uint64)
     spectral = pa.nulls(rows.num_rows, pa.string())
@@ -725,6 +794,9 @@ def with_families(
     size_sources = pa.nulls(rows.num_rows, pa.string())
     mag = np.full(rows.num_rows, np.nan)
     if stars.num_rows:
+        star_published, star_estimated = _star_masks(
+            points, held_stars, rows, regions, families_dir
+        )
         at = pc.index_in(stars["id"], value_set=rows["id"].combine_chunks())
         found = at.is_valid().to_numpy(zero_copy_only=False)
         lost = stars["id"].to_numpy()[~found]
@@ -734,7 +806,7 @@ def with_families(
         classes = rows["class"].take(pa.array(at))
         node = pc.is_in(classes, value_set=pa.array(NODE_CLASSES))
         node = node.to_numpy(zero_copy_only=False)
-        star_published, star_estimated = families.masks(stars, classes)
+        star_published, star_estimated = star_published[found], star_estimated[found]
         transits = pc.is_in(
             stars["id"], value_set=radius.transit_hosts(registry, regions)
         ).to_numpy(zero_copy_only=False)

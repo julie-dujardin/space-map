@@ -5,22 +5,24 @@ export takes from `export.extrasolar.radius`, and its work follows
 `radius_source`. A paper's work is that of the paper's star: the star of a
 literature cross-id, else the pair of a held star, which its System row cites
 first, else the point whose measurement the held star takes. A paper radius
-that none of these traces credits no work. The colour comes from the Point
-source row, as the render tree colours the star. A held star has no Point
-source row: its Teff is the one of its System row.
+that none of these traces credits no work. Teff is the computed `teff` of
+the Point source tiles (`surface`), as the star's panel shows it, and the
+colour the measured one (`render.photometric_bp_rp`). A held star has no
+Point source row: its Teff is the one of its System row.
 """
 
 import logging
+import math
 from collections import defaultdict
 
-import numpy as np
+import pyarrow as pa
 
 from space_map_data.constants.planets.families import SOLAR_RADIUS_KM
 from space_map_data.constants.stars import binaries
 from space_map_data.constants.stars.literature import RADII, REFERENCES, Reference
 from space_map_data.export.extrasolar.radius import FLAME, FLAME_SPEC, GSPPHOT
 from space_map_data.export.extrasolar.reader import ExportReader
-from space_map_data.export.extrasolar.render import bp_rp_from_v_i
+from space_map_data.export.extrasolar.render import photometric_bp_rp
 from space_map_data.export.notable import NotableObject
 from space_map_data.export.objects.stars import PREFIX
 from space_map_data.extrasolar.exoplanets.catalogues import ARCHIVE, EU, OEC
@@ -65,13 +67,9 @@ WORKS = {
     GSPPHOT: GAIA_DR3,
 }
 RADIUS_COLUMNS = ["radius", "radius_source"]
-COLOUR_COLUMNS = [
-    "host_teff",
-    "teff_gspphot",
-    "phot_bp_mean_mag",
-    "phot_rp_mean_mag",
-    "v_i",
-]
+# The columns of `render.photometric_bp_rp`.
+BP_RP_COLUMNS = ("phot_bp_mean_mag", "phot_rp_mean_mag", "v_i")
+COLOUR_COLUMNS = ["teff", *BP_RP_COLUMNS]
 
 
 def _literature_key(cross_ids: list[dict]) -> str | None:
@@ -156,14 +154,19 @@ def _radius_km(radius_sun: float) -> float:
     return float(f"{radius_sun * SOLAR_RADIUS_KM:.{RADIUS_DIGITS}g}")
 
 
-def _bp_rp(row: dict) -> float | None:
-    """As the render tree colours the star, before it falls back on Teff."""
-    bp, rp = row["phot_bp_mean_mag"], row["phot_rp_mean_mag"]
-    if bp is not None and rp is not None:
-        return round(bp - rp, 3)
-    if row["v_i"] is None:
-        return None
-    return round(float(bp_rp_from_v_i(np.array([row["v_i"]]))[0]), 3)
+def _bp_rp(rows: dict[int, dict]) -> dict[int, float | None]:
+    """The colour of each row as the render tree takes it, before Teff."""
+    table = pa.table(
+        {
+            name: pa.array([row[name] for row in rows.values()], pa.float64())
+            for name in BP_RP_COLUMNS
+        }
+    )
+    colours = photometric_bp_rp(table).tolist()
+    return {
+        id_: None if math.isnan(colour) else round(colour, 3)
+        for id_, colour in zip(rows, colours, strict=True)
+    }
 
 
 def _colours(reader: ExportReader, ids: list[int]) -> dict[int, tuple]:
@@ -171,10 +174,8 @@ def _colours(reader: ExportReader, ids: list[int]) -> dict[int, tuple]:
     Teff of its System row."""
     points = reader.rows(POINT_SOURCE.slug, ids, COLOUR_COLUMNS)
     held = reader.rows(SYSTEM.slug, [i for i in ids if i not in points], ["star"])
-    out = {
-        id_: (row["host_teff"] or row["teff_gspphot"], _bp_rp(row))
-        for id_, row in points.items()
-    }
+    colours = _bp_rp(points)
+    out = {id_: (row["teff"], colours[id_]) for id_, row in points.items()}
     # The tiles serve a struct as a list of at most one item.
     for id_, row in held.items():
         if row["star"]:

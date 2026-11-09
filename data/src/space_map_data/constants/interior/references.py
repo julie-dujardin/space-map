@@ -569,6 +569,12 @@ INTERIOR_SOURCES: dict[str, InteriorReference] = {
         "The corrected coefficients of Flower's relations",
         "Teff and BC",
     ),
+    "riello_2021": InteriorReference(
+        "Riello et al. 2021 (Astron. Astrophys. 649)",
+        "https://doi.org/10.1051/0004-6361/202039587",
+        "V from Gaia G and BP − RP, for the stars with no measured V",
+        "V from Gaia",
+    ),
     # --- taxonomy → meteorite analogue ------------------------------------
     "demeo_2009": InteriorReference(
         "DeMeo et al. 2009 (Icarus 202)",

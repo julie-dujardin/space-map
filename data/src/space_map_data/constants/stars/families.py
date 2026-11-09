@@ -2,10 +2,11 @@
 
 A star is in every family that its data supports. A published family comes
 from a catalogued classification only: an MK spectral type, a SIMBAD object
-type, the Metadata class, a GCVS variability type or an ATNF pulsar type. An
-estimated family uses at least one estimate: a SIMBAD candidate type, the
-spectral type tag of ESP-ELS, the stage from the ESP-HS surface gravity (O and
-B stars) or from FLAME (other stars), the DSC white-dwarf probability, the
+type, the Metadata class, a GCVS variability type or an ATNF pulsar type. A
+paper's white-dwarf log g is published too. An estimated family uses at least
+one estimate: a SIMBAD candidate type, the spectral type tag of ESP-ELS, the
+stage from the ESP-HS surface gravity (O and B stars) or from FLAME (other
+stars), the DSC white-dwarf probability below the white-dwarf line, the
 ESP-ELS emission-line class or the class of a SPICY candidate.
 
 A node of a star system is no star, so it has no family. Its stars have them.
@@ -383,8 +384,17 @@ SPICY_FAMILIES: dict[str, tuple[str, ...]] = {
     "FS": ("protostar",),
 }
 SUBDWARF_PREFIXES = frozenset({"sd", "esd", "usd"})
-# DSC-Combmod probability above which a star is an estimated white dwarf.
+# DSC-Combmod probability above which a star is an estimated white dwarf,
+# when it lies below the line M_G = WHITE_DWARF_INTERCEPT + WHITE_DWARF_SLOPE
+# (BP − RP), between the main sequence and the white dwarfs. DSC gives a high
+# probability to hot subdwarfs and bright O and B stars too.
 MIN_WHITE_DWARF_PROBABILITY = 0.5
+WHITE_DWARF_INTERCEPT = 5.0
+WHITE_DWARF_SLOPE = 3.5
+# A paper's log g above this makes a published white dwarf. Main-sequence
+# stars and giants are below 5, and the white dwarfs of O'Brien et al. 2024
+# above 6.7.
+WHITE_DWARF_LOGG = 6.5
 # ESP-ELS spectral type tags, with the tag qualities (second digit of
 # flags_esphs, 1 best to 5) that each needs. Against catalogued MK letters,
 # quality 1 agrees for 72-96% of the stars and quality 5 for 33-53%; an O or

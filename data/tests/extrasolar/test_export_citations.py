@@ -15,6 +15,17 @@ class TestPapers:
         for binary in binaries.BINARIES.values():
             assert binary.reference in citations.PAPERS
 
+    def test_every_literature_value_cites_a_known_paper(self):
+        tables = (
+            literature.DISTANCES,
+            literature.RADII,
+            literature.TEFFS,
+            literature.LOGGS,
+            literature.MASSES,
+        )
+        for value in (value for table in tables for value in table.values()):
+            assert value.reference in citations.PAPERS
+
     def test_the_paper_tables_share_no_key(self):
         assert not set(literature.REFERENCES) & set(binaries.REFERENCES)
 

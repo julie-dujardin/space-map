@@ -22,8 +22,7 @@ from space_map_data.extrasolar.exoplanets.catalogues import EU
 
 def colour(**values: float | None) -> dict:
     return {
-        "host_teff": None,
-        "teff_gspphot": None,
+        "teff": None,
         "phot_bp_mean_mag": None,
         "phot_rp_mean_mag": None,
         "v_i": None,
@@ -53,15 +52,19 @@ class FakeReader:
         }
 
 
+def bp_rp(found: dict) -> float | None:
+    return _bp_rp({1: found})[1]
+
+
 class TestColour:
     def test_prefers_gaia(self) -> None:
-        assert _bp_rp(colour(phot_bp_mean_mag=2.5, phot_rp_mean_mag=1.0, v_i=9)) == 1.5
+        assert bp_rp(colour(phot_bp_mean_mag=2.5, phot_rp_mean_mag=1.0, v_i=9)) == 1.5
 
     def test_falls_back_to_hipparcos_v_i(self) -> None:
-        assert _bp_rp(colour(v_i=2.32)) == pytest.approx(2.5, abs=0.05)
+        assert bp_rp(colour(v_i=2.32)) == pytest.approx(2.5, abs=0.05)
 
     def test_none_without_either(self) -> None:
-        assert _bp_rp(colour()) is None
+        assert bp_rp(colour()) is None
 
 
 class TestDrawableStars:
@@ -75,7 +78,7 @@ class TestDrawableStars:
         radii = self.radii(
             [1],
             metadata={1: size(2.0, "gaia-dr3-flame")},
-            **{"point-source": {1: colour(teff_gspphot=5000.0)}},
+            **{"point-source": {1: colour(teff=5000.0)}},
         )
         assert radii == {1: 1390000.0}
 
@@ -83,7 +86,7 @@ class TestDrawableStars:
         radii = self.radii(
             [1, 2],
             metadata={1: size(None), 2: size(2.0, "gaia-dr3-flame")},
-            **{"point-source": {1: colour(teff_gspphot=5000.0), 2: colour()}},
+            **{"point-source": {1: colour(teff=5000.0), 2: colour()}},
         )
         assert radii == {}
 
@@ -92,7 +95,7 @@ class TestDrawableStars:
             [9],
             metadata={1: size(2.0, "gaia-dr3-flame")},
             system={9: {"primary": 1}},
-            **{"point-source": {1: colour(teff_gspphot=5000.0)}},
+            **{"point-source": {1: colour(teff=5000.0)}},
         )
         assert radii == {9: 1390000.0}
 
@@ -109,7 +112,7 @@ class TestDrawableStars:
                 },
                 6: {"primary": None, "star": [{"teff": teff, "dominant": dominant}]},
             },
-            "point-source": {5: colour(teff_gspphot=9500.0)},
+            "point-source": {5: colour(teff=9500.0)},
         }
 
     def test_a_point_stands_for_its_dominant_star(self) -> None:
@@ -152,7 +155,7 @@ class TestLineupFields:
                     2: size(10.0, "jmdc"),
                     3: size(1420.0, "literature", cross_ids=literature),
                 },
-                "point-source": {i: colour(teff_gspphot=3000.0) for i in (1, 2, 3)},
+                "point-source": {i: colour(teff=3000.0) for i in (1, 2, 3)},
             }
         )
         add_lineup_fields(reader, {"page": [member, jmdc, paper]})  # ty: ignore[invalid-argument-type]

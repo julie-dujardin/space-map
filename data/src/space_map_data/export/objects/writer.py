@@ -20,6 +20,11 @@ from pathlib import Path
 
 import orjson
 
+from space_map_data.constants.physics import G
+from space_map_data.constants.planets.families import (
+    NOMINAL_SOLAR_VALUES,
+    SUN_LUMINOSITY_W,
+)
 from space_map_data.constants.providers import LANGUAGES
 from space_map_data.constants.stars import families as star_rules
 from space_map_data.export.disk_photometry import lunar_weight_scale
@@ -122,6 +127,26 @@ K_GLOBAL = 1100
 K_LOCALIZED = 5500
 
 _QID_CURRENCY = "Q8142"
+
+# A mean density keeps the digits that GM and the radii support at best.
+_DENSITY_DIGITS = 4
+# The mean densities of known bodies lie in this range (g/cm³). A value
+# outside it comes from a GM or radii that are not measured.
+_DENSITY_RANGE = (0.1, 30.0)
+SUN_LUMINOSITY_REFERENCE = {**NOMINAL_SOLAR_VALUES, "note": "nominal solar luminosity"}
+
+
+def mean_density(gm_km3_s2: float, radii_km: Mapping[str, float]) -> float | None:
+    """The mean density (g/cm³) of a body of this GM and triaxial radii, None
+    where one of them is not positive or the density is outside
+    _DENSITY_RANGE."""
+    axes = [radii_km[axis] for axis in ("a", "b", "c")]
+    if gm_km3_s2 <= 0 or min(axes) <= 0:
+        return None
+    mass_g = gm_km3_s2 * 1e9 / G * 1e3
+    density = mass_g / (4 / 3 * math.pi * math.prod(axes) * 1e15)
+    low, high = _DENSITY_RANGE
+    return float(f"{density:.{_DENSITY_DIGITS}g}") if low <= density <= high else None
 
 
 def hash_bucket(obj_id: str, n_buckets: int) -> int:
@@ -584,8 +609,10 @@ def _build_global(
             data["color_method"] = surface.method
         if surface.geometric_albedo is not None:
             data["geometric_albedo"] = surface.geometric_albedo
-    # The star families of the Sun, for the tiles of its page.
+    # The Sun's nominal luminosity, and its star families for its page's tiles.
     if obj.object_type == ObjectType.star:
+        data["luminosity_w"] = SUN_LUMINOSITY_W
+        data["luminosity_reference"] = SUN_LUMINOSITY_REFERENCE
         data["star_families"] = most_specific(
             of_spectral_type(star_rules.SUN_SPECTRAL_TYPE),
             star_rules.FAMILIES,
@@ -680,6 +707,11 @@ def _build_global(
     # Gravitational parameter (km^3/s^2) from SPICE PCK
     if obj.naif_id is not None and obj.naif_id in gms:
         data["gm"] = gms[obj.naif_id]
+    # Wikidata's density can be another quantity, such as the Sun's centre.
+    if "gm" in data and "radii" in data:
+        density = mean_density(data["gm"], data["radii"])
+        if density is not None:
+            data["mean_density_g_cm3"] = density
 
     # Cited atmospheric facts — only the two dozen bodies with a measured
     # envelope have one.

@@ -1,17 +1,31 @@
 """What the fit reads from a star's Point source row, and the star's tier.
 
-Teff, L and [Fe/H] are first the values that the star's panel shows:
-GSP-Phot's Teff else the exoplanet catalogue's, FLAME's luminosity on the
-GSP-Phot parameters else on the GSP-Spec ones, and the metallicity of
-`metallicity.choose`. Their widths are half the published 16th to 84th
-percentile range. A Teff or L with no width counts as none.
+`choose` gives the Teff, L, V and A_V of each row. The fit and the star panel
+(`surface`) both take them, so the two show the same values. A planet host
+takes the exoplanet catalogue's Teff first, because the catalogue derives the
+values of its planets from it. A planet host is a row with the host-star
+group: the catalogues give it only to the star that their planets orbit.
+Every other star takes a paper's Teff (`literature`), else GSP-Phot's. A
+point of two or more stars takes the catalogue's Teff only. L is first
+FLAME's on the GSP-Phot parameters, then on the GSP-Spec ones. The
+metallicity is that of `metallicity.choose`. A width is half the published
+16th to 84th percentile range, or the published 1σ error in dex. A Teff or L
+with no width counts as none. A paper value with no error has no width. The
+catalogue's Teff has no published width, so its width is 0.
 
 Gaia saturates on the brightest stars, so other routes follow, best first:
 - Teff: a spectroscopic or XP Teff that holds for the star's kind, then a
   Teff from B − V (`photometry`);
-- L: from a measured radius and the Teff, then from V, the distance and a
-  bolometric correction.
-`teff_source` and `luminosity_source` name the route of each star.
+- L: from a measured radius and the Teff, from the radius that a paper's mass
+  and log g give and the Teff, then from V, the distance and a bolometric
+  correction.
+`teff_source` and `luminosity_source` name the route of each star. The kind
+takes the measured colour only (`render.photometric_bp_rp`), never one from a
+Teff, as the Teff choice depends on the kind. The relations of the star kinds
+and the Gaia models do not hold for a compact star (`families.compact`, which
+`with_compact` adds as COMPACT). So it has a kind of its own
+(`metallicity.COMPACT`) that no relation takes, and its Teff and L come from
+a paper or the exoplanet catalogue only.
 
 The tier says how far the result can be trusted:
 - 1: a single FGK or M dwarf, its distance known to 10%, its metallicity
@@ -26,13 +40,13 @@ The tier says how far the result can be trusted:
 A Teff from B − V or an L from a bolometric correction keeps a star out of
 tier 1. GSP-Phot's Teff and FLAME's L correct for extinction, and these two
 routes do not. So they ignore it for a star within NEAR_PC or brighter than
-NAKED_EYE_V, where it is small, and else take A_V from GSP-Phot. A star on
-one of these routes with no A_V is tier 3.
+NAKED_EYE_V in the panel's V (`apparent_v`), where it is small, and else take
+A_V from GSP-Phot. A star on one of these routes with no A_V is tier 3.
 A star that renders at a suspect parallax (`placement` step 6) is tier 3,
 because its Gaia solution can be spurious.
 A point that holds two or more stars (its System row) has no row, curated or
 fitted. Its light is that of two stars, and the scene gives it no radius. A
-white dwarf and a young stellar object have no row too. These are the
+compact star and a young stellar object have no row too. These are the
 EXCLUDED points. A star with no kind and a star whose distance is unknown or
 worse than 50% have no tier. The distance error is that of the distance that
 the star renders at (`placement`).
@@ -44,22 +58,20 @@ import numpy as np
 import pyarrow as pa
 import pyarrow.compute as pc
 
+from space_map_data.constants.planets.families import (
+    SOLAR_RADIUS_KM,
+    SUN_GM_KM3_S2,
+)
 from space_map_data.export.extrasolar import render
-from space_map_data.extrasolar import placement
+from space_map_data.extrasolar import families, placement
 from space_map_data.extrasolar.interiors import metallicity, photometry
 from space_map_data.extrasolar.measured_radius import MEASURED_COLUMNS, measured_radius
+from space_map_data.extrasolar.sources.literature import LITERATURE
 from space_map_data.utils.arrays import floats
 
 NO_TIER = -1
 GOOD_DISTANCE, FAIR_DISTANCE, MAX_DISTANCE = 0.1, 0.25, 0.5
 MAX_RUWE = 1.4
-# A white dwarf has a DSC probability over WHITE_DWARF_PROBABILITY and lies
-# below the line M_G = WHITE_DWARF_INTERCEPT + WHITE_DWARF_SLOPE (BP − RP),
-# which runs between the main sequence and the white dwarfs. DSC gives the
-# probability to bright O and B stars too.
-WHITE_DWARF_PROBABILITY = 0.5
-WHITE_DWARF_INTERCEPT = 5.0
-WHITE_DWARF_SLOPE = 3.5
 YSO_TYPES = frozenset({"Y*O", "Y*?", "TT*", "TT?", "Ae*", "Ae?", "Or*", "pr*", "pr?"})
 SPECTRA = frozenset(
     {
@@ -76,6 +88,7 @@ ASSUMED_SOLAR = "assumed-solar"
 SOLAR_SIGMA = 0.25
 
 # The values of `teff_source` and `luminosity_source`.
+PAPER = LITERATURE.name
 GSPPHOT = metallicity.GSPPHOT
 HOST = "host-star"
 APOGEE = metallicity.APOGEE
@@ -85,6 +98,7 @@ XP = metallicity.XP
 FLAME = "gaia-dr3-flame"
 FLAME_SPEC = "gaia-dr3-flame-spec"
 RADIUS = "radius"
+MASS_GRAVITY = "mass-gravity"
 BOLOMETRIC = "bolometric-correction"
 FROM_COLOUR = frozenset({photometry.CASAGRANDE_2010, photometry.FLOWER_1996})
 
@@ -101,9 +115,16 @@ FLOWER_HOT_SIGMA = 0.043
 # The column that `with_binary_points` adds, and the System columns it reads.
 BINARY_POINT = "binary_point"
 SYSTEM_COLUMNS = ("id", "point")
+# The column that `with_compact` adds.
+COMPACT = "compact"
+# The Metadata columns of the classes that the family masks read.
+CLASS_COLUMNS = ("id", "class")
 # Extinction is small within this distance (pc) or above this V.
 NEAR_PC = 100.0
 NAKED_EYE_V = 6.0
+# The sources of A_V besides GSP-Phot. NEGLIGIBLE is small, UNKNOWN is taken as 0.
+NEGLIGIBLE = "negligible"
+UNKNOWN = "unknown"
 # GSP-Phot's A0, at 541.4 nm, stands for A_V. E(B − V) = A_V / R_V.
 R_V = 3.1
 # A star with wider inputs (dex) has no row. Fitted again at these widths, a
@@ -113,9 +134,9 @@ MAX_SIGMA_LOG_TEFF = 0.1
 MAX_SIGMA_LOG_L = 0.4
 # The `out` of a point that has no Interior row of any kind.
 BINARY = "binary point"
-WHITE_DWARF = "white dwarf"
+COMPACT_STAR = "compact star"
 YOUNG = "young stellar object"
-EXCLUDED = (BINARY, WHITE_DWARF, YOUNG)
+EXCLUDED = (BINARY, COMPACT_STAR, YOUNG)
 
 COLUMNS = tuple(
     dict.fromkeys(
@@ -125,9 +146,17 @@ COLUMNS = tuple(
             *placement.ERROR_COLUMNS,
             *render.MAG_COLUMNS,
             *metallicity.COLUMNS,
+            *families.COLUMNS,
             *MEASURED_COLUMNS,
             "v_i",
             "b_v_error",
+            "teff_literature",
+            "teff_literature_error",
+            "logg_literature",
+            "logg_literature_error",
+            "mass_literature",
+            "mass_literature_lower",
+            "mass_literature_upper",
             "teff_gspphot",
             "teff_gspphot_lower",
             "teff_gspphot_upper",
@@ -139,6 +168,10 @@ COLUMNS = tuple(
             "teff_lamost_error",
             "teff_esphs",
             "teff_xgboost",
+            "host_v_mag",
+            "hipparcos_photometry_source",
+            "simbad_photometry_source",
+            "host_star_source",
             *(
                 f"lum_flame{run}{bound}"
                 for run in ("", "_spec")
@@ -146,31 +179,11 @@ COLUMNS = tuple(
             ),
             "ruwe",
             "non_single_star",
-            "classprob_dsc_combmod_whitedwarf",
             "simbad_otype",
             "spicy_id",
         )
     )
 )
-
-
-@dataclass(frozen=True)
-class Inputs:
-    """One value per row. Widths are in dex."""
-
-    log_teff: np.ndarray
-    sigma_log_teff: np.ndarray
-    log_l: np.ndarray
-    sigma_log_l: np.ndarray
-    feh: np.ndarray
-    sigma_feh: np.ndarray
-    feh_source: np.ndarray
-    # The route of Teff and of L, None where there is none.
-    teff_source: np.ndarray
-    luminosity_source: np.ndarray
-    tier: np.ndarray
-    # Why a row has no tier, "" for a row with one.
-    out: np.ndarray
 
 
 # A source's name, its values (K or L☉) and their widths (dex).
@@ -217,15 +230,10 @@ def with_binary_points(table: pa.Table, systems: pa.Table | None) -> pa.Table:
     )
 
 
-def colour(table: pa.Table) -> np.ndarray:
-    """BP − RP, else from V − I, else that of a dwarf of the star's Teff, as
-    `colourBpRp` in `frontend/src/lib/scene/starfield/record.ts`."""
-    bp_rp = floats(table, "phot_bp_mean_mag") - floats(table, "phot_rp_mean_mag")
-    from_v_i = render.bp_rp_from_v_i(floats(table, "v_i"))
-    host_teff = floats(table, "host_teff")
-    teff = np.where(np.isfinite(host_teff), host_teff, floats(table, "teff_gspphot"))
-    out = np.where(np.isfinite(bp_rp), bp_rp, from_v_i)
-    return np.where(np.isfinite(out), out, render.bp_rp_from_teff(teff))
+def with_compact(table: pa.Table, masks: np.ndarray) -> pa.Table:
+    """`table` with COMPACT, the `families.compact` test of each row.
+    `masks` holds the published and estimated families of each row."""
+    return table.append_column(COMPACT, pa.array(families.compact(masks)))
 
 
 def absolute_g(table: pa.Table, distance_pc: np.ndarray) -> np.ndarray:
@@ -243,14 +251,39 @@ def v_mag(table: pa.Table) -> np.ndarray:
     return np.where(np.isfinite(hipparcos), hipparcos, floats(table, "simbad_v_mag"))
 
 
+def apparent_v(table: pa.Table) -> tuple[np.ndarray, np.ndarray]:
+    """Johnson V of each row and its source, None where there is none: V from
+    Hipparcos, SIMBAD or the exoplanet catalogue, by the source of the row's
+    group, else from Gaia G and BP − RP."""
+    bp_rp = floats(table, "phot_bp_mean_mag") - floats(table, "phot_rp_mean_mag")
+    found = (
+        ("v_mag", "hipparcos_photometry_source"),
+        ("simbad_v_mag", "simbad_photometry_source"),
+        ("host_v_mag", "host_star_source"),
+    )
+    v = np.full(table.num_rows, np.nan)
+    source = np.full(table.num_rows, None, object)
+    for column, source_column in found:
+        values = floats(table, column)
+        at = np.isnan(v) & np.isfinite(values)
+        v[at] = values[at]
+        source[at] = table[source_column].to_numpy(zero_copy_only=False)[at]
+    gaia = photometry.v_from_gaia(floats(table, "phot_g_mean_mag"), bp_rp)
+    at = np.isnan(v) & np.isfinite(gaia)
+    v[at] = gaia[at]
+    source[at] = photometry.RIELLO_2021
+    return v, source
+
+
 def extinction(
-    table: pa.Table, distance_pc: np.ndarray
+    table: pa.Table, distance_pc: np.ndarray, v: np.ndarray
 ) -> tuple[np.ndarray, np.ndarray]:
-    """A_V (mag) of each row, and whether it is known."""
-    small = (distance_pc <= NEAR_PC) | (v_mag(table) <= NAKED_EYE_V)
+    """A_V (mag) of each row of V `v`, and its source."""
+    small = (distance_pc <= NEAR_PC) | (v <= NAKED_EYE_V)
     a0 = floats(table, "azero_gspphot")
     known = small | np.isfinite(a0)
-    return np.where(small | ~known, 0.0, a0), known
+    source = np.select([small, known], [NEGLIGIBLE, GSPPHOT], UNKNOWN)
+    return np.where(small | ~known, 0.0, a0), source
 
 
 def _measured_teff(table: pa.Table, kind: np.ndarray) -> list[Found]:
@@ -325,6 +358,25 @@ def _radius_luminosity(
     return RADIUS, 10**log_l, 4 * sigma_log_teff
 
 
+def _gravity_luminosity(
+    table: pa.Table, log_teff: np.ndarray, sigma_log_teff: np.ndarray
+) -> Found:
+    """L from the radius R = √(GM / g) of a paper's mass and log g, and the
+    Teff."""
+    mass, logg = floats(table, "mass_literature"), floats(table, "logg_literature")
+    gm_cgs = SUN_GM_KM3_S2 * 1e15
+    with np.errstate(invalid="ignore", divide="ignore"):
+        log_radius = 0.5 * (np.log10(gm_cgs * mass) - logg) - np.log10(
+            SOLAR_RADIUS_KM * 1e5
+        )
+    sigma_log_radius = 0.5 * np.hypot(
+        floats(table, "logg_literature_error"),
+        _log_width(table, "mass_literature_lower", "mass_literature_upper"),
+    )
+    log_l = photometry.log_l_from_radius(10**log_radius, log_teff)
+    return MASS_GRAVITY, 10**log_l, np.hypot(4 * sigma_log_teff, 2 * sigma_log_radius)
+
+
 def _bolometric_luminosity(
     table: pa.Table,
     kind: np.ndarray,
@@ -334,10 +386,11 @@ def _bolometric_luminosity(
     log_teff: np.ndarray,
     sigma_log_teff: np.ndarray,
 ) -> Found:
-    """L from V, the distance and Flower's BC, which Torres 2010 finds
-    wrong for M dwarfs."""
+    """L from V, the distance and Flower's BC, for an FGK dwarf, a giant or
+    a hot star. Torres 2010 finds the BC wrong for M dwarfs."""
     log_l = photometry.log_l_from_v(v_mag(table), distance_pc, a_v, log_teff)
-    log_l = np.where(kind == metallicity.M_DWARF, np.nan, log_l)
+    bc = np.isin(kind, [metallicity.FGK_DWARF, metallicity.GIANT, metallicity.OBA])
+    log_l = np.where(bc, log_l, np.nan)
     bc_spread = np.abs(
         photometry.flower_bc(log_teff + sigma_log_teff)
         - photometry.flower_bc(log_teff - sigma_log_teff)
@@ -346,49 +399,102 @@ def _bolometric_luminosity(
     return BOLOMETRIC, 10**log_l, sigma
 
 
-def _excluded(table: pa.Table, bp_rp: np.ndarray, abs_g: np.ndarray) -> np.ndarray:
+def _excluded(table: pa.Table) -> np.ndarray:
     """The EXCLUDED reason of each row, "" for a row with none."""
     otype = table["simbad_otype"].fill_null("").to_numpy(zero_copy_only=False)
     otype = otype.astype(str)
-    below_main_sequence = abs_g > WHITE_DWARF_INTERCEPT + WHITE_DWARF_SLOPE * bp_rp
-    white_dwarf = (
-        (floats(table, "classprob_dsc_combmod_whitedwarf") > WHITE_DWARF_PROBABILITY)
-        & below_main_sequence
-    ) | np.char.startswith(otype, "WD")
     young = table["spicy_id"].is_valid().to_numpy(zero_copy_only=False) | np.isin(
         otype, list(YSO_TYPES)
     )
     binary = table[BINARY_POINT].to_numpy(zero_copy_only=False)
-    return np.select([binary, white_dwarf, young], list(EXCLUDED), "")
+    compact = table[COMPACT].to_numpy(zero_copy_only=False)
+    return np.select([binary, compact, young], list(EXCLUDED), "")
 
 
-def read(table: pa.Table) -> Inputs:
-    """The inputs and the tier of each row of `table`, which holds COLUMNS,
-    the orbit parallax and BINARY_POINT."""
+@dataclass(frozen=True)
+class Chosen:
+    """What the fit and the star panel take from each row. Widths are in dex."""
+
+    where: placement.Placement
+    # The distance (pc) that the star renders at, and its relative error.
+    distance_pc: np.ndarray
+    distance_error: np.ndarray
+    kind: np.ndarray
+    feh: np.ndarray
+    sigma_feh: np.ndarray
+    feh_source: np.ndarray
+    # Johnson V and its source, None where there is none.
+    apparent_v: np.ndarray
+    apparent_v_source: np.ndarray
+    # A_V (mag), and its source.
+    a_v: np.ndarray
+    extinction_source: np.ndarray
+    teff: np.ndarray
+    sigma_log_teff: np.ndarray
+    teff_source: np.ndarray
+    luminosity: np.ndarray
+    sigma_log_l: np.ndarray
+    luminosity_source: np.ndarray
+    # The EXCLUDED reason of each row, "" for a row with none.
+    excluded: np.ndarray
+
+
+@dataclass(frozen=True)
+class Inputs:
+    """The chosen values of each row, log Teff and log L, and the tier."""
+
+    chosen: Chosen
+    log_teff: np.ndarray
+    log_l: np.ndarray
+    tier: np.ndarray
+    # Why a row has no tier, "" for a row with one.
+    out: np.ndarray
+
+
+def choose(table: pa.Table) -> Chosen:
+    """The values of each row of `table`, which holds COLUMNS, the orbit
+    parallax, BINARY_POINT and COMPACT."""
     n = table.num_rows
     where = placement.placement(table)
     distance_pc = placement.star_distance(table, where)[0]
     error = placement.distance_error(table, where)
-    bp_rp, abs_g = colour(table), absolute_g(table, distance_pc)
-    kind = metallicity.star_kind(bp_rp, abs_g)
+    bp_rp = render.photometric_bp_rp(table)
+    abs_g = absolute_g(table, distance_pc)
+    excluded = _excluded(table)
+    compact = excluded == COMPACT_STAR
+    kind = np.where(compact, metallicity.COMPACT, metallicity.star_kind(bp_rp, abs_g))
     feh, sigma_feh, source = metallicity.choose(table, kind)
-    spectrum = np.isin(source, list(SPECTRA))
-    xp = source == metallicity.XP
-    assumed = ~spectrum & ~xp
+    assumed = ~np.isin(source, [*SPECTRA, metallicity.XP])
     feh = np.where(assumed, 0.0, feh)
     sigma_feh = np.where(assumed, SOLAR_SIGMA, sigma_feh)
     feh_source = np.where(assumed, ASSUMED_SOLAR, source)
-    a_v, extinction_known = extinction(table, distance_pc)
+    v, v_source = apparent_v(table)
+    a_v, extinction_source = extinction(table, distance_pc, v)
 
+    def gaia(column: str) -> np.ndarray:
+        return np.where(compact, np.nan, floats(table, column))
+
+    binary = table[BINARY_POINT].to_numpy(zero_copy_only=False)
+    paper_teff = floats(table, "teff_literature")
     teff, sigma_teff, teff_source = _first(
-        (
-            GSPPHOT,
-            floats(table, "teff_gspphot"),
-            _log_width(table, "teff_gspphot_lower", "teff_gspphot_upper"),
-        ),
         (HOST, floats(table, "host_teff"), np.zeros(n)),
-        *_measured_teff(table, kind),
-        *_colour_teff(table, kind, feh, a_v),
+        *(
+            (name, np.where(binary, np.nan, value), width)
+            for name, value, width in (
+                (
+                    PAPER,
+                    paper_teff,
+                    _dex(paper_teff, floats(table, "teff_literature_error")),
+                ),
+                (
+                    GSPPHOT,
+                    gaia("teff_gspphot"),
+                    _log_width(table, "teff_gspphot_lower", "teff_gspphot_upper"),
+                ),
+                *_measured_teff(table, kind),
+                *_colour_teff(table, kind, feh, a_v),
+            )
+        ),
     )
     with np.errstate(invalid="ignore", divide="ignore"):
         log_teff = np.log10(teff)
@@ -396,16 +502,46 @@ def read(table: pa.Table) -> Inputs:
         *(
             (
                 name,
-                floats(table, f"lum_flame{run}"),
+                gaia(f"lum_flame{run}"),
                 _log_width(table, f"lum_flame{run}_lower", f"lum_flame{run}_upper"),
             )
             for name, run in ((FLAME, ""), (FLAME_SPEC, "_spec"))
         ),
         _radius_luminosity(table, log_teff, sigma_teff),
+        _gravity_luminosity(table, log_teff, sigma_teff),
         _bolometric_luminosity(
             table, kind, distance_pc, error, a_v, log_teff, sigma_teff
         ),
     )
+    return Chosen(
+        where,
+        distance_pc,
+        error,
+        kind,
+        feh,
+        sigma_feh,
+        feh_source,
+        v,
+        v_source,
+        a_v,
+        extinction_source,
+        teff,
+        sigma_teff,
+        teff_source,
+        lum,
+        sigma_lum,
+        luminosity_source,
+        excluded,
+    )
+
+
+def read(table: pa.Table) -> Inputs:
+    """The inputs and the tier of each row of `table`, which holds COLUMNS,
+    the orbit parallax, BINARY_POINT and COMPACT."""
+    chosen = choose(table)
+    error, kind = chosen.distance_error, chosen.kind
+    spectrum = np.isin(chosen.feh_source, list(SPECTRA))
+    assumed = chosen.feh_source == ASSUMED_SOLAR
 
     ruwe = floats(table, "ruwe")
     nss = table["non_single_star"]
@@ -413,37 +549,27 @@ def read(table: pa.Table) -> Inputs:
     nss = nss.fill_null(0).to_numpy(zero_copy_only=False)
     multiple = (ruwe >= MAX_RUWE) | (nss > 0)
     single = ~multiple & (ruwe < MAX_RUWE) & nss_known
-    derived = np.isin(teff_source, list(FROM_COLOUR)) | (
-        luminosity_source == BOLOMETRIC
+    derived = np.isin(chosen.teff_source, list(FROM_COLOUR)) | (
+        chosen.luminosity_source == BOLOMETRIC
     )
 
-    tier = np.full(n, 3, np.int8)
+    tier = np.full(table.num_rows, 3, np.int8)
     tier[~multiple & (error <= FAIR_DISTANCE) & ~assumed] = 2
     dwarf = np.isin(kind, [metallicity.FGK_DWARF, metallicity.M_DWARF])
     tier[single & (error <= GOOD_DISTANCE) & spectrum & dwarf & ~derived] = 1
-    tier[(derived & ~extinction_known) | where.by_suspect] = 3
-    reason = _excluded(table, bp_rp, abs_g)
+    unknown = chosen.extinction_source == UNKNOWN
+    tier[(derived & unknown) | chosen.where.by_suspect] = 3
     out = np.select(
         [
-            reason != "",
+            chosen.excluded != "",
             kind == metallicity.NO_KIND,
             ~np.isfinite(error) | (error > MAX_DISTANCE),
         ],
-        [reason, "no kind", "distance"],
+        [chosen.excluded, "no kind", "distance"],
         "",
     )
     tier[out != ""] = NO_TIER
     with np.errstate(invalid="ignore", divide="ignore"):
         return Inputs(
-            log_teff,
-            sigma_teff,
-            np.log10(lum),
-            sigma_lum,
-            feh,
-            sigma_feh,
-            feh_source,
-            teff_source,
-            luminosity_source,
-            tier,
-            out,
+            chosen, np.log10(chosen.teff), np.log10(chosen.luminosity), tier, out
         )

@@ -9,6 +9,9 @@ that Gaia gives no Teff or luminosity.
   Table 1). Torres gives Mbol⊙ = 4.73 for this BC scale, and says that the
   BCs do not hold for M dwarfs.
 
+- Riello et al. 2021 (A&A 649, A3), Table C.2: Johnson V from Gaia G and
+  BP − RP.
+
 Colours and magnitudes are Johnson, as Hipparcos and SIMBAD give them.
 """
 
@@ -18,6 +21,7 @@ from space_map_data.constants.planets.families import SUN_TEFF
 
 CASAGRANDE_2010 = "casagrande-2010"
 FLOWER_1996 = "flower-1996"
+RIELLO_2021 = "riello-2021"
 
 # θ = 5040 / Teff = a0 + a1 X + a2 X² + a3 X [Fe/H] + a4 [Fe/H] + a5 [Fe/H]².
 CASAGRANDE_COEFFICIENTS = (0.5665, 0.4809, -0.0060, -0.0613, -0.0042, -0.0055)
@@ -65,6 +69,9 @@ FLOWER_BC_COEFFICIENTS = (
 )
 FLOWER_BC_BREAKS = (3.70, 3.90)
 FLOWER_MBOL_SUN = 4.73
+# G − V = Σ c_i (BP − RP)^i, and the BP − RP range of the fit.
+RIELLO_G_MINUS_V = (-0.02704, 0.01424, -0.2156, 0.01426)
+RIELLO_COLOURS = (-0.5, 5.0)
 # The B − V step of the slope that carries a colour error to Teff.
 SLOPE_STEP = 0.01
 
@@ -122,3 +129,9 @@ def log_l_from_radius(radius_sun: np.ndarray, log_teff: np.ndarray) -> np.ndarra
     """log L/L☉ = log (R/R☉)² (Teff/Teff☉)⁴, the Stefan–Boltzmann law."""
     with np.errstate(invalid="ignore", divide="ignore"):
         return 2 * np.log10(radius_sun) + 4 * (log_teff - np.log10(SUN_TEFF))
+
+
+def v_from_gaia(g: np.ndarray, bp_rp: np.ndarray) -> np.ndarray:
+    """Johnson V from Gaia G and BP − RP, NaN outside the colour range."""
+    v = g - np.polynomial.polynomial.polyval(bp_rp, RIELLO_G_MINUS_V)
+    return np.where(_inside(bp_rp, RIELLO_COLOURS), v, np.nan)

@@ -61,6 +61,7 @@ class PROVIDERS(StrEnum):
     EL_BADRY_BINARIES = "el_badry_binaries"
     ORB6 = "orb6"
     SBX = "sbx"
+    OBRIEN_WHITE_DWARFS = "obrien_white_dwarfs"
     EDENHOFER_DUST = "edenhofer_dust"
     BAYESTAR_DUST = "bayestar_dust"
     DECAPS_DUST = "decaps_dust"

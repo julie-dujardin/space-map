@@ -157,20 +157,13 @@ def terrestrial(m: Known | None, r: Known | None) -> Verdict:
     return verdict
 
 
-def _host_value(record: dict, host: dict, name: str) -> float | None:
-    """`star_<name>` of the planet's catalogue, else `name` of the host
-    record. An upper limit is no value."""
-    value = None
-    if f"star_{name}{UPPER_LIMIT}" not in record["limits"]:
-        value = record["values"].get(f"star_{name}")
-    return value or host[name]
-
-
 def habitable(record: dict, host: dict) -> Verdict:
-    """The insolation against the conservative habitable zone of the star's
-    Teff. Without a catalogue insolation, one from the star's radius and Teff
-    and the semi-major axis, as an estimate."""
-    teff = _host_value(record, host, "teff")
+    """The insolation against the conservative habitable zone of the host's
+    Teff. Without a catalogue insolation, one from the host's radius and
+    Teff and the semi-major axis, as an estimate. Teff and radius are those
+    of the host record of the system file, so every planet of a host takes
+    the same star."""
+    teff = host["teff"]
     lo, hi = rules.HABITABLE_TEFF
     if not teff or not lo <= teff < hi:
         return Verdict.UNKNOWN
@@ -182,7 +175,7 @@ def habitable(record: dict, host: dict) -> Verdict:
     insolation = known(record, "insolation")
     if insolation is None:
         a = record["values"].get("semi_major_axis")
-        star_radius = _host_value(record, host, "radius")
+        star_radius = host["radius"]
         if not (a and star_radius):
             return Verdict.UNKNOWN
         flux = star_radius**2 * (teff / rules.SUN_TEFF) ** 4 / a**2

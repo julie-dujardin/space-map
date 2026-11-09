@@ -28,7 +28,7 @@ from space_map_data.export.extrasolar.container import Column
 from space_map_data.export.extrasolar.reader import ExportReader, NodeInfo
 from space_map_data.export.groups import star_lineup
 from space_map_data.export.swap import ExportRefused
-from space_map_data.extrasolar import families, ids, placement, sky
+from space_map_data.extrasolar import families, ids, placement, sky, surface
 from space_map_data.extrasolar.interiors import inputs
 from space_map_data.extrasolar.registry import Registry, RegistryBusy
 from space_map_data.extrasolar.sources.hipparcos import g_estimate, propagate
@@ -194,6 +194,20 @@ class TestExport:
         }
         assert types["families"] == types["families_estimated"] == "uint64"
         assert types["spectral_type"] == "string"
+
+    def test_each_point_source_row_is_classified_once(self, tmp_path, out, monkeypatch):
+        """The Metadata tiles take the masks that the interior step wrote."""
+        classified = []
+        real = families.masks
+
+        def masks(rows, classes):
+            classified.append(rows.num_rows)
+            return real(rows, classes)
+
+        monkeypatch.setattr(families, "masks", masks)
+        built = write_registry(tmp_path / "reg", [star(10.0, 5.0), star(80.0, -30.0)])
+        export_extrasolar(built.root, out, workers=1)
+        assert sum(classified) == 2
 
     def test_the_brightest_stars_of_each_family(self, tmp_path, out, monkeypatch):
         monkeypatch.setattr(tiles, "LISTED_STARS", 5)
@@ -482,8 +496,9 @@ class TestExport:
             ("system", tiles.NODE_COLUMNS),
             ("system", systems.READ_COLUMNS),
             ("system", census.HELD_COLUMNS),
-            ("point-source", inputs.COLUMNS),
+            ("point-source", surface.COLUMNS),
             ("system", inputs.SYSTEM_COLUMNS),
+            ("metadata", inputs.CLASS_COLUMNS),
             ("planets", radius.TRANSIT_COLUMNS),
             *(
                 (table.slug, census.read_columns(table))

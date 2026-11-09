@@ -340,6 +340,9 @@ interface GlobalObjectData {
     secondary?: { axis: "+x"|"-x"|"+y"|"-y"|"+z"|"-z"; target: "parent"|"sun"|"velocity" };
   };
   gm?: number;                        // SPICE PCK gravitational parameter (km^3/s^2)
+  mean_density_g_cm3?: number;        // mean density (g/cm³, 4 significant digits) from `gm` and `radii`, G = 6.67430e-11; absent where either is missing or the result is outside 0.1–30 g/cm³ (an unmeasured GM or radius). Wikidata's `density` can be another quantity (the Sun's is its centre)
+  luminosity_w?: number;              // the Sun only — the IAU 2015 Resolution B3 nominal solar luminosity, 3.828e26 W
+  luminosity_reference?: { title: string; url: string; note: string }; // the Sun only — the credit of `luminosity_w`
   orbit?: {
     epoch_jd: number; e: number; i: number;
     om: number; w: number;

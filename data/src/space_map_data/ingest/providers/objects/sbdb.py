@@ -9,6 +9,7 @@ from pathlib import Path
 from sqlalchemy import delete, insert
 from tqdm import tqdm
 
+from space_map_data.constants.physics import G
 from space_map_data.constants.providers import ID_TYPES, make_object_id
 from space_map_data.ingest.convert import (
     bool_or_none,
@@ -33,8 +34,8 @@ from space_map_data.utils.naif import CHEBYSHEV_ASTEROID_WHITELIST, naif_id_from
 
 logger = logging.getLogger(__name__)
 
-# Gravitational constant in km³ kg⁻¹ s⁻²
-G_KM3_PER_KG_S2 = 6.67430e-20
+# G in km³/(kg s²).
+G_KM3_PER_KG_S2 = G * 1e-9
 
 SUB_CHUNK_SIZE = 10_000
 

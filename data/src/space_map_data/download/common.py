@@ -154,6 +154,9 @@ from space_map_data.download.providers.stars.gaia_xp_metallicity import (
 from space_map_data.download.providers.stars.gcvs_simbad import GcvsSimbadDownloader
 from space_map_data.download.providers.stars.iau_names import IAUStarNamesDownloader
 from space_map_data.download.providers.stars.msc import MSCDownloader
+from space_map_data.download.providers.stars.obrien_white_dwarfs import (
+    ObrienWhiteDwarfsDownloader,
+)
 from space_map_data.download.providers.stars.orb6 import ORB6Downloader
 from space_map_data.download.providers.stars.pastel_simbad import (
     PastelSimbadDownloader,
@@ -254,6 +257,7 @@ PROVIDERS_CLASSES = [
     MSCDownloader,
     ORB6Downloader,
     SBXDownloader,
+    ObrienWhiteDwarfsDownloader,
     ElBadryBinariesDownloader,
     GalaxyCataloguesDownloader,
     StarClusterCataloguesDownloader,

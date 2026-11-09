@@ -2,7 +2,9 @@
 
 This is the rule of `frontend/src/components/detail/sections/star/metallicity.ts`
 over Point source rows: the star's kind from its colour and absolute G, then
-the first source in that kind's order with a value that holds. A change to
+the first source in that kind's order with a value that holds. A compact star
+(the export's `compact`, `families.compact`) has a kind of its own. No source
+holds for it, because the surveys and Gaia's models are for normal stars. A change to
 one file needs the same change in the other. Both test suites check the
 stars of `data/tests/fixtures/star_metallicity.json`.
 
@@ -20,6 +22,7 @@ import pyarrow.compute as pc
 from space_map_data.utils.arrays import floats
 
 OBA, FGK_DWARF, GIANT, M_DWARF = "oba", "fgkDwarf", "giant", "mDwarf"
+COMPACT = "compact"
 # No colour or no absolute G.
 NO_KIND = ""
 # BP − RP of an F0 and an M0 dwarf.
@@ -93,7 +96,7 @@ GSPSPEC_FLAGS = 13
 
 def star_kind(colour: np.ndarray, abs_g: np.ndarray) -> np.ndarray:
     """The kind of each star, NO_KIND without a colour or an absolute G."""
-    kind = np.full(colour.size, NO_KIND, "<U8")
+    kind = np.full(colour.size, NO_KIND, "<U10")
     known = np.isfinite(colour) & np.isfinite(abs_g)
     oba = known & (colour < OBA_MAX_COLOUR)
     giant = known & ~oba & (abs_g < GIANT_SLOPE * colour + GIANT_INTERCEPT)
@@ -238,7 +241,7 @@ FGK_DWARF_ORDER: tuple[tuple[str, Rule], ...] = (
 )
 # Only spectra of hot stars hold for O, B and A stars. GSP-Phot is off by
 # +0.5 dex there, so the panel hides it. A star with no kind takes the FGK
-# order.
+# order. A compact star takes none.
 ORDER: dict[str, tuple[tuple[str, Rule], ...]] = {
     OBA: ((PASTEL, _pastel), (XHIP, _xhip)),
     FGK_DWARF: FGK_DWARF_ORDER,
@@ -258,6 +261,7 @@ ORDER: dict[str, tuple[tuple[str, Rule], ...]] = {
         (GSPPHOT, _gspphot),
     ),
     NO_KIND: FGK_DWARF_ORDER,
+    COMPACT: (),
 }
 
 
@@ -274,7 +278,7 @@ def choose(
     table = table.append_column(XP_HOLDS, pa.array(xp_holds(table)))
     for name, order in ORDER.items():
         rows = np.flatnonzero(kind == name)
-        if not rows.size:
+        if not rows.size or not order:
             continue
         part = table.take(pa.array(rows))
         labels = np.array([*(label for label, _ in order), None], object)

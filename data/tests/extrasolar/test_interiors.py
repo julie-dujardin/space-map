@@ -10,9 +10,9 @@ import numpy as np
 import pyarrow as pa
 import pytest
 
-from space_map_data.export.extrasolar import container
+from space_map_data.export.extrasolar import container, render
 from space_map_data.export.extrasolar.build import export_extrasolar
-from space_map_data.extrasolar import placement
+from space_map_data.extrasolar import families, placement
 from space_map_data.extrasolar.interiors import (
     grid,
     inputs,
@@ -321,6 +321,8 @@ def _point_rows(*stars: dict, binary: tuple[int, ...] = ()) -> pa.Table:
             "point": pa.array([True] * len(binary), pa.bool_()),
         }
     )
+    masks = families.masks(table_, pa.nulls(len(rows), pa.string()))
+    table_ = inputs.with_compact(table_, np.bitwise_or(*masks))
     return inputs.with_binary_points(
         placement.with_orbit_parallax(table_, None), systems
     )
@@ -362,14 +364,14 @@ class TestTiers:
             _dwarf(),
         )
         assert found.tier.tolist() == [1, 2, 3, 3]
-        assert found.feh_source.tolist() == [
+        assert found.chosen.feh_source.tolist() == [
             metallicity.PASTEL,
             metallicity.XP,
             metallicity.PASTEL,
             inputs.ASSUMED_SOLAR,
         ]
-        assert found.feh[3] == 0.0
-        assert found.sigma_feh[3] == inputs.SOLAR_SIGMA
+        assert found.chosen.feh[3] == 0.0
+        assert found.chosen.sigma_feh[3] == inputs.SOLAR_SIGMA
 
     def test_unknown_multiplicity_keeps_tier_2_only(self):
         found = self._read(_dwarf(feh_pastel=0.1, ruwe=None, non_single_star=None))
@@ -404,7 +406,7 @@ class TestTiers:
     def test_gspphot_metallicity_counts_as_none(self):
         found = self._read(_dwarf(mh_gspphot=-0.3))
         assert found.tier.tolist() == [3]
-        assert found.feh_source.tolist() == [inputs.ASSUMED_SOLAR]
+        assert found.chosen.feh_source.tolist() == [inputs.ASSUMED_SOLAR]
 
     def test_stars_with_no_tier(self):
         found = self._read(
@@ -421,7 +423,7 @@ class TestTiers:
         )
         assert (found.tier == inputs.NO_TIER).all()
         assert found.out.tolist() == [
-            "white dwarf",
+            inputs.COMPACT_STAR,
             "young stellar object",
             "young stellar object",
             "distance",
@@ -432,8 +434,9 @@ class TestTiers:
         found = self._read(
             _dwarf(classprob_dsc_combmod_whitedwarf=0.9),
             _dwarf(simbad_otype="WD*"),
+            _dwarf(simbad_otype="Psr"),
         )
-        assert found.out.tolist() == ["", "white dwarf"]
+        assert found.out.tolist() == ["", inputs.COMPACT_STAR, inputs.COMPACT_STAR]
 
     def test_the_distance_error_is_that_of_the_render_distance(self):
         rows = _point_rows(
@@ -470,12 +473,12 @@ class TestTiers:
             _dwarf(teff_gspphot_lower=None, teff_gspphot_upper=None),
         )
         assert found.log_teff[0] == pytest.approx(np.log10(5704.0))
-        assert found.sigma_log_teff[0] == pytest.approx(
+        assert found.chosen.sigma_log_teff[0] == pytest.approx(
             (np.log10(5800.0) - np.log10(5600.0)) / 2
         )
         assert found.log_l[1] == pytest.approx(np.log10(2.0))
         assert found.log_teff[1] == pytest.approx(np.log10(6000.0))
-        assert found.teff_source[2] is None
+        assert found.chosen.teff_source[2] is None
 
 
 class TestReady:
@@ -649,15 +652,38 @@ class TestFallbacks:
             ),
             _dwarf(teff_xgboost=5600.0, **no_gaia),
             _dwarf(**no_gaia, b_v=0.665, b_v_error=0.005),
-            _dwarf(teff_xgboost=5600.0, host_teff=5900.0),
+            _dwarf(teff_xgboost=5600.0),
         )
-        assert found.teff_source.tolist() == [
+        assert found.chosen.teff_source.tolist() == [
             inputs.APOGEE,
             inputs.XP,
             photometry.CASAGRANDE_2010,
             inputs.GSPPHOT,
         ]
         assert 10 ** found.log_teff[0] == pytest.approx(5650.0)
+
+    def test_a_planet_host_takes_the_catalogue_teff_first(self):
+        """The catalogue derives its planets' values from that Teff."""
+        found = self._read(
+            _dwarf(
+                host_teff=5900.0, teff_literature=5800.0, teff_literature_error=50.0
+            ),
+            _dwarf(teff_literature=5800.0, teff_literature_error=50.0),
+        )
+        assert found.chosen.teff_source.tolist() == [inputs.HOST, inputs.PAPER]
+        assert found.chosen.teff[0] == pytest.approx(5900.0)
+
+    def test_a_point_of_two_stars_takes_the_catalogue_teff_only(self):
+        found = inputs.choose(
+            _point_rows(
+                _dwarf(host_teff=5900.0),
+                _dwarf(),
+                _dwarf(b_v=0.6),
+                binary=(100, 101, 102),
+            )
+        )
+        assert found.teff_source.tolist() == [inputs.HOST, None, None]
+        assert found.teff[0] == pytest.approx(5900.0)
 
     def test_each_teff_holds_for_its_kind_only(self):
         hot = {
@@ -671,7 +697,7 @@ class TestFallbacks:
             _dwarf(teff_esphs=9500.0, teff_gspphot=None),
             _dwarf(teff_lamost=5600.0, teff_gspphot=None),
         )
-        assert found.teff_source.tolist() == [inputs.ESPHS, None, None]
+        assert found.chosen.teff_source.tolist() == [inputs.ESPHS, None, None]
 
     def test_the_luminosity_order(self):
         no_flame = {"lum_flame": None}
@@ -687,7 +713,7 @@ class TestFallbacks:
             _dwarf(v_mag=4.435, **no_flame),
             _dwarf(**no_flame),
         )
-        assert found.luminosity_source.tolist() == [
+        assert found.chosen.luminosity_source.tolist() == [
             inputs.FLAME_SPEC,
             inputs.RADIUS,
             inputs.BOLOMETRIC,
@@ -769,8 +795,11 @@ PANEL_STARS = json.loads(
 
 @pytest.mark.parametrize("star_", PANEL_STARS, ids=lambda star_: star_["name"])
 def test_the_port_matches_the_panel(star_):
-    rows = _point_rows(star_["row"])
-    for name, value in star_["row"].items():
+    """`compact` is a computed column: the row's inputs must give it."""
+    row = dict(star_["row"])
+    compact = row.pop("compact", False)
+    rows = _point_rows(row)
+    for name, value in row.items():
         column = rows.schema.field(name).type
         if isinstance(value, str):
             assert column == pa.string(), name
@@ -778,9 +807,11 @@ def test_the_port_matches_the_panel(star_):
             assert column == pa.bool_(), name
         elif value is not None:
             assert column == pa.float32(), name
-    distance = placement.star_distance(rows, placement.placement(rows))[0]
-    colour, abs_g = inputs.colour(rows), inputs.absolute_g(rows, distance)
-    kind = metallicity.star_kind(colour, abs_g)
+    chosen = inputs.choose(rows)
+    assert (chosen.excluded[0] == inputs.COMPACT_STAR) == compact
+    colour = render.photometric_bp_rp(rows)
+    abs_g = inputs.absolute_g(rows, chosen.distance_pc)
+    kind = chosen.kind
     value, _, source = metallicity.choose(rows, kind)
     expected = star_["expected"]
     assert (kind[0] or None, source[0]) == (expected["kind"], expected["source"])
@@ -795,11 +826,15 @@ def test_the_port_matches_the_panel(star_):
             assert found == pytest.approx(wanted, abs=1e-4)
 
 
+def _fitted(points: pa.Table, tables) -> tuple[pa.Table, Counter]:
+    return table.rows(points, inputs.read(points), tables)
+
+
 class TestTable:
     """The Interior rows."""
 
     def test_fitted_rows(self, tables):
-        rows, counts = table.rows(
+        rows, counts = _fitted(
             _point_rows(
                 _dwarf(feh_pastel=0.0),
                 _dwarf(),
@@ -831,7 +866,7 @@ class TestTable:
                 assert assumed[f"{name}{suffix}"] is None
 
     def test_a_bright_hipparcos_star_gets_an_interior(self, tables):
-        rows, counts = table.rows(_point_rows(_bright()), tables)
+        rows, counts = _fitted(_point_rows(_bright()), tables)
         assert counts["tier 2"] == 1
         (row,) = rows.to_pylist()
         assert row["teff_source"] == photometry.CASAGRANDE_2010
@@ -841,7 +876,7 @@ class TestTable:
 
     def test_inputs_too_wide_to_place_the_star_give_no_row(self, tables):
         """Rigel's B − V Teff has a width of 0.47 dex."""
-        rows, counts = table.rows(
+        rows, counts = _fitted(
             _point_rows(
                 _dwarf(feh_pastel=0.0),
                 _dwarf(teff_gspphot_lower=4000.0, teff_gspphot_upper=8500.0),
@@ -863,7 +898,7 @@ class TestTable:
         assert table._rounded("centre_x", values)[1] == 0.0
 
     def test_values_are_rounded_to_their_precision(self, tables):
-        rows, _ = table.rows(_point_rows(_dwarf(feh_pastel=0.0)), tables)
+        rows, _ = _fitted(_point_rows(_dwarf(feh_pastel=0.0)), tables)
         (row,) = rows.to_pylist()
         for name in ("mass", "envelope_base_radius", "convective_core_mass_upper"):
             assert row[name] == pytest.approx(round(row[name], 3), abs=1e-7)
@@ -872,7 +907,7 @@ class TestTable:
 
     def test_a_curated_star_takes_the_place_of_its_fit(self, tables):
         points = _point_rows(_dwarf(), _dwarf(), _dwarf(teff_gspphot=None))
-        rows, _ = table.rows(points, tables)
+        rows, _ = _fitted(points, tables)
         assert rows["id"].to_pylist() == [100, 101]
         stars = {
             101: table.Curated("hip/2007/1", '{"layers": []}'),
@@ -891,7 +926,7 @@ class TestTable:
         [
             (
                 _dwarf(classprob_dsc_combmod_whitedwarf=0.9, phot_g_mean_mag=12.0),
-                "white dwarf",
+                inputs.COMPACT_STAR,
             ),
             (_dwarf(simbad_otype="TT*"), "young stellar object"),
             (NO_ROW, "no Point source row"),
@@ -901,13 +936,13 @@ class TestTable:
         points = _point_rows(_dwarf(), *([point] if point else []))
         stars = {101: table.Curated("hip/2007/7", "{}")}
         with pytest.raises(ValueError, match=f"hip/2007/7 .*{why}"):
-            table.with_curated(table.rows(points, tables)[0], points, 0, stars)
+            table.with_curated(_fitted(points, tables)[0], points, 0, stars)
 
     def test_a_curated_point_of_two_stars_is_an_error(self, tables):
         points = _point_rows(_dwarf(), _dwarf(), binary=(101,))
         stars = {101: table.Curated("hip/2007/7", "{}")}
         with pytest.raises(ValueError, match="binary point"):
-            table.with_curated(table.rows(points, tables)[0], points, 0, stars)
+            table.with_curated(_fitted(points, tables)[0], points, 0, stars)
 
     def test_curated_stars_resolve_by_their_key(self, monkeypatch, tmp_path):
         sirius = ("hip", "2007", "32349")
@@ -939,13 +974,34 @@ class TestTable:
 
     def test_credits_follow_the_rows(self):
         assert table.credits(Counter({"curated": 2})) == []
-        found = table.credits(Counter({"tier 2": 1, "teff_source: flower-1996": 1}))
+        found = table.credits(
+            Counter({"tier 2": 1, "surface teff_source: flower-1996": 1})
+        )
         assert [credit["organisation"] for credit in found] == [
             table.MIST_CREDIT["organisation"],
             "Flower 1996",
             "Torres 2010",
         ]
         assert found[1]["source"].startswith("https://doi.org/")
+
+    def test_the_surface_values_credit_their_routes_alone(self):
+        """The Point source columns use the relations with no fitted row."""
+        found = table.credits(
+            Counter(
+                {
+                    "surface teff_source: casagrande-2010": 1,
+                    "surface luminosity_source: bolometric-correction": 1,
+                    "surface apparent_v_source: riello-2021": 1,
+                }
+            )
+        )
+        assert [credit["organisation"] for credit in found] == [
+            "Casagrande et al. 2010",
+            "Flower 1996",
+            "Torres 2010",
+            "Riello et al. 2021",
+        ]
+        assert found[3]["source"] == "https://doi.org/10.1051/0004-6361/202039587"
 
 
 class TestExport:

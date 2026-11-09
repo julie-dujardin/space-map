@@ -48,6 +48,7 @@ from astropy.coordinates import SkyCoord, search_around_sky
 from space_map_data.download.cds import README, read_fixed_width
 from space_map_data.download.providers.stars import gaia_source
 from space_map_data.extrasolar import sky
+from space_map_data.extrasolar.interiors import photometry
 from space_map_data.extrasolar.sources import gaia, hipparcos
 from space_map_data.extrasolar.sources.gaia import BestNeighbours
 from space_map_data.utils.arrays import floats
@@ -72,10 +73,6 @@ CLAIM_RADIUS = 3.0
 # route and SIMBAD place on one Gaia source the scatter is 0.02 mag and 98.9%
 # are within 0.3 mag; the rest are variables and saturated bright stars.
 MAX_V_DIFF = 0.3
-# G - V from BP - RP in ascending powers, valid for BP - RP from -0.5 to 5
-# (Riello et al. 2021, Table C.2).
-G_MINUS_V = (-0.02704, 0.01424, -0.2156, 0.01426)
-BP_RP_RANGE = (-0.5, 5.0)
 # A position match this near needs no more evidence. Of the stars that the
 # HD route and SIMBAD place on one Gaia source, all 5,693 within 3″ are this
 # near.
@@ -133,13 +130,6 @@ def read_simbad(path: Path = SIMBAD_FILE) -> dict[str, SimbadObject]:
             for row in csv.DictReader(fh)
             if row["oid"]
         }
-
-
-def expected_v(g: np.ndarray, bp_rp: np.ndarray) -> np.ndarray:
-    """Johnson V from Gaia G and BP - RP; NaN outside the fit range."""
-    ok = (bp_rp >= BP_RP_RANGE[0]) & (bp_rp <= BP_RP_RANGE[1])
-    v = g - np.polynomial.polynomial.polyval(bp_rp, G_MINUS_V)
-    return np.where(ok, v, np.nan)
 
 
 def _summary(feh: list[float], bibcodes: list[str | None]) -> dict:
@@ -278,7 +268,7 @@ def candidates(
             EPOCH - gaia.EPOCH,
         )
         a, b, d = _pairs(ra[at], dec[at], moved_ra, moved_dec)
-        v = expected_v(
+        v = photometry.v_from_gaia(
             floats(found, "phot_g_mean_mag")[b],
             floats(found, "phot_bp_mean_mag")[b] - floats(found, "phot_rp_mean_mag")[b],
         )

@@ -51,7 +51,9 @@ from space_map_data.export.extrasolar.container import Column, Written
 from space_map_data.extrasolar import placement
 from space_map_data.extrasolar.registry import Registry
 from space_map_data.extrasolar.sources.hipparcos import g_estimate, propagate
+from space_map_data.extrasolar.store import with_computed
 from space_map_data.extrasolar.tables import BINARY_ORBIT, POINT_SOURCE
+from space_map_data.utils.arrays import floats
 
 logger = logging.getLogger(__name__)
 
@@ -199,9 +201,7 @@ COLUMNS = (
     "astrometry_source",
     "hipparcos_photometry_source",
     "simbad_photometry_source",
-    "teff_gspphot",
     "host_distance",
-    "host_teff",
     "host_star_source",
 )
 # Arrays of one render row, in the scratch files.
@@ -240,6 +240,12 @@ def ids_path(name: str) -> str:
 
 def bp_rp_from_v_i(v_i: np.ndarray) -> np.ndarray:
     return np.polynomial.polynomial.polyval(np.clip(v_i, *V_I_RANGE), BP_RP_FROM_V_I)
+
+
+def photometric_bp_rp(table: pa.Table) -> np.ndarray:
+    """Gaia BP − RP, else from the Hipparcos V − I; NaN where neither."""
+    bp_rp = _floats(table, "phot_bp_mean_mag") - _floats(table, "phot_rp_mean_mag")
+    return np.where(np.isfinite(bp_rp), bp_rp, bp_rp_from_v_i(_floats(table, "v_i")))
 
 
 def bp_rp_from_teff(teff: np.ndarray) -> np.ndarray:
@@ -335,7 +341,8 @@ def magnitudes(table: pa.Table) -> tuple[np.ndarray, np.ndarray]:
 def render_rows(table: pa.Table) -> tuple[dict[str, np.ndarray], Counter]:
     """The render rows of `region_table` rows, with counts of how each row was
     placed or why it was dropped. The module docstring gives the order of the
-    distances."""
+    distances. `colour` is the photometric BP − RP, NaN where there is none:
+    `region_rows` fills it from Teff."""
     counts: Counter = Counter()
     counts["rows"] = table.num_rows
     where = placement.placement(table)
@@ -405,21 +412,12 @@ def render_rows(table: pa.Table) -> tuple[dict[str, np.ndarray], Counter]:
 
     abs_mag = mag - 5 * np.log10(distance) + 5
     abs_mag = _round(np.where(bright, abs_mag, HOST_PLACEHOLDER_MAG))
-    bp_rp = _floats(table, "phot_bp_mean_mag") - _floats(table, "phot_rp_mean_mag")
-    from_v_i = bp_rp_from_v_i(_floats(table, "v_i"))
-    host_teff = _floats(table, "host_teff")
-    teff = np.where(np.isfinite(host_teff), host_teff, _floats(table, "teff_gspphot"))
-    from_teff = bp_rp_from_teff(teff)
     # Riello et al. 2021 give no BP − RP from B − V, so SIMBAD gives no colour.
-    colour = np.where(np.isfinite(bp_rp), bp_rp, from_v_i)
+    colour = _round(photometric_bp_rp(table))
+    gaia = _valid(table, "phot_bp_mean_mag") & _valid(table, "phot_rp_mean_mag")
     counts["BP - RP from Hipparcos V - I"] = int(
-        (~np.isfinite(bp_rp) & np.isfinite(from_v_i))[inside].sum()
+        (~gaia & np.isfinite(colour))[inside].sum()
     )
-    counts["BP - RP from Teff"] = int(
-        (~np.isfinite(colour) & np.isfinite(from_teff))[inside].sum()
-    )
-    colour = _round(np.where(np.isfinite(colour), colour, from_teff))
-    counts["no colour"] = int((~np.isfinite(colour))[inside].sum())
 
     rows = {
         "id": table["id"].to_numpy(),
@@ -447,11 +445,21 @@ class RowsJob:
     region: int
     scratch: Path
     hidden: np.ndarray
+    # The surface values of the interior step (`surface.rows`).
+    surface: Path
 
 
 def region_rows(job: RowsJob) -> tuple[int, Counter]:
-    """Write the render rows of one region to the scratch directory."""
+    """Write the render rows of one region to the scratch directory. A row
+    with no photometric colour takes that of a dwarf of its chosen Teff."""
     rows, counts = render_rows(region_table(job.registry, job.region, job.hidden))
+    ids = pa.table({"id": pa.array(rows["id"], pa.int64())})
+    teff = floats(with_computed(ids, (job.region,), job.surface, ["teff"]), "teff")
+    from_teff = _round(bp_rp_from_teff(teff)).astype(np.float32)
+    missing = ~np.isfinite(rows["colour"])
+    counts["BP - RP from Teff"] = int((missing & np.isfinite(from_teff)).sum())
+    rows["colour"] = np.where(missing, from_teff, rows["colour"])
+    counts["no colour"] = int((~np.isfinite(rows["colour"])).sum())
     for name, values in rows.items():
         path = scratch_file(job.scratch, job.region, name)
         path.parent.mkdir(parents=True, exist_ok=True)

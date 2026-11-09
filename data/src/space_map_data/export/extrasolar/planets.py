@@ -5,7 +5,10 @@ and number, with the ID of the star that keys its system. A record that is
 also a star is drawn once, as its `as_star` says: drawn as its star, it is
 in no file; drawn as a planet, its star has no render row (`hidden_stars`). The
 hosts come from Metadata and Point source, and their places from the render
-rows of the tree build, so a host sits at its point of the render tree.
+rows of the tree build, so a host sits at its point of the render tree. The
+`teff` of a point is its surface value (`surface`), and that of a held star
+its System `star` value, so the system file, the star's panel and its render
+colour agree.
 
 Files, JSON in gzip:
 - planets/index.json.gz: per host, its system, its planet numbers, its place
@@ -73,12 +76,13 @@ from space_map_data.export.names import (
     served_host,
 )
 from space_map_data.export.systems import TextureLayers
-from space_map_data.extrasolar import frame
+from space_map_data.extrasolar import frame, surface
 from space_map_data.extrasolar.exoplanets import numbering
 from space_map_data.extrasolar.exoplanets.ingest import hosts_with_several_systems
 from space_map_data.extrasolar.exoplanets.table import SCHEMA, SLUG
 from space_map_data.extrasolar.exoplanets.wikidata import planet_qid
 from space_map_data.extrasolar.ids import cell_of
+from space_map_data.extrasolar.interiors import inputs
 from space_map_data.extrasolar.placement import (
     ORBIT_PARALLAX_COLUMNS,
     placement,
@@ -87,6 +91,7 @@ from space_map_data.extrasolar.placement import (
 )
 from space_map_data.extrasolar.registry import ALIAS, LIVE, RETIRED, Registry
 from space_map_data.extrasolar.sky import region_of
+from space_map_data.extrasolar.store import with_computed
 from space_map_data.extrasolar.systems.assemble import NODE_CLASSES
 from space_map_data.extrasolar.tables import BINARY_ORBIT, HOST_VALUES, METADATA, SYSTEM
 
@@ -135,13 +140,14 @@ POINT_COLUMNS = [
     "distance_method",
     "phot_bp_mean_mag",
     "phot_rp_mean_mag",
-    "teff_gspphot",
     "host_name",
     "host_distance",
     *(f"{name}{suffix}" for name in HOST_VALUES for suffix in ("", "_source")),
     "host_spectral_type",
     "host_star_source",
 ]
+# The surface values of the interior step that a host record takes.
+SURFACE_COLUMNS = ["teff", "teff_source"]
 NO_RADIUS = (None, None)
 # The values of a host record that the planet catalogues give, by the System
 # `star` field and the Point source column.
@@ -288,10 +294,10 @@ def _host(
 ) -> dict:
     """The host record of a system file, before its planets. `size` is the
     radius and its source, and `distance` the render row's, from
-    `star_distance`."""
-    teff, teff_source = _f32(point["host_teff"]), point["host_teff_source"]
-    if teff is None:
-        teff, teff_source = _f32(point["teff_gspphot"]), "gaia-dr3"
+    `star_distance`. A catalogue Teff names its catalogue."""
+    teff_source = point["teff_source"]
+    if teff_source == inputs.HOST:
+        teff_source = point["host_teff_source"]
     bp, rp = point["phot_bp_mean_mag"], point["phot_rp_mean_mag"]
     values = {}
     for name, column in HOST_RECORD_VALUES:
@@ -309,8 +315,8 @@ def _host(
         "ra": point["ra"],
         "dec": point["dec"],
         "epoch": _f32(point["epoch"]),
-        "teff": teff,
-        "teff_source": teff_source if teff is not None else None,
+        "teff": _f32(point["teff"]),
+        "teff_source": teff_source,
         "radius": _f32(size[0]),
         "radius_source": size[1],
         **values,
@@ -326,7 +332,8 @@ def _system_host(meta: dict, node: dict, size: tuple[float | None, str | None]) 
     fields of a star's record, with the values of its System row. A resolved
     system is not drawn as a star, and the values of its stars stay in their
     own records. `build` gives it the place of one of its points."""
-    record = _host(meta, dict.fromkeys(POINT_COLUMNS), size, None, None, None)
+    point = dict.fromkeys([*POINT_COLUMNS, *SURFACE_COLUMNS])
+    record = _host(meta, point, size, None, None, None)
     star = node["star"] or {}
     for name in ("teff", *(name for name, _ in HOST_RECORD_VALUES)):
         record[name] = _f32(star.get(name))
@@ -405,6 +412,15 @@ def host_rows(job: HostJob) -> HostRows:
 
     metadata = rows(METADATA.slug, METADATA_COLUMNS)
     places = _places(job)
+    if places.points:
+        found = with_computed(
+            pa.table({"id": pa.array(list(places.points), pa.int64())}),
+            (job.region,),
+            job.scratch / surface.SCRATCH,
+            SURFACE_COLUMNS,
+        )
+        for row in found.to_pylist():
+            places.points[row["id"]] |= row
     nodes = rows(SYSTEM.slug, SYSTEM_COLUMNS)
     sizes = radius.load(job.scratch, job.region)
     for id_ in job.ids:
@@ -610,10 +626,11 @@ def build(
     """Write the planet files below `out`, or None when the registry has no
     planets table.
 
-    `scratch` holds the render rows of the tree build and the radii of the
-    Metadata rows (`radius.save`), `run` maps a task over jobs in the
-    export's workers, `live` is the served `v1/x/`, `host_pages` names the
-    hosts with an entry, by ID, and `textures` holds the maps of the planets.
+    `scratch` holds the render rows of the tree build, the radii of the
+    Metadata rows (`radius.save`) and the surface values of the interior
+    step, `run` maps a task over jobs in the export's workers, `live` is the
+    served `v1/x/`, `host_pages` names the hosts with an entry, by ID, and
+    `textures` holds the maps of the planets.
     """
     records = read_records(registry)
     if records is None:

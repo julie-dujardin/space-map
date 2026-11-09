@@ -225,6 +225,7 @@ JOBS: list[Job] = [
             PROVIDERS.EL_BADRY_BINARIES,
             PROVIDERS.ORB6,
             PROVIDERS.SBX,
+            PROVIDERS.OBRIEN_WHITE_DWARFS,
         ),
         schedule=Every(timedelta(days=7)),
     ),

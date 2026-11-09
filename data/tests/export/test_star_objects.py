@@ -10,6 +10,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 
+from space_map_data.constants.stars.literature import REFERENCES
 from space_map_data.export.objects import stars
 from space_map_data.export.objects.stars import (
     PlanetObject,
@@ -282,8 +283,38 @@ class TestStarEntries:
             "distance": [SMITH_2006]
         }
         assert star_references(StarObject(5, "Hamal", "Q2")) == {}
+        # One work can give two values.
+        uy_sct = ("gaia", "dr3", "4152993273702130432")
+        arroyo_torres = [REFERENCES["arroyo_torres_2013"]._asdict()]
+        uy_scuti = StarObject(9, "UY Scuti", "Q3", uy_sct, papers=("mass",))
+        assert star_references(uy_scuti) == {
+            "paper_radius": arroyo_torres,
+            "paper_mass": arroyo_torres,
+        }
+        # A measured value that the record does not hold is not cited.
+        assert star_references(StarObject(9, "UY Scuti", "Q3", uy_sct)) == {
+            "paper_radius": arroyo_torres
+        }
+        alnilam = star_references(
+            StarObject(10, "Alnilam", "Q4", ("hip", "2007", "26311"), papers=("mass",))
+        )
+        assert alnilam["distance"] == alnilam["paper_mass"]
+        assert alnilam["paper_mass"][0]["short"] == "Oplištilová et al. 2025"
         # A key that the table no longer has cites nothing.
         assert star_references(StarObject(8, "X", None, ("hip", "2007", "1"))) == {}
+
+    def test_a_white_dwarf_of_the_sample_cites_it(self):
+        """A measured value of a star with no paper of its own is the
+        sample's."""
+        key = ("gaia", "dr3", "3195919254111315712")
+        papers = ("teff", "logg", "mass")
+        found = star_references(StarObject(8, "40 Eri B", None, key, papers=papers))
+        obrien = [REFERENCES["obrien_2024"]._asdict()]
+        assert found == {
+            "paper_teff": obrien,
+            "paper_logg": obrien,
+            "paper_mass": obrien,
+        }
 
     def test_description(self):
         assert has_description({"wikipedia": {"extract": "Sirius is…"}})
@@ -536,6 +567,38 @@ class TestReadStarObjects:
         built = write_registry(tmp_path / "reg", [star(10.0, 20.0)], systems=systems)
         stars, _ = read_extrasolar_objects(built.root)
         assert stars == [StarObject(built.held[0, "A"], "Kepler-16 A", "Q5")]
+
+    def test_a_star_cites_the_paper_groups_of_its_row(self, tmp_path):
+        """The papers of a star with a literature key are the paper groups
+        that its Point source row holds."""
+
+        def key(rows: list[dict], at: int) -> None:
+            rows[at]["cross_ids"] += [
+                {
+                    "catalogue": "literature",
+                    "release": "star",
+                    "catalogue_id": f"gaia/dr3/{at}",
+                }
+            ]
+            rows[at]["object"] = True
+
+        def tamper(_: list[dict], meta: list[dict]) -> None:
+            key(meta, 0)
+            key(meta, 1)
+
+        white_dwarf = star(10.0, 20.0) | {
+            "teff_literature": 5000.0,
+            "paper_teff_source": "literature",
+            "mass_literature": 0.6,
+            "paper_mass_source": "literature",
+        }
+        rows = [white_dwarf, star(200.0, -40.0)]
+        built = write_registry(tmp_path / "reg", rows, tamper=tamper)
+        stars, _ = read_extrasolar_objects(built.root)
+        assert {found.id: found.papers for found in stars} == {
+            built.ids[0]: ("teff", "mass"),
+            built.ids[1]: (),
+        }
 
 
 class TestStarDrawnAsAPlanet:

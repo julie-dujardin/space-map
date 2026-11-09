@@ -1,11 +1,13 @@
-"""Star values read from papers, for stars that no catalogue here places well.
+"""Star values read from papers, where no catalogue here gives them well.
 
 An entry is keyed by an id of the star that stays the same between ingests:
-its Gaia DR3 id, else its HIP number, else its HD number. Our own IDs can
-change, so they are not keys. Each value cites one work of REFERENCES by its
-key. The ingest gives the values to their column group as the source
-`literature`, first in the order of that group. The star's object entry cites
-the work beside the value.
+its Gaia DR3 id, else its HIP number, else its HD number, else its SIMBAD
+oid. Our own IDs can change, so they are not keys. Each value cites one work
+of REFERENCES by its key. The ingest gives the values to their column group
+as the source `literature`, first in the order of that group. The star's
+object entry cites the work beside the value. The white dwarfs of O'Brien et
+al. 2024 join TEFFS, LOGGS and MASSES from their download
+(`extrasolar/sources/literature.measured_tables`).
 """
 
 from typing import NamedTuple
@@ -39,6 +41,23 @@ class Radius(NamedTuple):
     reference: str
 
 
+class Measured(NamedTuple):
+    """A value with its 1σ error, None where the paper gives none."""
+
+    value: float
+    error: float | None
+    reference: str
+
+
+class Bounds(NamedTuple):
+    """A value with the lower and upper bound that the paper prints."""
+
+    value: float
+    lower: float
+    upper: float
+    reference: str
+
+
 REFERENCES: dict[str, Reference] = {
     "argyle_2015": Reference(
         "Argyle, Alzner & van Leeuwen 2015",
@@ -56,6 +75,17 @@ REFERENCES: dict[str, Reference] = {
         "The atmospheric structure and fundamental parameters of the red"
         " supergiants AH Sco, UY Sct, and KW Sgr (A&A 554, A76)",
         "https://doi.org/10.1051/0004-6361/201220920",
+    ),
+    "bond_2015": Reference(
+        "Bond et al. 2015",
+        "Hubble Space Telescope astrometry of the Procyon system (ApJ 813, 106)",
+        "https://doi.org/10.1088/0004-637X/813/2/106",
+    ),
+    # CC BY 4.0.
+    "obrien_2024": Reference(
+        "O'Brien et al. 2024",
+        "The 40 pc sample of white dwarfs from Gaia (MNRAS 527, 8687)",
+        "https://doi.org/10.1093/mnras/stad3773",
     ),
     "baron_2012": Reference(
         "Baron et al. 2012",
@@ -186,7 +216,166 @@ REFERENCES: dict[str, Reference] = {
         " VY Canis Majoris based on VLTI/AMBER spectro-interferometry (A&A 540, L12)",
         "https://doi.org/10.1051/0004-6361/201219126",
     ),
+    "allende_prieto_lambert_1999": Reference(
+        "Allende Prieto & Lambert 1999",
+        "Fundamental parameters of nearby stars from the comparison with"
+        " evolutionary calculations: masses, radii and effective temperatures"
+        " (A&A 352, 555)",
+        # The work has no DOI.
+        "https://ui.adsabs.harvard.edu/abs/1999A%26A...352..555A",
+    ),
+    "baines_2018": Reference(
+        "Baines et al. 2018",
+        "Fundamental parameters of 87 stars from the Navy Precision Optical"
+        " Interferometer (AJ 155, 30)",
+        "https://doi.org/10.3847/1538-3881/aa9d8b",
+    ),
+    "bouchaud_2020": Reference(
+        "Bouchaud et al. 2020",
+        "A realistic two-dimensional model of Altair (A&A 633, A78)",
+        "https://doi.org/10.1051/0004-6361/201936830",
+    ),
+    "cotton_2022": Reference(
+        "Cotton et al. 2022",
+        "Polarimetric detection of non-radial oscillation modes in the β Cephei"
+        " star β Crucis (Nature Astronomy 6, 154)",
+        "https://doi.org/10.1038/s41550-021-01531-9",
+    ),
+    "david_hillenbrand_2015": Reference(
+        "David & Hillenbrand 2015",
+        "The ages of early-type stars: Strömgren photometric methods calibrated,"
+        " validated, tested, and applied to hosts and prospective hosts of"
+        " directly imaged exoplanets (ApJ 804, 146)",
+        "https://doi.org/10.1088/0004-637X/804/2/146",
+    ),
+    "domiciano_de_souza_2021": Reference(
+        "Domiciano de Souza et al. 2021",
+        "Refined fundamental parameters of Canopus from combined near-IR"
+        " interferometry and spectral energy distribution (A&A 654, A19)",
+        "https://doi.org/10.1051/0004-6361/202140478",
+    ),
+    "gardner_2021": Reference(
+        "Gardner et al. 2021",
+        "Establishing α Oph as a prototype rotator: precision orbit with new"
+        " Keck, CHARA, and RV observations (ApJ 921, 41)",
+        "https://doi.org/10.3847/1538-4357/ac1172",
+    ),
+    "howarth_van_leeuwen_2019": Reference(
+        "Howarth & van Leeuwen 2019",
+        "The distance, rotation, and physical parameters of ζ Pup (MNRAS 484, 5350)",
+        "https://doi.org/10.1093/mnras/stz291",
+    ),
+    "joyce_2020": Reference(
+        "Joyce et al. 2020",
+        "Standing on the shoulders of giants: new mass and distance estimates for"
+        " Betelgeuse through combined evolutionary, asteroseismic, and"
+        " hydrodynamic simulations with MESA (ApJ 902, 63)",
+        "https://doi.org/10.3847/1538-4357/abb8db",
+    ),
+    "kervella_2022": Reference(
+        "Kervella et al. 2022",
+        "The binary system of the spinning-top Be star Achernar (A&A 667, A111)",
+        "https://doi.org/10.1051/0004-6361/202244009",
+    ),
+    "kervella_arenou_thevenin_2022": Reference(
+        "Kervella, Arenou & Thévenin 2022",
+        "Stellar and substellar companions from Gaia EDR3. Proper-motion anomaly"
+        " and resolved common proper-motion pairs (A&A 657, A7)",
+        "https://doi.org/10.1051/0004-6361/202142146",
+    ),
+    "luck_2015": Reference(
+        "Luck 2015",
+        "Abundances in the local region. I. G and K giants (AJ 150, 88)",
+        "https://doi.org/10.1088/0004-6256/150/3/88",
+    ),
+    "mazumdar_2006": Reference(
+        "Mazumdar et al. 2006",
+        "An asteroseismic study of the β Cephei star β Canis Majoris (A&A 459, 589)",
+        "https://doi.org/10.1051/0004-6361:20064980",
+    ),
+    "monnier_2012": Reference(
+        "Monnier et al. 2012",
+        "Resolving Vega and the inclination controversy with CHARA/MIRC (ApJL 761, L3)",
+        "https://doi.org/10.1088/2041-8205/761/1/L3",
+    ),
+    "morel_2001": Reference(
+        "Morel et al. 2001",
+        "The ζ Herculis binary system revisited. Calibration and seismology"
+        " (A&A 379, 245)",
+        "https://doi.org/10.1051/0004-6361:20011336",
+    ),
+    "north_2007": Reference(
+        "North et al. 2007",
+        "γ2 Velorum: orbital solution and fundamental parameter determination"
+        " with SUSI (MNRAS 377, 415)",
+        "https://doi.org/10.1111/j.1365-2966.2007.11608.x",
+    ),
+    "ohnaka_2013": Reference(
+        "Ohnaka et al. 2013",
+        "High spectral resolution imaging of the dynamical atmosphere of the red"
+        " supergiant Antares in the CO first overtone lines with VLTI/AMBER"
+        " (A&A 555, A24)",
+        "https://doi.org/10.1051/0004-6361/201321063",
+    ),
+    "ramirez_allende_prieto_2011": Reference(
+        "Ramírez & Allende Prieto 2011",
+        "Fundamental parameters and chemical composition of Arcturus (ApJ 743, 135)",
+        "https://doi.org/10.1088/0004-637X/743/2/135",
+    ),
+    "schiller_przybilla_2008": Reference(
+        "Schiller & Przybilla 2008",
+        "Quantitative spectroscopy of Deneb (A&A 479, 849)",
+        "https://doi.org/10.1051/0004-6361:20078590",
+    ),
+    "soubiran_2024": Reference(
+        "Soubiran et al. 2024",
+        "Gaia FGK benchmark stars: fundamental Teff and log g of the third"
+        " version (A&A 682, A145)",
+        "https://doi.org/10.1051/0004-6361/202347136",
+    ),
+    "southworth_2007": Reference(
+        "Southworth, Bruntt & Buzasi 2007",
+        "Eclipsing binaries observed with the WIRE satellite. II. β Aurigae and"
+        " non-linear limb darkening in light curves (A&A 467, 1215)",
+        "https://doi.org/10.1051/0004-6361:20077184",
+    ),
+    "stock_2018": Reference(
+        "Stock et al. 2018",
+        "Precise radial velocities of giant stars. X. Bayesian stellar parameters"
+        " and evolutionary stages for 372 giant stars from the Lick planet-search"
+        " program (A&A 616, A33)",
+        "https://doi.org/10.1051/0004-6361/201833111",
+    ),
+    "tango_2006": Reference(
+        "Tango et al. 2006",
+        "Orbital elements, masses and distance of λ Scorpii A and B determined"
+        " with the Sydney University Stellar Interferometer and high-resolution"
+        " spectroscopy (MNRAS 370, 884)",
+        "https://doi.org/10.1111/j.1365-2966.2006.10526.x",
+    ),
+    "tetzlaff_2011": Reference(
+        "Tetzlaff, Neuhäuser & Hohle 2011",
+        "A catalogue of young runaway Hipparcos stars within 3 kpc from the Sun"
+        " (MNRAS 410, 190)",
+        "https://doi.org/10.1111/j.1365-2966.2010.17434.x",
+    ),
+    "tkachenko_2016": Reference(
+        "Tkachenko et al. 2016",
+        "Stellar modelling of Spica, a high-mass spectroscopic binary with a"
+        " β Cep variable primary component (MNRAS 458, 1964)",
+        "https://doi.org/10.1093/mnras/stw255",
+    ),
+    "tomkin_popper_1986": Reference(
+        "Tomkin & Popper 1986",
+        "Rediscussion of eclipsing binaries. XV. Alpha Coronae Borealis, a"
+        " main-sequence system with components of types A and G (AJ 91, 1428)",
+        "https://doi.org/10.1086/114121",
+    ),
 }
+
+SIRIUS_B: StarKey = ("gaia", "dr3", "2947050466531873024")
+# No Gaia, HIP or HD id holds Procyon B alone.
+PROCYON_B: StarKey = ("simbad", "oid", "988144")
 
 DISTANCES: dict[StarKey, Distance] = {
     # η Car. The H2 shape of the Homunculus and its age of 160 yr give
@@ -303,4 +492,239 @@ RADII: dict[StarKey, Radius] = {
     # Westerlund 1-243, at the photosphere at 4.5 kpc.
     ("gaia", "dr3", "5940105830990286208"): Radius(450, "ritchie_2009"),
     ("gaia", "dr3", "6054569565614460800"): Radius(70, "clark_2012"),  # BP Cru
+    # Sirius B, from its absolute flux (Sect. 8).
+    SIRIUS_B: Radius(0.008098, "bond_2017"),
+    # Procyon B. Provencal et al. 2002's radius at the paper's parallax (Sect. 8).
+    PROCYON_B: Radius(0.01232, "bond_2015"),
+}
+
+# Teff (K), log g (cgs) and mass (M☉) of white dwarfs, which Gaia does not
+# fit. A paper on the one star comes before the 40 pc sample.
+TEFFS: dict[StarKey, Measured] = {
+    # The fit to the HST STIS spectra (Sect. 8).
+    SIRIUS_B: Measured(25369, 46, "bond_2017"),
+    # The fit of Provencal et al. 2002, which the paper takes (Sect. 8).
+    PROCYON_B: Measured(7740, 50, "bond_2015"),
+}
+LOGGS: dict[StarKey, Measured] = {
+    # The fit to the spectra that gives its Teff (Sect. 8).
+    SIRIUS_B: Measured(8.591, 0.016, "bond_2017"),
+    # From the dynamical mass and the radius: the star has no Balmer lines
+    # (Sect. 8).
+    PROCYON_B: Measured(8.028, 0.023, "bond_2015"),
+}
+# Masses (M☉) of the white dwarfs above, and of bright stars that Gaia FLAME
+# saturates on and that no other catalogue here gives a mass. Each value keeps
+# the spread that the paper or its online table prints. A symmetric 1σ error
+# is a Measured. Printed bounds, an asymmetric error and a range are a Bounds.
+# A range goes in as its middle. A point that holds an unresolved pair takes the mass
+# of its primary.
+MASSES: dict[StarKey, Measured | Bounds] = {
+    # Dynamical masses.
+    SIRIUS_B: Measured(1.018, 0.011, "bond_2017"),
+    PROCYON_B: Measured(0.592, 0.006, "bond_2015"),
+    # Hassaleh.
+    ("gaia", "dr3", "160886283751041408"): Bounds(5.23, 4.13, 5.44, "stock_2018"),
+    # Schedar.
+    ("gaia", "dr3", "418551920284673408"): Bounds(4.1, 3.65, 4.23, "stock_2018"),
+    ("gaia", "dr3", "423018377034969216"): Measured(2.02, 0.03, "baines_2018"),  # Caph
+    # Ruchbah.
+    ("gaia", "dr3", "510204838759030144"): Bounds(
+        2.06, 1.8, 2.2, "david_hillenbrand_2015"
+    ),
+    # Phecda.
+    ("gaia", "dr3", "792588939773693568"): Bounds(
+        2.27, 2.1, 2.4, "david_hillenbrand_2015"
+    ),
+    # Merak.
+    ("gaia", "dr3", "856096765753549056"): Bounds(
+        2.38, 2.2, 2.5, "david_hillenbrand_2015"
+    ),
+    # Alphecca.
+    ("gaia", "dr3", "1222646935698492160"): Measured(2.58, 0.045, "tomkin_popper_1986"),
+    # Muphrid.
+    ("gaia", "dr3", "1244946371540479616"): Measured(1.559, 0.072, "soubiran_2024"),
+    # Kornephoros.
+    ("gaia", "dr3", "1297565458994346240"): Measured(2.91, 0.11, "baines_2018"),
+    ("gaia", "dr3", "1312665361415345920"): Measured(1.45, 0.01, "morel_2001"),  # ζ Her
+    # Rastaban.
+    ("gaia", "dr3", "1415230383034813824"): Measured(6.3, 0.6, "tetzlaff_2011"),
+    # Alkaid.
+    ("gaia", "dr3", "1510374147844219904"): Bounds(
+        5.65, 5.2, 6.0, "david_hillenbrand_2015"
+    ),
+    # Alioth.
+    ("gaia", "dr3", "1576683529448755328"): Bounds(
+        2.21, 2.1, 2.3, "david_hillenbrand_2015"
+    ),
+    ("gaia", "dr3", "2067518817314952576"): Measured(12, 0.1, "tetzlaff_2011"),  # Sadr
+    # Alderamin.
+    ("gaia", "dr3", "2193192137376175488"): Bounds(
+        1.78, 1.6, 1.9, "david_hillenbrand_2015"
+    ),
+    # Markab.
+    ("gaia", "dr3", "2816504901198512768"): Bounds(
+        2.48, 2.3, 2.6, "david_hillenbrand_2015"
+    ),
+    # Phact.
+    ("gaia", "dr3", "2900546759663847168"): Bounds(
+        3.32, 3.2, 3.4, "david_hillenbrand_2015"
+    ),
+    # Nihal.
+    ("gaia", "dr3", "2968097043228517120"): Measured(
+        3.34, 0.17, "kervella_arenou_thevenin_2022"
+    ),
+    # Arneb.
+    ("gaia", "dr3", "2971266110612490624"): Measured(12.2, 0.1, "tetzlaff_2011"),
+    # Saiph.
+    ("gaia", "dr3", "3011968416163350272"): Measured(15.5, 0.8, "tetzlaff_2011"),
+    # Cursa.
+    ("gaia", "dr3", "3211922645854328832"): Bounds(
+        1.8, 1.7, 1.9, "david_hillenbrand_2015"
+    ),
+    ("gaia", "dr3", "3501215734352781440"): Measured(2.73, None, "luck_2015"),  # Kraz
+    # Zosma.
+    ("gaia", "dr3", "3990320597065899776"): Bounds(
+        1.96, 1.8, 2.0, "david_hillenbrand_2015"
+    ),
+    # Kaus Media.
+    ("gaia", "dr3", "4049506483413484672"): Measured(3.21, None, "luck_2015"),
+    # Kaus Borealis.
+    ("gaia", "dr3", "4076915349846977664"): Bounds(0.93, 0.85, 1.01, "stock_2018"),
+    # UY Sct, the middle of the 7–10 that its place in the HR diagram gives.
+    ("gaia", "dr3", "4152993273702130432"): Bounds(8.5, 7, 10, "arroyo_torres_2013"),
+    # Tarazed.
+    ("gaia", "dr3", "4302054339959905920"): Measured(3.51, 0.23, "baines_2018"),
+    # ζ Oph.
+    ("gaia", "dr3", "4337352305320149760"): Measured(19.8, 0.1, "tetzlaff_2011"),
+    # Yed Prior.
+    ("gaia", "dr3", "4357027756659697664"): Measured(
+        1.59, 0.08, "kervella_arenou_thevenin_2022"
+    ),
+    # Unukalhai.
+    ("gaia", "dr3", "4429785739602747392"): Measured(1.61, 0.12, "baines_2018"),
+    # Cebalrai. Soubiran et al. 2024 give this giant two masses that differ twofold.
+    ("gaia", "dr3", "4473334474604992384"): Measured(1.44, 0.16, "baines_2018"),
+    # Rasalhague.
+    ("gaia", "dr3", "4493746564376875520"): Measured(2.20, 0.06, "gardner_2021"),
+    # β Hyi.
+    ("gaia", "dr3", "4683897617110115200"): Measured(1.086, 0.036, "soubiran_2024"),
+    # Ankaa.
+    ("gaia", "dr3", "4993479684438433792"): Measured(
+        2.79, 0.14, "kervella_arenou_thevenin_2022"
+    ),
+    # θ Car.
+    ("gaia", "dr3", "5239828735016184448"): Measured(14.9, 0.4, "tetzlaff_2011"),
+    # Aspidiske.
+    ("gaia", "dr3", "5300300156538723328"): Measured(7.9, 0.2, "tetzlaff_2011"),
+    # Markeb.
+    ("gaia", "dr3", "5310393535853560576"): Measured(12.5, 0.4, "tetzlaff_2011"),
+    # μ Vel.
+    ("gaia", "dr3", "5361403934691772160"): Measured(
+        1.51, 0.30, "kervella_arenou_thevenin_2022"
+    ),
+    # Naos.
+    ("gaia", "dr3", "5534788672055388032"): Measured(
+        25.3, 5.3, "howarth_van_leeuwen_2019"
+    ),
+    # π Pup.
+    ("gaia", "dr3", "5589311357728452608"): Measured(11.7, 0.2, "tetzlaff_2011"),
+    # Aludra.
+    ("gaia", "dr3", "5605797194566011520"): Measured(19.2, 0.1, "tetzlaff_2011"),
+    # Uridim.
+    ("gaia", "dr3", "5905821894507108864"): Measured(10.1, 1.0, "tetzlaff_2011"),
+    # κ Sco.
+    ("gaia", "dr3", "5961206940987571200"): Measured(10.1, 0.1, "tetzlaff_2011"),
+    # Larawag.
+    ("gaia", "dr3", "6026152137856166912"): Measured(1.31, None, "luck_2015"),
+    # Imai.
+    ("gaia", "dr3", "6071060144089351808"): Measured(8.9, 0.1, "tetzlaff_2011"),
+    # γ Cen.
+    ("gaia", "dr3", "6127791439360208640"): Bounds(
+        2.14, 2.0, 2.2, "david_hillenbrand_2015"
+    ),
+    # Kulou.
+    ("gaia", "dr3", "6165699748417797504"): Bounds(
+        2.14, 2.0, 2.2, "david_hillenbrand_2015"
+    ),
+    # Zubeneschamali.
+    ("gaia", "dr3", "6319542659461082752"): Bounds(
+        3.29, 3.1, 3.4, "david_hillenbrand_2015"
+    ),
+    # Alnair.
+    ("gaia", "dr3", "6560604777055249536"): Bounds(
+        3.8, 3.6, 4.0, "david_hillenbrand_2015"
+    ),
+    # Ascella.
+    ("gaia", "dr3", "6760703042771435136"): Bounds(
+        2.18, 2.0, 2.3, "david_hillenbrand_2015"
+    ),
+    # Alpheratz.
+    ("hip", "2007", "677"): Bounds(3.62, 3.4, 3.8, "david_hillenbrand_2015"),
+    ("hip", "2007", "3419"): Bounds(2.86, 2.73, 3.07, "stock_2018"),  # Diphda
+    ("hip", "2007", "7588"): Measured(6.0, 0.6, "kervella_2022"),  # Achernar
+    # Sheratan.
+    ("hip", "2007", "8903"): Bounds(1.84, 1.7, 1.9, "david_hillenbrand_2015"),
+    ("hip", "2007", "14135"): Measured(1.465, 0.109, "soubiran_2024"),  # Menkar
+    ("hip", "2007", "15863"): Measured(7.5, 0.4, "tetzlaff_2011"),  # Mirfak
+    ("hip", "2007", "25336"): Measured(8.6, 0.3, "tetzlaff_2011"),  # Bellatrix
+    # Elnath.
+    ("hip", "2007", "25428"): Bounds(3.48, 3.3, 3.6, "david_hillenbrand_2015"),
+    ("hip", "2007", "26311"): Measured(28.4, 2.0, "oplistilova_2025"),  # Alnilam
+    # Betelgeuse, the middle of its present-day 16.5–19.
+    ("hip", "2007", "27989"): Bounds(17.8, 16.5, 19, "joyce_2020"),
+    ("hip", "2007", "28360"): Measured(2.376, 0.027, "southworth_2007"),  # Menkalinan
+    # Mahasim.
+    ("hip", "2007", "28380"): Bounds(2.79, 2.6, 3.0, "david_hillenbrand_2015"),
+    ("hip", "2007", "30324"): Measured(13.5, 0.5, "mazumdar_2006"),  # Mirzam
+    # Canopus.
+    ("hip", "2007", "30438"): Measured(9.64, 1.42, "domiciano_de_souza_2021"),
+    # Alhena.
+    ("hip", "2007", "31681"): Bounds(2.21, 2.0, 2.4, "david_hillenbrand_2015"),
+    ("hip", "2007", "33579"): Measured(10.1, 1.0, "tetzlaff_2011"),  # Adhara
+    ("hip", "2007", "34444"): Measured(12, 0.2, "tetzlaff_2011"),  # Wezen
+    ("hip", "2007", "37279"): Measured(1.478, 0.012, "bond_2015"),  # Procyon
+    # γ2 Vel. The point holds both stars, and the value is the O star's.
+    ("hip", "2007", "39953"): Measured(28.5, 1.1, "north_2007"),
+    ("hip", "2007", "41037"): Measured(9, 0.9, "tetzlaff_2011"),  # Avior
+    ("hip", "2007", "44816"): Measured(8.5, 0.3, "tetzlaff_2011"),  # Suhail
+    # Miaplacidus. The table rounds its error to 0.00.
+    ("hip", "2007", "45238"): Measured(2.96, None, "allende_prieto_lambert_1999"),
+    ("hip", "2007", "46390"): Bounds(2.4, 2.29, 2.63, "stock_2018"),  # Alphard
+    ("hip", "2007", "50583"): Measured(1.63, None, "luck_2015"),  # Algieba
+    # Denebola.
+    ("hip", "2007", "57632"): Bounds(2.02, 1.9, 2.1, "david_hillenbrand_2015"),
+    # Gienah.
+    ("hip", "2007", "59803"): Bounds(2.91, 2.8, 3.0, "david_hillenbrand_2015"),
+    ("hip", "2007", "62434"): Measured(14.5, 0.5, "cotton_2022"),  # Mimosa
+    ("hip", "2007", "65474"): Measured(11.43, 1.15, "tkachenko_2016"),  # Spica
+    ("hip", "2007", "66657"): Measured(11.7, 0.3, "tetzlaff_2011"),  # ε Cen
+    ("hip", "2007", "68002"): Measured(7.8, 0.1, "tetzlaff_2011"),  # Leepwal
+    # Menkent.
+    ("hip", "2007", "68933"): Measured(1.48, 0.60, "allende_prieto_lambert_1999"),
+    # Arcturus.
+    ("hip", "2007", "69673"): Measured(1.08, 0.06, "ramirez_allende_prieto_2011"),
+    ("hip", "2007", "71352"): Measured(12, 0.3, "tetzlaff_2011"),  # η Cen
+    ("hip", "2007", "78401"): Measured(19.7, 0.1, "tetzlaff_2011"),  # Dschubba
+    # Antares, the middle of its current 11–14.3.
+    ("hip", "2007", "80763"): Bounds(12.7, 11, 14.3, "ohnaka_2013"),
+    ("hip", "2007", "82273"): Measured(2.33, None, "luck_2015"),  # Atria
+    # Sabik.
+    ("hip", "2007", "84012"): Bounds(1.97, 1.9, 2.1, "david_hillenbrand_2015"),
+    ("hip", "2007", "85696"): Measured(11.4, 0.5, "tetzlaff_2011"),  # Lesath
+    ("hip", "2007", "85927"): Measured(10.4, 1.3, "tango_2006"),  # Shaula
+    # Sargas.
+    ("hip", "2007", "86228"): Measured(4.63, 0.01, "allende_prieto_lambert_1999"),
+    ("hip", "2007", "87833"): Measured(1.791, 0.098, "soubiran_2024"),  # Eltanin
+    # Kaus Australis.
+    ("hip", "2007", "90185"): Measured(3.47, 0.06, "allende_prieto_lambert_1999"),
+    # Vega, 2.15 +0.10 −0.15.
+    ("hip", "2007", "91262"): Bounds(2.15, 2.00, 2.25, "monnier_2012"),
+    # Nunki.
+    ("hip", "2007", "92855"): Bounds(6.37, 6.0, 6.6, "david_hillenbrand_2015"),
+    ("hip", "2007", "97649"): Measured(1.86, 0.03, "bouchaud_2020"),  # Altair
+    # Peacock.
+    ("hip", "2007", "100751"): Bounds(5.42, 5.1, 5.6, "david_hillenbrand_2015"),
+    ("hip", "2007", "102098"): Measured(19, 4, "schiller_przybilla_2008"),  # Deneb
+    ("hip", "2007", "107315"): Bounds(7.2, 7.00, 7.72, "stock_2018"),  # Enif
 }

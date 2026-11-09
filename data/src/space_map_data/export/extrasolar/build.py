@@ -23,9 +23,10 @@ ingest starts and no table version changes under it. Every job gets the
 registry object that the export read under the lock, so all jobs read the
 table versions that metadata.json names.
 
-Scratch goes in `.build/` beside `v1/`: the render rows and the radii of the
-Metadata rows, which the planets read for their hosts, and the Interior rows,
-one file for each sky region, before the tiles. Then it is removed.
+Scratch goes in `.build/` beside `v1/`. Before the tiles: the Interior rows
+and the surface values (`surface`), one file for each sky region. Then the
+render rows and the radii of the Metadata rows, which the planets read for
+their hosts. Then it is removed.
 """
 
 import fcntl
@@ -73,11 +74,12 @@ from space_map_data.export.objects.stars import planet_host_pages
 from space_map_data.export.swap import ExportRefused
 from space_map_data.export.systems import TextureLayers
 from space_map_data.export.wikidata import WikidataEntityCache
+from space_map_data.extrasolar import surface
 from space_map_data.extrasolar.interiors import schema as interior_schema
 from space_map_data.extrasolar.interiors import table as interiors
 from space_map_data.extrasolar.registry import Registry, RegistryError
 from space_map_data.extrasolar.sky import REGION_COUNT, REGION_SHIFT
-from space_map_data.extrasolar.tables import METADATA, TABLES
+from space_map_data.extrasolar.tables import METADATA, POINT_SOURCE, TABLES
 from space_map_data.skycultures.licences import NON_COMMERCIAL
 from space_map_data.utils.paths import EXPORT_DIR, EXTRASOLAR_DIR, REGISTRY_ROOT
 
@@ -473,11 +475,14 @@ def _build_tables(
     refs: systems.Refs,
     named: np.ndarray,
     rows_dirs: dict[str, Path],
+    computed_dirs: dict[str, Path],
+    families_dir: Path,
 ) -> tuple[list[TableResult], tiles.FamilyStars, pa.Table]:
     """The record tiles of every table, the stars of each family, and the
     names of the IDs `named`. `refs` are the IDs of the system trees, which
     the Metadata tiles check. `rows_dirs` holds the scratch files of each
-    export table."""
+    export table, `computed_dirs` those of a table's computed columns, and
+    `families_dir` the family masks of the Point source rows."""
     results = []
     family_stars = tiles.FamilyStars(np.zeros((2, len(FAMILIES)), np.int64), {})
     names = [METADATA.schema.empty_table().select(tiles.NAME_COLUMNS)]
@@ -517,6 +522,8 @@ def _build_tables(
                 ids,
                 rows_dir,
                 layout.scratch if metadata else None,
+                computed_dirs.get(slug),
+                families_dir if metadata else None,
             )
             for unit, found, ids in zip(units, unit_refs, unit_names, strict=True)
         ]
@@ -550,12 +557,20 @@ class TreeResult:
 
 
 def _build_tree(
-    registry: Registry, layout: Layout, workers: int, hidden: np.ndarray
+    registry: Registry,
+    layout: Layout,
+    workers: int,
+    hidden: np.ndarray,
+    surface_dir: Path,
 ) -> TreeResult:
     """The render tree. Its render rows stay in the scratch for the planets.
-    `hidden` are the stars drawn as planets."""
+    `hidden` are the stars drawn as planets, `surface_dir` holds the surface
+    values of the interior step."""
     scratch = layout.scratch
-    jobs = [render.RowsJob(registry, r, scratch, hidden) for r in range(REGION_COUNT)]
+    jobs = [
+        render.RowsJob(registry, r, scratch, hidden, surface_dir)
+        for r in range(REGION_COUNT)
+    ]
     counts: Counter = Counter()
     for _, region_counts in _run(workers, render.region_rows, jobs, "render rows"):
         counts.update(region_counts)
@@ -796,9 +811,13 @@ def _export(
         listed = system_index.listed(trees, planet_keys)
         del trees
         interior_dir = layout.scratch / interior_schema.SLUG
+        surface_dir = layout.scratch / surface.SCRATCH
+        families_dir = layout.scratch / interiors.FAMILIES_SCRATCH
         interior_counts = interiors.write_rows(
             registry,
             interior_dir,
+            surface_dir,
+            families_dir,
             lambda task, jobs, label: _run(workers, task, jobs, label),
         )
         problems = Problems()
@@ -811,11 +830,13 @@ def _export(
             refs,
             listed.ids,
             {interior_schema.SLUG: interior_dir},
+            {POINT_SOURCE.slug: surface_dir},
+            families_dir,
         )
         del refs
         _refuse(problems)
         hidden = planets.hidden_stars(planet_rows)
-        tree = _build_tree(registry, layout, workers, hidden)
+        tree = _build_tree(registry, layout, workers, hidden, surface_dir)
         wikidata = WikidataEntityCache()
         planet_files = planets.build(
             registry,

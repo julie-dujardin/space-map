@@ -68,7 +68,9 @@ class TestLiteratureRadius:
             {},
             {"58061": (110.0, -25.0)},
             {},
-            {self.key: Radius(1420, "wittkowski_2012")},
+            table={},
+            radii={self.key: Radius(1420, "wittkowski_2012")},
+            measured={},
         )
         assert rows["radius_literature"].to_pylist() == [1420]
         assert rows["distance"].to_pylist() == [None]
@@ -78,8 +80,10 @@ class TestLiteratureRadius:
         rows = engine_rows(
             {},
             {"58061": (110.0, -25.0)},
-            {self.key: Distance(100.0, 90.0, 110.0, "parallax", "gaia_dr2_2018")},
-            {self.key: Radius(1420, "wittkowski_2012")},
+            {},
+            table={self.key: Distance(100.0, 90.0, 110.0, "parallax", "gaia_dr2_2018")},
+            radii={self.key: Radius(1420, "wittkowski_2012")},
+            measured={},
         )
         assert rows["distance"].to_pylist() == pytest.approx([100.0])
         assert rows["radius_literature"].to_pylist() == [1420]

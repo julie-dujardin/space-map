@@ -193,6 +193,14 @@ def ingest(
         simbad_list, handed, hipparcos_hd, _hip_best(best), positions
     )
     simbad_rows = atnf.join_by_oid(simbad_rows, atnf.read_stars())
+    simbad_positions = {
+        oid: (ra, dec)
+        for oid, ra, dec in zip(
+            simbad_rows["catalogue_id"].to_pylist(),
+            simbad_rows["match_ra"].to_pylist(),
+            simbad_rows["match_dec"].to_pylist(),
+        )
+    }
     iau_rows = simbad.iau_rows(simbad_list, handed, simbad_rows)
     name_rows = names.engine_rows(positions, simbad=iau_rows)
     hd_positions = {**wikidata.hd_positions(stars), **wikidata.hd_positions(rough)}
@@ -241,7 +249,12 @@ def ingest(
                 (distances.BAILER_JONES_2021, distances.bailer_jones_rows(named)),
                 (
                     literature.LITERATURE,
-                    literature.engine_rows(positions, hd_positions),
+                    literature.engine_rows(
+                        positions,
+                        hd_positions,
+                        simbad_positions,
+                        measured=literature.measured_tables(),
+                    ),
                 ),
                 (
                     distances.SIMBAD_PARALLAX,

@@ -26,6 +26,7 @@ import pyarrow.compute as pc
 
 from space_map_data.extrasolar import sky
 from space_map_data.extrasolar.engine import IngestRun
+from space_map_data.extrasolar.interiors import photometry
 from space_map_data.extrasolar.sources.gaia import GAIA_DR3, GAIA_DR3_NAMED
 from space_map_data.extrasolar.sources.hipparcos import HIPPARCOS, HIPPARCOS_1997
 from space_map_data.extrasolar.sources.names import IAU_WGSN
@@ -38,9 +39,9 @@ PARALLAX_SIGMA = 3.0
 # Catalogue distances are often photometric or older than Gaia.
 DISTANCE_TOLERANCE = 0.2
 MAG_TOLERANCE = 0.5
-# Riello et al. 2021, table 8: G − V and G − Ks as polynomials in BP − RP,
-# lowest power first, with their ranges of BP − RP (table 7).
-G_MINUS_V = ((-0.02704, 0.01424, -0.2156, 0.01426), (-0.5, 5.0))
+# Riello et al. 2021: G − V and G − Ks as polynomials in BP − RP, lowest
+# power first, with their ranges of BP − RP.
+G_MINUS_V = (photometry.RIELLO_G_MINUS_V, photometry.RIELLO_COLOURS)
 G_MINUS_K = ((-0.0981, 2.089, -0.1579), (-0.5, 2.5))
 
 TWIN_SOURCES = (GAIA_DR3.name, GAIA_DR3_NAMED.name, HIPPARCOS.name)

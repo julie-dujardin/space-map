@@ -508,3 +508,26 @@ class TestPlanetFamilies:
         assert self._global(named, {})["iau_named"] is True
         assert self._global(unnamed, {})["iau_named"] is False
         assert "iau_named" not in self._global(make_object(), {})
+
+
+class TestMeanDensity:
+    """The mean density from GM and the triaxial radii."""
+
+    def test_earth_and_the_sun(self):
+        earth = {"a": 6378.1366, "b": 6378.1366, "c": 6356.7519}
+        assert writer.mean_density(398600.4355070226, earth) == 5.513
+        sun = dict.fromkeys("abc", 695_700.0)
+        assert writer.mean_density(132712440041.27939, sun) == 1.41
+
+    def test_no_mass_or_size_gives_none(self):
+        assert writer.mean_density(0.0, dict.fromkeys("abc", 100.0)) is None
+        assert writer.mean_density(1.0, {"a": 1.0, "b": 1.0, "c": 0.0}) is None
+
+    def test_an_impossible_density_gives_none(self):
+        # Kerberos: a GM of 0.00111 km³/s² on the PCK's 100 km radii.
+        assert writer.mean_density(0.00111, dict.fromkeys("abc", 100.0)) is None
+
+
+def test_the_sun_luminosity_is_the_iau_nominal_value():
+    assert writer.SUN_LUMINOSITY_W == 3.828e26
+    assert writer.SUN_LUMINOSITY_REFERENCE["title"] == "IAU 2015 Resolution B3"

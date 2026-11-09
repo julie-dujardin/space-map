@@ -7,7 +7,8 @@ Bit n of a mask is family n of `constants.stars.families.FAMILIES`.
 families that need an estimate, from Gaia or a candidate type or list, and
 are not published. The rules are in that constants module. `spectral_type`
 is the MK type that the families read, so a client shows the type that gives
-them.
+them. `compact` is the one test of a compact star (a white dwarf or a neutron
+star): the export takes no Gaia fit and no relation of normal stars for it.
 """
 
 import re
@@ -25,6 +26,8 @@ FIELDS = (
     pa.field("families_estimated", pa.uint64()),
     pa.field("spectral_type", pa.string()),
 )
+# The fields of the published and the estimated masks.
+MASK_FIELDS = FIELDS[:2]
 # The spectral types in source order. The type of a SIMBAD system comes
 # before Hipparcos, which often has an older type ("V* VY CMa").
 SPECTRAL_TYPES = (
@@ -66,11 +69,13 @@ COLUMNS = (
     "vartype_gcvs",
     "class_spicy",
     "type_atnf",
+    "logg_literature",
 )
 
 assert len(rules.FAMILIES) <= 64, "a family mask has 64 bits"
 BIT = {family: np.uint64(1 << n) for n, family in enumerate(rules.FAMILIES)}
 NONE = np.uint64(0)
+COMPACT = BIT["white-dwarf"] | BIT["neutron-star"]
 
 
 def mask_of(families: Iterable[str]) -> np.uint64:
@@ -373,12 +378,23 @@ def _isin(column: pa.ChunkedArray, values: frozenset[str]) -> np.ndarray:
     return found.fill_null(False).to_numpy(zero_copy_only=False)
 
 
+def _colour(rows: pa.Table) -> np.ndarray:
+    return _numbers(rows, "phot_bp_mean_mag") - _numbers(rows, "phot_rp_mean_mag")
+
+
+def _dsc_white_dwarf(rows: pa.Table) -> np.ndarray:
+    """The rows that Gaia's DSC finds a white dwarf, below the white-dwarf
+    line (`_absolute_g`)."""
+    line = rules.WHITE_DWARF_INTERCEPT + rules.WHITE_DWARF_SLOPE * _colour(rows)
+    found = _numbers(rows, "classprob_dsc_combmod_whitedwarf")
+    return (_absolute_g(rows) > line) & (found > rules.MIN_WHITE_DWARF_PROBABILITY)
+
+
 def _red(rows: pa.Table) -> np.ndarray:
     """The rows that Gaia finds red and not a white dwarf."""
-    colour = _numbers(rows, "phot_bp_mean_mag") - _numbers(rows, "phot_rp_mean_mag")
-    found = _numbers(rows, "classprob_dsc_combmod_whitedwarf")
-    red = colour > rules.SYSTEM_WHITE_DWARF_MAX_BP_RP
-    return red & ~(found > rules.MIN_WHITE_DWARF_PROBABILITY)
+    return (_colour(rows) > rules.SYSTEM_WHITE_DWARF_MAX_BP_RP) & ~_dsc_white_dwarf(
+        rows
+    )
 
 
 def _system_types(rows: pa.Table) -> dict[str, pa.ChunkedArray]:
@@ -526,11 +542,9 @@ def _class_codes(value: str) -> tuple[np.uint64, np.uint64]:
     return mask_of(rules.CLASS_FAMILIES.get(value, ())), CONFLICT_BIT.get(otype, NONE)
 
 
-def _gaia_allows(rows: pa.Table, candidate: np.ndarray) -> np.ndarray:
-    """The families of the `candidate` masks that Gaia does not rule out. A
-    star brighter than BROWN_DWARF_MIN_ABSOLUTE_G is no brown dwarf. M_G comes
-    from a 5σ parallax, else from the distance group, else from the exoplanet
-    catalogue. A `_red` star is no white dwarf."""
+def _absolute_g(rows: pa.Table) -> np.ndarray:
+    """Gaia's M_G: from a 5σ parallax, else from the distance group, else
+    from the exoplanet catalogue."""
     parallax, error = _numbers(rows, "parallax"), _numbers(rows, "parallax_error")
     with np.errstate(divide="ignore", invalid="ignore"):
         distance = np.where(
@@ -538,8 +552,14 @@ def _gaia_allows(rows: pa.Table, candidate: np.ndarray) -> np.ndarray:
         )
     for name in ("distance", "host_distance"):
         distance = np.where(np.isnan(distance), _numbers(rows, name), distance)
-    absolute = _numbers(rows, "phot_g_mean_mag") - 5 * np.log10(distance / 10)
-    bright = absolute < rules.BROWN_DWARF_MIN_ABSOLUTE_G
+    return _numbers(rows, "phot_g_mean_mag") - 5 * np.log10(distance / 10)
+
+
+def _gaia_allows(rows: pa.Table, candidate: np.ndarray) -> np.ndarray:
+    """The families of the `candidate` masks that Gaia does not rule out. A
+    star brighter than BROWN_DWARF_MIN_ABSOLUTE_G (`_absolute_g`) is no brown
+    dwarf. A `_red` star is no white dwarf."""
+    bright = _absolute_g(rows) < rules.BROWN_DWARF_MIN_ABSOLUTE_G
     candidate = np.where(bright, candidate & ~BIT["brown-dwarf"], candidate)
     return np.where(_red(rows), candidate & ~BIT["white-dwarf"], candidate)
 
@@ -569,8 +589,14 @@ def masks(
         candidate |= otype[name][:, 2]
     candidate = _gaia_allows(rows, candidate)
     mk_letter, mk_stage, given = _settle(conflicts, parsed, given)
+    paper = _numbers(rows, "logg_literature") > rules.WHITE_DWARF_LOGG
     published = (
-        parsed[:, 2] | TABLE[mk_letter, mk_stage] | given | _gcvs(rows) | _atnf(rows)
+        parsed[:, 2]
+        | TABLE[mk_letter, mk_stage]
+        | given
+        | _gcvs(rows)
+        | _atnf(rows)
+        | np.where(paper, BIT["white-dwarf"], NONE)
     )
     # A stage that an object type gives joins the MK letter as an MK stage
     # does. A family that states a letter, such as red-giant, keeps its stage
@@ -584,10 +610,7 @@ def masks(
     fixed |= np.where(mk_letter > 0, rules.LETTER, 0)
     fixed |= np.where(stage_known > 0, rules.STAGE, 0)
     els = _masks(rows["classlabel_espels"], rules.ELS_FAMILIES)
-    white_dwarf = (
-        _numbers(rows, "classprob_dsc_combmod_whitedwarf")
-        > rules.MIN_WHITE_DWARF_PROBABILITY
-    )
+    white_dwarf = _dsc_white_dwarf(rows)
     spicy = _masks(rows["class_spicy"], rules.SPICY_FAMILIES)
     labels = np.zeros(n, np.uint64)
     # Of two labels that state the same, the first in this order counts.
@@ -613,3 +636,10 @@ def masks(
     stage = np.where(fixed & rules.STAGE, stage_known, estimate)
     every = closure(TABLE[letter, stage] | labels | published)
     return published, every & ~published
+
+
+def compact(masks: np.ndarray) -> np.ndarray:
+    """Whether each family mask holds a compact star: a white dwarf or a
+    neutron star. Gaia's fits and the relations of normal stars do not hold
+    for it, as what Gaia sees of a pulsar is mostly its companion."""
+    return (masks & COMPACT) != 0

@@ -2,11 +2,15 @@
 interior is known or fitted.
 
 The export writes the rows of each sky region to a scratch file, then cuts
-them into tiles as it cuts the registry's tables. A star of
-`constants/interior/stars.py` comes first: its row has tier 0 and holds its
-interior in `curated`, as JSON in the shape of a body's `interior` block. A
-fitted row has tier 1 to 3 (`inputs`). Tier 3 holds the radius, the zone
-radii and the masses only, since its metallicity can be assumed. A star
+them into tiles as it cuts the registry's tables. The same step writes the
+surface values of the region's Point source rows (`surface`) to a second
+scratch file, as both read one `inputs.choose`. It writes their family
+masks to a third (FAMILIES_SCRATCH): the compact test needs them, and the
+Metadata tiles take them from there rather than classify each row again. A
+star of `constants/interior/stars.py` comes first: its row has tier 0 and
+holds its interior in `curated`, as JSON in the shape of a body's `interior`
+block. A fitted row has tier 1 to 3 (`inputs`). Tier 3 holds the radius, the
+zone radii and the masses only, since its metallicity can be assumed. A star
 outside the grid, or with no tier, Teff or luminosity, has no row. Nor has a
 star whose Teff or L is too wide to place it on the HR diagram
 (`inputs.MAX_SIGMA_LOG_TEFF`, `inputs.MAX_SIGMA_LOG_L`). A curated star must
@@ -33,7 +37,7 @@ import pyarrow.parquet as pq
 
 from space_map_data.constants.interior.references import INTERIOR_SOURCES
 from space_map_data.constants.interior.stars import STAR_INTERIORS
-from space_map_data.extrasolar import placement
+from space_map_data.extrasolar import families, placement, surface
 from space_map_data.extrasolar.ids import CELL_MASK
 from space_map_data.extrasolar.interiors import grid, inputs, photometry
 from space_map_data.extrasolar.interiors.fit import fit
@@ -41,19 +45,27 @@ from space_map_data.extrasolar.interiors.schema import INTERIOR
 from space_map_data.extrasolar.registry import Registry
 from space_map_data.extrasolar.sky import REGION_COUNT, region_of
 from space_map_data.extrasolar.store import region_file
-from space_map_data.extrasolar.tables import BINARY_ORBIT, POINT_SOURCE, SYSTEM
+from space_map_data.extrasolar.tables import (
+    BINARY_ORBIT,
+    METADATA,
+    POINT_SOURCE,
+    SYSTEM,
+)
 
 logger = logging.getLogger(__name__)
 
+# The directory of the family masks in the export's scratch.
+FAMILIES_SCRATCH = "families"
 CURATED_TIER = 0
 FITTED_TIERS = (1, 2, 3)
-# The works of the grid, and the works of each Teff and L route, by their
-# keys in INTERIOR_SOURCES. Torres 2010 corrects Flower's coefficients.
+# The works of the grid, and the works of each Teff, L and V route. Torres
+# 2010 corrects Flower's coefficients.
 GRID_WORKS = ("dotter_2026", "choi_2016")
 ROUTE_WORKS = {
     photometry.CASAGRANDE_2010: ("casagrande_2010",),
     photometry.FLOWER_1996: ("flower_1996", "torres_2010"),
     inputs.BOLOMETRIC: ("flower_1996", "torres_2010"),
+    photometry.RIELLO_2021: ("riello_2021",),
 }
 CITATIONS = {
     "dotter_2026": "Dotter et al. 2026, ApJS 283, 64",
@@ -61,6 +73,7 @@ CITATIONS = {
     "casagrande_2010": "Casagrande et al. 2010, A&A 512, A54",
     "flower_1996": "Flower 1996, ApJ 469, 355",
     "torres_2010": "Torres 2010, AJ 140, 1158",
+    "riello_2021": "Riello et al. 2021, A&A 649, A3",
 }
 # The site of the grid asks to cite the papers and states no licence.
 MIST_CREDIT = {
@@ -69,10 +82,12 @@ MIST_CREDIT = {
     "source": "https://mist.science/",
     "citation": "; ".join(CITATIONS[key] for key in GRID_WORKS),
 }
-WORK_NAMES = {
+# The name, organisation and source of each route work.
+WORKS = {
     "casagrande_2010": (
         "An absolutely calibrated Teff scale from the infrared flux method",
         "Casagrande et al. 2010",
+        INTERIOR_SOURCES["casagrande_2010"].url,
     ),
     "flower_1996": (
         (
@@ -80,10 +95,17 @@ WORK_NAMES = {
             " color-magnitude diagrams"
         ),
         "Flower 1996",
+        INTERIOR_SOURCES["flower_1996"].url,
     ),
     "torres_2010": (
         "On the use of empirical bolometric corrections for stars",
         "Torres 2010",
+        INTERIOR_SOURCES["torres_2010"].url,
+    ),
+    "riello_2021": (
+        "Gaia Early Data Release 3: Photometric content and validation",
+        "Riello et al. 2021",
+        INTERIOR_SOURCES["riello_2021"].url,
     ),
 }
 
@@ -167,24 +189,41 @@ def curated(registry: Registry) -> dict[int, Curated]:
     return out
 
 
-def _read(registry: Registry, region: int) -> pa.Table:
-    table = registry.read_table(POINT_SOURCE.slug, region, list(inputs.COLUMNS))
+def _read(registry: Registry, region: int) -> tuple[pa.Table, pa.Table]:
+    """The Point source rows of `region` as `inputs.read` takes them, and
+    their family masks by ID."""
+    table = registry.read_table(POINT_SOURCE.slug, region, list(surface.COLUMNS))
     if table is None:
-        table = POINT_SOURCE.schema.empty_table().select(list(inputs.COLUMNS))
+        table = POINT_SOURCE.schema.empty_table().select(list(surface.COLUMNS))
     orbits = registry.read_table(
         BINARY_ORBIT.slug, region, list(placement.ORBIT_PARALLAX_COLUMNS)
     )
     systems = registry.read_table(SYSTEM.slug, region, list(inputs.SYSTEM_COLUMNS))
-    return inputs.with_binary_points(
+    meta = registry.read_table(METADATA.slug, region, list(inputs.CLASS_COLUMNS))
+    classes = (
+        pa.nulls(table.num_rows, pa.string())
+        if meta is None
+        else meta["class"].take(pc.index_in(table["id"], value_set=meta["id"]))
+    )
+    published, estimated = families.masks(table, classes)
+    masks = pa.table(
+        [table["id"], pa.array(published), pa.array(estimated)],
+        names=["id", *(field.name for field in families.MASK_FIELDS)],
+    )
+    table = inputs.with_compact(table, published | estimated)
+    points = inputs.with_binary_points(
         placement.with_orbit_parallax(table, orbits), systems
     )
+    return points, masks
 
 
-def rows(table: pa.Table, tables: grid.Tables) -> tuple[pa.Table, Counter]:
-    """The fitted rows of the Point source rows `table`, and the counts of
-    what happened to the rows."""
+def rows(
+    table: pa.Table, given: inputs.Inputs, tables: grid.Tables
+) -> tuple[pa.Table, Counter]:
+    """The fitted rows of the Point source rows `table`, of inputs `given`,
+    and the counts of what happened to the rows."""
     counts: Counter = Counter()
-    given = inputs.read(table)
+    chosen = given.chosen
     for reason, n in zip(*np.unique(given.out[given.out != ""], return_counts=True)):
         counts[f"no tier: {reason}"] = int(n)
     tiered = given.tier != inputs.NO_TIER
@@ -195,8 +234,8 @@ def rows(table: pa.Table, tables: grid.Tables) -> tuple[pa.Table, Counter]:
         & ~no_teff
         & ~no_l
         & (
-            (given.sigma_log_teff > inputs.MAX_SIGMA_LOG_TEFF)
-            | (given.sigma_log_l > inputs.MAX_SIGMA_LOG_L)
+            (chosen.sigma_log_teff > inputs.MAX_SIGMA_LOG_TEFF)
+            | (chosen.sigma_log_l > inputs.MAX_SIGMA_LOG_L)
         )
     )
     counts["no Teff"] = int(no_teff.sum())
@@ -206,11 +245,11 @@ def rows(table: pa.Table, tables: grid.Tables) -> tuple[pa.Table, Counter]:
     result = fit(
         tables,
         given.log_teff[todo],
-        given.sigma_log_teff[todo],
+        chosen.sigma_log_teff[todo],
         given.log_l[todo],
-        given.sigma_log_l[todo],
-        given.feh[todo],
-        given.sigma_feh[todo],
+        chosen.sigma_log_l[todo],
+        chosen.feh[todo],
+        chosen.sigma_feh[todo],
     )
     counts["outside the grid: [Fe/H]"] = int((~result.feh_inside).sum())
     counts["outside the grid: HR diagram"] = int(
@@ -222,7 +261,9 @@ def rows(table: pa.Table, tables: grid.Tables) -> tuple[pa.Table, Counter]:
     for value in FITTED_TIERS:
         counts[f"tier {value}"] = int((tier == value).sum())
     for name in ("teff_source", "luminosity_source"):
-        sources, n = np.unique(getattr(given, name)[at].astype(str), return_counts=True)
+        sources, n = np.unique(
+            getattr(chosen, name)[at].astype(str), return_counts=True
+        )
         counts.update({f"{name}: {s}": int(k) for s, k in zip(sources, n)})
 
     stages = np.array((*grid.STAGES, None), object)
@@ -231,11 +272,11 @@ def rows(table: pa.Table, tables: grid.Tables) -> tuple[pa.Table, Counter]:
         "tier": tier,
         "curated": np.full(at.size, None, object),
         "stage": stages[np.minimum(result.stage[keep], len(grid.STAGES))],
-        "feh": _rounded("feh", given.feh[at]),
-        "feh_source": given.feh_source[at],
+        "feh": _rounded("feh", chosen.feh[at]),
+        "feh_source": chosen.feh_source[at],
         "teff": _rounded("teff", 10.0 ** given.log_teff[at]),
-        "teff_source": given.teff_source[at],
-        "luminosity_source": given.luminosity_source[at],
+        "teff_source": chosen.teff_source[at],
+        "luminosity_source": chosen.luminosity_source[at],
     }
     index = {name: k for k, name in enumerate(grid.QUANTITIES)}
     for name, (quantity, valued) in _COLUMNS.items():
@@ -321,14 +362,25 @@ class RegionJob:
     registry: Registry
     region: int
     out: Path
+    # Where the surface values go.
+    surface_out: Path
+    # Where the family masks go.
+    families_out: Path
     curated: dict[int, Curated]
     tables_dir: Path
 
 
 def region_rows(job: RegionJob) -> Counter:
-    """Write the Interior rows of one region to its scratch file."""
-    points = _read(job.registry, job.region)
-    fitted, counts = rows(points, grid.load(job.tables_dir))
+    """Write the Interior rows, the surface values and the family masks of
+    one region to their scratch files."""
+    points, masks = _read(job.registry, job.region)
+    pq.write_table(masks, region_file(job.families_out, job.region))
+    del masks
+    given = inputs.read(points)
+    values = surface.rows(points, given.chosen)
+    pq.write_table(values, region_file(job.surface_out, job.region))
+    fitted, counts = rows(points, given, grid.load(job.tables_dir))
+    counts.update(surface.counts(values))
     written = with_curated(fitted, points, job.region, job.curated)
     ids = np.array(list(job.curated), np.int64)
     counts["curated"] = int((region_of(ids & CELL_MASK) == job.region).sum())
@@ -342,15 +394,19 @@ def region_rows(job: RegionJob) -> Counter:
 type Runner = Callable[[Callable, list, str], list]
 
 
-def write_rows(registry: Registry, out: Path, run: Runner) -> Counter:
-    """The Interior rows of every region in `out`, one scratch file each, and
-    the counts of what happened to the rows. Raises grid.GridError when the
-    MIST download is not whole."""
+def write_rows(
+    registry: Registry, out: Path, surface_out: Path, families_out: Path, run: Runner
+) -> Counter:
+    """The Interior rows of every region in `out`, the surface values of its
+    Point source rows in `surface_out` and their family masks in
+    `families_out`, one scratch file each, and the counts of what happened to
+    the rows. Raises grid.GridError when the MIST download is not whole."""
     tables_dir = grid.ready(grid.TRACKS_DIR, grid.TABLES_ROOT)
-    out.mkdir(parents=True, exist_ok=True)
+    for directory in (out, surface_out, families_out):
+        directory.mkdir(parents=True, exist_ok=True)
     stars = curated(registry)
     jobs = [
-        RegionJob(registry, region, out, stars, tables_dir)
+        RegionJob(registry, region, out, surface_out, families_out, stars, tables_dir)
         for region in range(REGION_COUNT)
     ]
     counts: Counter = Counter()
@@ -363,21 +419,20 @@ def write_rows(registry: Registry, out: Path, run: Runner) -> Counter:
 
 def credits(counts: Counter) -> list[dict]:
     """The credits of the works that the rows of `counts` use: the grid when
-    the table holds a fitted row, and the works of each Teff and L route that
-    a row took."""
-    if not any(counts[f"tier {tier}"] for tier in FITTED_TIERS):
-        return []
+    the table holds a fitted row, and the works of each route that a surface
+    value took. A fitted row takes the routes of its surface values."""
+    fitted = any(counts[f"tier {tier}"] for tier in FITTED_TIERS)
     used = [
         key
         for route, keys in ROUTE_WORKS.items()
-        if counts[f"teff_source: {route}"] or counts[f"luminosity_source: {route}"]
+        if any(counts[surface.count_key(name, route)] for name in surface.SOURCES)
         for key in keys
     ]
-    return [MIST_CREDIT] + [
+    return ([MIST_CREDIT] if fitted else []) + [
         {
-            "name": WORK_NAMES[key][0],
-            "organisation": WORK_NAMES[key][1],
-            "source": INTERIOR_SOURCES[key].url,
+            "name": WORKS[key][0],
+            "organisation": WORKS[key][1],
+            "source": WORKS[key][2],
             "citation": CITATIONS[key],
         }
         for key in dict.fromkeys(used)

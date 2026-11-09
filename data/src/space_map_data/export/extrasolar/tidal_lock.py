@@ -13,13 +13,13 @@ are, estimates too, and an assumed eccentricity is 0.
 
 import math
 
+from space_map_data.constants.physics import G
 from space_map_data.constants.planets.families import (
     EARTH_RADII_PER_JUPITER,
     JUPITER_MASS_G,
     JUPITER_RADIUS_CM,
 )
 
-G = 6.674_30e-11
 AU_M = 1.495_978_707e11
 SUN_KG = 1.988_47e30
 JUPITER_KG = JUPITER_MASS_G / 1000

@@ -24,12 +24,13 @@ import unicodedata
 from collections import defaultdict
 from collections.abc import Collection, Iterable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import NamedTuple
 
 import orjson
 import pyarrow as pa
+import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
 from space_map_data.constants.providers import BASE_LOCALE, LANGUAGES
@@ -76,12 +77,19 @@ from space_map_data.export.wikidata import (
     active_statements,
 )
 from space_map_data.extrasolar.exoplanets.wikidata import planet_qid
+from space_map_data.extrasolar.ids import cell_of
 from space_map_data.extrasolar.registry import NoRegistry, Registry
-from space_map_data.extrasolar.sources.literature import LITERATURE, key_of
+from space_map_data.extrasolar.sky import region_of
+from space_map_data.extrasolar.sources.literature import (
+    LITERATURE,
+    MEASURED_TABLES,
+    key_of,
+    measured_reference,
+)
 from space_map_data.extrasolar.sources.names import IAU_WGSN
 from space_map_data.extrasolar.sources.wikidata import WIKIDATA
 from space_map_data.extrasolar.systems.assemble import NODE_CLASSES
-from space_map_data.extrasolar.tables import METADATA
+from space_map_data.extrasolar.tables import METADATA, POINT_SOURCE
 from space_map_data.utils.paths import EXPORT_DIR, EXTRASOLAR_DIR, REGISTRY_ROOT
 
 logger = logging.getLogger(__name__)
@@ -140,6 +148,9 @@ class StarObject:
     object_type: str = TYPE
     # True when its name is the IAU proper name.
     iau_named: bool = False
+    # The tables of MEASURED_TABLES that its Point source row holds a value
+    # of, in their order.
+    papers: tuple[str, ...] = ()
 
     @property
     def obj_id(self) -> str:
@@ -236,6 +247,48 @@ def _star_objects(registry: Registry) -> list[StarObject]:
     return [star for part in parts for star in part]
 
 
+# The source column of each paper group, by table name.
+PAPER_SOURCES = {name: f"paper_{name}_source" for name in MEASURED_TABLES}
+
+
+def _region_papers(
+    registry: Registry, region: int, ids: list[int]
+) -> dict[int, tuple[str, ...]]:
+    """The `papers` of each of `ids` in the Point source rows of `region`."""
+    rows = registry.read_table(
+        POINT_SOURCE.slug, region, ["id", *PAPER_SOURCES.values()]
+    )
+    if rows is None:
+        return {}
+    rows = rows.filter(pc.is_in(rows["id"], value_set=pa.array(ids, pa.int64())))
+    held = {
+        name: rows[column].is_valid().to_pylist()
+        for name, column in PAPER_SOURCES.items()
+    }
+    return {
+        id_: tuple(name for name in PAPER_SOURCES if held[name][at])
+        for at, id_ in enumerate(rows["id"].to_pylist())
+    }
+
+
+def _with_papers(registry: Registry, stars: list[StarObject]) -> list[StarObject]:
+    """`stars` with the `papers` of each star that has a literature key. The
+    ingested values, not the downloads, say which works an entry cites."""
+    ids: dict[int, list[int]] = defaultdict(list)
+    for star in stars:
+        if star.literature is not None:
+            ids[region_of(cell_of(star.id))].append(star.id)
+    with ThreadPoolExecutor(8) as pool:
+        parts = list(
+            pool.map(lambda item: _region_papers(registry, *item), ids.items())
+        )
+    papers = {id_: found for part in parts for id_, found in part.items()}
+    return [
+        replace(star, papers=papers[star.id]) if star.id in papers else star
+        for star in stars
+    ]
+
+
 def _planet_objects(table: pa.Table | None) -> list[PlanetObject]:
     if table is None:
         return []
@@ -311,7 +364,7 @@ def read_extrasolar_objects(
         planets = read_planets(registry)
         hidden = set(hidden_stars(planets).tolist())
         stars = [star for star in _star_objects(registry) if star.id not in hidden]
-        return stars, _planet_objects(planets)
+        return _with_papers(registry, stars), _planet_objects(planets)
 
 
 def available_extrasolar_objects(
@@ -514,11 +567,12 @@ def star_references(star: StarObject) -> dict[str, list[dict]]:
         return {}
     cited = {"distance": DISTANCES.get(star.literature)}
     cited["paper_radius"] = RADII.get(star.literature)
-    return {
-        group: [REFERENCES[value.reference]._asdict()]
-        for group, value in cited.items()
-        if value is not None
+    works = {
+        group: value.reference for group, value in cited.items() if value is not None
     }
+    for name in star.papers:
+        works[f"paper_{name}"] = measured_reference(name, star.literature)
+    return {group: [REFERENCES[work]._asdict()] for group, work in works.items()}
 
 
 def has_description(localized: dict | None) -> bool:

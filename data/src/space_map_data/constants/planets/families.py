@@ -157,6 +157,14 @@ HABITABLE_TEFF_ZERO = 5780.0
 HABITABLE_INNER = (1.107, 1.332e-4, 1.580e-8, -8.308e-12, -1.931e-15)
 # The outer edge, maximum greenhouse.
 HABITABLE_OUTER = (0.356, 6.171e-5, 1.698e-9, -3.198e-12, -5.575e-16)
-# IAU 2015 nominal solar values (Resolution B3): Teff in K, radius in km.
+# IAU 2015 nominal solar values (Resolution B3): Teff in K, radius in km,
+# GM in km³/s², luminosity in W.
 SUN_TEFF = 5772.0
 SOLAR_RADIUS_KM = 695_700.0
+SUN_GM_KM3_S2 = 1.3271244e11
+SUN_LUMINOSITY_W = 3.828e26
+# The work that gives these values, for its credits.
+NOMINAL_SOLAR_VALUES = {
+    "title": "IAU 2015 Resolution B3",
+    "url": "https://www.iau.org/static/resolutions/IAU2015_English.pdf",
+}

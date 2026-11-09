@@ -43,6 +43,15 @@ GIANT_FLAME = {"evolstage_flame": 600, "mass_flame": 1.5, "flags_flame": "10"}
 DWARF_FLAME = {"evolstage_flame": 250, "mass_flame": 1.0, "flags_flame": "00"}
 DWARF_ESPHS = {"teff_esphs": 15_000, "logg_esphs": 4.0}
 GIANT_ESPHS = {"teff_esphs": 15_000, "logg_esphs": 3.2}
+# A DSC white dwarf at 10 pc with M_G 13, below the white-dwarf line for any
+# BP − RP under 2.3.
+BLUE = {"phot_bp_mean_mag": 13.0, "phot_rp_mean_mag": 13.0}
+DSC_WHITE_DWARF = {
+    "classprob_dsc_combmod_whitedwarf": 0.9,
+    "parallax": 100.0,
+    "parallax_error": 1.0,
+    "phot_g_mean_mag": 13.0,
+}
 
 
 class TestParseSpectralType:
@@ -122,7 +131,12 @@ class TestParseSpectralType:
 
 
 class TestPublished:
-    """Families from catalogued classifications only."""
+    """Families from catalogued classifications only, and a paper's log g."""
+
+    def test_a_paper_log_g_of_a_white_dwarf(self):
+        published, _ = classify({"logg_literature": 8.0}, {"logg_literature": 4.4})
+        assert published[0] == {"white-dwarf", "dwarf"}
+        assert published[1] == set()
 
     def test_spectral_type_with_its_parents(self):
         published, estimated = classify({"simbad_sp_type": "G2V"})
@@ -151,7 +165,7 @@ class TestPublished:
         system = {"simbad_system_sp_type": "DA2.4", "sp_type": "M1V"}
         published, _ = classify(
             system | red | {"classprob_dsc_combmod_whitedwarf": 0.0},
-            system | red | {"classprob_dsc_combmod_whitedwarf": 0.9},
+            system | red | DSC_WHITE_DWARF,
             system | blue,
             {"simbad_system_otype": "WD*"} | red,
         )
@@ -303,7 +317,7 @@ class TestPublished:
         red = {"phot_bp_mean_mag": 15.0, "phot_rp_mean_mag": 13.2}
         _, estimated = classify(
             {"simbad_otype": "WD?"} | red,
-            {"simbad_otype": "WD?", "classprob_dsc_combmod_whitedwarf": 0.9} | red,
+            {"simbad_otype": "WD?"} | red | DSC_WHITE_DWARF,
         )
         assert "white-dwarf" not in estimated[0]
         assert "white-dwarf" in estimated[1]
@@ -673,16 +687,28 @@ class TestEstimated:
     def test_white_dwarf_from_dsc(self):
         _, estimated = classify(
             {
-                "classprob_dsc_combmod_whitedwarf": 0.9,
                 "spectraltype_esphs": "A",
                 "flags_esphs": "01000",
                 "in_oba_golden_sample": True,
             }
+            | DSC_WHITE_DWARF
+            | BLUE
             | DWARF_FLAME,
-            {"classprob_dsc_combmod_whitedwarf": 0.9, "sp_type": "G2V"},
+            DSC_WHITE_DWARF | BLUE | {"sp_type": "G2V"},
         )
         assert estimated[0] == {"white-dwarf", "dwarf"}
         assert estimated[1] == set()
+
+    def test_a_dsc_white_dwarf_lies_below_the_white_dwarf_line(self):
+        """DSC also finds hot subdwarfs and O and B stars white dwarfs."""
+        _, estimated = classify(
+            DSC_WHITE_DWARF | BLUE,
+            DSC_WHITE_DWARF | BLUE | {"phot_g_mean_mag": 4.0},
+            {"classprob_dsc_combmod_whitedwarf": 0.9} | BLUE,
+        )
+        assert "white-dwarf" in estimated[0]
+        assert "white-dwarf" not in estimated[1]
+        assert "white-dwarf" not in estimated[2]
 
     def test_emission_line_classes(self):
         published, estimated = classify(
