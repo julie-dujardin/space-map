@@ -8,6 +8,7 @@
 	import { isDiscless, ObjectType, type PositionedBody } from '$lib/types/objects';
 	import { minCameraDistance } from '$lib/scene/visibility/camera-limits';
 	import { DEFAULT_VIEW, UrlType } from '$lib/state/view';
+	import { UNPLACED_TOAST } from '$lib/state/notices';
 	import {
 		DEFAULT_FRAMING_LAT,
 		DEFAULT_FRAMING_LON,
@@ -217,13 +218,15 @@
 						})
 					: arrival.outcome === 'nowhere'
 						? m.object_position_unknown({ name: label })
-						: arrival.outcome === 'unplaced'
-							? m.object_no_position({ name: label })
-							: arrival.outcome === 'missing'
-								? m.object_not_found({ name: label })
-								: null;
+						: arrival.outcome === 'missing'
+							? m.object_not_found({ name: label })
+							: null;
 		if (noPosition) toast.warning(noPosition, { id: 'object-no-position', ...sticky });
 		else toast.dismiss('object-no-position');
+		// Its own id: the out-of-range notice clears it once the date places the object.
+		if (arrival.outcome === 'unplaced') {
+			toast.warning(m.object_no_position({ name: label }), { id: UNPLACED_TOAST, ...sticky });
+		} else toast.dismiss(UNPLACED_TOAST);
 	}
 
 	/** A system barycenter has no radius of its own, and for every planet but

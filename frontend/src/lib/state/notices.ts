@@ -23,6 +23,10 @@ function outOfRangeLines(notice: OutOfRangeNotice): string[] {
 	return lines;
 }
 
+/** The page's arrival toast for an object with no place at this date, which a
+ *  later date can make false. */
+export const UNPLACED_TOAST = 'object-unplaced';
+
 /** The notices shown as toasts. The page shows an artist's impression in a box. */
 type ToastNotice = Exclude<Notice, ArtistImpressionNotice>;
 type ToastTopic = ToastNotice['topic'];
@@ -31,6 +35,7 @@ type ToastTopic = ToastNotice['topic'];
 export function showNotice(notice: ToastNotice): void {
 	switch (notice.topic) {
 		case 'out-of-range':
+			if (!notice.focusedOutOfRange) toast.dismiss(UNPLACED_TOAST);
 			toast.warning(m.out_of_range_title(), {
 				id: notice.topic,
 				description: outOfRangeLines(notice).join('\n'),
@@ -54,5 +59,6 @@ export function showNotice(notice: ToastNotice): void {
 }
 
 export function dismissNotice(topic: ToastTopic): void {
+	if (topic === 'out-of-range') toast.dismiss(UNPLACED_TOAST);
 	toast.dismiss(topic);
 }
