@@ -139,9 +139,10 @@
 		// come out of the same TrueColorTools run.
 		if (global?.color || global?.sbdb?.color) addProvider('truecolortools');
 
-		// A moon's discovery year is JPL's, not Wikidata's — the table is what the
-		// date is taken from, and for most moons no Wikidata item confirms it.
-		if (global?.discovery_year != null) addProvider('jpl-satellite-discovery');
+		// A moon's discovery year is JPL's: for most moons no Wikidata item
+		// confirms it. A planet's is Wikidata's.
+		if (global?.type === 'moon' && global.discovery_year != null)
+			addProvider('jpl-satellite-discovery');
 
 		// Component sizes, system mass, the binary class and the discovery
 		// record of an asteroid moon are Johnston's compilation of the

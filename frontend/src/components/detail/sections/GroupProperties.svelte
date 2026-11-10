@@ -6,9 +6,10 @@
 	import type { GlobalGroupData, LocalizedGroupData } from '$lib/fetch/groups/details';
 	import type { EntityRef } from '$lib/fetch/objects/object-data';
 	import type { AppState } from '$lib/state/app-state.svelte';
+	import type { FocusObject } from '$lib/state/focusable';
 	import { formatIsoDate } from '$lib/format/date';
 	import { formatNumber } from '$lib/format/quantities';
-	import { groupClick, groupHref } from '$lib/state/focus-link';
+	import { focusClick, focusHref, groupClick, groupHref } from '$lib/state/focus-link';
 	import { fetchEarthMembership } from '$lib/fetch/groups/membership';
 	import { featureTypeDescription } from '$lib/format/feature-type';
 	import { namingOriginLabel } from '$lib/format/naming-origin';
@@ -25,6 +26,7 @@
 	import PagedBarList from '../charts/PagedBarList.svelte';
 
 	const appState = getContext<AppState | undefined>('appState');
+	const focusObject = getContext<FocusObject | undefined>('focusObject');
 
 	interface Props {
 		global: GlobalGroupData | null;
@@ -66,6 +68,12 @@
 	// GCAT pad code → Wikipedia ref; most pads have no article.
 	let padRefs = $derived(localized?.pad_refs ?? {});
 	let discoveryHistogram = $derived(global?.discovery_histogram);
+	let listedDiscoveries = $derived(
+		(global?.listed_discoveries ?? []).map((d) => ({
+			...d,
+			name: localized?.body_names?.[d.id] ?? d.name
+		}))
+	);
 	// IAU name approvals per year — a ft- page's own, or every type on the
 	// Surface Features meta page.
 	let approvalHistogram = $derived(global?.approval_histogram);
@@ -287,13 +295,28 @@
 	</div>
 {/if}
 
-{#if discoveryHistogram}
+{#if discoveryHistogram || listedDiscoveries.length > 0}
 	<div class="flex flex-col gap-1">
 		<h3 class="text-sm font-medium">{m.group_discovery_activity()}</h3>
 		<div class="border-border/60 border-t"></div>
-		<div class="pt-1">
-			<YearHistogramChart histogram={discoveryHistogram} kind="discovery" />
-		</div>
+		{#if discoveryHistogram}
+			<div class="pt-1">
+				<YearHistogramChart histogram={discoveryHistogram} kind="discovery" />
+			</div>
+		{/if}
+		{#if listedDiscoveries.length > 0}
+			<dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 pt-1 text-sm">
+				{#each listedDiscoveries as d (d.id)}
+					<dt>
+						<Link
+							href={focusHref(appState, d.id, d.name)}
+							onclick={focusClick(focusObject, d.id, d.name)}>{d.name}</Link
+						>
+					</dt>
+					<dd class="text-muted-foreground text-end tabular-nums">{d.year}</dd>
+				{/each}
+			</dl>
+		{/if}
 	</div>
 {/if}
 

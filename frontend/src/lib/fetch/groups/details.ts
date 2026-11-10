@@ -179,6 +179,9 @@ export interface GlobalGroupData {
 	pad_count?: number;
 	/** Discoveries per year across SBDB members (orbit_class / NEO / PHA), from `first_obs`. */
 	discovery_histogram?: Record<string, number>;
+	/** Discoveries listed below the histogram rather than counted in it,
+	 *  earliest first: Uranus and Neptune, which would stretch its axis. */
+	listed_discoveries?: { id: string; name: string; year: number }[];
 	/** Biggest member by diameter; absent when nothing has a measured size.
 	 *  The export links the Object.id (`object`). A bare `spkid` needs the
 	 *  prefix: group bundles are unversioned, so a cached one can be older. */
