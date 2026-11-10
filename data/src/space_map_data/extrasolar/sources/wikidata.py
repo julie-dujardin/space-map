@@ -12,7 +12,8 @@ The classes of an item tell what it is about (`kind`). An item about a star
 goes to its star, an item about a system to a node of its system (`place`),
 so each object has one item at most. Readers look for that one. A planet
 record drawn as its star hands that star its item when the star has none
-(`with_record_items`).
+(`with_record_items`). The item of a record drawn as a planet is the
+planet's, so it stays off any object but the record's host (`attach`).
 
 Its English label (else its multilingual one) names the object unless it
 is a Gaia id or a SIMBAD identifier. A label that is a catalogue number
@@ -22,7 +23,7 @@ names it only where no other source but Gaia does (`METADATA`).
 import logging
 import re
 from collections import Counter, defaultdict
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -436,13 +437,15 @@ def attach(
     run: IngestRun,
     plan: Plan,
     stars: SimbadList,
+    planets: Mapping[str, int],
 ) -> tuple[pa.Table, list[str]]:
     """The rows with each claim where `place` puts its item, and the lines of
     the report.
 
     An item that goes to a node claims the node from the node's position. An
     item that is left off has no row. An item that reaches nothing keeps its
-    row, so the engine counts it.
+    row, so the engine counts it. `planets` gives the host of each item that
+    is a planet's: on another object it is left off.
     """
     by_qid = {item.qid: item for item in items}
     qids = rows["catalogue_id"].to_pylist()
@@ -474,9 +477,13 @@ def attach(
                 named.setdefault((catalogue[0], number), node)
 
     reaches = []
+    planet_items: set[str] = set()
     for qid, claim in zip(qids, claims):
         key = keys.get(claim)
         if key is None:
+            continue
+        if planets.get(qid, key) != key:
+            planet_items.add(qid)
             continue
         at = int(find_sorted(point_keys, np.array([key], np.int64))[0])
         point = int(point_nodes[at]) if at >= 0 else 0
@@ -498,6 +505,8 @@ def attach(
 
     keep, moved = [], {}
     for at, qid in enumerate(qids):
+        if qid in planet_items:
+            continue
         found = placed.get(qid)
         if found is None or found.node == 0:
             keep.append(at)
@@ -531,7 +540,15 @@ def attach(
                 column,
                 pa.array(np.where(np.isfinite(values), values, out[column].to_numpy())),
             )
-    return out, report_lines(reaches, list(placed.values()), len(qids) - len(reaches))
+    lines = report_lines(
+        reaches, list(placed.values()), len(qids) - len(reaches) - len(planet_items)
+    )
+    lines.append(f"  planet items left off another star: {len(planet_items):,}")
+    lines += [
+        f"    {qid} {by_qid[qid].label_en or by_qid[qid].label_mul}"
+        for qid in sorted(planet_items)[:5]
+    ]
+    return out, lines
 
 
 def report_lines(

@@ -12,7 +12,10 @@ the item with the most articles keeps it, then the lowest QID.
 
 A record that the export draws as the star that it also is hands its item to
 that star when the item is about a star (`star_items`): the record has no
-page of its own.
+page of its own. The item of a record drawn as a planet stays off any star
+but the record's host (`planet_items`): Wikidata gives some imaged
+companions the Gaia id of their own source, and that star would show the
+planet's name and article a second time.
 """
 
 import logging
@@ -128,7 +131,7 @@ def with_items(planets: pa.Table, links: Links) -> pa.Table:
 
 
 class PlanetRecord(Protocol):
-    """What `star_items` reads of a planet record (`table.Record`)."""
+    """What `record_links` reads of a planet record (`table.Record`)."""
 
     @property
     def values(self) -> Mapping[str, object]: ...
@@ -136,15 +139,13 @@ class PlanetRecord(Protocol):
     def text(self, name: str) -> str | None: ...
 
 
-def star_items(
+def record_links(
     records: Sequence[PlanetRecord],
     items: Iterable[ExoplanetItem],
     hosted: Iterable[int],
-    drawn: Iterable[int],
-) -> dict[int, str]:
-    """The QID of each record of `drawn`, the records drawn as their star,
-    whose item is about a star. The items link as they do at the commit, to
-    the records with a host (`hosted`), which get a number."""
+) -> Links:
+    """The items' links as they are at the commit, to the records with a
+    host (`hosted`), which get a number. A record is (its index, 0)."""
     hosted = set(hosted)
     table = pa.Table.from_pylist(
         [
@@ -166,15 +167,29 @@ def star_items(
             ]
         ),
     )
-    items = list(items)
+    return _link(table, items)
+
+
+def star_items(
+    links: Links, items: Iterable[ExoplanetItem], drawn: Iterable[int]
+) -> dict[int, str]:
+    """The QID of each record of `drawn`, the records drawn as their star,
+    whose item is about a star (`record_links`)."""
     about_star = {item.qid for item in items if item.star}
-    links = _link(table, items)
     wanted = set(drawn)
     return {
         at: qid
         for (at, _), qid in links.qid.items()
         if at in wanted and qid in about_star
     }
+
+
+def planet_items(links: Links, drawn: Iterable[int]) -> dict[str, int]:
+    """The record of each QID that links to a record drawn as a planet, not
+    in `drawn` (`record_links`). The item is the planet's, so the star that
+    it also claims does not take it."""
+    wanted = set(drawn)
+    return {qid: at for (at, _), qid in links.qid.items() if at not in wanted}
 
 
 def planet_qid(cross_ids: Iterable[dict]) -> str | None:

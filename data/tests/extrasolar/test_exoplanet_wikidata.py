@@ -10,7 +10,9 @@ from space_map_data.extrasolar.exoplanets.catalogues import ARCHIVE, EU
 from space_map_data.extrasolar.exoplanets.wikidata import (
     eu_slug,
     link_items,
+    planet_items,
     planet_qid,
+    record_links,
     star_items,
     with_items,
 )
@@ -50,7 +52,7 @@ def _item(
 
 @dataclass
 class _Record:
-    """The parts of a planet record that `star_items` reads."""
+    """The parts of a planet record that `record_links` reads."""
 
     designation: str
     values: dict
@@ -59,24 +61,38 @@ class _Record:
         return self.designation if name == "designation" else None
 
 
+RECORDS = (_Record("X b", {}), _Record("Y b", {}), _Record("Z b", {}))
+
+
+def _star_items(items: list[ExoplanetItem], hosted: list[int], drawn: list[int]):
+    return star_items(record_links(RECORDS, items, hosted), items, drawn)
+
+
 class TestStarItems:
     """The item of a record drawn as its star, when it is about a star."""
 
-    RECORDS = (_Record("X b", {}), _Record("Y b", {}), _Record("Z b", {}))
-
     def test_an_item_about_a_star(self):
         items = [_item("Q1", ["X b"], star=True), _item("Q2", ["Y b"], star=True)]
-        assert star_items(self.RECORDS, items, [0, 1, 2], [0]) == {0: "Q1"}
+        assert _star_items(items, [0, 1, 2], [0]) == {0: "Q1"}
 
     def test_an_item_about_a_planet_stays(self):
-        assert star_items(self.RECORDS, [_item("Q1", ["X b"])], [0, 1, 2], [0]) == {}
+        assert _star_items([_item("Q1", ["X b"])], [0, 1, 2], [0]) == {}
 
     def test_the_links_are_those_of_the_hosted_records(self):
         """An item whose ids reach two numbered records links to neither. A
         record with no host gets no number."""
         items = [_item("Q1", ["X b", "Z b"], star=True)]
-        assert star_items(self.RECORDS, items, [0, 1, 2], [0]) == {}
-        assert star_items(self.RECORDS, items, [0, 1], [0]) == {0: "Q1"}
+        assert _star_items(items, [0, 1, 2], [0]) == {}
+        assert _star_items(items, [0, 1], [0]) == {0: "Q1"}
+
+
+class TestPlanetItems:
+    """The items of the records drawn as planets, whatever they are about."""
+
+    def test_the_records_not_drawn_as_their_star(self):
+        items = [_item("Q1", ["X b"], star=True), _item("Q2", ["Y b"], star=True)]
+        links = record_links(RECORDS, items, [0, 1, 2])
+        assert planet_items(links, [0]) == {"Q2": 1}
 
 
 # μ Ara: the archive's d is exoplanet.eu's c.

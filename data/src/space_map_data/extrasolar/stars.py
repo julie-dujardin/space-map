@@ -291,13 +291,18 @@ def ingest(
         hosted = [at for at, host in enumerate(hosts) if host]
         del inputs, index
         run.extend(exoplanets.PlanetsExtension(planets, found))
-        item_rows, lines = wikidata.attach(
-            item_rows, items, run, found.plan, simbad_list
-        )
         claims = found.plan.star_claims
-        record_items = planet_wikidata.star_items(
-            planets.records, planets.items, hosted, claims
+        links = planet_wikidata.record_links(planets.records, planets.items, hosted)
+        planet_items = planet_wikidata.planet_items(links, claims)
+        item_rows, lines = wikidata.attach(
+            item_rows,
+            items,
+            run,
+            found.plan,
+            simbad_list,
+            {qid: hosts[at] for qid, at in planet_items.items()},
         )
+        record_items = planet_wikidata.star_items(links, planets.items, claims)
         item_rows, more = wikidata.with_record_items(
             item_rows, items, [(qid, *claims[at]) for at, qid in record_items.items()]
         )

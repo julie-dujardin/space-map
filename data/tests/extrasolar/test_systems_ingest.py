@@ -220,14 +220,15 @@ def ingest(
     record: dict | None = None,
     max_retired: int | None = None,
     record_qid: str | None = None,
+    planet_qids: tuple[str, ...] = (),
     **more,
 ) -> tuple[systems_ingest.SystemsExtension, str]:
     """An ingest of `stars`, with a P-type planet of `host`, the SIMBAD rows
     `simbad` (oid → ra, dec, V), the Gaia DR3 rows `gaia`, the rows of
     `passes` and, after the systems, the Wikidata `items`. `item_simbad`
     stands in for the SIMBAD list of the items. `record` replaces values of
-    the planet, and `record_qid` is its item, about a star. `more` goes to
-    `inputs`."""
+    the planet, `record_qid` is its item, about a star, and `planet_qids`
+    are its items as a planet. `more` goes to `inputs`."""
     with IngestRun.start(root, root / "backup") as run:
         if gaia:
             run.add(GAIA_DR3, [gaia_rows(run, gaia)])
@@ -264,7 +265,12 @@ def ingest(
             positions = {hip: values[:2] for hip, values in stars.items()}
             rows = wikidata.engine_rows(items, positions, {})
             rows, lines = wikidata.attach(
-                rows, items, run, extension.plan, item_simbad or index.stars
+                rows,
+                items,
+                run,
+                extension.plan,
+                item_simbad or index.stars,
+                dict.fromkeys(planet_qids, key_of[host]),
             )
             if record_qid:
                 claims = extension.plan.star_claims
@@ -1584,6 +1590,29 @@ class TestWikidataItems:
         )
         assert f"  {wikidata.TO_ROOT}: 1\n    Q904 MSC 00400+1000" in report
         assert f"  {wikidata.OUTRANKED}: 1\n    Q901 Rigil Kentaurus" in report
+
+
+class TestPlanetItems:
+    """The item of a record drawn as a planet stays off any star but the
+    record's host."""
+
+    def done(self, tmp_path, hip: str) -> tuple[Registry, str]:
+        root = tmp_path / "registry"
+        items = (star_item("Q905", "HD 1 b", hip),)
+        _, report = ingest(root, items=items, planet_qids=("Q905",))
+        return Registry(root), report
+
+    def test_another_star_does_not_take_it(self, tmp_path):
+        registry, report = self.done(tmp_path, "1003")
+        assert registry.lookup("wikidata", "qid", ["Q905"]).tolist() == [0]
+        assert "  planet items left off another star: 1\n    Q905 HD 1 b" in report
+
+    def test_the_host_keeps_it(self, tmp_path):
+        """Wikidata gives some items of a host the planet's id."""
+        registry, report = self.done(tmp_path, "1002")
+        found = registry.lookup("wikidata", "qid", ["Q905"]).tolist()
+        assert found == ids_of(registry, ["1002"])
+        assert "  planet items left off another star: 0" in report
 
 
 class TestWikidataClaims:
