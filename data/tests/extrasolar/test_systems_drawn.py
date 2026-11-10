@@ -429,6 +429,47 @@ class TestPairs:
             "nasa-exoplanet-archive",
         )
 
+    @pytest.mark.parametrize(
+        ("errors", "teff", "source"),
+        [
+            ((50.0,), 4400.0, "nasa-exoplanet-archive"),
+            ((200.0,), 4450.0, orbits.LITERATURE),
+            ((None,), 4450.0, orbits.LITERATURE),
+            ((0.0,), 4450.0, orbits.LITERATURE),
+            ((200.0, 50.0), 4420.0, OEC),
+        ],
+    )
+    def test_the_better_teff_of_the_paper_and_the_host(self, errors, teff, source):
+        """Doyle 2011 gives Kepler-16 A 4450 ± 150 K: the catalogue Teff of the
+        smallest error wins where it is smaller; an error of 0 is none."""
+        catalogues = [
+            ARCHIVE_WASP_12 | {"teff": 4400.0, "teff_error": errors[0], "mass": 0.69},
+            OEC_WASP_12 | {"teff": 4420.0, "teff_error": None, "mass": 0.69},
+        ]
+        if len(errors) > 1:
+            catalogues[1]["teff_error"] = errors[1]
+        literature, stars = orbits.read_literature()
+        found = drawn.draw(
+            kepler_16(),
+            Inputs(
+                catalogue_orbits=literature,
+                catalogue_stars=stars,
+                orbit_elements=pa.Table.from_pylist([KEPLER_16_GAIA]),
+                planets=host_planets(
+                    {
+                        "host": 20,
+                        "designation": "Kepler-16 A b",
+                        "binary_type": "S-type",
+                        "host_ids": _ids((OEC, "systems", "Kepler-16 A")),
+                        "host_values": catalogues,
+                    }
+                ),
+            ),
+            FakeResolver({KEPLER_16: 20}, []),
+        )
+        a = next(row for row in found.held.to_pylist() if row["letter"] == "A")
+        assert (a["teff"], a["teff_source"]) == (pytest.approx(teff), source)
+
     def test_a_paper_type_goes_before_the_type_of_oec(self):
         literature, stars = orbits.read_literature()
         at = stars["system"].to_pylist().index("gaia/dr3/2133476355197071616")

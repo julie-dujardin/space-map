@@ -283,12 +283,16 @@ def _order(item: Elements) -> tuple:
 
 def _star(row: dict) -> dict:
     """A star of a paper or of OEC, which give no metallicity, log g or age,
-    with the larger error of its radius."""
-    error = larger_error(row.get("radius_error_upper"), row.get("radius_error_lower"))
+    with the larger error of its radius and of its Teff."""
     return {
         name: row.get(name)
         for name in (*STAR_VALUES, "label", "spectral_type_reference")
-    } | {"radius_error": error}
+    } | {
+        f"{name}_error": larger_error(
+            row.get(f"{name}_error_upper"), row.get(f"{name}_error_lower")
+        )
+        for name in ("radius", "teff")
+    }
 
 
 def _two(stars: list[dict]) -> tuple[dict, dict]:
@@ -392,6 +396,11 @@ def host_of(planet: dict, key_of: dict[tuple[str, str, str], int]) -> host_stars
         mass=None if mass is None else mass["mass"],
         mass_error=None if mass is None else mass["mass_error"],
     )
+
+
+def _teff_error(values: dict) -> float | None:
+    """The Teff error of a source. A catalogue's 0 is no error given."""
+    return values.get("teff_error") or None
 
 
 def _named(entry: dict, values: dict) -> bool:
@@ -1601,6 +1610,22 @@ class Drawer:
                 ((v[name], s) for s, v in given if v.get(name) is not None), None
             )
             values[name], values[f"{name}_source"] = hit or (None, None)
+        if values["teff_source"] == LITERATURE:
+            # Between a paper and its planets' catalogues, the Teff of the
+            # smallest error.
+            paper = _teff_error(stars[LITERATURE][side])
+            hosted = min(
+                (
+                    (error, s, v["teff"])
+                    for s, v in planets
+                    if v.get("teff") is not None
+                    and (error := _teff_error(v)) is not None
+                ),
+                default=None,
+                key=lambda hit: hit[0],
+            )
+            if hosted is not None and (paper is None or hosted[0] < paper):
+                _, values["teff_source"], values["teff"] = hosted
         by, sized = next(
             (
                 (s, v)

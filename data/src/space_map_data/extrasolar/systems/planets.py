@@ -50,8 +50,8 @@ from space_map_data.extrasolar.tables import CROSS_ID
 
 logger = logging.getLogger(__name__)
 
-# One catalogue's values of a host star: solar radii and masses, each with
-# its larger error, K, dex, log(cm/s²), Gyr.
+# One catalogue's values of a host star: K, solar radii and masses, each with
+# its larger error, dex, log(cm/s²), Gyr.
 HOST_VALUE_STRUCT = pa.struct(
     [
         pa.field("source", pa.string()),
@@ -59,6 +59,7 @@ HOST_VALUE_STRUCT = pa.struct(
             pa.field(name, pa.float32())
             for name in (
                 "teff",
+                "teff_error",
                 "radius",
                 "radius_error",
                 "mass",
@@ -188,6 +189,7 @@ def host_columns(identity: Identity) -> dict:
                     name: value_of(star, name)
                     for name in ("teff", "radius", "mass", "metallicity", "logg", "age")
                 },
+                "teff_error": error_of(star, "teff"),
                 "radius_error": error_of(star, "radius"),
                 "mass_error": error_of(star, "mass"),
                 "spectral_type": star.spectral_type,
