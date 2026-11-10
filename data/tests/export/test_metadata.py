@@ -47,6 +47,7 @@ def _cheb(start_jd: float = 2433282.5, chunk_days: float = 5.0) -> dict:
         "chunk_days": chunk_days,
         "start_jd": start_jd,
         "end_jd": 2469807.5,
+        "bodies": {},
     }
 
 
@@ -237,6 +238,7 @@ class TestChebyshevShape:
                     "chunk_days": 5.0,
                     "start_jd": 2433282.5,
                     "end_jd": 2469807.5,
+                    "bodies": {"naif-999": [[2378496.5, 2524593.5]]},
                 }
             },
         )
@@ -246,6 +248,7 @@ class TestChebyshevShape:
             "chunk_days": 5.0,
             "start_jd": 2433282.5,
             "end_jd": 2469807.5,
+            "bodies": {"naif-999": [[2378496.5, 2524593.5]]},
         }
 
     def test_per_zone_cadence(self):
@@ -258,12 +261,14 @@ class TestChebyshevShape:
                     "chunk_days": 0.125,
                     "start_jd": 2433282.5,
                     "end_jd": 2469807.5,
+                    "bodies": {},
                 },
                 "moons/pluto": {
                     "chunks": 50,
                     "chunk_days": 2.0,
                     "start_jd": 2433282.5,
                     "end_jd": 2469807.5,
+                    "bodies": {},
                 },
             },
         )
@@ -300,6 +305,7 @@ class TestMixedZones:
                     "chunk_days": 5.0,
                     "start_jd": 2433282.5,
                     "end_jd": 2469807.5,
+                    "bodies": {},
                 }
             },
         )
@@ -321,6 +327,7 @@ class TestMixedZones:
                         "chunk_days": 5.0,
                         "start_jd": 0.0,
                         "end_jd": 1.0,
+                        "bodies": {},
                     }
                 },
             )

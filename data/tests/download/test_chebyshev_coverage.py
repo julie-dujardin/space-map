@@ -19,6 +19,7 @@ from space_map_data.download.providers.spice.bodies.elements import (
     fit_moon_chunked_elements,
 )
 from space_map_data.export.pipeline.snapshots import moons_snapshots
+from space_map_data.export.position.chebyshev.writer import _coverage
 from space_map_data.models.object import Horizons, Object, ObjectType
 from space_map_data.utils.naif import MajorBody
 from space_map_data.utils.spk import clip_windows, coverage_windows
@@ -298,6 +299,16 @@ class TestMoonChunkSidecars:
         )
         assert 6 <= expected.sum() < 20
         np.testing.assert_array_equal(covered, expected)
+
+
+class TestManifestCoverage:
+    """The manifest spans are the body's segment runs cut to the zone range."""
+
+    def test_runs_and_gaps(self):
+        starts = np.array([0.0, 1.0, 2.0, 10.0, 11.0])
+        ends = np.array([1.0, 2.0, 3.0, 11.0, 12.0])
+        assert _coverage(starts, ends, 0.5, 11.5) == [[0.5, 3.0], [10.0, 11.5]]
+        assert _coverage(starts, ends, 4.0, 9.0) == []
 
 
 class TestMoonSnapshots:

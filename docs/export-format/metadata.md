@@ -58,7 +58,11 @@ segment):
         "chunks": 200,
         "chunk_years": 0.5,
         "start_jd": 2433282.5,
-        "end_jd": 2469807.5
+        "end_jd": 2469807.5,
+        "bodies": {
+          "naif-501": [[2433282.5, 2469807.5]],
+          "naif-514": [[2433282.5, 2469807.5]]
+        }
       },
       "probes/interplanetary": {
         "shape": "probes",
@@ -172,7 +176,10 @@ keeps a single uniform `parts`.
 The `chunked` shape carries `chunks` and `chunk_years`; clients compute
 `chunk_idx = floor((jd - start_jd) / (chunk_years * 365.25))`. There's no
 parts axis on chebyshev — files are tuned to ~200 KB by adjusting
-`chunk_years` per zone.
+`chunk_years` per zone. `bodies` maps each object id in the zone to the
+sorted, disjoint `[start_jd, end_jd]` spans (JD TDB) its kernels cover inside
+the zone's range; a chunk holds only the bodies with a span in it, so this is
+where a client learns a body's edges at dates no loaded chunk carries it.
 
 Probe zones carry the distinct `probes` shape (so they're told apart from the
 flat `chunked` cheby zones, which also sit at zone level). Like every flat

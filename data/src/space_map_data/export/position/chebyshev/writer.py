@@ -3,6 +3,11 @@
 Reads per-body `.npz` files from the SPICE download step and emits one gzipped
 position file per (zone, time-chunk). Pluto and the perturber asteroids ride
 under `spkid-…` even though their SPICE naif_id is the planetary ID.
+
+A body's segments span only its own kernel coverage, so a chunk carries the
+bodies with segments in it and nothing else. Each zone's manifest entry lists
+every body's coverage, so the frontend knows a body's edges even at dates
+where no chunk it loads holds that body.
 """
 
 import gzip
@@ -18,6 +23,7 @@ from sqlalchemy.orm import Session
 
 from space_map_data.constants.providers import ID_TYPES
 from space_map_data.export.objects.body_radius import BodyRadii
+from space_map_data.export.position.coverage import segment_runs
 from space_map_data.export.position.format import (
     CHEBYSHEV_FLAG_FLOAT64_COEFFS,
     ID_TYPE_ORDINAL,
@@ -130,6 +136,17 @@ def _slice_segments(
     """Return the subset of segments overlapping [chunk_start, chunk_end)."""
     mask = (end_jds > chunk_start_jd) & (start_jds < chunk_end_jd)
     return start_jds[mask], end_jds[mask], coeffs[mask]
+
+
+def _coverage(
+    start_jds: np.ndarray, end_jds: np.ndarray, lo: float, hi: float
+) -> list[list[float]]:
+    """A body's segment runs cut to the zone's range, as `[start, end]` JDs."""
+    return [
+        [max(start, lo), min(end, hi)]
+        for start, end in segment_runs(start_jds, end_jds)
+        if end > lo and start < hi
+    ]
 
 
 def _determine_zone(object_type: ObjectType, parent_id: int) -> str:
@@ -261,8 +278,11 @@ def write_chebyshev(
     into the header so the frontend can skip detail-bundle fetches for
     objects with no Wikidata.
 
-    Returns `{zone: {chunks, chunk_days, start_jd, end_jd}}`, or `{}` when
-    there's nothing to export.
+    Returns `{zone: {chunks, chunk_days, start_jd, end_jd, float64_coeffs,
+    bodies}}`, or `{}` when there's nothing to export. `start_jd`/`end_jd` are
+    the zone's configured range; `bodies` maps each body's object id to its
+    coverage as sorted, disjoint `[start_jd, end_jd]` pairs (JD TDB), the
+    spans its segments fill without a hole, before any discovery gate.
     """
     npz_paths = chebyshev_npz_paths(download_dir)
     if not npz_paths:
@@ -276,9 +296,9 @@ def write_chebyshev(
         )
         return {}
     meta = orjson.loads(meta_path.read_bytes())
-    start_year = int(meta.get("chebyshev_start_year", 1950))
-    end_year = int(meta.get("chebyshev_end_year", 2050))
-    core_chunk_years = float(meta.get("chebyshev_chunk_years", 5))
+    start_year = int(meta["chebyshev_start_year"])
+    end_year = int(meta["chebyshev_end_year"])
+    core_chunk_years = float(meta["chebyshev_chunk_years"])
     start_jd_total = year_to_jd(start_year)
     end_jd_total = year_to_jd(end_year)
     logger.info(
@@ -404,6 +424,11 @@ def write_chebyshev(
             "start_jd": start_jd_total,
             "end_jd": end_jd_total,
             "float64_coeffs": float64_coeffs,
+            "bodies": {
+                row[0].id: windows
+                for row in bodies
+                if (windows := _coverage(row[3], row[4], start_jd_total, end_jd_total))
+            },
         }
 
     return zone_manifest

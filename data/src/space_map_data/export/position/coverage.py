@@ -375,7 +375,7 @@ def _chunk_layer(slices: list[_Slice], dropped: Counter) -> _Rows:
     return merger.finish()
 
 
-def _segment_runs(starts: np.ndarray, ends: np.ndarray) -> list[tuple[float, float]]:
+def segment_runs(starts: np.ndarray, ends: np.ndarray) -> list[tuple[float, float]]:
     """Spans that a body's segments cover without a hole, in time order."""
     if not len(starts):
         return []
@@ -403,7 +403,7 @@ def _chebyshev_layer(slices: list[_Slice], dropped: Counter) -> _Rows:
                 if math.isnan(body.visible_from_days)
                 else J2000_JD + body.visible_from_days
             )
-            for seg_start, seg_end in _segment_runs(body.starts, body.ends):
+            for seg_start, seg_end in segment_runs(body.starts, body.ends):
                 start = max(piece.lo, gate, seg_start)
                 end = min(piece.hi, seg_end)
                 if start >= end:

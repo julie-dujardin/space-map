@@ -25,7 +25,8 @@ of body density.
 Zones span the configured range (1600–2600), but each body is fit only over
 its own kernel coverage inside it, so a chunk holds just the bodies whose
 kernels reach it: Puck and the Saturn ring moons drop out of the chunks past
-their kernels' end, and are hidden there rather than extrapolated.
+their kernels' end, and are hidden there rather than extrapolated. The
+per-body spans are on the manifest (see below).
 
 **Coarse, always-loaded set** (5y chunks, 200 chunks over 1000y):
 - `major` — Sun, planets, dwarf planets, planetary-system barycenters.
@@ -64,7 +65,11 @@ with no point-cloud dot behind it. Coverage alone does not promote;
 Per-zone chunk cadence (`chunks`, `chunk_years`, `start_jd`, `end_jd`) lives
 on the zone's manifest entry with `shape: "chunked"` — under `zooms[0]` for
 the multi-zoom `major` zone, directly at zone level for the flat cheby zones
-(`major_asteroids`, `moons/{parent}`).
+(`major_asteroids`, `moons/{parent}`). The same entry's `bodies` maps every
+body in the zone to its coverage: sorted, disjoint `[start_jd, end_jd]` pairs
+(JD TDB) where its segments run without a hole, cut to the zone's range. It
+is the kernel's reach only; the discovery gate (`visible_from_days`) applies
+on top. A body is in a chunk exactly when one of its spans overlaps it.
 
 ## Chebyshev extension (8 bytes, offsets 24..31)
 

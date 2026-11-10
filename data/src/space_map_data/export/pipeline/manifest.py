@@ -117,7 +117,10 @@ def build_position_metadata(
 
     * ``parted`` — `{zone}/[{zoom}/]{part}.bin.gz`
     * ``chunked-parted`` — `{zone}/[{zoom}/]{label}/{part}.bin.gz`
-    * ``chunked`` — `{zone}/[{zoom}/]{chunk}.bin.gz` (chebyshev)
+    * ``chunked`` — `{zone}/[{zoom}/]{chunk}.bin.gz` (chebyshev). Its
+      ``bodies`` maps each object id to the sorted, disjoint
+      ``[start_jd, end_jd]`` (JD TDB) spans its kernels cover inside the
+      zone's range; a chunk holds only the bodies covered in it.
     * ``probes`` — `{zone}/{chunk}.bin.gz` (always flat)
 
     Each zone also carries `parent_id_type` (e.g. ``"naif"``, ``"spkid"``)
@@ -161,6 +164,7 @@ def build_position_metadata(
             "chunk_days": params["chunk_days"],
             "start_jd": params["start_jd"],
             "end_jd": params["end_jd"],
+            "bodies": params["bodies"],
         }
         if zone_has_zoom_segment(zone):
             # `major` shares its zone with the Horizons elements tiers at zoom
