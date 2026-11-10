@@ -620,11 +620,15 @@ export interface GlobalObjectData extends BodyMassFields {
 	/** The Sun only: its nominal luminosity, W, and the work that gives it. */
 	luminosity_w?: number;
 	luminosity_reference?: CitedWork;
-	/** g/cm³: `mass_kg` over the volume of the shown size. Over a system
-	 *  mass, the volume of the body and its moons together. */
+	/** g/cm³: `mass_kg` over the volume of the shown size, or of a paper's
+	 *  shape model. Over a system mass, the volume of the body and its moons
+	 *  together. */
 	mean_density_g_cm3?: number;
-	/** The mass or a size behind the density is nominal. */
+	/** The mass behind the density is nominal, or a size with no shape-model
+	 *  volume is. */
 	mean_density_nominal?: true;
+	/** The papers of the shape-model volumes the density is over. */
+	mean_density_volume_references?: OrientationReference[];
 	/** Surface panoramas taken on this body, mission by mission in time order. */
 	panoramas?: PanoramaEntry[];
 	images?: ObjectImage[];

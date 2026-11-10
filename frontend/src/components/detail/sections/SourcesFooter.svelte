@@ -180,6 +180,8 @@
 		const mass = global && massCredit(global, global.johnston?.page);
 		if (mass?.paper) addWork({ title: mass.label, url: mass.url, note: mass.note });
 		else if (mass) add(mass.key, mass.label, mass.url, mass.note);
+		for (const volume of global?.mean_density_volume_references ?? [])
+			addWork({ ...volume, note: m.property_name_density() });
 
 		// Named works the panel cites outright, like the blocks below rather
 		// than the inferred credits above — their note survives a parenthesised
