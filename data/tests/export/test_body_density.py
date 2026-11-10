@@ -36,6 +36,36 @@ class TestMeanDensity:
         assert density is not None
         assert density.g_cm3 == pytest.approx(1000 / (17.0 * 5.5 * 5.5), rel=1e-3)
 
+    def test_a_shape_model_volume_replaces_the_ellipsoid(self):
+        """Eros: 2503 km³, where the 17 x 5.5 x 5.5 km ellipsoid holds 2154."""
+        reference = {"title": "A shape paper", "url": "https://doi.org/10.1/x"}
+        eros = BodyRadius(
+            17.0, 5.5, 5.5, "pck", volume_km3=2503.0, volume_reference=reference
+        )
+        density = mean_density(BodyMass(6.687e15, "pck"), eros)
+        assert density == BodyDensity(2.672, False, (reference,))
+
+    def test_a_shape_model_volume_is_measured_under_a_nominal_size(self):
+        size = BodyRadius(10.0, 10.0, 10.0, "pck", nominal=True, volume_km3=4188.79)
+        density = mean_density(BodyMass(_ONE_G_CM3_KG, "pck"), size)
+        assert density == BodyDensity(1.0, False)
+
+    def test_a_satellite_adds_its_shape_model_volume(self):
+        mass = BodyMass(2 * _ONE_G_CM3_KG, "johnston", system=True)
+        moon = BodyRadius(1.0, 1.0, 1.0, "pck", volume_km3=4 / 3 * math.pi * 1000)
+        assert mean_density(mass, _sphere(10.0), [moon]) == BodyDensity(1.0, False)
+
+    def test_the_papers_of_every_volume_are_cited_once(self):
+        """Didymos and Dimorphos: a system mass over the volumes of two papers."""
+        barnouin = {"title": "Barnouin", "url": "https://doi.org/10.1/b"}
+        daly = {"title": "Daly", "url": "https://doi.org/10.1/d"}
+        didymos = _sphere(10.0)._replace(volume_km3=1.0, volume_reference=barnouin)
+        dimorphos = _sphere(1.0)._replace(volume_km3=1.0, volume_reference=daly)
+        mass = BodyMass(1e15, "pck", system=True)
+        density = mean_density(mass, didymos, [dimorphos, dimorphos])
+        assert density is not None
+        assert density.volume_references == (barnouin, daly)
+
     def test_four_significant_digits(self):
         density = mean_density(
             BodyMass(_ONE_G_CM3_KG * 1.234567, "sbdb"), _sphere(10.0)
@@ -129,6 +159,13 @@ class TestBundleFields:
         assert bundle_fields(BodyDensity(0.9, True)) == {
             "mean_density_g_cm3": 0.9,
             "mean_density_nominal": True,
+        }
+
+    def test_the_paper_of_the_volume(self):
+        reference = {"title": "A shape paper", "url": "https://doi.org/10.1/x"}
+        assert bundle_fields(BodyDensity(2.67, False, (reference,))) == {
+            "mean_density_g_cm3": 2.67,
+            "mean_density_volume_references": [reference],
         }
 
     def test_no_density_writes_nothing(self):

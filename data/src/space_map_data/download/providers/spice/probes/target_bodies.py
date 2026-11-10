@@ -1,4 +1,5 @@
-"""Ephemerides + constants for probe-visited small bodies.
+"""Ephemerides and constants for probe-visited small bodies, and the GMs of
+`constants.body_literature`.
 
 Kernels land in `spk/small-bodies/` (generic — the probe fit/benchmark
 furnish them for every probe) and `pck/`. Deliberately NOT part of the
@@ -103,9 +104,9 @@ GM_PATCH_CONTENT = _gm_kernel(
 )
 
 GM_SYSTEMS_CONTENT = _gm_kernel(
-    "GM values of probe-visited binary systems absent from every other PCK in\n"
-    "this pool, from the orbit of the satellite. Each is the GM of the primary\n"
-    "and the satellite together.",
+    "GM values of binary systems absent from every other PCK in this pool,\n"
+    "from the orbit of the satellite. Each is the GM of the primary and the\n"
+    "satellite together.",
     body_literature.SYSTEM_GMS,
 )
 

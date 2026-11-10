@@ -10,8 +10,8 @@ The sources, best first:
 3. A GM from another kernel: the mission target PCKs, and the kernels that
    `target_bodies` writes from the papers of `constants.body_literature`. A
    paper's GM is credited to the paper.
-4. The SBDB GM.
-5. The SsODNet mass.
+4. The SBDB GM, of a body with no satellite.
+5. The SsODNet mass, of a body with no satellite.
 6. The AsterSat system mass, from its fit of the satellite orbit.
 7. The Johnston's Archive system mass.
 8. A nominal catalogue mass: SsODNet with no error, Johnston flagged assumed
@@ -21,6 +21,8 @@ The sources, best first:
 10. The Wikidata mass (P2067), only from a statement that cites a source.
 
 A GM of 0 is no value. Every nominal mark comes from the source's own data.
+SBDB and SsODNet do not say whether the mass of a body with a satellite is its
+own or its system's, so such a body takes neither.
 Where a kernel gives a binary system and its primary apart, the primary takes
 its own GM when it differs from the system GM. A system mass is the mass of a
 body and its satellites together: the AsterSat and Johnston masses, the GMs of
@@ -282,6 +284,18 @@ def jpl_masses(
     return out
 
 
+def binary_ids(session: Session) -> set[str]:
+    """The Object.ids of the bodies with a satellite: the parent of a moon,
+    of an AsterSat orbit or of a Johnston system."""
+    found = {row[0] for row in session.query(AsterSatMoon.parent_object_id)}
+    found |= {row[0] for row in session.query(JohnstonSystem.object_id)}
+    moons = session.query(Object.parent_id).filter(
+        Object.object_type == ObjectType.moon, Object.parent_id.is_not(None)
+    )
+    found |= {row[0] for row in moons}
+    return found
+
+
 def catalogue_masses(
     session: Session,
 ) -> tuple[dict[str, BodyMass], dict[str, BodyMass]]:
@@ -292,6 +306,8 @@ def catalogue_masses(
     """
     measured: dict[str, BodyMass] = {}
     nominal: dict[str, BodyMass] = {}
+    binaries = binary_ids(session)
+    dropped: set[str] = set()
 
     def add(body_id: str, mass: BodyMass) -> None:
         (nominal if mass.nominal else measured).setdefault(body_id, mass)
@@ -299,11 +315,18 @@ def catalogue_masses(
     for body_id, gm in session.query(SBDB.object_id, SBDB.GM).filter(
         SBDB.GM.is_not(None), SBDB.GM > 0
     ):
-        add(body_id, BodyMass(mass_kg_from_gm(gm), MASS_SOURCE_SBDB))
+        if body_id in binaries:
+            dropped.add(body_id)
+        else:
+            add(body_id, BodyMass(mass_kg_from_gm(gm), MASS_SOURCE_SBDB))
     for body_id, kg, sigma in session.query(
         SsODNet.object_id, SsODNet.mass_kg, SsODNet.mass_kg_sigma
     ).filter(SsODNet.mass_kg.is_not(None), SsODNet.mass_kg > 0):
-        add(body_id, BodyMass(kg, MASS_SOURCE_SSODNET, sigma is None))
+        if body_id in binaries:
+            dropped.add(body_id)
+        else:
+            add(body_id, BodyMass(kg, MASS_SOURCE_SSODNET, sigma is None))
+    logger.info("%d bodies with a satellite take no SBDB or SsODNet mass", len(dropped))
     for body_id, gm in (
         session.query(AsterSatMoon.parent_object_id, AsterSatMoon.gm)
         .filter(AsterSatMoon.gm.is_not(None), AsterSatMoon.gm > 0)

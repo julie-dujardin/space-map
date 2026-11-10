@@ -118,7 +118,9 @@ def _atmosphere_references() -> list[dict]:
 
 
 def _body_literature_rows(
-    values: Mapping[int, body_literature.Radii | body_literature.Gm],
+    values: Mapping[
+        int, body_literature.Radii | body_literature.Gm | body_literature.Volume
+    ],
     contribution: str,
 ) -> list[dict]:
     """The papers that ``values`` of `constants.body_literature` cite, once each."""
@@ -149,13 +151,14 @@ def _orientation_references() -> list[dict]:
 
 
 def _interior_references() -> list[dict]:
-    """The works behind the interiors, and the papers of the body masses that
-    the Interior section shows."""
+    """The works behind the interiors, and the papers of the body masses and
+    shape-model volumes behind what the Interior section shows."""
     return [
         *(_bibliography_row(r) for r in INTERIOR_SOURCES.values()),
         *_body_literature_rows(
             {**body_literature.GMS, **body_literature.SYSTEM_GMS}, "mass"
         ),
+        *_body_literature_rows(body_literature.VOLUMES, "volume"),
     ]
 
 

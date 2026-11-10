@@ -68,6 +68,11 @@ class TestBodyLiteratureReferences:
             "contribution": "mass",
         } in rows
 
+    def test_the_papers_of_the_body_volumes_are_listed(self):
+        """Phobos' Willner et al. 2014 to Dimorphos' Daly et al. 2024."""
+        rows = [r for r in _interior_references() if r["contribution"] == "volume"]
+        assert {r["url"] for r in rows} == _cited(body_literature.VOLUMES)
+
 
 class TestMergeReferences:
     """A work cited by two constants packages is credited once."""

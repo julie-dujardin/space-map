@@ -5,6 +5,7 @@ from unittest.mock import MagicMock
 import pytest
 from sqlalchemy.orm import Session
 
+from space_map_data.constants.body_literature import VOLUMES
 from space_map_data.export.objects.body_radius import (
     BodyRadii,
     BodyRadius,
@@ -49,6 +50,7 @@ def _resolver(**kwargs) -> BodyRadii:
         lambda qid: kwargs.get("wikidata", {}).get(qid),
         kwargs.get("nominal_sizes", {}),
         kwargs.get("placeholders", {}),
+        kwargs.get("volumes", {}),
     )
 
 
@@ -197,6 +199,41 @@ class TestLiteratureShapes:
         )
         size = radii.pick("naif-506", 506, None, ObjectType.moon)
         assert size is not None and size.source == "literature"
+
+
+class TestShapeModelVolumes:
+    """A body with a paper's shape model carries its volume."""
+
+    def test_phobos_carries_willner_2014(self):
+        radii = _resolver(
+            shapes=kernel_shapes({401: {"a": 13.0, "b": 11.4, "c": 9.1}}),
+            volumes=VOLUMES,
+        )
+        size = radii.pick("naif-401", 401, None, ObjectType.moon)
+        assert size is not None
+        assert size.volume_km3 == 5742
+        assert size.volume_reference is not None
+        assert (
+            size.volume_reference["url"] == "https://doi.org/10.1016/j.pss.2013.12.006"
+        )
+
+    def test_the_volume_of_an_equal_volume_radius(self):
+        """Atlas: Buratti et al. 2019 give Rm = 14.9 km."""
+        radii = _resolver(
+            sizes={"naif-615": _sphere(15.0, "wikidata")}, volumes=VOLUMES
+        )
+        size = radii.pick("naif-615", 615, None, ObjectType.moon)
+        assert size is not None
+        assert size.volume_km3 == pytest.approx(13856.3)
+
+    def test_a_body_with_no_size_takes_no_volume(self):
+        radii = _resolver(volumes=VOLUMES)
+        assert radii.pick("naif-401", 401, None, ObjectType.moon) is None
+
+    def test_a_body_with_no_shape_model_has_no_volume(self):
+        radii = _resolver(shapes=kernel_shapes({999: _PLUTO}), volumes=VOLUMES)
+        size = radii.pick("naif-999", 999, None, ObjectType.dwarf_planet)
+        assert size is not None and size.volume_km3 is None
 
 
 def _sizes(session: Session) -> dict[str, BodyRadius]:

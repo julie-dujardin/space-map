@@ -15,6 +15,7 @@ from space_map_data.export.objects.body_mass import (
     BodyMasses,
     JPLGm,
     Satellite,
+    binary_ids,
     bundle_fields,
     catalogue_masses,
     jpl_mass,
@@ -398,18 +399,69 @@ class TestCatalogueMasses:
             mass_kg_from_gm(17.29), "sbdb"
         )
 
-    def test_ssodnet_beats_astersat(self, session: Session):
-        """Gonggong: SsODNet 1.75e21 kg, AsterSat's 4.3 d fit 5.68e22."""
+    def test_a_body_with_a_satellite_takes_no_ssodnet_mass(self, session: Session):
+        """Gonggong: the BFT does not say whose mass it is, so AsterSat's
+        system mass stands."""
         self._body(session, "spkid-20225088", ObjectType.dwarf_planet)
-        self._body(session, "spkid-120225088", ObjectType.moon)
         session.add(
             SsODNet(object_id="spkid-20225088", mass_kg=1.7535e21, mass_kg_sigma=4.3e19)
         )
         session.add(self._astersat("spkid-20225088", 3792.71))
         session.commit()
         assert catalogue_masses(session)[0]["spkid-20225088"] == BodyMass(
-            1.7535e21, "ssodnet"
+            mass_kg_from_gm(3792.71), "astersat", system=True
         )
+
+    def test_a_body_with_a_moon_takes_no_sbdb_or_ssodnet_mass(self, session: Session):
+        """Dinkinesh and Selam."""
+        self._body(session, "spkid-20152830")
+        session.add(
+            Object(
+                id="spkid-120152830",
+                object_type=ObjectType.moon,
+                parent_id="spkid-20152830",
+            )
+        )
+        session.add(
+            SBDB(
+                spkid="20152830",
+                object_id="spkid-20152830",
+                class_=OrbitClass.MBA,
+                GM=3.3e-8,
+            )
+        )
+        session.add(
+            SsODNet(object_id="spkid-20152830", mass_kg=4.9e11, mass_kg_sigma=1e10)
+        )
+        session.commit()
+        assert catalogue_masses(session) == ({}, {})
+
+    def test_the_bodies_with_a_satellite(self, session: Session):
+        self._body(session, "spkid-20225088", ObjectType.dwarf_planet)
+        self._body(session, "spkid-20017365")
+        self._body(session, "spkid-20152830")
+        self._body(session, "spkid-20000004")
+        session.add(self._astersat("spkid-20225088", 3792.71))
+        session.add(
+            JohnstonSystem(
+                object_id="spkid-20017365",
+                page="am-17365",
+                designation="(17365) Thymbraeus",
+            )
+        )
+        session.add(
+            Object(
+                id="spkid-120152830",
+                object_type=ObjectType.moon,
+                parent_id="spkid-20152830",
+            )
+        )
+        session.commit()
+        assert binary_ids(session) == {
+            "spkid-20225088",
+            "spkid-20017365",
+            "spkid-20152830",
+        }
 
     def test_a_ssodnet_mass_with_no_error_is_nominal(self, session: Session):
         """Hermes: the BFT gives no error."""

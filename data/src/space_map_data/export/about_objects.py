@@ -195,6 +195,7 @@ def entry_sources(entry: dict, works: set[str]) -> set[str]:
         _cited(works, [entry.get("mass_reference") or {}])
     elif mass is not None and mass not in _UNCREDITED_MASSES:
         keys.add(_VALUE_SOURCE_KEYS.get(mass, mass))
+    _cited(works, entry.get("mean_density_volume_references"))
     for taxonomy in (entry.get("interior") or {}).get("taxonomy_sources") or ():
         keys.add(f"taxonomy:{taxonomy}")
     for block in _WORK_BLOCKS:

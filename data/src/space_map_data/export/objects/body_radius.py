@@ -14,9 +14,9 @@ The sources, best first:
 9. A Johnston's Archive diameter that the archive estimated. Nominal.
 10. A radius from a kernel of PLACEHOLDER_KERNELS. Nominal.
 
-The object bundles, the lineups, the group cards and the scene radius of the
-position chunks all take a body's size from here, so they agree. The systems
-map's `radii`, which scale a body's mesh, are still the kernels' (`systems`).
+The object bundles, the lineups, the group cards, the scene radius of the
+position chunks and the systems map's `radii`, which scale a body's mesh, all
+take a body's size from here, so they agree.
 """
 
 from collections.abc import Callable, Mapping
@@ -26,7 +26,12 @@ from typing import NamedTuple
 from sqlalchemy import false
 from sqlalchemy.orm import Session
 
-from space_map_data.constants.body_literature import RADII, REFERENCES
+from space_map_data.constants.body_literature import (
+    RADII,
+    REFERENCES,
+    VOLUMES,
+    Volume,
+)
 from space_map_data.constants.measured_shapes import measured_shape_references
 from space_map_data.constants.orientation import ORIENTATION_SOURCE_PCK
 from space_map_data.export.names import resolve_wikidata_qid
@@ -76,6 +81,9 @@ class BodyRadius(NamedTuple):
     reference: dict | None = None
     # A placeholder or an estimate, not a measurement.
     nominal: bool = False
+    # The volume of a paper's shape model (km³) and the paper ({title, url}).
+    volume_km3: float | None = None
+    volume_reference: dict | None = None
 
     @property
     def mean_km(self) -> float:
@@ -107,8 +115,8 @@ def is_placeholder_kernel(kernel: str | None) -> bool:
 class BodyRadii:
     """The radius of each body, by the source order of this module.
 
-    ``shapes`` and ``placeholders`` are keyed by NAIF id, ``sizes`` and
-    ``nominal_sizes`` by Object.id.
+    ``shapes``, ``placeholders`` and ``volumes`` are keyed by NAIF id,
+    ``sizes`` and ``nominal_sizes`` by Object.id.
     """
 
     def __init__(
@@ -118,14 +126,34 @@ class BodyRadii:
         wikidata_km: Callable[[str], float | None] | None = None,
         nominal_sizes: Mapping[str, BodyRadius] | None = None,
         placeholders: Mapping[int, BodyRadius] | None = None,
+        volumes: Mapping[int, Volume] | None = None,
     ) -> None:
         self._shapes = shapes or {}
         self._sizes = sizes or {}
         self._wikidata_km = wikidata_km
         self._nominal_sizes = nominal_sizes or {}
         self._placeholders = placeholders or {}
+        self._volumes = volumes or {}
 
     def pick(
+        self,
+        object_id: str,
+        naif_id: int | None,
+        qid: str | None,
+        object_type: ObjectType,
+    ) -> BodyRadius | None:
+        """The size of a body, with the volume of its shape model where a
+        paper gives one."""
+        size = self._size(object_id, naif_id, qid, object_type)
+        volume = self._volumes.get(naif_id) if naif_id is not None else None
+        if size is None or volume is None:
+            return size
+        return size._replace(
+            volume_km3=volume.km3,
+            volume_reference=REFERENCES[volume.reference]._asdict(),
+        )
+
+    def _size(
         self,
         object_id: str,
         naif_id: int | None,
@@ -282,6 +310,7 @@ def load_body_radii(
         claim_reader(entities, units, _wikidata_radius_km),
         nominal_sizes,
         placeholder_shapes(radii, kernels),
+        VOLUMES,
     )
 
 
