@@ -104,6 +104,18 @@ REFERENCES: dict[str, Reference] = {
         "Sicardy et al. 2011 (Nature 478, 493)",
         "https://doi.org/10.1038/nature10550",
     ),
+    "sierks_2011": Reference(
+        "Sierks et al. 2011 (Science 334, 487)",
+        "https://doi.org/10.1126/science.1207325",
+    ),
+    "thomas_1996": Reference(
+        "Thomas et al. 1996 (Icarus 120, 20)",
+        "https://doi.org/10.1006/icar.1996.0033",
+    ),
+    "thomas_2002": Reference(
+        "Thomas et al. 2002 (Icarus 155, 18)",
+        "https://doi.org/10.1006/icar.2001.6755",
+    ),
     "weaver_2016": Reference(
         "Weaver et al. 2016 (Science 351, aae0030)",
         "https://doi.org/10.1126/science.aae0030",
@@ -168,6 +180,9 @@ VOLUMES: dict[int, Volume] = {
     # Dawn's whole-mission shape model, ±0.01e7 km^3.
     2000004: Volume(7.49e7, "park_2025"),  # Vesta
     2000016: Volume(5.75e6, "shepard_2021"),  # Psyche, ±0.19e6 km^3
+    2000021: Volume(5.0e5, "sierks_2011"),  # Lutetia, ±0.4e5 km^3
+    2000243: Volume(16100, "thomas_1996"),  # Ida, ±1900 km^3
+    2000433: Volume(2535, "thomas_2002"),  # Eros, ±20 km^3
     2025143: Volume(0.0184, "fujiwara_2006"),  # Itokawa, ±5%
     # DART's model, ±3.4%, which its authors think a little small (the unlit
     # limb).
