@@ -19,10 +19,11 @@
    A held star (`drawn`) mints an ID of the System table too, in the cell
    of its node. It claims its node's anchor and its tag in the node.
 3. `SystemsExtension` sets the links between IDs at the commit, when every
-   ID is minted: `parent`, `root`, `primary`, `members` and `tree` of
-   System, and `system` of Metadata. It sets `distance` on every System
-   row, `orbit` on the pairs, with the assumed node of the planets where an
-   orbit has none, and `star` on the held stars. It gives the planets
+   ID is minted: `parent`, `root`, `primary`, `distance_paper`, `members`
+   and `tree` of System, and `system` of Metadata. It sets `distance` on
+   every System row, what a root's shared distance rests on, `orbit` on the
+   pairs, with the assumed node of the planets where an orbit has none, and
+   `star` on the held stars. It gives the planets
    extension the host of a circumbinary planet, the held star of a planet of
    a point that holds several stars, the root of each host, the node of each
    drawn pair and the star that a planet record also is.
@@ -71,6 +72,7 @@ from space_map_data.extrasolar.sources.simbad import SIMBAD, SimbadList
 from space_map_data.extrasolar.systems import assemble
 from space_map_data.extrasolar.systems.assemble import ENTRY, HELD, Systems
 from space_map_data.extrasolar.systems.build import build
+from space_map_data.extrasolar.systems.distance import no_basis
 from space_map_data.extrasolar.systems.drawn import (
     NAME_LETTER,
     Drawn,
@@ -173,7 +175,6 @@ SYSTEM_CLAIMS = "star-system"
 PRIMARY_CLAIM = (SYSTEM_CLAIMS, "primary")
 HELD_CLAIM = (SYSTEM_CLAIMS, "member")
 HELD_CLASS = "star"
-SYSTEM_METHOD = "system"
 EXAMPLES = 20
 # The catalogues beside Gaia DR3 that the builder looks up.
 LINKED = tuple(pair for pair in OBJECT_CATALOGUES if pair != GAIA_DR3)
@@ -887,14 +888,12 @@ def pass_rows(
             found = map_sorted(distance_keys, distances[name].to_numpy(), keys, np.nan)
             return pa.array(found, pa.float32(), from_pandas=True)
 
-        distance = map_sorted(
-            distance_keys, distances["distance"].to_numpy(), keys, np.nan
-        )
+        at = find_sorted(distance_keys, keys)
         return {
-            "distance": pa.array(distance, pa.float32(), from_pandas=True),
+            "distance": values("distance"),
             "distance_lower": values("lower"),
             "distance_upper": values("upper"),
-            "distance_method": _method(distance),
+            "distance_method": distances["method"].take(pa.array(at, mask=at < 0)),
         }
 
     def node_columns(rows: pa.Table, table: dict, keys: np.ndarray) -> pa.Table:
@@ -1334,13 +1333,6 @@ def _lost_entries(members: pa.Table, lost: pa.Array) -> int:
     return int(np.unique(rows[hit.to_numpy(zero_copy_only=False)]).size)
 
 
-def _method(distance: np.ndarray) -> pa.Array:
-    """The `distance_method` of the rows with a shared distance, else null."""
-    return pa.array(
-        np.full(distance.size, SYSTEM_METHOD), pa.string(), mask=~np.isfinite(distance)
-    )
-
-
 def _sorted(keys: np.ndarray, values: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     order = np.argsort(keys, kind="stable")
     return keys[order], values[order]
@@ -1616,6 +1608,7 @@ def _with_held(
             "ra": nodes["ra"].take(at),
             "dec": nodes["dec"].take(at),
             "distance": nodes["distance"].take(at),
+            **no_basis(n),
             "label": held["letter"].filter(pa.array(keep)),
             "catalogue_ids": pa.nulls(n, pa.list_(CROSS_ID)),
             "sources": pa.array(
@@ -1649,6 +1642,7 @@ def _with_ids(systems: Systems, node_id: IdMap, point_id: IdMap) -> Systems:
             "parent": node_id,
             "root": node_id,
             "primary": point_id,
+            "distance_paper": point_id,
         },
     )
     members = mapped(
@@ -1729,6 +1723,7 @@ def _system_patch(nodes: pa.Table, members: pa.Table) -> pa.Table:
     trees = _grouped(ids, np.where(roots > 0, roots, -1), tree_struct)
     trees = pc.if_else(pa.array(is_root), trees, pa.nulls(len(ids), trees.type))
     primary = nodes["primary"].to_numpy()
+    paper = nodes["distance_paper"].to_numpy()
     return pa.table(
         {
             "id": pa.array(ids, pa.int64()),
@@ -1736,6 +1731,9 @@ def _system_patch(nodes: pa.Table, members: pa.Table) -> pa.Table:
             "root": pa.array(roots, pa.int64(), mask=roots == 0),
             "primary": pa.array(primary, pa.int64(), mask=primary == 0),
             "distance": nodes["distance"].combine_chunks().cast(pa.float64()),
+            "distance_method": nodes["distance_method"].combine_chunks(),
+            "distance_paper": pa.array(paper, pa.int64(), mask=paper == 0),
+            "distance_sources": nodes["distance_sources"].combine_chunks(),
             "members": member_lists,
             "tree": trees,
         }

@@ -1002,7 +1002,10 @@ class TestRenderRows:
         assert counts["rendered"] == 2
 
     def test_the_system_comes_before_the_parallax(self):
-        system = {"distance_source": "star-systems", "distance_method": "system"}
+        system = {
+            "distance_source": "star-systems",
+            "distance_method": "system-parallax",
+        }
         rows, counts = render.render_rows(
             _point_rows(
                 [star(10.0, 5.0, 20.0, distance=51.0) | system, star(11.0, 5.0, 20.0)]

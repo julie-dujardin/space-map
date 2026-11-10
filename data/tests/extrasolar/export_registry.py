@@ -179,13 +179,24 @@ def _star_values(held: Held) -> Mapping[str, Any] | None:
 
 
 @dataclass(frozen=True)
+class Basis:
+    """What the shared distance of a root rests on: its `distance_method`,
+    its `distance_sources` and the star index of its paper."""
+
+    method: str
+    sources: tuple[str, ...]
+    paper: int | None = None
+
+
+@dataclass(frozen=True)
 class Node:
     """A node of a star system. A member is ("star", star index, letter),
     ("system", node index, letter), ("held", None, letter) or ("entry",
     None, letter). A point node holds the star `point`, whose ID it keeps,
     and its members are entries or held stars. A resolved node and a held
     star get an ID of table 3 in the cell of the node's primary star. `held`
-    gives a held star by its letter, `orbit` the System `orbit` value."""
+    gives a held star by its letter, `orbit` the System `orbit` value, and
+    `basis` what a root's distance rests on."""
 
     members: tuple[tuple[str, int | None, str], ...]
     point: int | None = None
@@ -194,6 +205,7 @@ class Node:
     qid: str | None = None
     orbit: Mapping[str, Any] | None = None
     held: Mapping[str, Held] = field(default_factory=dict)
+    basis: Basis | None = None
 
 
 @dataclass
@@ -220,6 +232,17 @@ def _primary(nodes: Sequence[Node], at: int) -> int:
 
 def _distance(star: dict) -> float:
     return star.get("distance") or 1000 / star["parallax"]
+
+
+def _basis_columns(basis: Basis | None, minted: list[int]) -> dict[str, Any]:
+    """The System columns of a root's `basis`."""
+    if basis is None:
+        return {}
+    return {
+        "distance_method": basis.method,
+        "distance_paper": None if basis.paper is None else minted[basis.paper],
+        "distance_sources": list(basis.sources),
+    }
 
 
 def _system_rows(
@@ -323,6 +346,7 @@ def _system_rows(
                 "root": top,
                 "primary": minted[_primary(nodes, at)],
                 "distance": _distance(primary),
+                **_basis_columns(node.basis, minted),
                 "members": members,
                 "orbit": node.orbit,
             }

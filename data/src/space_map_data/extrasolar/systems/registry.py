@@ -49,7 +49,7 @@ from space_map_data.extrasolar.registry import Registry
 from space_map_data.extrasolar.sources.literature import LITERATURE
 from space_map_data.extrasolar.systems.elements import GAIA_ELEMENTS
 from space_map_data.extrasolar.systems.msc import MSC_MATCHER
-from space_map_data.extrasolar.systems.nodes import GAIA_DR3, MSC_ID
+from space_map_data.extrasolar.systems.nodes import GAIA_DR3, GAIA_ORBITS, MSC_ID
 from space_map_data.extrasolar.systems.pairs import ORBIT_COLUMNS, PAIRS, orbit_pairs
 from space_map_data.extrasolar.systems.parallax import veto_error
 from space_map_data.extrasolar.systems.planets import (
@@ -162,13 +162,15 @@ def _without_system_distance(point: pa.Table) -> pa.Table:
 
 def _votes(
     point: pa.Table, placed: Placement, distance: np.ndarray, orbit: np.ndarray
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """For each row with a place, what gives it: a parallax in mas, the error
-    that weighs it, and its rank, -1 for a row with no place. A distance with
-    no error counts as ±100%, so any measure outweighs it."""
+    that weighs it, its rank, -1 for a row with no place, and its catalogue,
+    None for none. A distance with no error counts as ±100%, so any measure
+    outweighs it."""
     methods = point["distance_method"].to_numpy(zero_copy_only=False)
     sources = point["distance_source"].to_numpy(zero_copy_only=False)
     astrometry = point["astrometry_source"].to_numpy(zero_copy_only=False)
+    hosts = point["host_star_source"].to_numpy(zero_copy_only=False)
     gaia = np.isin(astrometry, sorted(GAIA_ASTROMETRY))
     ruwe = np.where(gaia, floats(point, "ruwe"), np.nan)
     with np.errstate(divide="ignore", invalid="ignore"):
@@ -198,7 +200,17 @@ def _votes(
         placed.by_parallax | (orbit & placed.by_catalogue) | measured, PARALLAX, rank
     )
     rank = np.where(placed.by_group & (sources == LITERATURE.name), PAPER, rank)
-    return vote, error, rank.astype(np.int8)
+    catalogue = np.select(
+        [
+            orbit,
+            placed.by_parallax | placed.by_suspect,
+            placed.by_group,
+            placed.by_catalogue,
+        ],
+        [np.full(orbit.size, GAIA_ORBITS, object), astrometry, sources, hosts],
+        np.full(orbit.size, None, object),
+    )
+    return vote, error, rank.astype(np.int8), catalogue
 
 
 def point_facts(
@@ -216,7 +228,7 @@ def point_facts(
     at_meta = find_sorted(meta["id"].to_numpy(), ids)
     placed = placement(point)
     distance, orbit = star_distance(point, placed)
-    vote, vote_error, vote_rank = _votes(point, placed, distance, orbit)
+    vote, vote_error, vote_rank, vote_source = _votes(point, placed, distance, orbit)
 
     def pick(table: pa.Table, at: np.ndarray, name: str) -> pa.Array:
         index = pa.array(at, mask=at < 0)
@@ -250,6 +262,9 @@ def point_facts(
             "vote": pa.array(per_key(vote, np.nan), from_pandas=True),
             "vote_error": pa.array(per_key(vote_error, np.nan), from_pandas=True),
             "vote_rank": pa.array(rank, pa.int8(), mask=rank < 0),
+            "vote_source": pa.array(vote_source, pa.string()).take(
+                pa.array(at_point, mask=at_point < 0)
+            ),
             "spectral_type": spectral,
             "non_single_star": pick(point, at_point, "non_single_star").cast(
                 pa.int16()

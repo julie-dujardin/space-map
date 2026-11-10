@@ -27,6 +27,7 @@ from space_map_data.extrasolar.systems.distance import (
     Shared,
     shared_distances,
 )
+from space_map_data.extrasolar.systems.nodes import GAIA_ORBITS
 from space_map_data.extrasolar.systems.parallax import PARSEC_SEPARATION
 from space_map_data.extrasolar.systems.registry import point_facts
 from space_map_data.extrasolar.systems.resolve import (
@@ -79,6 +80,7 @@ class Star:
     vote: float | None
     error: float | None
     rank: int | None = PARALLAX
+    source: str | None = "gaia-dr3"
 
     @property
     def parsecs(self) -> float:
@@ -88,28 +90,36 @@ class Star:
 
 PROXIMA = Star(27424668, 217.392321, -62.676075, 768.067, 0.050)
 # Reylé et al. 2021 give A and B one distance, more precise than Hipparcos.
-RIGIL_KENTAURUS = Star(27468735, 219.868508, -60.831879, 743.0, 1.3)
-TOLIMAN = Star(564339647, 219.863136, -60.833950, 743.0, 1.3)
-SIRIUS = Star(22137869, 101.284621, -16.721552, 379.210, 1.580)
+RIGIL_KENTAURUS = Star(
+    27468735, 219.868508, -60.831879, 743.0, 1.3, source="reyle-2021"
+)
+TOLIMAN = Star(564339647, 219.863136, -60.833950, 743.0, 1.3, source="reyle-2021")
+SIRIUS = Star(22137869, 101.284621, -16.721552, 379.210, 1.580, source="hipparcos-2007")
 # RUWE 2.42 scales 0.231 mas.
 SIRIUS_B = Star(559008781, 101.286626, -16.720933, 374.490, 0.559)
-CAPELLA = Star(17162358, 79.172809, 45.996094, 76.200, 0.460)
+CAPELLA = Star(17162358, 79.172809, 45.996094, 76.200, 0.460, source="hipparcos-2007")
 CAPELLA_H = Star(17162496, 79.349991, 45.837796, 74.952, 0.019)
 CAPELLA_L = Star(1627775232, 79.350146, 45.836842, 75.184, 0.053)
 CYGNI_A = Star(20182448, 316.748479, 38.763862, 285.995, 0.060)
 CYGNI_B = Star(557053360, 316.753663, 38.756073, 286.005, 0.029)
-CASTOR = Star(18400388, 113.648470, 31.887637, 64.120, 3.750)
-CASTOR_B = Star(555271300, 113.649794, 31.888504, None, None, None)
+CASTOR = Star(18400388, 113.648470, 31.887637, 64.120, 3.750, source="hipparcos-2007")
+CASTOR_B = Star(555271300, 113.649794, 31.888504, None, None, None, None)
 YY_GEM = Star(1092142212, 113.654977, 31.869063, 66.311, 0.024)
 HD_284659 = Star(553914580, 70.550801, 22.942293, 8.170, 0.032)
 # Fidelity 0.188.
 GAJA = Star(17043668, 70.561262, 22.956827, 8.231, 1.128, SUSPECT)
 # Fidelity flags A, at RUWE 10.7. B's parallax is -0.3 mas, so it has only a prior.
 HD_58763A = Star(27000555, 111.548464, -20.402652, 4.747421, 1.602605, SUSPECT)
-HD_58763B = Star(563871467, 111.548555, -20.402771, 0.21494, 0.122228, OTHER)
+HD_58763B = Star(
+    563871467, 111.548555, -20.402771, 0.21494, 0.122228, OTHER, "bailer-jones-2021"
+)
 # Each has only a prior: A's Hipparcos parallax and B's are under 5σ.
-HD_56727A = Star(22109363, 109.362129, -18.720472, 0.231341, 0.063228, OTHER)
-HD_56727B = Star(558980275, 109.362257, -18.719691, 0.167285, 0.076832, OTHER)
+HD_56727A = Star(
+    22109363, 109.362129, -18.720472, 0.231341, 0.063228, OTHER, "bailer-jones-2021"
+)
+HD_56727B = Star(
+    558980275, 109.362257, -18.719691, 0.167285, 0.076832, OTHER, "bailer-jones-2021"
+)
 HD_139477 = Star(19693541, 233.83505, 60.08627, 51.22219, 0.01711)
 LP_99_392 = Star(19693552, 233.85854, 60.08471, 51.34618, 0.01929)
 # RUWE 18.4 scales 0.477 mas, up to MAX_SCALE.
@@ -117,12 +127,16 @@ HD_2057 = Star(17491282, 6.288326, 48.047481, 20.620, 1.910)
 HD_2057_D = Star(8070554962, 6.282687, 48.046725, 18.489, 0.057)
 HD_19994 = Star(22716826, 48.194346, -1.196405, 43.703, 0.133)
 # SIMBAD's parallax of a star with no Gaia solution.
-CETI_94_B = Star(559587738, 48.194166, -1.196998, 38.999, 0.590)
+CETI_94_B = Star(
+    559587738, 48.194166, -1.196998, 38.999, 0.590, source="simbad-parallax"
+)
 # Bond et al. 2017's parallax of Sirius, which its dynamical masses take.
-SIRIUS_BY_PAPER = Star(22137869, 101.284621, -16.721552, 378.9, 1.4, PAPER)
+SIRIUS_BY_PAPER = Star(
+    22137869, 101.284621, -16.721552, 378.9, 1.4, PAPER, LITERATURE.name
+)
 # These papers are real, these places are not.
-TAU2_CAP = Star(29261684, 79.0, -14.8, 1000 / 268.8, 0.62, PAPER)
-BETA_PHE = Star(25751115, 79.0, -14.81, 1000 / 55.77, 0.53, PAPER)
+TAU2_CAP = Star(29261684, 79.0, -14.8, 1000 / 268.8, 0.62, PAPER, LITERATURE.name)
+BETA_PHE = Star(25751115, 79.0, -14.81, 1000 / 55.77, 0.53, PAPER, LITERATURE.name)
 
 
 def tree(
@@ -192,6 +206,7 @@ def tree(
             "vote": star.vote,
             "vote_error": star.error,
             "vote_rank": star.rank,
+            "vote_source": star.source,
         }
         for star in stars
     ]
@@ -417,6 +432,106 @@ class TestBounds:
         assert all(r["upper"] > r["lower"] for r in rows)
 
 
+NO_BASIS = {"distance_method": None, "distance_paper": 0, "distance_sources": None}
+
+
+def basis(shared: Shared, row: int = 0) -> dict:
+    """The basis of a row of the nodes."""
+    return shared.basis.to_pylist()[row]
+
+
+def methods(shared: Shared) -> set[str]:
+    """The `distance_method` of the points that share a distance."""
+    return set(shared.distances["method"].to_pylist())
+
+
+class TestBasis:
+    """What a root's distance rests on: its method, which its points take
+    too, the star of its paper and the catalogues of its votes."""
+
+    def test_a_paper(self):
+        shared = tree({1: (0, [HD_284659, TAU2_CAP])})
+        assert basis(shared) == {
+            "distance_method": "system-paper",
+            "distance_paper": TAU2_CAP.key,
+            "distance_sources": [LITERATURE.name],
+        }
+        assert methods(shared) == {"system-paper"}
+
+    def test_the_most_precise_paper_names_its_star(self):
+        for stars in ([TAU2_CAP, BETA_PHE], [BETA_PHE, TAU2_CAP]):
+            assert basis(tree({1: (0, stars)}))["distance_paper"] == BETA_PHE.key
+
+    def test_measured_parallaxes_name_each_catalogue_once(self):
+        """Reylé's distance of A and B, and Proxima's own Gaia parallax."""
+        shared = tree({1: (0, [2, PROXIMA]), 2: (1, [RIGIL_KENTAURUS, TOLIMAN])})
+        assert basis(shared) == {
+            "distance_method": "system-parallax",
+            "distance_paper": 0,
+            "distance_sources": ["gaia-dr3", "reyle-2021"],
+        }
+        assert methods(shared) == {"system-parallax"}
+
+    def test_flagged_parallaxes_leave_out_a_prior(self):
+        shared = tree({1: (0, [HD_58763A, HD_58763B])})
+        assert basis(shared) == {
+            "distance_method": "system-flagged",
+            "distance_paper": 0,
+            "distance_sources": ["gaia-dr3"],
+        }
+        assert methods(shared) == {"system-flagged"}
+
+    def test_other_distances_are_an_estimate(self):
+        shared = tree({1: (0, [HD_56727A, HD_56727B])})
+        assert basis(shared) == {
+            "distance_method": "system-estimate",
+            "distance_paper": 0,
+            "distance_sources": ["bailer-jones-2021"],
+        }
+        assert methods(shared) == {"system-estimate"}
+
+    def test_each_system_keeps_its_own(self):
+        """Two systems out of number order, of different ranks."""
+        shared = tree(
+            {
+                5: (0, [RIGIL_KENTAURUS, TOLIMAN]),
+                1: (0, [HD_284659, TAU2_CAP]),
+            }
+        )
+        assert basis(shared, 0) == {
+            "distance_method": "system-parallax",
+            "distance_paper": 0,
+            "distance_sources": ["reyle-2021"],
+        }
+        assert basis(shared, 1)["distance_paper"] == TAU2_CAP.key
+        by_key = dict(
+            zip(
+                shared.distances["key"].to_pylist(),
+                shared.distances["method"].to_pylist(),
+                strict=True,
+            )
+        )
+        assert by_key == {
+            RIGIL_KENTAURUS.key: "system-parallax",
+            TOLIMAN.key: "system-parallax",
+            HD_284659.key: "system-paper",
+            TAU2_CAP.key: "system-paper",
+        }
+
+    def test_only_the_root_has_one(self):
+        shared = tree({1: (0, [CAPELLA, 2]), 2: (1, [CAPELLA_H, CAPELLA_L])})
+        assert basis(shared)["distance_sources"] == ["gaia-dr3", "hipparcos-2007"]
+        assert basis(shared, 1) == NO_BASIS
+
+    def test_a_system_with_no_place_has_none(self):
+        none = Star(HD_284659.key, HD_284659.ra, HD_284659.dec, None, None, None, None)
+        assert basis(tree({1: (0, [none, CASTOR_B])})) == NO_BASIS
+
+    def test_a_lone_point_has_none(self):
+        shared = tree({1: (0, [CAPELLA])}, held={CAPELLA.key: 9})
+        assert shared.basis.to_pylist() == [NO_BASIS, NO_BASIS]
+
+
 def point_row(**values) -> dict:
     return {"id": 1, "astrometry_source": "gaia-dr3", **values}
 
@@ -453,6 +568,7 @@ class TestVotes:
         assert found["vote"] == pytest.approx(374.49, rel=1e-5)
         assert found["vote_error"] == pytest.approx(0.231 * 2.42, rel=1e-5)
         assert found["vote_rank"] == PARALLAX
+        assert found["vote_source"] == "gaia-dr3"
 
     def test_a_hipparcos_error_stands(self):
         row = point_row(
@@ -461,7 +577,9 @@ class TestVotes:
             parallax_error=1.58,
             ruwe=2.42,
         )
-        assert votes([row]).to_pylist()[0]["vote_error"] == pytest.approx(1.58)
+        found = votes([row]).to_pylist()[0]
+        assert found["vote_error"] == pytest.approx(1.58)
+        assert found["vote_source"] == "hipparcos-2007"
 
     def test_an_orbit_parallax_stands_for_the_parallax(self):
         """HIP 14384, as the render tree places it."""
@@ -478,6 +596,7 @@ class TestVotes:
         assert found["vote"] == pytest.approx(PARALLAX_NSS, rel=1e-5)
         assert found["vote_error"] == pytest.approx(PARALLAX_NSS_ERROR, rel=1e-5)
         assert found["distance"] == pytest.approx(1000 / PARALLAX_NSS, rel=1e-5)
+        assert found["vote_source"] == GAIA_ORBITS
 
     def test_a_measured_group_that_places_the_star_votes(self):
         """α Cen A: Reylé et al. 2021 beat Hipparcos, as the placement says."""
@@ -495,6 +614,7 @@ class TestVotes:
         assert found["vote"] == pytest.approx(1000 / 1.3459, rel=1e-5)
         assert found["vote_error"] == pytest.approx(1.33, abs=0.01)
         assert found["vote_rank"] == PARALLAX
+        assert found["vote_source"] == "reyle-2021"
 
     def test_a_flagged_parallax_ranks_over_a_prior(self):
         """Gaja, whose fidelity is 0.188. Hipparcos saw it."""
@@ -505,7 +625,9 @@ class TestVotes:
             fidelity_v2=0.188,
             hipparcos_photometry_source="hipparcos-2007",
         )
-        assert votes([row]).to_pylist()[0]["vote_rank"] == SUSPECT
+        found = votes([row]).to_pylist()[0]
+        assert found["vote_rank"] == SUSPECT
+        assert found["vote_source"] == "gaia-dr3"
 
     def test_a_prior_ranks_last(self):
         row = point_row(
@@ -517,13 +639,20 @@ class TestVotes:
             parallax=-0.541,
             parallax_error=0.150,
         )
-        assert votes([row]).to_pylist()[0]["vote_rank"] == OTHER
+        found = votes([row]).to_pylist()[0]
+        assert found["vote_rank"] == OTHER
+        assert found["vote_source"] == "bailer-jones-2021"
 
     def test_a_distance_with_no_error_counts_as_all_error(self):
-        row = point_row(astrometry_source=None, host_distance=210.0)
+        row = point_row(
+            astrometry_source=None,
+            host_distance=210.0,
+            host_star_source="nasa-exoplanet-archive",
+        )
         found = votes([row]).to_pylist()[0]
         assert found["vote_error"] == pytest.approx(found["vote"])
         assert found["vote_rank"] == OTHER
+        assert found["vote_source"] == "nasa-exoplanet-archive"
 
     def test_a_paper_ranks_first(self):
         """τ² Cap, as literature.py gives it."""
@@ -540,14 +669,12 @@ class TestVotes:
         found = votes([row]).to_pylist()[0]
         assert found["vote"] == pytest.approx(1000 / 268.8, rel=1e-5)
         assert found["vote_rank"] == PAPER
+        assert found["vote_source"] == LITERATURE.name
 
     def test_a_star_with_no_place_has_no_vote(self):
-        assert (
-            votes([point_row(parallax=-0.1, parallax_error=1.0)]).to_pylist()[0][
-                "vote_rank"
-            ]
-            is None
-        )
+        found = votes([point_row(parallax=-0.1, parallax_error=1.0)]).to_pylist()[0]
+        assert found["vote_rank"] is None
+        assert found["vote_source"] is None
 
     def test_a_committed_system_distance_is_no_fact(self):
         """Castor B in a registry: its distance is the last ingest's result."""
@@ -555,7 +682,7 @@ class TestVotes:
             astrometry_source="gaia-dr3-named",
             distance=15.5958,
             distance_source=STAR_SYSTEMS,
-            distance_method="system",
+            distance_method="system-parallax",
         )
         found = votes([row]).to_pylist()[0]
         assert found["distance"] is None
@@ -570,7 +697,7 @@ class TestVotes:
             ruwe=1.11,
             distance=13.3375,
             distance_source=STAR_SYSTEMS,
-            distance_method="system",
+            distance_method="system-parallax",
         )
         found = votes([row]).to_pylist()[0]
         assert found["distance"] == pytest.approx(1000 / 74.952, rel=1e-6)
@@ -587,7 +714,7 @@ def rows_of(**values) -> pa.Table:
 A_SYSTEM = {
     "distance": 13.3375,
     "distance_source": STAR_SYSTEMS,
-    "distance_method": "system",
+    "distance_method": "system-parallax",
 }
 A_PARALLAX = {"parallax": 74.952, "parallax_error": 0.019}
 

@@ -38,6 +38,9 @@ import pyarrow.compute as pc
 from space_map_data.constants.stars.families import COMPOSITE_SPECTRAL_TYPE
 from space_map_data.extrasolar.sources.simbad import designation, normal
 from space_map_data.extrasolar.systems.distance import (
+    BASIS,
+    Shared,
+    no_basis,
     shared_distances,
 )
 from space_map_data.extrasolar.systems.merge import Merged
@@ -142,6 +145,8 @@ NODES = pa.schema(
         ("ra", pa.float64()),
         ("dec", pa.float64()),
         ("distance", pa.float64()),
+        # On a root, what its shared distance rests on.
+        *BASIS,
         ("label", pa.string()),
         ("catalogue_ids", pa.list_(CROSS_ID)),
         ("sources", pa.list_(pa.string())),
@@ -1047,6 +1052,7 @@ class Assembler:
                         "ra": pa.array(lone["ra"], from_pandas=True),
                         "dec": pa.array(lone["dec"], from_pandas=True),
                         "distance": pa.nulls(n, pa.float64()),
+                        **no_basis(n),
                         "label": pa.nulls(n, pa.string()),
                         "catalogue_ids": lone["ids"],
                         "sources": pa.ListArray.from_arrays(
@@ -1067,7 +1073,7 @@ class Assembler:
         points = self._points_table(nodes, members)
         shared = shared_distances(nodes, points, self.facts)
         self.counts.update(shared.counts)
-        nodes = self._node_distances(nodes, shared.nodes)
+        nodes = self._node_distances(nodes, shared)
         absorbed = pa.table(
             {
                 "key": [a.key for a in self.p.reduced.absorbed],
@@ -1140,6 +1146,7 @@ class Assembler:
                 "ra": pa.array(self.facts.column("ra", keys), from_pandas=True),
                 "dec": pa.array(self.facts.column("dec", keys), from_pandas=True),
                 "distance": pa.nulls(n, pa.float64()),
+                **no_basis(n),
                 "label": pa.nulls(n, pa.string()),
                 "catalogue_ids": pa.nulls(n, pa.list_(CROSS_ID)),
                 "sources": pa.array([[e] for e in evidence], pa.list_(pa.string())),
@@ -1170,18 +1177,26 @@ class Assembler:
             nodes.schema.get_field_index("depth"), "depth", pa.array(depth)
         )
 
-    def _node_distances(self, nodes: pa.Table, shared: np.ndarray) -> pa.Table:
-        """Each node's shared distance, else the distance of its primary."""
+    def _node_distances(self, nodes: pa.Table, shared: Shared) -> pa.Table:
+        """Each node's shared distance, else the distance of its primary, and
+        the BASIS of each root's shared distance."""
         own = self.facts.column("distance", nodes["primary"].to_numpy())
-        return nodes.set_column(
+        nodes = nodes.set_column(
             nodes.schema.get_field_index("distance"),
             "distance",
             pa.array(
-                np.where(np.isfinite(shared), shared, own),
+                np.where(np.isfinite(shared.nodes), shared.nodes, own),
                 pa.float64(),
                 from_pandas=True,
             ),
         )
+        for column in BASIS:
+            nodes = nodes.set_column(
+                nodes.schema.get_field_index(column.name),
+                column,
+                shared.basis[column.name],
+            )
+        return nodes
 
     def _members_table(self) -> pa.Table:
         rows = self.member_rows

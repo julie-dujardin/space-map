@@ -29,7 +29,9 @@ from space_map_data.extrasolar.sources.literature import LITERATURE
 from space_map_data.extrasolar.sources.simbad import SIMBAD, UNSEEN, SimbadList
 from space_map_data.extrasolar.systems import assemble, drawn
 from space_map_data.extrasolar.systems import ingest as systems_ingest
+from space_map_data.extrasolar.systems.distance import BASIS
 from space_map_data.extrasolar.systems.msc import msc_nodes
+from space_map_data.extrasolar.systems.nodes import GAIA_ORBITS
 from space_map_data.extrasolar.systems.orbits import msc_orbits
 from space_map_data.extrasolar.systems.pairs import el_badry_pairs, orbit_pairs
 from space_map_data.extrasolar.systems.parallax import IN_CLUSTER
@@ -483,7 +485,7 @@ class TestSystemsIngest:
         assert placed.by_group[at[a]] and placed.by_group[at[b]]
         # B of the MSC pair has no parallax: it takes 50 pc from A.
         assert rows[p2]["distance_source"] == "star-systems"
-        assert rows[p2]["distance_method"] == "system"
+        assert rows[p2]["distance_method"] == "system-parallax"
         assert rows[p2]["distance"] == pytest.approx(50.0)
         assert placed.by_group[at[p2]]
 
@@ -563,12 +565,17 @@ class TestSharedDistance:
         rows = table(registry, "point-source").to_pylist()
         return registry, {row["id"]: row for row in rows}
 
+    def root(self, registry: Registry, primary: int) -> dict:
+        """The System row of the root whose primary is `primary`."""
+        rows = table(registry, SYSTEM.slug).to_pylist()
+        return next(r for r in rows if r["primary"] == primary and r["parent"] is None)
+
     def test_the_stars_take_the_distance_of_their_system(self, tmp_path):
         registry, rows = self.ingested(tmp_path)
         first, second = ids_of(registry, ["1003", "1004"])
         for row in (rows[first], rows[second]):
             assert row["distance_source"] == STAR_SYSTEMS
-            assert row["distance_method"] == "system"
+            assert row["distance_method"] == "system-parallax"
             assert row["distance_lower"] <= row["distance"] <= row["distance_upper"]
         assert rows[first]["distance"] == pytest.approx(100.0, abs=0.01)
 
@@ -603,13 +610,24 @@ class TestSharedDistance:
         for row in (rows[first], rows[second]):
             assert row["distance_source"] == STAR_SYSTEMS
             assert row["distance"] == pytest.approx(REYLE["71683"], rel=1e-3)
+        # Proxima votes with its Hipparcos parallax.
+        root = self.root(registry, first)
+        assert root["distance_method"] == "system-parallax"
+        assert root["distance_sources"] == [HIPPARCOS.name, REYLE_2021.name]
+        inner = [r for r in table(registry, SYSTEM.slug).to_pylist() if r["parent"]]
+        assert inner
+        for row in inner:
+            assert row["distance_method"] is None
+            assert row["distance_sources"] is None
 
     def test_the_system_row_has_the_distance(self, tmp_path):
         registry, _ = self.ingested(tmp_path)
         (first,) = ids_of(registry, ["1003"])
-        system = table(registry, SYSTEM.slug).to_pylist()
-        root = next(row for row in system if row["primary"] == first)
+        root = self.root(registry, first)
         assert root["distance"] == pytest.approx(100.0, abs=0.01)
+        assert root["distance_method"] == "system-parallax"
+        assert root["distance_paper"] is None
+        assert root["distance_sources"] == [HIPPARCOS.name]
 
     def test_a_paper_stays(self, tmp_path):
         """The merge keeps the paper for its star. The other star takes it."""
@@ -635,22 +653,35 @@ class TestSharedDistance:
         first, second = ids_of(registry, ["1003", "1004"])
         assert rows[first]["distance_source"] == LITERATURE.name
         assert rows[first]["distance"] == pytest.approx(101.0)
+        assert rows[first]["distance_method"] == "parallax"
         assert rows[second]["distance_source"] == STAR_SYSTEMS
         assert rows[second]["distance"] == pytest.approx(101.0, abs=0.01)
+        assert rows[second]["distance_method"] == "system-paper"
+        root = self.root(registry, first)
+        assert root["distance_method"] == "system-paper"
+        assert root["distance_paper"] == first
+        assert root["distance_sources"] == [LITERATURE.name]
 
     def test_a_second_ingest_repeats_the_first(self, tmp_path):
         """A run reads its own passes, so a committed star-systems row feeds no
         vote. α Cen A and B vote with Reylé's distance, which that row hides."""
-        columns = ("distance", "distance_lower", "distance_upper", "distance_source")
+        columns = (
+            "distance",
+            "distance_lower",
+            "distance_upper",
+            "distance_source",
+            "distance_method",
+        )
+        system_columns = ["distance", *BASIS.names]
 
         def distances(rows: dict[int, dict]) -> dict[int, tuple]:
             return {i: tuple(row[c] for c in columns) for i, row in rows.items()}
 
         registry, first = self.ingested(tmp_path)
-        first_system = table(registry, SYSTEM.slug)["distance"].to_pylist()
+        first_system = table(registry, SYSTEM.slug).select(system_columns)
         registry, second = self.ingested(tmp_path)
         assert distances(second) == distances(first)
-        assert table(registry, SYSTEM.slug)["distance"].to_pylist() == first_system
+        assert table(registry, SYSTEM.slug).select(system_columns) == first_system
         for found in ids_of(registry, ["71683", "71681"]):
             assert second[found]["distance_source"] == STAR_SYSTEMS
             assert second[found]["distance"] == pytest.approx(REYLE["71683"], rel=1e-3)
@@ -716,6 +747,8 @@ class TestSharedDistance:
         ids = registry.lookup("gaia", "dr3", [str(first), str(second)]).tolist()
         for found in ids:
             assert rows[found]["distance"] == pytest.approx(1000 / 10.45, abs=0.01)
+        root = self.root(registry, ids[0])
+        assert root["distance_sources"] == [GAIA_DR3.name, GAIA_ORBITS]
 
 
 class TestHostInNoTree:

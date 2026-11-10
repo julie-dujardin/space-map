@@ -280,9 +280,10 @@ POINT_SOURCE = TableDef(
         # cloud), `galaxy` (of the host galaxy), `geometric` (parallax with a
         # Galaxy prior), `expansion` (expansion parallax of a nebula),
         # `dynamical` (parallax from a binary's orbit and masses), `model` (a
-        # fit to the object) or `system` (of the star's system). A value from
-        # a paper comes first: it is chosen for that star. The system distance
-        # comes next: it is better than any one star's value (`placement`).
+        # fit to the object), or for the distance of the star's system, what
+        # gives it (`systems.distance.METHODS`). A value from a paper comes
+        # first: it is chosen for that star. The system distance comes next:
+        # it is better than any one star's value (`placement`).
         ColumnGroup(
             "distance",
             (
@@ -973,9 +974,12 @@ SYSTEM_NODE = pa.struct(
 # `members` and, in the root's row, `tree`, every node of the system.
 # `distance` is the distance of the primary point in pc, else the system
 # distance that it takes. A held star has the values of its node. With `ra`
-# and `dec` it places a row that has no Point source row. A pair, a node of
-# two members or a point of three stars, has its `orbit` when one can be
-# drawn (`systems.drawn`). A held star has its values in `star`.
+# and `dec` it places a row that has no Point source row. The root of a
+# system with a shared distance also says what the distance rests on, so a
+# client can qualify and credit it (`systems.distance.BASIS`, with the ID of
+# the star of the paper in `distance_paper`). A pair, a node of two members
+# or a point of three stars, has its `orbit` when one can be drawn
+# (`systems.drawn`). A held star has its values in `star`.
 SYSTEM = TableDef(
     number=SYSTEM_TABLE,
     slug="system",
@@ -996,6 +1000,9 @@ SYSTEM = TableDef(
     computed=(
         *_fields(pa.int64(), "parent", "root", "primary"),
         pa.field("distance", pa.float64()),
+        pa.field("distance_method", pa.string()),
+        pa.field("distance_paper", pa.int64()),
+        pa.field("distance_sources", pa.list_(pa.string())),
         pa.field("members", pa.list_(SYSTEM_MEMBER)),
         pa.field("tree", pa.list_(SYSTEM_NODE)),
         pa.field("orbit", SYSTEM_ORBIT),

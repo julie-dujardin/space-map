@@ -11,7 +11,10 @@ from the best rank of the points below it: the most precise paper, else the
 inverse-variance mean of their votes. A point counts once, however many stars
 it holds. A Gaia solution that does not fit its star weighs less by
 `parallax.veto_error`. The rank keeps a star that fidelity flags from pulling a
-good star, and a prior from outweighing a flagged measure.
+good star, and a prior from outweighing a flagged measure. The root and its
+stars keep that rank as their `distance_method`, so a client can say how far
+to trust the distance, and the root keeps the paper's point and the catalogues
+of the votes, for the credits.
 
 Membership decides who shares: `reduce` has already refuted a star that lies
 far from its primary. A vote that still disagrees is nearly always a poor
@@ -55,8 +58,28 @@ DISTANCES = pa.schema(
         ("distance", pa.float64()),
         ("lower", pa.float64()),
         ("upper", pa.float64()),
+        # The root's `distance_method`.
+        ("method", pa.string()),
     ]
 )
+# What the shared distance of a root rests on, null on every other node: its
+# `distance_method`, the point whose paper gives it (0 for none), and the
+# catalogues of the votes that it weighs, as `*_source` values.
+BASIS = pa.schema(
+    [
+        ("distance_method", pa.string()),
+        ("distance_paper", pa.int64()),
+        ("distance_sources", pa.list_(pa.string())),
+    ]
+)
+# The `distance_method` of each rank that can give a root its distance, so a
+# client can say how far to trust it.
+METHODS = {
+    PAPER: "system-paper",
+    PARALLAX: "system-parallax",
+    SUSPECT: "system-flagged",
+    OTHER: "system-estimate",
+}
 SYSTEMS_BY_PAPER = "systems whose distance is a paper's"
 SYSTEMS_BY_PARALLAX = "systems whose distance is a mean parallax"
 SYSTEMS_BY_SUSPECT = "systems whose distance is a mean of flagged parallaxes"
@@ -73,6 +96,8 @@ class Shared(NamedTuple):
     distances: pa.Table
     # The distance of each row of `nodes`, NaN for a row that shares none.
     nodes: np.ndarray
+    # BASIS of each row of `nodes`.
+    basis: pa.Table
     counts: Counter
 
 
@@ -103,6 +128,7 @@ def shared_distances(nodes: pa.Table, points: pa.Table, facts: Facts) -> Shared:
     rank = facts.column("vote_rank", keys)
     vote = facts.column("vote", keys)
     error = facts.column("vote_error", keys)
+    source = pa.array(facts.texts("vote_source", keys), pa.string())
     point_ra, point_dec = facts.column("ra", keys), facts.column("dec", keys)
 
     # Each node's sums of the points below it, by rank.
@@ -121,6 +147,7 @@ def shared_distances(nodes: pa.Table, points: pa.Table, facts: Facts) -> Shared:
 
     paper = np.full(numbers.size, np.nan)
     paper_error = np.full(numbers.size, np.nan)
+    paper_key = np.zeros(numbers.size, np.int64)
     papers = np.flatnonzero(rank == PAPER)
     worst_first = papers[
         np.argsort(-np.nan_to_num(error[papers] / vote[papers], nan=1))
@@ -129,6 +156,7 @@ def shared_distances(nodes: pa.Table, points: pa.Table, facts: Facts) -> Shared:
         row = int(at[point])
         while row >= 0:
             paper[row], paper_error[row] = vote[point], error[point]
+            paper_key[row] = keys[point]
             row = int(ups[row])
     _, per_system = np.unique(systems[papers], return_counts=True)
     counts[SYSTEMS_TWO_PAPERS] = int((per_system > 1).sum())
@@ -150,14 +178,33 @@ def shared_distances(nodes: pa.Table, points: pa.Table, facts: Facts) -> Shared:
     distance[root_rows] = own[root_rows]
     lower[root_rows] = low[root_rows]
     upper[root_rows] = high[root_rows]
-    for name, case in (
-        (SYSTEMS_BY_PAPER, cases[0]),
-        (SYSTEMS_BY_PARALLAX, ~cases[0] & cases[1]),
-        (SYSTEMS_BY_SUSPECT, ~cases[0] & ~cases[1] & cases[2]),
-        (SYSTEMS_BY_OTHER, ~cases[0] & ~cases[1] & ~cases[2] & cases[3]),
+    # The rank that gives each node its distance, -1 for none.
+    best = np.select(cases, [PAPER, *ranks], -1)
+    method = np.full(numbers.size, None, object)
+    for name, voters_of_rank in (
+        (SYSTEMS_BY_PAPER, PAPER),
+        (SYSTEMS_BY_PARALLAX, PARALLAX),
+        (SYSTEMS_BY_SUSPECT, SUSPECT),
+        (SYSTEMS_BY_OTHER, OTHER),
     ):
-        counts[name] = int(case[root_rows].sum())
+        of_rank = root_rows[best[root_rows] == voters_of_rank]
+        method[of_rank] = METHODS[voters_of_rank]
+        counts[name] = of_rank.size
     counts[SYSTEMS_NO_DISTANCE] = int((~np.isfinite(own[root_rows])).sum())
+    root_of = row_of(systems)
+    weighed = rank == best[root_of]
+    basis = pa.table(
+        {
+            "distance_method": pa.array(method, pa.string()),
+            "distance_paper": pa.array(
+                np.where(method == METHODS[PAPER], paper_key, 0), pa.int64()
+            ),
+            "distance_sources": _distinct(
+                root_of[weighed], source.filter(pa.array(weighed)), numbers.size
+            ),
+        },
+        schema=BASIS,
+    )
     counts[POINTS_NO_VOTE] = int((~np.isfinite(rank)).sum())
     measured_root = np.isin(systems, numbers[root_rows[weight[0, root_rows] > 0]])
     counts[POINTS_OUTRANKED] = int(((rank > PARALLAX) & measured_root).sum())
@@ -217,6 +264,7 @@ def shared_distances(nodes: pa.Table, points: pa.Table, facts: Facts) -> Shared:
         "distance": placed[has],
         "lower": bottom[has],
         "upper": top[has],
+        "method": method[root_of][has],
     }
     table = pa.table(
         {
@@ -225,4 +273,30 @@ def shared_distances(nodes: pa.Table, points: pa.Table, facts: Facts) -> Shared:
         },
         schema=DISTANCES,
     )
-    return Shared(table, distance, counts)
+    return Shared(table, distance, basis, counts)
+
+
+def no_basis(n: int) -> dict[str, pa.Array]:
+    """BASIS of `n` nodes that are no root with a shared distance."""
+    return {
+        "distance_method": pa.nulls(n, pa.string()),
+        "distance_paper": pa.array(np.zeros(n, np.int64)),
+        "distance_sources": pa.nulls(n, pa.list_(pa.string())),
+    }
+
+
+def _distinct(rows: np.ndarray, values: pa.Array, n: int) -> pa.Array:
+    """For each of `n` rows, the distinct `values` that `rows` puts there,
+    sorted, null where none."""
+    known = values.is_valid().to_numpy(zero_copy_only=False)
+    texts = values.filter(pa.array(known)).to_numpy(zero_copy_only=False)
+    names, codes = np.unique(texts.astype(str), return_inverse=True)
+    pairs = np.unique(rows[known] * names.size + codes)
+    at, code = np.divmod(pairs, names.size)
+    lengths = np.bincount(at, minlength=n)
+    offsets = np.r_[0, np.cumsum(lengths)].astype(np.int32)
+    return pa.ListArray.from_arrays(
+        pa.array(offsets),
+        pa.array(names[code], pa.string()),
+        mask=pa.array(lengths == 0),
+    )

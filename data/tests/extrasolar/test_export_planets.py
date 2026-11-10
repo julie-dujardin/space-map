@@ -530,7 +530,7 @@ class TestHostsInTheTree:
         system = {
             "distance": 21.0,
             "distance_source": "star-systems",
-            "distance_method": "system",
+            "distance_method": "system-parallax",
         }
         stars = [star(100.0, 20.0, 50.0, name="In a system") | HOST | system]
         built = write_registry(tmp_path / "reg", stars, planets=[planet(0, 1)])

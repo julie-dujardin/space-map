@@ -31,6 +31,7 @@ from space_map_data.extrasolar.sky import region_cells, region_of
 from space_map_data.extrasolar.systems import drawn
 from space_map_data.extrasolar.tables import METADATA, SYSTEM, SYSTEM_TABLE, TABLES
 from tests.extrasolar.export_registry import (
+    Basis,
     Held,
     Node,
     planet,
@@ -67,7 +68,7 @@ def _stars() -> list[dict]:
     point that holds two stars, a resolved pair, stars in no system, and
     Kepler-16, a point that holds its pair."""
     proxima = star(217.43, -62.68, 768.0, 11.1, snr=3, distance=1.3)
-    proxima |= {"distance_method": "system", "distance_source": "star-systems"}
+    proxima |= {"distance_method": "system-parallax", "distance_source": "star-systems"}
     return [
         star(219.902, -60.834, 750.0, 0.5),
         star(219.896, -60.8375, 750.0, 1.4),
@@ -87,9 +88,13 @@ SYSTEMS = [
         label="AB-C",
         name="Alpha Centauri",
         qid="Q1",
+        basis=Basis("system-parallax", ("gaia-dr3",)),
     ),
     Node((("entry", None, "Aa"), ("entry", None, "Ab")), point=3),
-    Node((("star", 4, "A"), ("star", 5, "B"))),
+    Node(
+        (("star", 4, "A"), ("star", 5, "B")),
+        basis=Basis("system-paper", ("literature",), paper=4),
+    ),
 ]
 
 
@@ -226,6 +231,9 @@ class TestSystemTiles:
         assert types["members.known"] == "list"
         assert types["members.known.item"] == "dict"
         assert types["members.ids"] == "cross_ids"
+        assert types["distance_method"] == types["distance_sources.item"] == "dict"
+        assert types["distance_sources"] == "list"
+        assert types["distance_paper"] == "id"
         names = [c["name"] for c in entry["columns"]]
         assert names.index("members.id") == names.index("members") + 1
         assert report["systems"] == {
@@ -264,6 +272,17 @@ class TestSystemTiles:
         inner = reader.lookup(str(built.nodes[AB]))
         assert inner is not None
         assert inner.metadata["system"] == built.nodes[ALPHA_CEN]
+
+        system = root.rows["system"]
+        assert system["distance_method"] == "system-parallax"
+        assert system["distance_sources"] == ["gaia-dr3"]
+        assert system["distance_paper"] is None
+        assert inner.rows["system"]["distance_method"] is None
+        assert inner.rows["system"]["distance_sources"] is None
+        pair = reader.lookup(str(built.nodes[PAIR]))
+        assert pair is not None
+        assert pair.rows["system"]["distance_method"] == "system-paper"
+        assert pair.rows["system"]["distance_paper"] == built.ids[4]
 
     def test_no_systems_still_has_the_table(self, tmp_path, out):
         built = write_registry(tmp_path / "reg", random_stars(10, seed=3))

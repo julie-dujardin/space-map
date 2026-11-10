@@ -66,10 +66,12 @@ FACTS = pa.schema(
         # Parsecs where the object renders, by `placement`, else null.
         ("distance", pa.float64()),
         # What places it, in the render tree's order, as a parallax in mas: the
-        # error that weighs it and its rank (PAPER to OTHER), else null.
+        # error that weighs it, its rank (PAPER to OTHER) and its catalogue as
+        # a `*_source` value, else null.
         ("vote", pa.float64()),
         ("vote_error", pa.float64()),
         ("vote_rank", pa.int8()),
+        ("vote_source", pa.string()),
         ("spectral_type", pa.string()),
         ("non_single_star", pa.int16()),
         ("name", pa.string()),
@@ -199,8 +201,9 @@ class Facts:
 
     def texts(self, name: str, keys: np.ndarray) -> list[str | None]:
         at = self.at(keys)
-        values = self.table[name].to_pylist()
-        return [values[i] if i >= 0 else None for i in at.tolist()]
+        hit = at >= 0
+        values = iter(self.table[name].take(pa.array(at[hit])).to_pylist())
+        return [next(values) if found else None for found in hit.tolist()]
 
     def get(self, key: int) -> Fact | None:
         if key in self._rows:

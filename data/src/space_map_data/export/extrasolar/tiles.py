@@ -99,6 +99,7 @@ DICTIONARY = frozenset(
         "apparent_v_source",
         "extinction_source",
         "sources.item",
+        "distance_sources.item",
         "members.kind",
         "members.letter",
         "members.source",

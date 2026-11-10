@@ -97,6 +97,7 @@ def fact(
             "vote": vote,
             "vote_error": vote if error is None else error,
             "vote_rank": OTHER if error is None else PARALLAX,
+            "vote_source": "bailer-jones-2021" if error is None else astrometry,
         }
     row |= values
     return row
