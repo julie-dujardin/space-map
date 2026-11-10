@@ -11,8 +11,9 @@ import type { PositionedBody } from '$lib/types/objects';
 
 const F32_MAX = 3.4028235e38;
 
-/** Prevents transparent clouds and atmosphere from painting over the dots. */
-export const POINT_CLOUD_RENDER_ORDER = 3;
+/** After clouds and atmosphere so they don't paint over the dots; before
+ *  trails so every orbit line draws over them. */
+export const POINT_CLOUD_RENDER_ORDER = 2.5;
 
 // Point-cloud dots read directly as the body's halo colour under ACES; scale
 // down so they render as a darker shade rather than matching the halo.

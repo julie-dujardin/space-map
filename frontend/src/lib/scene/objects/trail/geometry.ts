@@ -9,9 +9,9 @@ import {
 import { makeFatTrailMaterial, makeTrailMaterial } from './material';
 import { writeTrailAlphas } from './points';
 
-// Render after the planet's transparent overlays (clouds=1, atmosphere=2; see
-// POINT_CLOUD_RENDER_ORDER) — all depthWrite=false, so without an explicit
-// order the cloud sphere's dark side paints over trails, dimming them.
+// Draw order alone decides overlap between these depthWrite=false layers: after
+// the cloud sphere so its dark side doesn't dim trails, and after point clouds
+// (POINT_CLOUD_RENDER_ORDER) so trails draw over the dots.
 const TRAIL_RENDER_ORDER = 3;
 
 /**

@@ -949,7 +949,7 @@ export function buildAtmosphereNode(
 		fragmentShader: FRAGMENT_SHADER,
 		transparent: true,
 		// From outside, the shell writes depth so later transparents (point-
-		// cloud dots, trails at renderOrder 3) depth-sort against it: dots
+		// cloud dots, trails) depth-sort against it: dots
 		// behind the limb glow hide, dots in front draw over. Nothing orbits
 		// inside the thin shell, so the single depth is a faithful proxy.
 		// applyShellViewState clears it when the camera is inside — the
