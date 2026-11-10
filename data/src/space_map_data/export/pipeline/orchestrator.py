@@ -143,7 +143,11 @@ from space_map_data.export.quantities import UnitConverter
 from space_map_data.export.seo_pages import write_seo_pages
 from space_map_data.export.sitemap import available_planet_pages, write_sitemap
 from space_map_data.export.small_body_color import log_color_stats
-from space_map_data.export.solar_planets import page_families, solar_planet_records
+from space_map_data.export.solar_planets import (
+    page_families,
+    planet_discovery_years,
+    solar_planet_records,
+)
 from space_map_data.export.spacecraft import write_spacecraft
 from space_map_data.export.status import write_status
 from space_map_data.export.systems import (
@@ -1206,6 +1210,7 @@ def _export(engine: Engine, names_session: Session, limit_per_zone: int) -> None
         page_links = _page_links(
             session, names, families, missions, model_sources, probe_names, ring_moons
         )
+        planet_years = planet_discovery_years(session)
     probe_kernel_sources = load_probe_kernel_sources()
     probe_ephemeris_accuracy = load_probe_ephemeris_accuracy()
     probe_position_sources = load_probe_position_sources()
@@ -1237,7 +1242,9 @@ def _export(engine: Engine, names_session: Session, limit_per_zone: int) -> None
         ring_moons=ring_moons,
         ring_metadata=ring_metadata,
         planet_families=page_families(
-            solar_planet_records(radii, body_masses, load_planet_elements(DOWNLOAD_DIR))
+            solar_planet_records(
+                radii, body_masses, load_planet_elements(DOWNLOAD_DIR), planet_years
+            )
         ),
     )
 

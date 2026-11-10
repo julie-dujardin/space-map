@@ -59,7 +59,7 @@ ELEMENTS = {
 
 @pytest.fixture
 def records() -> dict[str, dict]:
-    return solar_planet_records(RADII, MASSES, ELEMENTS)
+    return solar_planet_records(RADII, MASSES, ELEMENTS, {"naif-799": 1781})
 
 
 class TestRecords:
@@ -85,8 +85,12 @@ class TestRecords:
         assert values["mass"] == pytest.approx(1.0, 1e-3)
         assert values["radius"] == 1.0
 
+    def test_a_discovery_year_where_there_is_one(self, records):
+        assert records["naif-799"]["values"]["discovery_year"] == 1781
+        assert "discovery_year" not in records["naif-399"]["values"]
+
     def test_a_missing_source_leaves_the_value_out(self):
-        found = solar_planet_records({}, BodyMasses(), {})["naif-399"]["values"]
+        found = solar_planet_records({}, BodyMasses(), {}, {})["naif-399"]["values"]
         assert found == {"heavy_element_fraction": pytest.approx(1.0, abs=0.01)}
 
 

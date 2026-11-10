@@ -1003,6 +1003,7 @@ def write_group_bundles(
     model_slugs: dict[str, str] | None = None,
     craft_models: dict[str, CraftModel] | None = None,
     textured_ids: set[str] | None = None,
+    extra_listed_discoveries: dict[str, list[dict]] | None = None,
 ) -> dict[str, int]:
     """Write groups/__global__/ + groups/{lang}/ bundles and __index__.json.
 
@@ -1132,6 +1133,9 @@ def write_group_bundles(
         )
         for name, (_, entries) in member_lists.items():
             global_by_slug[group.slug][name] = entries
+        # Discoveries the page names below its timeline rather than in it.
+        if listed := (extra_listed_discoveries or {}).get(group.slug):
+            global_by_slug[group.slug]["listed_discoveries"] = listed
         for tab, qid in tabs.items():
             global_by_slug[group.slug][f"{tab}_qid"] = qid
         if tab_shelves:

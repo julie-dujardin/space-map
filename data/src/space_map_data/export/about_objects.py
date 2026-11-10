@@ -169,7 +169,8 @@ def entry_sources(entry: dict, works: set[str]) -> set[str]:
         keys.add("johnston")
     if entry.get("astersat"):
         keys.add("nsdb")
-    if entry.get("discovery_year") is not None:
+    # A planet's discovery year is Wikidata's.
+    if entry.get("discovery_year") is not None and entry["type"] == "moon":
         keys.add("jpl-satellite-discovery")
     if entry.get("color") or (sbdb or {}).get("color"):
         keys.add("truecolortools")

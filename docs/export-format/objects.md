@@ -301,7 +301,7 @@ interface GlobalObjectData {
   iau_named?: boolean;                // moons only: true when the DB names the moon, false when it has only a designation. The page name cannot tell: it can be a Wikidata label
   sbdb_primary_designation?: string;  // SBDB MPC designation (e.g. "2000 RU65")
   sitelinks_count?: number;           // Wikidata sitelink count; notability rank (omitted when 0)
-  discovery_year?: number;            // natural moons only, from the JPL satellite-discovery table
+  discovery_year?: number;            // natural moons, from the JPL satellite-discovery table; Uranus and Neptune, from Wikidata P575
   cross_refs?: {
     wikidata_qid?: string;
     naif_id?: number;

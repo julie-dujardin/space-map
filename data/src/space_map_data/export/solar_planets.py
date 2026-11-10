@@ -5,9 +5,11 @@ Each Solar System planet gets a record of the same shape, so that the same
 rules give its families: the mass from `body_mass`, the equatorial radius
 from the PCK, the Horizons mean elements, the insolation from the semi-major
 axis, and the heavy-element fraction from the interior models. All of these
-values are measured. As a served record, it has `families` and
-`families_estimated`.
+values are measured. A planet found in modern times has its discovery year.
+As a served record, it has `families` and `families_estimated`.
 """
+
+from sqlalchemy.orm import Session
 
 from space_map_data.constants.interior.bodies import INTERIOR_FACTS
 from space_map_data.constants.interior.schema import HELIUM, HYDROGEN
@@ -17,7 +19,7 @@ from space_map_data.export.objects.body_mass import BodyMasses
 from space_map_data.extrasolar.exoplanets.catalogues import TRUE_MASS
 from space_map_data.extrasolar.exoplanets.iau import PLANET
 from space_map_data.extrasolar.families import most_specific
-from space_map_data.models.object import ObjectType
+from space_map_data.models.object import Object, ObjectType
 
 # The eight planets of the IAU, Mercury to Neptune.
 PLANET_NAIF_IDS: tuple[int, ...] = tuple(n * 100 + 99 for n in range(1, 9))
@@ -49,10 +51,20 @@ def heavy_element_fraction(body: str) -> float | None:
     return total
 
 
+def planet_discovery_years(session: Session) -> dict[str, int]:
+    """The discovery year of each planet that has one, by object id."""
+    rows = session.query(Object.id, Object.discovery_year).filter(
+        Object.object_type == ObjectType.planet,
+        Object.discovery_year.is_not(None),
+    )
+    return {object_id: year for object_id, year in rows if year is not None}
+
+
 def solar_planet_records(
     radii: dict[int, dict],
     masses: BodyMasses,
     elements: dict[int, dict],
+    discovery_years: dict[str, int],
 ) -> dict[str, dict]:
     """The planet record of each Solar System planet, by object id, in
     heliocentric order, with its families around the Sun. A value without a
@@ -74,6 +86,8 @@ def solar_planet_records(
             values["insolation"] = 1 / orbit["a"] ** 2
         if (fraction := heavy_element_fraction(body)) is not None:
             values["heavy_element_fraction"] = fraction
+        if (year := discovery_years.get(body)) is not None:
+            values["discovery_year"] = year
         record = {
             "class": PLANET,
             "values": values,

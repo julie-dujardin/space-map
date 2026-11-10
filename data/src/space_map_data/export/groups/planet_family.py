@@ -18,9 +18,9 @@ diameter of its measured radius, else that of its estimated radius in a field
 of its own, and the year of its discovery.
 
 Each page has a discovery timeline: its exoplanets by the year of their
-discovery. The Solar System planets stay out of it. Five of them have no
-year, and Uranus and Neptune alone would stretch the axis from 1781 and bin
-three decades of exoplanets into a few bars.
+discovery. Uranus and Neptune are listed below it instead, as the only
+Solar System planets with a discovery year: in the chart, they would stretch
+the axis from 1781 and bin three decades of exoplanets into a few bars.
 """
 
 import gzip
@@ -132,6 +132,11 @@ class PlanetGroups(FamilyGroups):
     host_years: dict[int, int] = field(default_factory=dict)
     # Page slug -> {discovery year: exoplanets}, the Planets page included.
     discovery_histograms: dict[str, dict[int, int]] = field(default_factory=dict)
+    # Page slug -> the Solar System planets its timeline lists below it, as
+    # (object id, discovery year, names), earliest first.
+    listed_discoveries: dict[str, list[tuple[str, int, Names]]] = field(
+        default_factory=dict
+    )
 
 
 @dataclass
@@ -217,6 +222,7 @@ def build_planet_family_groups(
     out.hosts = Counter(p.host for p in exoplanets if p.host is not None)
     out.host_years = _host_years(exoplanets)
     out.discovery_histograms = _discovery_histograms(exoplanets)
+    out.listed_discoveries = _listed_discoveries(planets)
     logger.info(
         "Planet pages: %d planets (%d exoplanets), %d families, %d with planets,"
         " %d with listed planets",
@@ -240,6 +246,23 @@ def _discovery_histograms(exoplanets: list[_Planet]) -> dict[str, dict[int, int]
         year = int(planet.first_obs)
         for slug in PAGES.pages_of((*planet.families, *planet.estimated)):
             out[slug][year] = out[slug].get(year, 0) + 1
+    return dict(out)
+
+
+def _listed_discoveries(
+    planets: list[_Planet],
+) -> dict[str, list[tuple[str, int, Names]]]:
+    """The Solar System planets with a discovery year, on each page that
+    would count them in its timeline, earliest first."""
+    dated = sorted(
+        (int(p.first_obs), p.object_id, p)
+        for p in planets
+        if p.body is not None and p.first_obs is not None
+    )
+    out: dict[str, list[tuple[str, int, Names]]] = defaultdict(list)
+    for year, object_id, planet in dated:
+        for slug in PAGES.pages_of((*planet.families, *planet.estimated)):
+            out[slug].append((object_id, year, planet.names))
     return dict(out)
 
 
@@ -292,6 +315,7 @@ def _planet(
     (``body``), or an exoplanet from its system file record."""
     mass = _plotted(record, "mass", EARTH_MASSES_PER_JUPITER)
     year = record["values"].get("discovery_year")
+    first_obs = None if year is None else str(year)
     entry = body is None and record["object"]
     return _Planet(
         object_id=object_id,
@@ -307,10 +331,10 @@ def _planet(
         axis=_plotted(record, "semi_major_axis"),
         entry=entry,
         host=record.get("host"),
-        body=body,
+        body=None if body is None else replace(body, first_obs=first_obs),
         diameter_km=measured_diameter_km(record),
         estimated_diameter_km=estimated_diameter_km(record),
-        first_obs=None if year is None else str(year),
+        first_obs=first_obs,
         precise_radius=body is not None or _precise_radius(record),
         estimated=tuple(record["families_estimated"]),
     )

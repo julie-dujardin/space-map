@@ -299,11 +299,20 @@ interface GlobalGroupData {
   // The Planets category and each planet- family count their served
   // exoplanets by discovery year, a family its published and its estimated
   // members alike; the Solar System planets are left out (most have no
-  // year, and Uranus and Neptune would stretch the axis back to 1781). The
+  // year, and Uranus and Neptune would stretch the axis back to 1781: they
+  // are in `listed_discoveries` instead). The
   // Planetary Systems category counts each host by the year its first planet
   // was found; the Solar System has none. Stars carry no discovery year, so
   // the Stars, Star Systems and star- pages have no histogram.
   discovery_histogram?: Record<string, number>;  // year string → count, sorted ascending
+  // Discoveries named below the histogram rather than counted in it, earliest
+  // first: Uranus and Neptune on the Planets category and on their planet-
+  // families.
+  listed_discoveries?: {
+    id: string;    // Object.id
+    name: string;  // the global name (`export/names.py`); per-language names in LocalizedGroupData.body_names
+    year: number;
+  }[];
 
   // Biggest member by diameter; absent when nothing has a measured size.
   // Present on orbit_class groups, flag-neo/flag-pha, and the Asteroids /
@@ -908,7 +917,7 @@ interface LocalizedGroupData {
   member_system_names?: Record<string, string>;  // `cat-satellite-systems` only: member Object.id → the name of the system's page in this language, only where it differs from `system_name`
   exoplanets?: { name?: string; description?: string; wikipedia?: { extract?: string; description?: string; url?: string } }; // cat-planets only: the label, description and Wikipedia text of `exoplanets_qid` in this language, for the Exoplanets tab
   probe_names?: Record<string, string>;       // `probes` entry Object.id → localized label, only where it differs from the global name
-  body_names?: Record<string, string>;        // Object.id → name in this language where it differs from the global one (`export/names.py`): `feature_bodies` rows on ft-<slug>, `moon_counts` rows on cat-moons, `probe_targets` rows on cat-probes, the body of `largest_body`, the planets of `largest_planet` and `first_exoplanet` on cat-planets, the systems of `most_stars_system` and `most_planets_system`, and the members each `probes` entry names in `visits`
+  body_names?: Record<string, string>;        // Object.id → name in this language where it differs from the global one (`export/names.py`): `feature_bodies` rows on ft-<slug>, `moon_counts` rows on cat-moons, `probe_targets` rows on cat-probes, the body of `largest_body`, the planets of `largest_planet` and `first_exoplanet` on cat-planets, the planets of `listed_discoveries`, the systems of `most_stars_system` and `most_planets_system`, and the members each `probes` entry names in `visits`
   largest_feature_name?: string;              // the name of `largest_feature` in this language, where it differs from the global one
 }
 ```

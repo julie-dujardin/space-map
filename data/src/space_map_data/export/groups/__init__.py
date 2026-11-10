@@ -100,7 +100,10 @@ from space_map_data.export.objects.stars import (
     available_extrasolar_objects,
 )
 from space_map_data.export.quantities import UnitConverter
-from space_map_data.export.solar_planets import solar_planet_records
+from space_map_data.export.solar_planets import (
+    planet_discovery_years,
+    solar_planet_records,
+)
 from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.models.object.main import Object
 from space_map_data.models.object.sbdb import SBDB
@@ -457,6 +460,7 @@ def run_groups_tier(
             if PLANET_ID.match(body_id)
         }
         moon_discovery = build_moon_discovery(session)
+        planet_years = planet_discovery_years(session)
         solar_system_map = build_solar_system_map(
             session,
             names,
@@ -474,7 +478,7 @@ def run_groups_tier(
         names,
         SolarPlanets(
             category_data.notable_members.get(PLANETS_SLUG, []),
-            solar_planet_records(radii, body_masses, planet_elements),
+            solar_planet_records(radii, body_masses, planet_elements, planet_years),
         ),
     )
     planets_page = planet_families.planets
@@ -609,6 +613,10 @@ def run_groups_tier(
     extra_chart_names.setdefault(STARS_SLUG, {}).update(star_families.card_names)
     for slug, card_names in system_pages.card_names.items():
         extra_chart_names.setdefault(slug, {}).update(card_names)
+    for slug, listed in planet_families.listed_discoveries.items():
+        extra_chart_names.setdefault(slug, {}).update(
+            {object_id: names for object_id, _, names in listed}
+        )
 
     write_earth_membership(out_dir, build.membership)
     write_orbit_samples(out_dir, small_body_stats.orbit_samples)
@@ -668,6 +676,13 @@ def run_groups_tier(
         model_slugs=model_slugs,
         craft_models=craft_models,
         textured_ids=textured_ids,
+        extra_listed_discoveries={
+            slug: [
+                {"id": object_id, "name": names.name, "year": year}
+                for object_id, year, names in listed
+            ]
+            for slug, listed in planet_families.listed_discoveries.items()
+        },
     )
 
 

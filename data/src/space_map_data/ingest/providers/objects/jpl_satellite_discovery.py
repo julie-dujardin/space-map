@@ -53,7 +53,10 @@ class JPLSatelliteDiscoveryIngestor:
     def _clear(self) -> None:
         self.session.execute(
             update(Object)
-            .where(Object.discovery_year.is_not(None))
+            .where(
+                Object.object_type == ObjectType.moon,
+                Object.discovery_year.is_not(None),
+            )
             .values(discovery_year=None)
         )
         self.session.commit()

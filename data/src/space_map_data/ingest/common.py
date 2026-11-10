@@ -10,6 +10,7 @@ from space_map_data.ingest.checks import assert_no_namespace_collision
 from space_map_data.ingest.providers import (
     iau_nomenclature,
     image_selection,
+    planet_discovery,
     sitelinks,
     wikipedia,
 )
@@ -83,9 +84,9 @@ def ingest_features(download_dir: Path) -> None:
 
 
 def ingest_wikidata(download_dir: Path) -> None:
-    """Ingest Wikidata QIDs for objects and features, then sitelink counts.
-
-    Sitelinks run last so every Object's ``wikidata_qid`` is in place.
+    """Ingest Wikidata QIDs for objects and features, then what is read off
+    each Object's entity: sitelink counts and the planets' discovery years.
+    Those run last so every Object's ``wikidata_qid`` is in place.
     """
     objects.ingest(download_dir)
     objects_conflicts.ingest(download_dir)
@@ -95,6 +96,7 @@ def ingest_wikidata(download_dir: Path) -> None:
     comet_fragments.ingest(download_dir)
     nomenclature.ingest(download_dir)
     sitelinks.ingest()
+    planet_discovery.ingest()
 
 
 def ingest_images() -> None:

@@ -120,7 +120,12 @@ def _body(object_id: str, qid: str, name: str) -> NotableObject:
 # Earth and Jupiter, with test QIDs.
 SOLAR = planet_family.SolarPlanets(
     [_body("naif-399", "Q399", "Earth"), _body("naif-599", "Q599", "Jupiter")],
-    solar_planet_records(RADII, MASSES, ELEMENTS),
+    solar_planet_records(RADII, MASSES, ELEMENTS, {}),
+)
+# The same, and Uranus with its discovery year.
+SOLAR_WITH_URANUS = planet_family.SolarPlanets(
+    [*SOLAR.members, _body("naif-799", "Q799", "Uranus")],
+    solar_planet_records(RADII, MASSES, ELEMENTS, {"naif-799": 1781}),
 )
 # Sitelinks of the test items: the Solar System planets have the most.
 SITELINKS = {
@@ -359,12 +364,12 @@ class TestDiscoveryTimeline:
         out = tmp_path / "space-map-extrasolar"
         export_extrasolar(built.root, out, workers=1, cultures_dir=tmp_path / "none")
         found = planet_family.build_planet_family_groups(
-            ObjectNames(_entities({}), session), SOLAR, out
+            ObjectNames(_entities({}), session), SOLAR_WITH_URANUS, out
         )
         return built.ids, found
 
     def test_the_planets_page_counts_every_exoplanet(self, groups):
-        """The brown dwarf is no planet, and the Solar System has no year."""
+        """The brown dwarf is no planet, and Uranus stays out."""
         _, found = groups
         assert found.discovery_histograms["cat-planets"] == {
             1995: 1,
@@ -388,7 +393,7 @@ class TestDiscoveryTimeline:
         _, found = groups
         solar = Counter(
             slug
-            for p in planet_family._solar_planets(SOLAR)
+            for p in planet_family._solar_planets(SOLAR_WITH_URANUS)
             for slug in planet_family.PAGES.pages_of(p.families)
         )
         for slug, n in found.member_counts.items():
@@ -398,6 +403,20 @@ class TestDiscoveryTimeline:
     def test_the_first_planet_of_each_host(self, groups):
         ids, found = groups
         assert found.host_years == {ids[0]: 1995, ids[1]: 2000}
+
+    def test_uranus_is_listed_on_the_pages_that_count_it(self, groups):
+        _, found = groups
+        (uranus,) = (
+            p
+            for p in planet_family._solar_planets(SOLAR_WITH_URANUS)
+            if p.object_id == "naif-799"
+        )
+        pages = planet_family.PAGES.pages_of(uranus.families)
+        assert "cat-planets" in pages
+        assert set(found.listed_discoveries) == set(pages)
+        assert found.listed_discoveries["cat-planets"] == [
+            ("naif-799", 1781, Names("Uranus"))
+        ]
 
 
 class TestPlanetsPage:
@@ -630,6 +649,13 @@ class TestListEntry:
         found = planet_family._planet(record, "x-1-b-1", Names("b"), 1.0)
         assert found.first_obs is None
 
+    def test_a_solar_planet_entry_has_its_year(self):
+        record = self._record(discovery_year=1846)
+        body = _body("naif-899", "Q899", "Neptune")
+        found = planet_family._planet(record, "naif-899", body.names, 0.0, body=body)
+        assert found.body is not None
+        assert found.body.first_obs == "1846"
+
 
 class TestBundles:
     """A family page climbs to its parent family or to the Planets page, and
@@ -703,6 +729,9 @@ class TestBundles:
                 "cat-planets": ["planet-hot-jupiter"],
             },
             child_counts_by_group={"cat-solar-system": {"cat-planets": 1}},
+            extra_listed_discoveries={
+                "cat-planets": [{"id": "naif-799", "name": "Uranus", "year": 1781}]
+            },
         )
 
         index = json.loads((tmp_path / "groups" / "__index__.json").read_bytes())
@@ -731,6 +760,10 @@ class TestBundles:
         assert (planets["solar_member_count"], planets["exoplanet_count"]) == (1, 6)
         assert planets["moon_total"] == 3
         assert "parent_families" not in planets
+        assert planets["listed_discoveries"] == [
+            {"id": "naif-799", "name": "Uranus", "year": 1781}
+        ]
+        assert "listed_discoveries" not in page
 
         en = _read_all(tmp_path / "groups" / "en")
         assert en["cat-planets"]["exoplanets"] == {
