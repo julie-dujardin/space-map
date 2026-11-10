@@ -1309,7 +1309,7 @@ def _export(engine: Engine, names_session: Session, limit_per_zone: int) -> None
             session,
             out_dir,
             orientation,
-            radii,
+            body_radii,
             nut_prec,
             texture_layers,
             ring_metadata,

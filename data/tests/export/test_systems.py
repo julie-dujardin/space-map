@@ -6,7 +6,9 @@ from typing import Any, ClassVar
 
 import orjson
 import pytest
+from sqlalchemy.orm import Session
 
+from space_map_data.export.objects.body_radius import BodyRadii, literature_shapes
 from space_map_data.export.systems import (
     TextureLayers,
     _tiers_from_meta,
@@ -21,7 +23,9 @@ from space_map_data.export.systems import (
     specular_block,
     texture_attribution,
     tiles_block,
+    write_system_metadata,
 )
+from space_map_data.models.object import Object, ObjectType
 from tests.export.conftest import layers_of
 
 
@@ -705,3 +709,40 @@ class TestLoadOrientation:
         ]
         assert record["pole_ra_0"] == 10.0
         assert record["w1"] == 40.0
+
+
+class TestSystemRadii:
+    """A body's mesh takes the size that its panel shows."""
+
+    def test_kerberos_takes_the_paper_not_the_placeholder(
+        self, session: Session, tmp_path
+    ):
+        session.add_all(
+            [
+                Object(id="naif-0", naif_id=0, object_type=ObjectType.barycenter),
+                Object(
+                    id="naif-9",
+                    naif_id=9,
+                    object_type=ObjectType.barycenter,
+                    parent_id="naif-0",
+                ),
+                Object(
+                    id="naif-904",
+                    naif_id=904,
+                    object_type=ObjectType.moon,
+                    parent_id="naif-9",
+                ),
+            ]
+        )
+        session.flush()
+        write_system_metadata(
+            session,
+            tmp_path,
+            {},
+            BodyRadii(literature_shapes()),
+            {},
+            layers_of(),
+            {},
+        )
+        pluto = orjson.loads((tmp_path / "systems" / "naif-9.json").read_bytes())
+        assert pluto["naif-904"]["radii"] == {"a": 9.5, "b": 5.0, "c": 4.5}

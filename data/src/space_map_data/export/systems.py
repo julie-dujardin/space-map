@@ -10,7 +10,7 @@ from collections import Counter
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, fields
 from pathlib import Path
-from typing import ClassVar, NamedTuple
+from typing import TYPE_CHECKING, ClassVar, NamedTuple
 
 import orjson
 from sqlalchemy.orm import Session
@@ -26,14 +26,19 @@ from space_map_data.constants.orientation import (
 )
 from space_map_data.export.disk_photometry import lunar_weight_scale
 from space_map_data.export.in_place import patch_global_bundles, refresh_versions
+from space_map_data.export.quantities import UnitConverter
 from space_map_data.export.sidecar_io import mirror_path
 from space_map_data.export.small_body_color import (
     albedo_beyond_hex,
     resolve_major_body_color,
     resolve_small_body_color,
 )
+from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.models.object import Object, ObjectType
 from space_map_data.utils.paths import DOWNLOAD_DIR, EXPORT_DIR
+
+if TYPE_CHECKING:
+    from space_map_data.export.objects.body_radius import BodyRadii
 
 logger = logging.getLogger(__name__)
 
@@ -802,7 +807,7 @@ def write_system_metadata(
     session: Session,
     out_dir: Path,
     orientation: dict[int, dict],
-    radii: dict[int, dict],
+    body_radii: BodyRadii,
     nut_prec: dict[int, dict[str, list[float]]],
     layers: TextureLayers,
     ring_metadata: dict[str, list[dict]],
@@ -879,9 +884,10 @@ def write_system_metadata(
             if obj.naif_id is not None and obj.naif_id in nut_prec:
                 entry["nut_prec"] = nut_prec[obj.naif_id]
 
-            # km, along body-fixed X, Y, Z.
-            if obj.naif_id is not None and obj.naif_id in radii:
-                entry["radii"] = radii[obj.naif_id]
+            # km, along body-fixed X, Y, Z: the size that the panel shows, so
+            # the mesh is not a placeholder kernel's where a paper measured it.
+            if (size := body_radii.of(obj)) is not None:
+                entry["radii"] = size.axes()
 
             # As on the object. Here too, so that a body that is not in focus
             # draws its ground and its planetshine at the right brightness.
@@ -983,12 +989,23 @@ def export_systems_only(engine) -> None:
     """
     out_dir = EXPORT_DIR / "v1"
     layers = TextureLayers.load(out_dir)
+    # `body_mass` reads this module through the objects package.
+    from space_map_data.export.objects.body_radius import load_body_radii
+
+    radius_table = load_radii(DOWNLOAD_DIR)
+    entities = WikidataEntityCache()
     with Session(engine) as session:
         write_system_metadata(
             session,
             out_dir,
             load_orientation(DOWNLOAD_DIR),
-            load_radii(DOWNLOAD_DIR).radii,
+            load_body_radii(
+                session,
+                radius_table.radii,
+                radius_table.kernels,
+                entities,
+                UnitConverter(entities),
+            ),
             load_nut_prec(DOWNLOAD_DIR),
             layers,
             load_ring_metadata(out_dir),
