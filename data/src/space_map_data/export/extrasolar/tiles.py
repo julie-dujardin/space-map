@@ -666,6 +666,24 @@ def _read(
     )
 
 
+def _with_other_regions(
+    registry: Registry,
+    table: TableDef,
+    regions: tuple[int, ...],
+    rows: pa.Table,
+    wanted: np.ndarray,
+) -> pa.Table:
+    """`rows` and the rows of `table` with an ID of `wanted` that `rows` does
+    not have, read from the regions of those IDs outside `regions`."""
+    missing = np.setdiff1d(wanted, rows["id"].to_numpy())
+    others = set(region_of(missing & CELL_MASK).tolist()) - set(regions)
+    if not others:
+        return rows
+    read = _read(registry, table, tuple(sorted(others)), tuple(rows.column_names))
+    read = read.filter(pc.is_in(read["id"], value_set=pa.array(missing)))
+    return pa.concat_tables([rows, read])
+
+
 def led_point_rows(
     registry: Registry, regions: tuple[int, ...], system: pa.Table, points: pa.Table
 ) -> pa.Table:
@@ -680,12 +698,9 @@ def led_point_rows(
     wanted = radius.led_points(system)
     names = list(FAMILY_COLUMNS)
     found = points.select(names).filter(pc.is_in(points["id"], value_set=wanted))
-    missing = np.setdiff1d(wanted.to_numpy(), found["id"].to_numpy())
-    others = set(region_of(missing & CELL_MASK).tolist()) - set(regions)
-    if others:
-        rows = _read(registry, POINT_SOURCE, tuple(sorted(others)), FAMILY_COLUMNS)
-        rows = rows.filter(pc.is_in(rows["id"], value_set=pa.array(missing)))
-        found = pa.concat_tables([found, rows])
+    found = _with_other_regions(
+        registry, POINT_SOURCE, regions, found, wanted.to_numpy()
+    )
     if lost := len(wanted) - found.num_rows:
         logger.warning("held stars stand for %d points with no Point source row", lost)
     published, estimated = families.masks(found, pa.nulls(found.num_rows, pa.string()))
@@ -710,13 +725,9 @@ def led_point_ids(
     members = pc.list_flatten(points["members"])
     is_held = pc.equal(pc.struct_field(members, "kind"), HELD)
     held = pc.struct_field(members, "id").filter(is_held).drop_null().to_numpy()
-    missing = np.setdiff1d(held, system["id"].to_numpy())
-    others = set(region_of(missing & CELL_MASK).tolist()) - set(regions)
-    stars = system.select(list(HELD_COLUMNS))
-    if others:
-        rows = _read(registry, SYSTEM, tuple(sorted(others)), HELD_COLUMNS)
-        rows = rows.filter(pc.is_in(rows["id"], value_set=pa.array(missing)))
-        stars = pa.concat_tables([stars, rows])
+    stars = _with_other_regions(
+        registry, SYSTEM, regions, system.select(list(HELD_COLUMNS)), held
+    )
     return radius.led_points(stars).to_numpy()
 
 

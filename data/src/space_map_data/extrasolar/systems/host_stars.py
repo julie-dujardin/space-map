@@ -46,9 +46,6 @@ MASS_SHARE = 0.2
 TEFF_SHARE = 0.1
 # The WDS and the MSC often give a component magnitude to a few tenths only.
 BRIGHTER_BY = 0.5
-# G first: Gaia measures each star that it splits. A star's own V goes before
-# a V that can hold the light of the point.
-BANDS = ("g_mag", "own_v_mag", "v_mag")
 BAND_NAMES = {"g_mag": "G", "own_v_mag": "own V", "v_mag": "V"}
 # The MK marks of an uncertain type.
 UNCERTAIN = ("?", ":")
@@ -149,23 +146,28 @@ class Choice:
     reason: str | None = None
 
 
+def _v_band(members: Sequence[Member]) -> str:
+    """The V band that compares `members`. A plain V can hold the light of
+    the point, so the own V of each star replaces it when a member has one."""
+    return "own_v_mag" if any(m.own_v_mag is not None for m in members) else "v_mag"
+
+
 def dominates(members: Sequence[Member]) -> tuple[bool, str]:
     """Whether the first of a point's `members` dominates its light, and
-    the comparisons as text. When a member has its own V, V is the own V of
-    each star, as in `_band`, and it needs G or own V: a mass does not tell
-    then."""
+    the comparisons as text. V is the band of `_v_band`. When that is own V,
+    the members need G or own V, because a mass does not tell then."""
     main, *others = members
-    split = any(m.own_v_mag is not None for m in members)
+    v_band = _v_band(members)
 
     def light(member: Member) -> dict[str, float | None]:
-        v_mag = member.own_v_mag if split else member.v_mag
+        v_mag = getattr(member, v_band)
         return {"g_mag": member.g_mag, "v_mag": v_mag, "mass": member.mass}
 
     texts = []
     for other in others:
-        if split and not any(
+        if v_band == "own_v_mag" and not any(
             None not in (getattr(main, band), getattr(other, band))
-            for band in ("g_mag", "own_v_mag")
+            for band in ("g_mag", v_band)
         ):
             return False, "no G or own V that both have"
         bright, text = _outshines(light(main), light(other))
@@ -212,15 +214,13 @@ def _agreeing(host: Host, member: Member) -> list[str]:
 
 
 def _band(members: list[Member]) -> str | None:
-    """The first band of BANDS that each member has. A member with its own V
-    has a V that can hold the light of its point, so V does not count then."""
-    split = any(m.own_v_mag is not None for m in members)
+    """The first of G and the `_v_band` that each member has. Gaia measures
+    each star that it splits, so G goes first."""
     return next(
         (
             band
-            for band in BANDS
-            if not (band == "v_mag" and split)
-            and all(getattr(m, band) is not None for m in members)
+            for band in ("g_mag", _v_band(members))
+            if all(getattr(m, band) is not None for m in members)
         ),
         None,
     )

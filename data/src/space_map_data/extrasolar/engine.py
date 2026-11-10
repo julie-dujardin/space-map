@@ -2013,8 +2013,28 @@ class IngestRun:
             raise ValueError(
                 f"{name}: {slug} has no computed columns {set(columns) - computed}"
             )
-        ids = rows["id"].to_numpy()
-        regions = region_of(cell_of(ids))
+        self._rewrite(name, table, rows, columns)
+
+    def _clear(
+        self, name: str, slug: str, groups: tuple[str, ...], ids: np.ndarray
+    ) -> None:
+        """Null the column `groups` of a table of this ingest, with their
+        source columns, on the rows of `ids`."""
+        (table,) = [t for t in self.all_tables if t.slug == slug]
+        columns = [
+            column
+            for group in map(table.group, groups)
+            for column in (*group.names, group.source_column)
+        ]
+        self._rewrite(name, table, pa.table({"id": pa.array(ids, pa.int64())}), columns)
+
+    def _rewrite(
+        self, name: str, table: TableDef, rows: pa.Table, columns: list[str]
+    ) -> None:
+        """Set `columns` of the stored rows of `table` with an ID of `rows` to
+        their values in `rows`, region by region. A column that `rows` does
+        not have becomes null."""
+        regions = region_of(cell_of(rows["id"].to_numpy()))
         missing = 0
         for region in np.unique(regions).tolist():
             here = rows.filter(pa.array(regions == region))
@@ -2029,46 +2049,22 @@ class IngestRun:
             found = at.is_valid()
             missing += here.num_rows - int(pc.sum(found).as_py() or 0)
             for column in columns:
-                values = here[column].combine_chunks().take(at)
-                kept = pc.if_else(found, values, stored[column].combine_chunks())
+                old = stored[column].combine_chunks()
+                new = (
+                    here[column].combine_chunks().take(at)
+                    if column in here.column_names
+                    else pa.nulls(len(old), old.type)
+                )
                 stored = stored.set_column(
-                    stored.schema.get_field_index(column), column, kept
+                    stored.schema.get_field_index(column),
+                    column,
+                    pc.if_else(found, new, old),
                 )
             write_parquet(stored.cast(table.schema), path, sync=True)
         if missing:
-            logger.warning("%s: %d rows of %s have no ID in it", name, missing, slug)
-
-    def _clear(
-        self, name: str, slug: str, groups: tuple[str, ...], ids: np.ndarray
-    ) -> None:
-        """Null the column `groups` of a table of this ingest, with their
-        source columns, on the rows of `ids`."""
-        (table,) = [t for t in self.all_tables if t.slug == slug]
-        columns = [
-            column
-            for group in map(table.group, groups)
-            for column in (*group.names, group.source_column)
-        ]
-        regions = region_of(cell_of(ids))
-        missing = 0
-        for region in np.unique(regions).tolist():
-            here = pa.array(ids[regions == region], pa.int64())
-            path = region_file(self._table_dir(table), region)
-            if not path.exists():
-                missing += len(here)
-                continue
-            stored = pq.read_table(path)
-            hit = pc.is_in(stored["id"], value_set=here)
-            missing += len(here) - int(pc.sum(hit).as_py() or 0)
-            for column in columns:
-                values = stored[column].combine_chunks()
-                kept = pc.if_else(hit, pa.nulls(len(values), values.type), values)
-                stored = stored.set_column(
-                    stored.schema.get_field_index(column), column, kept
-                )
-            write_parquet(stored.cast(table.schema), path, sync=True)
-        if missing:
-            logger.warning("%s: %d rows of %s have no ID in it", name, missing, slug)
+            logger.warning(
+                "%s: %d rows of %s have no ID in it", name, missing, table.slug
+            )
 
     def _join(
         self,

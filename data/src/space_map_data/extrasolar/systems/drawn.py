@@ -449,6 +449,16 @@ class Drawer:
         # The periods of the records of each pair of a host and its brown dwarf.
         self.record_periods: dict[int, list[float]] = {}
         self.point_node = self._host_pairs() | self.point_node
+        # The node of each point, by its key.
+        self.node_of = {
+            key: number
+            for key, number in zip(
+                systems.nodes["key"].to_pylist(),
+                systems.nodes["node"].to_pylist(),
+                strict=True,
+            )
+            if key
+        }
         # The points of three stars with their outer pair, and the letters of
         # the side that their second member stands for.
         self.outer: set[int] = set()
@@ -1002,7 +1012,7 @@ class Drawer:
             self.counts[f"pairs drawn, mass ratio from {' '.join(ratio_from)}"] += 1
             if ratio_from == (MSC, MASSES):
                 self.counts[f"pairs drawn, MSC mass codes {pair.msc_codes}"] += 1
-        start = int(np.searchsorted(self.member_node, number))
+        start = self._member_rows(number).start
         return {
             "number": number,
             "first": pair.first - start,
@@ -1100,10 +1110,15 @@ class Drawer:
     def _compared(self, number: int, gaia: dict[int, float]) -> list[host_stars.Member]:
         """The members of node `number` as `host_stars` compares them."""
         if number not in self.compared:
-            start = int(np.searchsorted(self.member_node, number))
-            end = int(np.searchsorted(self.member_node, number, "right"))
-            self.compared[number] = [self._member(r, gaia) for r in range(start, end)]
+            self.compared[number] = [
+                self._member(r, gaia) for r in self._member_rows(number)
+            ]
         return self.compared[number]
+
+    def _member_rows(self, number: int) -> range:
+        """The member rows of node `number`."""
+        start = int(np.searchsorted(self.member_node, number))
+        return range(start, int(np.searchsorted(self.member_node, number, "right")))
 
     def _keys_of(
         self, ids: Iterable[frozenset[tuple[str, str, str]]]
@@ -1130,21 +1145,13 @@ class Drawer:
         planets = self.inputs.planets
         if planets is None:
             return
-        nodes = self.systems.nodes
-        node_of = {
-            key: number
-            for key, number in zip(
-                nodes["key"].to_pylist(), nodes["node"].to_pylist(), strict=True
-            )
-            if key
-        }
         gaia = self._gaia_masses()
         chosen: list[tuple[int, dict, str, int, tuple, host_stars.Choice]] = []
         columns = ["host", "designation", "binary_type", *HOST_COLUMNS]
         rows = planets.select(columns).to_pylist()
-        key_of = self._keys_of(_host_ids(p) for p in rows if p["host"] in node_of)
+        key_of = self._keys_of(_host_ids(p) for p in rows if p["host"] in self.node_of)
         for record, planet in enumerate(rows):
-            number = node_of.get(planet["host"])
+            number = self.node_of.get(planet["host"])
             if number is None:
                 continue
             name = planet["designation"]
@@ -1206,33 +1213,23 @@ class Drawer:
         planets = self.inputs.planets
         if planets is None:
             return
-        node_of = {
-            key: number
-            for key, number in zip(
-                self.systems.nodes["key"].to_pylist(),
-                self.systems.nodes["node"].to_pylist(),
-                strict=True,
-            )
-            if key
-        }
         columns = ["host", "host_ids", "class", "mass", "discovery_method", "star_ids"]
         rows = planets.select(columns).to_pylist()
         star_ids = [_ids_of(row["star_ids"]) for row in rows]
         key_of = self._keys_of(
-            ids for ids, row in zip(star_ids, rows) if row["host"] in node_of
+            ids for ids, row in zip(star_ids, rows) if row["host"] in self.node_of
         )
         for record, (row, ids) in enumerate(zip(rows, star_ids)):
-            number = node_of.get(row["host"])
+            number = self.node_of.get(row["host"])
             if number is None or not ids:
                 continue
             if {key_of[i] for i in ids} - {0, row["host"]}:
                 continue
-            start = int(np.searchsorted(self.member_node, number))
-            end = int(np.searchsorted(self.member_node, number, "right"))
-            part = self.systems.members.slice(start, end - start)
+            member_rows = self._member_rows(number)
+            part = self.systems.members.slice(member_rows.start, len(member_rows))
             host_ids = _ids_of(row["host_ids"])
             found = [
-                start + at
+                member_rows[at]
                 for at, (kind, member_ids) in enumerate(
                     zip(part["kind"].to_pylist(), part["ids"].to_pylist())
                 )
@@ -1333,7 +1330,7 @@ class Drawer:
             number = entry["node"]
             dominant = (
                 number in self.points
-                and row == int(np.searchsorted(self.member_node, number))
+                and row == self._member_rows(number).start
                 and host_stars.dominates(self._compared(number, gaia))[0]
             )
             out["dominant"].append(dominant)
