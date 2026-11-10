@@ -2,7 +2,7 @@ import { PMREMGenerator, type PointLight, type Texture, type WebGLRenderer } fro
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { SUN_TEFF } from '$lib/constants';
 import { AU_SCALE } from '$lib/math/units';
-import { photosphereColour } from '$lib/scene/starfield/colour';
+import { starLightColour } from '$lib/scene/starfield/colour';
 
 /** Ambient fill so no surface is pure black. Shared by the main and model scenes. */
 export const AMBIENT_INTENSITY = 0.01;
@@ -11,13 +11,8 @@ export const AMBIENT_INTENSITY = 0.01;
  *  model-overlay light) so a body reads the same brightness as sphere, DEM, or mesh. */
 export const SUN_LIGHT_INTENSITY = 3.5;
 
-/** Linear sRGB of sunlight: the photosphere colour other stars light with,
- *  at unit luminance so SUN_LIGHT_INTENSITY keeps its calibration. */
-export const SUN_LIGHT_COLOUR: readonly [number, number, number] = (() => {
-	const [r, g, b] = photosphereColour(SUN_TEFF, null);
-	const y = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-	return [r / y, g / y, b / y];
-})();
+/** Linear sRGB of sunlight. */
+export const SUN_LIGHT_COLOUR: readonly [number, number, number] = starLightColour(SUN_TEFF, null);
 
 /** Luma over which the bloom takes a pixel: only HDR over-bright pixels (the Sun) bloom. */
 export const BLOOM_THRESHOLD = 1;

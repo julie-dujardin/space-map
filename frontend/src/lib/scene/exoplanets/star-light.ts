@@ -5,15 +5,14 @@
  * keeps the light count of every shader, so no program compiles again.
  */
 
-import { Color, PointLight } from 'three';
+import { PointLight } from 'three';
 import { SUN_ID } from '$lib/constants';
-import { photosphereColour } from '$lib/scene/starfield/colour';
+import { SUN_LIGHT_COLOUR } from '$lib/scene/lighting';
+import { starLightColour } from '$lib/scene/starfield/colour';
 import type { BodyObjects } from '$lib/scene/types';
 
 export class StarLight {
 	private light: PointLight | undefined;
-	/** The Sun's own colour, put back when the light returns to it. */
-	private readonly sunColour = new Color();
 	/** The body whose root holds the light. */
 	starId = SUN_ID;
 
@@ -23,10 +22,7 @@ export class StarLight {
 	 */
 	seat(bodyObjects: Map<string, BodyObjects>, starId: string): PointLight | undefined {
 		const sun = bodyObjects.get(SUN_ID);
-		if (!this.light) {
-			this.light = sun?.root.children.find((o): o is PointLight => o instanceof PointLight);
-			if (this.light) this.sunColour.copy(this.light.color);
-		}
+		this.light ??= sun?.root.children.find((o): o is PointLight => o instanceof PointLight);
 		if (!this.light || !sun) return undefined;
 		const star = bodyObjects.get(starId);
 		const holder = star?.body.position ? star : sun;
@@ -34,9 +30,9 @@ export class StarLight {
 		holder.root.add(this.light);
 		this.starId = holder.body.data.id;
 		const anchor = holder.body.extrasolar;
-		// The colour the starfield draws the star's photosphere in.
-		if (anchor) this.light.color.setRGB(...photosphereColour(anchor.teff, anchor.colour));
-		else this.light.color.copy(this.sunColour);
+		this.light.color.setRGB(
+			...(anchor ? starLightColour(anchor.teff, anchor.colour) : SUN_LIGHT_COLOUR)
+		);
 		return this.light;
 	}
 }

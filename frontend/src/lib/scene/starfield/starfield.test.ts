@@ -785,10 +785,7 @@ describe('the starfield walk', () => {
 		>;
 		const point = system.exactGroup.children.find((c) => c.userData.exactStar === 7) as Points;
 		expect(surface.geometry.parameters.radius * PC_SCENE).toBeCloseTo(kmToScene(radiusKm), 12);
-		expect(surface.material.uniforms.uCentreColor.value.toArray()).toEqual(
-			photosphereColour(3000, -0.12)
-		);
-		expect(surface.material.uniforms.uLimbColor.value.toArray()).toEqual(
+		expect(surface.material.uniforms.uColor.value.toArray()).toEqual(
 			photosphereColour(3000, -0.12)
 		);
 		const projection = (camera.projectionMatrix.elements[5] * 900) / 2;

@@ -3,7 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { SUN_ID } from '$lib/constants';
 import type { BodyObjects } from '$lib/scene/types';
 import { ObjectType, type PositionedBody } from '$lib/types/objects';
-import { photosphereColour } from '$lib/scene/starfield/colour';
+import { SUN_LIGHT_COLOUR } from '$lib/scene/lighting';
+import { starLightColour } from '$lib/scene/starfield/colour';
 import { StarLight } from './star-light';
 
 /** The scene's one light sits on the star of the drawn planets, in its colour. */
@@ -30,11 +31,11 @@ describe('StarLight', () => {
 		expect(seat.seat(objects, 'x-1')).toBe(light);
 		expect(light.parent).toBe(star.root);
 		expect(seat.starId).toBe('x-1');
-		expect(light.color.toArray()).toEqual(photosphereColour(2566, null));
+		expect(light.color.toArray()).toEqual(starLightColour(2566, null));
 		expect(light.color.b).toBeLessThan(0.5);
 		seat.seat(objects, SUN_ID);
 		expect(light.parent).toBe(sun.root);
-		expect(light.color.getHex()).toBe(0xffffff);
+		expect(light.color.toArray()).toEqual([...SUN_LIGHT_COLOUR]);
 	});
 
 	it('keeps the light on the Sun while the star has no body', () => {

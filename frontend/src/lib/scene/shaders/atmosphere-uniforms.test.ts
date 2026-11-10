@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { BackSide, FrontSide, Group, type Material, Vector3 } from 'three';
+import { BackSide, Color, FrontSide, Group, type Material, Vector3 } from 'three';
 
 import { updateAtmosphereShaders } from './atmosphere-uniforms';
 import { SUN_ID } from '$lib/constants';
@@ -56,7 +56,7 @@ function scene(): {
 	const sun = {
 		body: { position: [0, 0, 500], data: { id: SUN_ID } },
 		root: new Group(),
-		mesh: { material: makeStarSurfaceMaterial() }
+		mesh: { material: makeStarSurfaceMaterial(new Color()) }
 	} as unknown as BodyObjects;
 	return {
 		bodyObjects: new Map([

@@ -16,7 +16,7 @@ import {
 } from 'three';
 import { SUN_LIGHT_COLOUR, SUN_LIGHT_INTENSITY } from '$lib/scene/lighting';
 import { dustBounds } from '$lib/scene/dust/extinction';
-import { starColours } from '../starfield/colour';
+import { SUN_BP_RP, starColours } from '../starfield/colour';
 import { makeStarMaterial, starUniforms } from '../starfield/material';
 import { POINT_CLOUD_RENDER_ORDER } from './pointcloud';
 import {
@@ -29,9 +29,8 @@ export const SUN_HDR_MULTIPLIER = 6;
 /** Smaller discs have too few stable HDR samples. */
 const STAR_DISC_MIN_RADIUS_PX = 2;
 const STAR_DISC_FULL_RADIUS_PX = 6;
-/** Solar approximation in the catalogue's Gaia bands. */
+/** The Sun's absolute magnitude in Gaia G. */
 const SUN_ABS_G = 4.68;
-const SUN_BP_RP = 0.823;
 const CORONA_OPACITY = 0.6;
 
 /** Bundle of scene objects the Sun contributes beyond the photosphere sphere. */
@@ -71,27 +70,14 @@ function withAlpha(rgbColor: string, alpha: number): string {
 	return rgbColor.replace(')', `, ${alpha})`).replace('rgb(', 'rgba(');
 }
 
-/** Keeps the photosphere warm white under HDR and tone mapping. */
-const PHOTOSPHERE_CENTRE_COLOR = '#fff5eb';
-
-/**
- * Limb tint: ≈4700 K blackbody-to-sRGB, the cooler upper photosphere sampled
- * at grazing angles. Confined to a thin rim by the fragment shader's
- * `smoothstep` — a linear mix on μ would warm most of the disc, since μ
- * stays high until it collapses near the silhouette.
- */
-const PHOTOSPHERE_LIMB_COLOR = '#ffd9a8';
-
-/** Other stars use neutral limb darkening; the Sun retains its calibrated tint. */
-export function makeStarSurfaceMaterial(colour?: Color): ShaderMaterial {
-	const centre = colour ?? new Color(PHOTOSPHERE_CENTRE_COLOR);
-	const limb = colour ?? new Color(PHOTOSPHERE_LIMB_COLOR);
+/** A star's photosphere in `colour`. The limb reddens only where its
+ *  limb-darkening exponents differ per channel, as the Sun's exported ones do. */
+export function makeStarSurfaceMaterial(colour: Color): ShaderMaterial {
 	return new ShaderMaterial({
 		uniforms: {
 			uFade: { value: 1 },
 			uGain: { value: 1 },
-			uCentreColor: { value: new Vector3(centre.r, centre.g, centre.b) },
-			uLimbColor: { value: new Vector3(limb.r, limb.g, limb.b) },
+			uColor: { value: new Vector3(colour.r, colour.g, colour.b) },
 			uLimbAlpha: { value: new Vector3(0.5, 0.5, 0.5) },
 			// Per-fragment atmospheric chroma, aimed at a nearby shell each frame by
 			// updateAtmosphereShaders — a single colour can't work since the disc
@@ -118,8 +104,7 @@ export function makeStarSurfaceMaterial(colour?: Color): ShaderMaterial {
 			#include <logdepthbuf_pars_fragment>
 			uniform float uFade;
 			uniform float uGain;
-			uniform vec3 uCentreColor;
-			uniform vec3 uLimbColor;
+			uniform vec3 uColor;
 			uniform vec3 uLimbAlpha;
 			varying vec3 vNormalView;
 			varying vec3 vViewDir;
@@ -130,13 +115,9 @@ export function makeStarSurfaceMaterial(colour?: Color): ShaderMaterial {
 				float mu = max(dot(normalize(vNormalView), normalize(vViewDir)), 0.0);
 				// Hestroffer & Magnan power law, per channel — steeper blue exponent warms the rim.
 				vec3 darkening = pow(vec3(max(mu, 1e-4)), uLimbAlpha);
-				// Confine warmth to a thin rim: mu stays high across most of the disc
-				// and only collapses near the silhouette, so a linear mix would warm too much.
-				float warm = 1.0 - smoothstep(0.0, 0.35, mu);
-				vec3 tint = mix(uCentreColor, uLimbColor, warm);
 				// HDR over-bright: anything past 1.0 blooms and tone-maps via ACES,
 				// saturating the centre to white with bleeding light, like a camera on the Sun.
-				vec3 hdr = tint * darkening * ${SUN_HDR_MULTIPLIER.toFixed(1)} * uGain;
+				vec3 hdr = uColor * darkening * ${SUN_HDR_MULTIPLIER.toFixed(1)} * uGain;
 				gl_FragColor = vec4(atmoViewTint(vWorldPos) * hdr, uFade);
 			}
 		`

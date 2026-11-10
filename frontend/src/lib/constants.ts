@@ -1,6 +1,6 @@
 /** Colors keyed by prefixed body ID */
 export const BODY_COLORS: Record<string, string> = {
-	'naif-10': '#ffdd44', // Sun: thematic tint for the halo and corona.
+	'naif-10': '#ffdd44', // Sun: its UI colour, for its label halo; the scene draws its true colour.
 	'naif-199': '#b5b5b5', // Mercury
 	'naif-299': '#e8cda0', // Venus
 	'naif-399': '#4da6ff', // Earth

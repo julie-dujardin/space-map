@@ -1,6 +1,14 @@
-import { Group, type Material, Mesh, MeshStandardMaterial, Scene, SphereGeometry } from 'three';
+import {
+	Color,
+	Group,
+	type Material,
+	Mesh,
+	MeshStandardMaterial,
+	Scene,
+	SphereGeometry
+} from 'three';
 import { resolveBodyColor } from '$lib/body-color';
-import { MINOR_PROMOTED_IDS } from '$lib/constants';
+import { MINOR_PROMOTED_IDS, SUN_TEFF } from '$lib/constants';
 import { kmToScene } from '$lib/math/units';
 import {
 	ObjectType,
@@ -15,6 +23,7 @@ import { createLabel, getLabelVariant, hasLargeLabel } from '../../label/factory
 import { host } from '$lib/host';
 import { attachCanvasForwarders } from '../../label/forward';
 import { buildStarExtras, makeStarSurfaceMaterial, type StarExtras } from '../sun';
+import { photosphereColour, starCssColour } from '../../starfield/colour';
 import { getAtmosphereParams } from '$lib/fetch/atmospheres';
 import { buildAtmosphereNode, type AtmosphereNode } from '../surface/atmosphere';
 import { attachEclipseShadowToBody, type EclipseSelfUniforms } from '../surface/eclipse-shadow';
@@ -104,13 +113,13 @@ export function buildMajorBodies(
 		let atmosphere: AtmosphereNode | null = null;
 		let sunTint: SunTransmittanceUniforms[] | undefined;
 		if (!isVirtual && !noPhysical) {
-			if (isStar) starExtras = buildStarExtras(root, radius, color);
+			// The label keeps the Sun's UI colour; the corona and disc take its true one.
+			if (isStar) starExtras = buildStarExtras(root, radius, starCssColour(SUN_TEFF, null));
 
 			const segments = isStar ? STAR_SPHERE_SEGMENTS : BODY_SPHERE_SEGMENTS;
 			const geometry = new SphereGeometry(radius, segments, segments);
-			// `color` (per type) stays for star glow and halos, so the UI reads by type.
 			const material = isStar
-				? makeStarSurfaceMaterial()
+				? makeStarSurfaceMaterial(new Color(...photosphereColour(SUN_TEFF, null)))
 				: new MeshStandardMaterial({ color: untexturedSurfaceColour(body.data) });
 			mesh = new Mesh(geometry, material);
 			// Model-bearing types use the model overlay — hide the sphere so it can't flash.

@@ -11,6 +11,8 @@
  * Giants and reddened stars get the temperature of a dwarf of their colour.
  */
 
+import { SUN_TEFF } from '$lib/constants';
+
 /** (BP−RP, Teff in K), B9V to M8.5V. M9V and M9.5V are left out: their
  *  colours are bluer than M8.5V's, and the relation must be monotonic. */
 const BP_RP_TEFF: readonly (readonly [number, number])[] = [
@@ -156,6 +158,17 @@ export function photosphereColour(
 	return [1, 1, 1];
 }
 
+/** A star's light: its photosphere colour at unit luminance, so the light's
+ *  intensity alone sets how bright it lights. */
+export function starLightColour(
+	teff: number | null,
+	bpRp: number | null
+): [number, number, number] {
+	const [r, g, b] = photosphereColour(teff, bpRp);
+	const y = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+	return [r / y, g / y, b / y];
+}
+
 /** The CSS colour of a star's orbit line and halo. */
 export function starCssColour(teff: number | null, bpRp: number | null): string {
 	const [r, g, b] = photosphereColour(teff, bpRp).map((c) =>
@@ -202,3 +215,6 @@ export function starColours(bpRp: Float32Array, out: Uint8Array): Uint8Array {
 	}
 	return out;
 }
+
+/** The Sun's BP−RP as a held star takes it: from its Teff. */
+export const SUN_BP_RP = bpRpFromTeff(SUN_TEFF);
