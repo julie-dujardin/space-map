@@ -2104,3 +2104,162 @@ class TestRecordStars:
         found = self.draw({"class": "planet", "mass": 10.0, "host_ids": _ids(self.OID)})
         assert found.stars == {}
         assert found.held["member"].to_pylist() == [0, 1]
+
+
+# A brown dwarf of point 30, imaged at 100 au.
+IMAGED_RECORD = {
+    "host": 30,
+    "class": "brown dwarf",
+    "discovery_method": "Imaging",
+    "semi_major_axis": 100.0,
+}
+
+
+class TestRecordsBySeparation:
+    """An imaged record that no entry carries by id is the one entry of its
+    host whose separation agrees with its semi-major axis over the distance,
+    unless the entry is plainly a star or another record matches it too."""
+
+    def point(self, *entries: dict) -> Systems:
+        """Point 30 at 50 pc holds A and `entries`."""
+        return _systems(
+            [
+                {
+                    "node": 1,
+                    "key": 30,
+                    "point": True,
+                    "ra": 1.0,
+                    "dec": 2.0,
+                    "distance": 50.0,
+                }
+            ],
+            [
+                _entry(source="msc", letter="A", label="A", v_mag=5.0, mass=1.0),
+                *entries,
+            ],
+        )
+
+    def draw(self, systems: Systems, **record: object) -> drawn.Drawn:
+        inputs = Inputs(planets=host_planets(IMAGED_RECORD | record))
+        return drawn.draw(systems, inputs, FakeResolver({}, []))
+
+    def test_the_entry_at_its_separation(self):
+        found = self.draw(self.point(_entry(source="wds", letter="B", separation=2.1)))
+        assert found.stars == {0: 1}
+        assert found.counts["planet records that match an entry by separation"] == 1
+
+    def test_an_entry_at_another_separation(self):
+        found = self.draw(self.point(_entry(source="wds", letter="B", separation=3.0)))
+        assert found.stars == {}
+
+    def test_a_record_that_was_not_seen(self):
+        found = self.draw(
+            self.point(_entry(source="wds", letter="B", separation=2.0)),
+            discovery_method="Radial Velocity",
+        )
+        assert found.stars == {}
+
+    def test_a_record_with_no_method(self):
+        found = self.draw(
+            self.point(_entry(source="wds", letter="B", separation=2.0)),
+            discovery_method=None,
+        )
+        assert found.stars == {}
+
+    def test_an_entry_of_a_star_type(self):
+        entry = _entry(source="wds", letter="B", separation=2.0, spectral_type="M2V")
+        assert self.draw(self.point(entry)).stars == {}
+
+    def test_an_entry_that_planets_orbit(self):
+        drawer = drawn.Drawer(
+            self.point(_entry(source="wds", letter="B", separation=2.0)),
+            Inputs(planets=host_planets(IMAGED_RECORD)),
+            FakeResolver({}, []),
+        )
+        drawer.planet_hosts = {1: 1}
+        drawer.match_records()
+        assert drawer.record_entries == {}
+
+    def test_an_entry_that_two_records_match(self):
+        """Both stay as they are."""
+        planets = host_planets(
+            IMAGED_RECORD, IMAGED_RECORD | {"semi_major_axis": 110.0}
+        )
+        found = drawn.draw(
+            self.point(_entry(source="wds", letter="B", separation=2.0)),
+            Inputs(planets=planets),
+            FakeResolver({}, []),
+        )
+        assert found.stars == {}
+        key = "planet records whose entry another record matches"
+        assert found.counts[key] == 2
+
+    def test_two_entries_at_its_separation(self):
+        found = self.draw(
+            self.point(
+                _entry(source="wds", letter="B", separation=2.0),
+                _entry(source="wds", letter="C", separation=1.9),
+            )
+        )
+        assert found.stars == {}
+        key = "planet records that several entries match by separation"
+        assert found.counts[key] == 1
+
+    def test_an_entry_of_a_pair_that_its_host_leads(self):
+        """The host is a star of its own, first in a pair with a catalogue
+        star."""
+        systems = _systems(
+            [{"node": 1, "key": 0, "ra": 1.0, "dec": 2.0, "distance": 50.0}],
+            [
+                {"node": 1, "kind": assemble.STAR, "key": 30, "letter": "A"},
+                _entry(source="wds", letter="B", separation=2.0),
+            ],
+        )
+        assert self.draw(systems).stars == {0: 1}
+
+    def test_an_entry_of_a_pair_that_its_point_leads(self):
+        """The host's point holds two stars and comes first in a pair with a
+        catalogue star."""
+        node = {"ra": 1.0, "dec": 2.0, "distance": 50.0}
+        systems = _systems(
+            [
+                {"node": 1, "key": 0} | node,
+                {"node": 2, "key": 30, "point": True, "parent": 1, "root": 1} | node,
+            ],
+            [
+                {"node": 1, "kind": assemble.SYSTEM, "member": 2},
+                _entry(source="wds", letter="B", separation=2.0),
+                _entry(node=2, source="msc", letter="Aa", label="Aa"),
+                _entry(node=2, source="msc", letter="Ab", label="Ab"),
+            ],
+        )
+        assert self.draw(systems).stars == {0: 1}
+
+    def alpha_cen_record(self, orbits: pa.Table, class_: str) -> drawn.Drawn:
+        """α Cen AB, with B a catalogue star at 8″ that a record of A is."""
+        systems = alpha_cen()
+        members = systems.members.to_pylist()
+        members[1] |= {"kind": assemble.ENTRY, "key": None, "separation": 8.0}
+        systems.members = pa.Table.from_pylist(members, schema=assemble.MEMBERS)
+        planet = {
+            "host": 11,
+            "class": class_,
+            "mass": 5.0 if class_ == "planet" else 50.0,
+            "discovery_method": "Imaging",
+            "semi_major_axis": 8.0 * ALPHA_CEN_DISTANCE,
+        }
+        inputs = Inputs(planets=host_planets(planet), catalogue_orbits=orbits)
+        return drawn.draw(systems, inputs, FakeResolver({}, []))
+
+    def test_a_planet_takes_its_pair_off(self, alpha_cen_orbits):
+        """Its own orbit draws it, so B stays an entry."""
+        found = self.alpha_cen_record(alpha_cen_orbits, "planet")
+        assert found.orbits.num_rows == 0
+        assert found.stars == {} and found.held.num_rows == 0
+        assert found.counts["pairs not drawn: a member is a planet record"] == 1
+
+    def test_a_brown_dwarf_is_its_held_star_on_the_pair(self, alpha_cen_orbits):
+        found = self.alpha_cen_record(alpha_cen_orbits, "brown dwarf")
+        assert found.orbits["number"].to_pylist() == [1]
+        assert found.stars == {0: 1}
+        assert found.counts["pairs not drawn: a member is a planet record"] == 0

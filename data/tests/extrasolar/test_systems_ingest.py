@@ -247,6 +247,7 @@ def ingest(
                 "class": ["planet"],
                 "mass": [1.0],
                 "period": [400.0],
+                "semi_major_axis": [None],
                 "discovery_method": [None],
                 "binary_type": [P_TYPE],
                 "star_ids": [None],

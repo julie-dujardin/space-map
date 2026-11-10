@@ -472,7 +472,7 @@ def registry_planets(
         if (at := stars.of.get((catalogue.name, planet.star or ""))) is not None
     }
     columns = ["host", "number", "designation", "class", "mass", "period"]
-    columns += ["discovery_method"]
+    columns += ["semi_major_axis", "discovery_method"]
     columns += ["binary_type", "cross_ids"]
     tables = [
         table

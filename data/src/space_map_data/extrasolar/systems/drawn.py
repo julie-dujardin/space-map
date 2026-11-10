@@ -21,7 +21,10 @@ the other member has A or B.
 A planet record whose star is an entry of its host's point, with no point
 of its own, is drawn once (`match_records`): as that held star when it is
 drawn as its star (`drawn_as_star`), else as a planet, and the entry stays
-an entry.
+an entry and its pair is not drawn. The double-star catalogues list many
+imaged companions with no id that the planet catalogues share, so an imaged
+record with no such id is the one entry of its host whose separation agrees
+with its own, when that entry is not plainly a star.
 
 The catalogues do not share letters, so a letter stays with one member of a
 system, an entry too: a star before a node, then the earlier tree source
@@ -95,12 +98,12 @@ import pyarrow.compute as pc
 
 from space_map_data.extrasolar import frame
 from space_map_data.extrasolar.exoplanets.catalogues import OEC, P_TYPE, larger_error
-from space_map_data.extrasolar.exoplanets.iau import drawn_as_star
+from space_map_data.extrasolar.exoplanets.iau import SEEN_BY, drawn_as_star
 from space_map_data.extrasolar.exoplanets.table import default_node
 from space_map_data.extrasolar.sources.gaia_orbits import ASTROMETRIC
 from space_map_data.extrasolar.sources.simbad import star_name
 from space_map_data.extrasolar.systems import host_stars
-from space_map_data.extrasolar.systems.assemble import ENTRY, SYSTEM, Systems
+from space_map_data.extrasolar.systems.assemble import ENTRY, STAR, SYSTEM, Systems
 from space_map_data.extrasolar.systems.elements import (
     Elements,
     catalogue_elements,
@@ -184,6 +187,12 @@ PAIR_NAME = re.compile(r"(?:\s|\()\(?[A-D]{2,}\)?\s?[b-z]?$")
 # The ids of an SBX system that name a point.
 SBX_KEYS = (GAIA_DR3, HIP, HD)
 JULIAN_YEAR = 365.25
+# How far an entry's separation and an imaged record's semi-major axis over
+# the distance can differ and still be one companion: a separation is
+# projected.
+SEPARATION_RATIO = 1.25
+# The spectral types of a star, not a brown dwarf: O to M6, and white dwarfs.
+STELLAR_TYPE = re.compile(r"^(?:[OBAFGK]|M[0-6](?!\d)|D[ABCOQZ])")
 
 PAIR_ORBITS = pa.schema(
     [
@@ -1208,41 +1217,165 @@ class Drawer:
         """The entry that a planet record is, when its star is no point of
         its own: none of the record's star ids reaches another point, and one
         member of its host's point carries one of them and no id of the
-        host. Such a record and its entry are one object, drawn once
-        (`held`)."""
+        host. With no member that carries one, an imaged record is the one
+        entry of its host's point or of a node that its host leads whose
+        separation agrees with its own (`_at_separation`), unless another
+        record matches that entry too. Such a record and its entry are one
+        object, drawn once (`held`)."""
         planets = self.inputs.planets
         if planets is None:
             return
-        columns = ["host", "host_ids", "class", "mass", "discovery_method", "star_ids"]
+        led = self._led_nodes()
+        # Only these hosts have entries to match.
+        searched = self.node_of.keys() | led.keys()
+        columns = ["host", "host_ids", "class", "mass", "discovery_method"]
+        columns += ["star_ids", "semi_major_axis"]
         rows = planets.select(columns).to_pylist()
         star_ids = [_ids_of(row["star_ids"]) for row in rows]
         key_of = self._keys_of(
-            ids for ids, row in zip(star_ids, rows) if row["host"] in self.node_of
+            ids for ids, row in zip(star_ids, rows) if row["host"] in searched
         )
+        by_separation: defaultdict[int, list[int]] = defaultdict(list)
         for record, (row, ids) in enumerate(zip(rows, star_ids)):
-            number = self.node_of.get(row["host"])
-            if number is None or not ids:
+            host = row["host"]
+            if host not in searched or {key_of[i] for i in ids} - {0, host}:
                 continue
-            if {key_of[i] for i in ids} - {0, row["host"]}:
-                continue
-            member_rows = self._member_rows(number)
-            part = self.systems.members.slice(member_rows.start, len(member_rows))
             host_ids = _ids_of(row["host_ids"])
-            found = [
-                member_rows[at]
-                for at, (kind, member_ids) in enumerate(
-                    zip(part["kind"].to_pylist(), part["ids"].to_pylist())
+            number = self.node_of.get(host)
+            found = [] if number is None else self._carried(number, ids, host_ids)
+            if len(found) > 1:
+                self.counts["planet records that several entries carry"] += 1
+            elif found:
+                self._match(found[0], record, row)
+            elif row["discovery_method"] in SEEN_BY:
+                numbers = [number] if number is not None else []
+                numbers += [n for n in led.get(host, []) if n != number]
+                found = self._at_separation(numbers, row["semi_major_axis"], host_ids)
+                if len(found) > 1:
+                    self.counts[
+                        "planet records that several entries match by separation"
+                    ] += 1
+                elif found:
+                    by_separation[found[0]].append(record)
+        for entry, records in by_separation.items():
+            if len(records) > 1 or entry in self.record_entries:
+                self.counts["planet records whose entry another record matches"] += len(
+                    records
                 )
-                if kind == ENTRY
-                and ids & (mine := _ids_of(member_ids))
-                and not host_ids & mine
-            ]
-            if len(found) != 1:
-                if found:
-                    self.counts["planet records that several entries carry"] += 1
                 continue
-            as_star = drawn_as_star(row["class"], row["mass"], row["discovery_method"])
-            self.record_entries.setdefault(found[0], []).append((record, as_star))
+            self.counts["planet records that match an entry by separation"] += 1
+            self._match(entry, records[0], rows[records[0]])
+
+    def _match(self, entry: int, record: int, row: dict) -> None:
+        as_star = drawn_as_star(row["class"], row["mass"], row["discovery_method"])
+        self.record_entries.setdefault(entry, []).append((record, as_star))
+
+    def _led_nodes(self) -> dict[int, list[int]]:
+        """The nodes whose first member is each point, or the node of a point
+        that holds several stars, by the point's key."""
+        members = self.systems.members
+        kinds = members["kind"].to_numpy(zero_copy_only=False)
+        keys = members["key"].fill_null(0).to_numpy()
+        inner = members["member"].fill_null(0).to_numpy()
+        point_of = {number: key for key, number in self.node_of.items()}
+        first = np.ones(self.member_node.size, bool)
+        first[1:] = self.member_node[1:] != self.member_node[:-1]
+        led: defaultdict[int, list[int]] = defaultdict(list)
+        for row in np.flatnonzero(first).tolist():
+            if kinds[row] == STAR:
+                key = int(keys[row])
+            elif kinds[row] == SYSTEM:
+                key = point_of.get(int(inner[row]), 0)
+            else:
+                continue
+            if key:
+                led[key].append(int(self.member_node[row]))
+        return dict(led)
+
+    def _members(self, number: int) -> tuple[range, pa.Table]:
+        """The member rows of node `number`, and those members."""
+        rows = self._member_rows(number)
+        return rows, self.systems.members.slice(rows.start, len(rows))
+
+    def _carried(
+        self,
+        number: int,
+        ids: frozenset[tuple[str, str, str]],
+        host_ids: frozenset[tuple[str, str, str]],
+    ) -> list[int]:
+        """The entries of a node that carry one of `ids` and none of
+        `host_ids`."""
+        rows, part = self._members(number)
+        return [
+            row
+            for row, kind, member_ids in zip(
+                rows, part["kind"].to_pylist(), part["ids"].to_pylist()
+            )
+            if kind == ENTRY
+            and ids & (mine := _ids_of(member_ids))
+            and not host_ids & mine
+        ]
+
+    def _at_separation(
+        self,
+        numbers: list[int],
+        axis: float | None,
+        host_ids: frozenset[tuple[str, str, str]],
+    ) -> list[int]:
+        """The entries of these nodes whose separation agrees with the
+        semi-major axis `axis` in au over the node's distance. An entry with
+        an id of the host, an entry that planets orbit or one of a star's
+        spectral type is a star."""
+        found: list[int] = []
+        if not axis:
+            return found
+        hosts = set(self.planet_hosts.values())
+        for number in numbers:
+            distance = self.distance[np.searchsorted(self.number, number)]
+            if not distance > 0:
+                continue
+            rows, part = self._members(number)
+            for row, kind, separation, spectral_type, member_ids in zip(
+                rows,
+                part["kind"].to_pylist(),
+                part["separation"].to_pylist(),
+                part["spectral_type"].to_pylist(),
+                part["ids"].to_pylist(),
+            ):
+                ratio = (separation or 0.0) * distance / axis
+                if (
+                    kind == ENTRY
+                    and 1 / SEPARATION_RATIO <= ratio <= SEPARATION_RATIO
+                    and row not in hosts
+                    and not STELLAR_TYPE.match(spectral_type or "")
+                    and not host_ids & _ids_of(member_ids)
+                ):
+                    found.append(row)
+        return found
+
+    def _planet_entries(self) -> set[int]:
+        """The entries that a planet record is, drawn as a planet: no record
+        is drawn as the star and no planet orbits it."""
+        hosts = set(self.planet_hosts.values())
+        return {
+            row
+            for row, records in self.record_entries.items()
+            if not any(as_star for _, as_star in records) and row not in hosts
+        }
+
+    def without_planet_pairs(self, orbits: pa.Table) -> pa.Table:
+        """`orbits` without the pairs of an entry that a planet record is,
+        drawn as a planet: the planet's own orbit draws it."""
+        entries = self._planet_entries()
+        off = [
+            number
+            for number in orbits["number"].to_pylist()
+            if {self.pairs[number].first, self.pairs[number].second} & entries
+        ]
+        self.counts["pairs not drawn: a member is a planet record"] += len(off)
+        return orbits.filter(
+            pc.invert(pc.is_in(orbits["number"], pa.array(off, pa.int64())))
+        )
 
     def held(self, drawn: Iterable[int] = ()) -> pa.Table:
         """The held stars: the entries of the pairs with these node numbers,
@@ -1253,8 +1386,9 @@ class Drawer:
 
         An entry that a planet record is (`match_records`) is that record's
         held star when the record is drawn as its star (`drawn_as_star`), or
-        when its pair is drawn or planets orbit it: the trees need the star.
-        Else the record is drawn as a planet and the entry stays an entry."""
+        when planets orbit it: the trees need the star. Else the record is
+        drawn as a planet, the entry stays an entry and its pair is not drawn
+        (`without_planet_pairs`)."""
         in_drawn = {
             row
             for number in drawn
@@ -1278,6 +1412,7 @@ class Drawer:
         )
         gaia = self._gaia_masses()
         hosts = set(self.planet_hosts.values())
+        planet_entries = self._planet_entries()
         out: dict[str, list] = defaultdict(list)
         # The letters of the entries with no ID, which a page lists too.
         lines: dict[int, str | None] = {}
@@ -1293,11 +1428,7 @@ class Drawer:
                     ] += 1
                 continue
             records = self.record_entries.get(row, [])
-            if records and not (
-                any(as_star for _, as_star in records)
-                or row in in_drawn
-                or row in hosts
-            ):
+            if row in planet_entries:
                 self.counts["entries that a planet record is, drawn as the planet"] += 1
                 continue
             own = _own_name(entry)
@@ -1519,7 +1650,7 @@ def draw(systems: Systems, inputs: Inputs, resolver: Resolver) -> Drawn:
             drawer.counts["pairs with orbits"] += 1
             if (found := drawer.orbit(number, pair)) is not None:
                 rows.append(found)
-    orbits = pa.Table.from_pylist(rows, schema=PAIR_ORBITS)
+    orbits = drawer.without_planet_pairs(pa.Table.from_pylist(rows, schema=PAIR_ORBITS))
     held = drawer.held(orbits["number"].to_pylist())
     systems.members = without_letters(systems.members, drawer.repeated)
     counts = drawer.counts

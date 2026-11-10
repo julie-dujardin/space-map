@@ -554,6 +554,7 @@ def run_planets(run: IngestRun, prepared: Prepared, hub: Simbad) -> pa.Table:
         found["class"].append(record.text("class"))
         found["mass"].append(record.get("mass"))
         found["period"].append(record.get("period"))
+        found["semi_major_axis"].append(record.get("semi_major_axis"))
         found["discovery_method"].append(record.text("discovery_method"))
         found["binary_type"].append(record.text("binary_type"))
         found["star_ids"].append(

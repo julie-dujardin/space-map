@@ -78,9 +78,10 @@ PLANETS_INPUT = pa.schema(
         ("number", pa.uint16()),
         ("designation", pa.string()),
         ("class", pa.string()),
-        # Jupiter masses and days.
+        # Jupiter masses, days and au.
         ("mass", pa.float64()),
         ("period", pa.float64()),
+        ("semi_major_axis", pa.float64()),
         ("discovery_method", pa.string()),
         ("binary_type", pa.string()),
         ("star_ids", pa.list_(CROSS_ID)),
