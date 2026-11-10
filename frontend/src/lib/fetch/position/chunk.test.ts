@@ -171,3 +171,36 @@ describe('ChunkLoader.processChebyshev, a planet about the Sun', () => {
 		expect(body(7, SUN_GM).helioElements!.a).toBeCloseTo(5.2, 9);
 	});
 });
+
+describe('ChunkLoader.processChebyshev, a date before the ephemeris', () => {
+	const BEFORE = JD - 36525;
+	/** The store answers a date it does not cover with its first chunk. */
+	const bodies = () => {
+		const store = {
+			bodiesAt: () =>
+				FIRST.map((body) => ({
+					zone: 'major',
+					body,
+					startJd: body.startJds[0],
+					endJd: body.endJds[0]
+				})),
+			body: (id: string) => FIRST.find((r) => r.id === id) ?? null
+		} as unknown as ChebyshevStore;
+		return new ChunkLoader(store).processChebyshev(jdToDate(BEFORE), new Map());
+	};
+	const byId = (id: string) => bodies().find((b) => b.data.id === id)!;
+
+	it('still has every body', () => {
+		expect(bodies().map((b) => b.data.id)).toEqual(['naif-3', 'naif-399', 'naif-301']);
+	});
+
+	it('gives a planet the curve of its barycentre', () => {
+		const earth = byId('naif-399');
+		expect(earth.orbitElements!.a).toBeCloseTo(1, 9);
+		expect(earth.trailAnchorId).toBe('naif-3');
+	});
+
+	it('gives a moon the orbit of the nearest date the ephemeris covers', () => {
+		expect(byId('naif-301').orbitElements!.a * AU_KM).toBeCloseTo(NEAR_KM, 0);
+	});
+});

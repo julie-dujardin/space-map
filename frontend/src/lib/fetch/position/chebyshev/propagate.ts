@@ -7,7 +7,7 @@
  */
 
 import { kmToScene } from '$lib/math/units';
-import { utcToTdb } from '$lib/time/jd';
+import { tdbToUtc, utcToTdb } from '$lib/time/jd';
 import type { ChebyshevBody } from '$lib/fetch/position/chebyshev/parse';
 
 /**
@@ -27,6 +27,18 @@ function findSegmentIndex(starts: Float64Array, ends: Float64Array, jd: number):
 		else hi = mid - 1;
 	}
 	return jd < ends[lo] ? lo : -1;
+}
+
+/**
+ * `jd` when the body's segments cover it, else the middle of the end segment
+ * nearest it: an edge, round-tripped through UTC, can fall just outside.
+ */
+export function nearestCoveredJd(body: ChebyshevBody, jd: number): number {
+	const n = body.startJds.length;
+	const tdb = utcToTdb(jd);
+	if (n === 0 || findSegmentIndex(body.startJds, body.endJds, tdb) >= 0) return jd;
+	const i = tdb < body.startJds[0] ? 0 : n - 1;
+	return tdbToUtc((body.startJds[i] + body.endJds[i]) / 2);
 }
 
 /**

@@ -22,7 +22,11 @@ import { parsePosition } from '$lib/fetch/position/parse';
 import { type BodyData, type PositionedBody, type OrbitalElements } from '$lib/types/objects';
 import { AU_KM, AU_SCALE, KM3_S2_TO_AU3_DAY2, KM_DAY_TO_AU_DAY } from '$lib/math/units';
 import type { ChebyshevStore } from '$lib/fetch/position/chebyshev/store';
-import { chebyshevPositionScene, chebyshevStateKm } from '$lib/fetch/position/chebyshev/propagate';
+import {
+	chebyshevPositionScene,
+	chebyshevStateKm,
+	nearestCoveredJd
+} from '$lib/fetch/position/chebyshev/propagate';
 import type { ChebyshevBody } from '$lib/fetch/position/chebyshev/parse';
 import type { ProbeStore } from '$lib/fetch/position/probes/store';
 import { probeOsculatingElements } from '$lib/fetch/position/probes/elements';
@@ -151,7 +155,7 @@ export class ChunkLoader {
 	constructor(private readonly cheb: ChebyshevStore | null) {}
 
 	/**
-	 * Build PositionedBody[] for every chebyshev body covered by `date`. Caller
+	 * Build PositionedBody[] for every chebyshev body in the chunks for `date`. Caller
 	 * must `await store.load(jd)` first. Walks barycenter-first so a
 	 * planet finds the elements of its barycenter; each body carries osculating
 	 * Keplerian elements matching the SBDB/Horizons shape for the unified
@@ -189,7 +193,11 @@ export class ChunkLoader {
 		const cheb = this.cheb;
 		const sun = cheb.body(`naif-${SUN_NAIF_ID}`, jd);
 		for (const { body, startJd, endJd } of all) {
-			const offset = chebyshevPositionScene(body, jd);
+			// Off the record's span the body is still built, with the orbit of the
+			// nearest covered date: its curve, size and borrowed barycentre need
+			// elements, and the placement pass hides it until the clock is in range.
+			const elementsJd = nearestCoveredJd(body, jd);
+			const offset = chebyshevPositionScene(body, elementsJd);
 			if (!offset) continue;
 			chebBodiesByNaif.set(body.naifId, body);
 			const parentKey = `naif-${body.parentId}`;
@@ -210,7 +218,7 @@ export class ChunkLoader {
 				return primary ? chebyshevOsculatingElements(record, record.parentId, at, primary) : null;
 			};
 			// Null elements: the body has a place, and no curve.
-			const elements = elementsAt(body, jd);
+			const elements = elementsAt(body, elementsJd);
 			// The records are per chunk: read the one that covers the date by id.
 			const ownId = body.id;
 			const ownRederive = (newJd: number): OrbitalElements | null => {
@@ -239,7 +247,7 @@ export class ChunkLoader {
 				n: elements?.n ?? 0,
 				epoch: elements?.epoch ?? 0,
 				equatorial: false,
-				helioElements: chebyshevHelioElements(body, jd, sun) ?? undefined,
+				helioElements: chebyshevHelioElements(body, elementsJd, sun) ?? undefined,
 				validityStart: startJd,
 				validityEnd: endJd,
 				orbitalSource: OrbitalSource.SPICE,
