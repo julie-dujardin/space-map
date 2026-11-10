@@ -124,8 +124,8 @@ importers:
         specifier: ^4.4.2
         version: 4.4.5(picomatch@4.0.4)(svelte@5.56.1(@typescript-eslint/types@8.57.0))(typescript@5.9.3)
       svelte-sonner:
-        specifier: ^1.1.0
-        version: 1.1.0(svelte@5.56.1(@typescript-eslint/types@8.57.0))
+        specifier: ^1.2.3
+        version: 1.2.3(svelte@5.56.1(@typescript-eslint/types@8.57.0))
       tailwind-merge:
         specifier: ^3.5.0
         version: 3.5.0
@@ -3211,14 +3211,6 @@ packages:
     peerDependencies:
       svelte: ^5.7.0
 
-  runed@0.28.0:
-    resolution:
-      {
-        integrity: sha512-k2xx7RuO9hWcdd9f+8JoBeqWtYrm5CALfgpkg2YDB80ds/QE4w0qqu34A7fqiAwiBBSBQOid7TLxwxVC27ymWQ==
-      }
-    peerDependencies:
-      svelte: ^5.7.0
-
   runed@0.35.1:
     resolution:
       {
@@ -3435,10 +3427,10 @@ packages:
       svelte:
         optional: true
 
-  svelte-sonner@1.1.0:
+  svelte-sonner@1.2.3:
     resolution:
       {
-        integrity: sha512-3lYM6ZIqWe+p9vwwWHGWP/ZdvHiUtzURsud2quIxivrX4rvpXh6i+geBGn0m3JS6KwW6W8VgbOl3xQMcDuh6gg==
+        integrity: sha512-SjQaDI/k6L/ordD2w84XOkGv3kaZwyGRsJzR+lHW097/aJCaydvp63VblMTFsrakm58BxRjUSySK/BWH9jdY1Q==
       }
     peerDependencies:
       svelte: ^5.0.0
@@ -5529,11 +5521,6 @@ snapshots:
       esm-env: 1.2.2
       svelte: 5.56.1(@typescript-eslint/types@8.57.0)
 
-  runed@0.28.0(svelte@5.56.1(@typescript-eslint/types@8.57.0)):
-    dependencies:
-      esm-env: 1.2.2
-      svelte: 5.56.1(@typescript-eslint/types@8.57.0)
-
   runed@0.35.1(@sveltejs/kit@2.70.2(@sveltejs/vite-plugin-svelte@7.3.1(svelte@5.56.1(@typescript-eslint/types@8.57.0))(vite@8.3.5(@types/node@25.9.1)(esbuild@0.27.3)(jiti@2.7.0)))(svelte@5.56.1(@typescript-eslint/types@8.57.0))(typescript@5.9.3)(vite@8.3.5(@types/node@25.9.1)(esbuild@0.27.3)(jiti@2.7.0)))(svelte@5.56.1(@typescript-eslint/types@8.57.0)):
     dependencies:
       dequal: 2.0.3
@@ -5669,9 +5656,8 @@ snapshots:
     optionalDependencies:
       svelte: 5.56.1(@typescript-eslint/types@8.57.0)
 
-  svelte-sonner@1.1.0(svelte@5.56.1(@typescript-eslint/types@8.57.0)):
+  svelte-sonner@1.2.3(svelte@5.56.1(@typescript-eslint/types@8.57.0)):
     dependencies:
-      runed: 0.28.0(svelte@5.56.1(@typescript-eslint/types@8.57.0))
       svelte: 5.56.1(@typescript-eslint/types@8.57.0)
 
   svelte-toolbelt@0.10.6(@sveltejs/kit@2.70.2(@sveltejs/vite-plugin-svelte@7.3.1(svelte@5.56.1(@typescript-eslint/types@8.57.0))(vite@8.3.5(@types/node@25.9.1)(esbuild@0.27.3)(jiti@2.7.0)))(svelte@5.56.1(@typescript-eslint/types@8.57.0))(typescript@5.9.3)(vite@8.3.5(@types/node@25.9.1)(esbuild@0.27.3)(jiti@2.7.0)))(svelte@5.56.1(@typescript-eslint/types@8.57.0)):
