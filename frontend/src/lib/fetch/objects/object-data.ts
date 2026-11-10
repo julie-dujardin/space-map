@@ -9,7 +9,7 @@ import {
 	type BundlePair
 } from '$lib/fetch/bundle-pair';
 import type { PickedThumbnail } from '$lib/fetch/objects/images';
-import type { NutPrecSums, PointingSpec } from '$lib/math/orientation';
+import { markUtSpin, type NutPrecSums, type PointingSpec } from '$lib/math/orientation';
 import type { DisplacementMeta } from '$lib/scene/objects/surface/displacement';
 import type { TilesBlock } from '$lib/scene/types';
 import type { RingMeta } from '$lib/scene/objects/surface/rings';
@@ -1544,7 +1544,10 @@ export function fetchObjectDetail(
 		lang,
 		fetchLocalized,
 		background
-	);
+	).then((pair) => {
+		markUtSpin(fileId, pair.global?.orientation);
+		return pair;
+	});
 }
 
 /** Warm `fileId`'s detail bundle ahead of the drawer that will read it. */

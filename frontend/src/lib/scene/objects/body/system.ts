@@ -1,7 +1,7 @@
 import { type Scene, SphereGeometry, type TextureLoader } from 'three';
 import { kmToScene } from '$lib/math/units';
 import { effectiveRadiusKm, ObjectType, type PositionedBody } from '$lib/types/objects';
-import { applyOrientation, type NutPrecSums } from '$lib/math/orientation';
+import { applyOrientation, markUtSpin, type NutPrecSums } from '$lib/math/orientation';
 import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 import { dataBase } from '$lib/fetch/data-base';
 import { fetchWithTimeout } from '$lib/fetch/fetch-timeout';
@@ -97,7 +97,9 @@ async function downloadSystemMeta(barycenterId: string): Promise<SystemMeta | nu
 	const resp = await fetchWithTimeout(`${dataBase()}/v1/systems/${barycenterId}.json`);
 	if (resp.status === 404) return null;
 	if (!resp.ok) throw new Error(`systems/${barycenterId}.json: ${resp.status}`);
-	return resp.json();
+	const meta: SystemMeta = await resp.json();
+	for (const [id, record] of Object.entries(meta)) markUtSpin(id, record.orientation);
+	return meta;
 }
 
 /**

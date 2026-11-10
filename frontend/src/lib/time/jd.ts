@@ -70,12 +70,99 @@ const LEAP_SECONDS: readonly (readonly [number, number])[] = [
 	[2457754.5, 37]
 ];
 
-/** TAI − UTC at a UTC JD. SPICE uses one second less than the first entry before 1972. */
-function taiMinusUtc(jdUtc: number): number {
-	for (let k = LEAP_SECONDS.length - 1; k >= 0; k--) {
-		if (jdUtc >= LEAP_SECONDS[k][0]) return LEAP_SECONDS[k][1];
+/** 2027-01-01, the first instant the table does not reach: IERS Bulletin C has
+ *  ruled out a leap second before it, so TT − UTC is known up to here. */
+const LEAP_TABLE_END_JD = 2461406.5;
+
+const TT_MINUS_UTC_1972 = LEAP_SECONDS[0][1] + TT_MINUS_TAI;
+const TT_MINUS_UTC_LAST = LEAP_SECONDS[LEAP_SECONDS.length - 1][1] + TT_MINUS_TAI;
+
+/** Years since 1820, in centuries: the argument of the long-term parabola. */
+function centuriesSince1820(year: number): number {
+	return (year - 1820) / 100;
+}
+
+/** The span of Espenak & Meeus's canon. The parabola is an extrapolation that
+ *  grows without bound, to a year of ΔT by AD 100,000, which would put a
+ *  trip's planets a year off its dates: past the canon ΔT holds. */
+const CANON_FIRST_YEAR = -1999;
+const CANON_LAST_YEAR = 3000;
+
+/** Morrison & Stephenson's long-term ΔT, seconds. */
+function parabola(year: number): number {
+	const u = centuriesSince1820(Math.min(CANON_LAST_YEAR, Math.max(CANON_FIRST_YEAR, year)));
+	return -20 + 32 * u * u;
+}
+
+function poly(t: number, c: readonly number[]): number {
+	let v = 0;
+	for (let k = c.length - 1; k >= 0; k--) v = v * t + c[k];
+	return v;
+}
+
+/** Espenak & Meeus (2006) ΔT = TT − UT before 1972, seconds. */
+function espenakMeeus(year: number): number {
+	if (year < -500) return parabola(year);
+	if (year < 500) {
+		const u = year / 100;
+		return poly(u, [10583.6, -1014.41, 33.78311, -5.952053, -0.1798452, 0.022174192, 0.0090316521]);
 	}
-	return LEAP_SECONDS[0][1] - 1;
+	if (year < 1600) {
+		const u = (year - 1000) / 100;
+		return poly(u, [1574.2, -556.01, 71.23472, 0.319781, -0.8503463, -0.005050998, 0.0083572073]);
+	}
+	if (year < 1700) return poly(year - 1600, [120, -0.9808, -0.01532, 1 / 7129]);
+	if (year < 1800) {
+		return poly(year - 1700, [8.83, 0.1603, -0.0059285, 0.00013336, -1 / 1174000]);
+	}
+	if (year < 1860) {
+		return poly(
+			year - 1800,
+			[
+				13.72, -0.332447, 0.0068612, 0.0041116, -0.00037436, 0.0000121272, -0.0000001699,
+				0.000000000875
+			]
+		);
+	}
+	if (year < 1900) {
+		return poly(year - 1860, [7.62, 0.5737, -0.251754, 0.01680668, -0.0004473624, 1 / 233174]);
+	}
+	if (year < 1920) return poly(year - 1900, [-2.79, 1.494119, -0.0598939, 0.0061966, -0.000197]);
+	if (year < 1941) return poly(year - 1920, [21.2, 0.84493, -0.0761, 0.0020936]);
+	if (year < 1961) return poly(year - 1950, [29.07, 0.407, -1 / 233, 1 / 2547]);
+	return poly(year - 1975, [45.45, 1.067, -1 / 260, -1 / 718]);
+}
+
+function yearOf(jd: number): number {
+	return 2000 + (jd - J2000_JD) / DAYS_PER_YEAR;
+}
+
+/** Shifts the polynomials onto the table at 1972, which they miss by 0.07 s. */
+const EM_OFFSET_1972 = TT_MINUS_UTC_1972 - espenakMeeus(yearOf(LEAP_SECONDS[0][0]));
+
+const TABLE_END_YEAR = yearOf(LEAP_TABLE_END_JD);
+/** Takes the parabola down onto the table's last value, fading out by 2150 as
+ *  Espenak & Meeus's own 2050–2150 bridge does. */
+const BRIDGE_END_YEAR = 2150;
+const BRIDGE_SLOPE =
+	(parabola(TABLE_END_YEAR) - TT_MINUS_UTC_LAST) / (BRIDGE_END_YEAR - TABLE_END_YEAR);
+
+/**
+ * TT − clock, seconds, at a clock (UTC) JD. Inside the leap-second table it is
+ * exact. Outside, the clock is taken as UT, which is what civil time kept
+ * before 1972 and what it will drift with after: ΔT from Espenak & Meeus,
+ * joined to the table without a step at both ends.
+ */
+function ttMinusUtc(jdUtc: number): number {
+	if (jdUtc < LEAP_SECONDS[0][0]) return espenakMeeus(yearOf(jdUtc)) + EM_OFFSET_1972;
+	if (jdUtc < LEAP_TABLE_END_JD) {
+		for (let k = LEAP_SECONDS.length - 1; k >= 0; k--) {
+			if (jdUtc >= LEAP_SECONDS[k][0]) return LEAP_SECONDS[k][1] + TT_MINUS_TAI;
+		}
+	}
+	const year = yearOf(jdUtc);
+	if (year >= BRIDGE_END_YEAR) return parabola(year);
+	return parabola(year) - BRIDGE_SLOPE * (BRIDGE_END_YEAR - year);
 }
 
 /** TDB − TT, seconds: the periodic term of SPICE's DELTET. */
@@ -84,10 +171,11 @@ function tdbMinusTt(jd: number): number {
 	return 1.657e-3 * Math.sin(m + 1.671e-2 * Math.sin(m));
 }
 
-/** UTC JD → TDB JD, as SPICE's `str2et` does it. An open bound (±∞) stays open. */
+/** UTC JD → TDB JD, as SPICE's `str2et` does it inside the leap-second table.
+ *  An open bound (±∞) stays open. */
 export function utcToTdb(jd: number): number {
 	if (!Number.isFinite(jd)) return jd;
-	const tt = jd + (taiMinusUtc(jd) + TT_MINUS_TAI) / SECONDS_PER_DAY;
+	const tt = jd + ttMinusUtc(jd) / SECONDS_PER_DAY;
 	return tt + tdbMinusTt(tt) / SECONDS_PER_DAY;
 }
 
@@ -95,8 +183,11 @@ export function utcToTdb(jd: number): number {
 export function tdbToUtc(jd: number): number {
 	if (!Number.isFinite(jd)) return jd;
 	const tt = jd - tdbMinusTt(jd) / SECONDS_PER_DAY;
-	const guess = tt - (taiMinusUtc(tt) + TT_MINUS_TAI) / SECONDS_PER_DAY;
-	return tt - (taiMinusUtc(guess) + TT_MINUS_TAI) / SECONDS_PER_DAY;
+	// ΔT is read at the UTC being solved for. It drifts far slower than the
+	// clock, so each pass gains several digits.
+	let utc = tt - ttMinusUtc(tt) / SECONDS_PER_DAY;
+	for (let k = 0; k < 2; k++) utc = tt - ttMinusUtc(utc) / SECONDS_PER_DAY;
+	return utc;
 }
 
 /** UTC JD → ET (TDB seconds past J2000). */

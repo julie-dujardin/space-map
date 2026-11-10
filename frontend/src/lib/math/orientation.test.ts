@@ -4,10 +4,16 @@ import {
 	applyPointing,
 	applySouthTowardParent,
 	applyUpVector,
+	bodyQuaternion,
 	frameMapQuaternion,
 	landedHeadingAt,
-	turnToHeading
+	markUtSpin,
+	turnToHeading,
+	type Orientation
 } from './orientation';
+import { EARTH_ID } from '$lib/constants';
+import { J2000_JD, dateToJD, utcToTdb } from '$lib/time/jd';
+import { EARTH_OBLIQUITY_DEG, equatorialToScene } from '$lib/math/units';
 
 /** World direction the body's local `axis` ends up aiming after `q`. */
 function aimed(q: Quaternion, axis: [number, number, number]): Vector3 {
@@ -161,5 +167,71 @@ describe('landedHeadingAt', () => {
 		expect(landedHeadingAt(headings, 10)).toBe(120);
 		expect(landedHeadingAt(headings, 25)).toBe(115);
 		expect(landedHeadingAt(undefined, 25)).toBeUndefined();
+	});
+});
+
+/**
+ * Earth turns with the clock, which keeps UT: at 12:00 UT the Sun stands over
+ * the Greenwich meridian however far ΔT has run from the TDB the other bodies
+ * spin by. Within 2°: the equation of time, and six centuries of drift of a
+ * linear spin model.
+ */
+describe("Earth's spin", () => {
+	const EARTH: Orientation = {
+		pole_ra_0: 0,
+		pole_ra_1: -0.641,
+		pole_dec_0: 90,
+		pole_dec_1: -0.557,
+		w0: 190.147,
+		w1: 360.9856235,
+		w2: 0
+	};
+	const DEG = Math.PI / 180;
+
+	/** East longitude the Sun stands over: a low-precision Sun (Astronomical
+	 *  Almanac) on J2000 axes, through Earth's spin. */
+	function subsolarLongitude(jd: number, orientation: Orientation): number {
+		const n = utcToTdb(jd) - J2000_JD;
+		const g = (357.528 + 0.9856003 * n) * DEG;
+		const ofDate = 280.46 + 0.9856474 * n + 1.915 * Math.sin(g) + 0.02 * Math.sin(2 * g);
+		// Less the precession since J2000, onto the axes the scene uses.
+		const lon = (ofDate - 1.396971 * (n / 36525)) * DEG;
+		const obl = EARTH_OBLIQUITY_DEG * DEG;
+		const sun = equatorialToScene(
+			Math.cos(lon),
+			Math.cos(obl) * Math.sin(lon),
+			Math.sin(obl) * Math.sin(lon),
+			new Vector3()
+		);
+		sun.applyQuaternion(bodyQuaternion(orientation, jd).invert());
+		return Math.atan2(-sun.z, sun.x) / DEG;
+	}
+
+	const at = (iso: string) => dateToJD(new Date(iso));
+	const tagged = (): Orientation => {
+		const o = { ...EARTH };
+		markUtSpin(EARTH_ID, o);
+		return o;
+	};
+
+	it.each(['1600-06-01', '2026-06-01', '2600-06-01'])(
+		'has the Sun at noon at 12:00 UT on %s',
+		(day) => {
+			expect(Math.abs(subsolarLongitude(at(`${day}T12:00:00Z`), tagged()))).toBeLessThan(2);
+		}
+	);
+
+	it('has the Sun over 90° W at 18:00 UT', () => {
+		expect(Math.abs(subsolarLongitude(at('2600-06-01T18:00:00Z'), tagged()) + 90)).toBeLessThan(2);
+	});
+
+	it('would be half an hour off in 2600 on TDB days', () => {
+		expect(Math.abs(subsolarLongitude(at('2600-06-01T12:00:00Z'), EARTH))).toBeGreaterThan(6);
+	});
+
+	it('leaves the other bodies on TDB days', () => {
+		const mars = { ...EARTH, pole_dec_0: 52.9, w0: 176.63, w1: 350.89198226 };
+		markUtSpin('naif-499', mars);
+		expect(mars.ut).toBeUndefined();
 	});
 });

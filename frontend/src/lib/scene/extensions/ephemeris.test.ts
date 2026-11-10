@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ObjectDetailData } from '$lib/fetch/objects/object-data';
-import { dateToJD, utcToTdb } from '$lib/time/jd';
+import { dateToJD, jdToDate, tdbToUtc, utcToTdb } from '$lib/time/jd';
 import { distanceKm, offsetKm, subsolarPoint, sunlight, sunPlaceKm } from './ephemeris';
 
 const AU_KM = 149597870.7;
@@ -57,8 +57,8 @@ describe('distanceKm', () => {
 	});
 
 	it('moves a body along its orbit to another date', async () => {
-		// A quarter of a turn on, at one degree a day.
-		const later = new Date(DATE.getTime() + 90 * 86400000);
+		// A quarter of a turn on, at one degree a TDB day: ΔT moves in between.
+		const later = jdToDate(tdbToUtc(utcToTdb(dateToJD(DATE)) + 90));
 		const offset = (await offsetKm({ body: 'naif-10' }, { body: 'near' }, later))!;
 		expect(offset[0]).toBeCloseTo(0, 0);
 		expect(offset[1]).toBeCloseTo(AU_KM, 0);

@@ -1,7 +1,8 @@
 import { Matrix4, Quaternion, Vector3 } from 'three';
 import type { Object3D } from 'three';
 import { equatorialToScene } from '$lib/math/units';
-import { J2000_JD, utcToTdb } from '$lib/time/jd';
+import { J2000_JD, tdbToUtc, utcToTdb } from '$lib/time/jd';
+import { EARTH_ID } from '$lib/constants';
 
 const DEG2RAD = Math.PI / 180;
 
@@ -23,7 +24,20 @@ export interface Orientation {
 	w0: number;
 	w1: number;
 	w2: number;
+	/** W counts UT days, not TDB days. Earth's alone: UT is the measure of its
+	 *  turning, and the clock keeps UT. Set by {@link markUtSpin}. */
+	ut?: boolean;
 }
+
+/** Mark Earth's spin as counting UT days. The export ships the IAU elements
+ *  without a time scale, so the place that reads them tags them. */
+export function markUtSpin(id: string, orientation: Orientation | undefined): void {
+	if (orientation && id === EARTH_ID) orientation.ut = true;
+}
+
+/** The clock's JD at J2000 TDB, where the IAU constants are fit: a UT day
+ *  count starts there so that it agrees with the TDB one at J2000. */
+const J2000_UT_JD = tdbToUtc(J2000_JD);
 
 /**
  * IAU nutation/precession sums:
@@ -48,7 +62,9 @@ export type NutPrecSums = Pick<NutPrec, 'ra' | 'dec' | 'pm'>;
 
 /** The IAU angles at an app (UTC) Julian date, in degrees: the pole's right
  *  ascension and declination on equatorial J2000 axes, and the prime
- *  meridian's W. The IAU model counts TDB days. */
+ *  meridian's W. The IAU model counts TDB days. Earth's W counts UT days
+ *  instead: by TDB, its noon would drift from the clock's by ΔT, half an hour
+ *  in 2600. */
 export function iauAngles(
 	orientation: Orientation,
 	currentJd: number,
@@ -59,7 +75,8 @@ export function iauAngles(
 
 	let raDeg = orientation.pole_ra_0 + orientation.pole_ra_1 * T;
 	let decDeg = orientation.pole_dec_0 + orientation.pole_dec_1 * T;
-	let wDeg = orientation.w0 + orientation.w1 * dt + orientation.w2 * dt * dt;
+	const d = orientation.ut ? currentJd - J2000_UT_JD : dt;
+	let wDeg = orientation.w0 + orientation.w1 * d + orientation.w2 * d * d;
 
 	if (nutPrec) {
 		const { ra, dec, pm, angles } = nutPrec;

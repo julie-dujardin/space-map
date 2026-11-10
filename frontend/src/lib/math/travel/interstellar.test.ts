@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { clockJd } from '$lib/math/orbit/position';
-import { DAYS_PER_YEAR } from '$lib/time/jd';
+import { DAYS_PER_YEAR, tdbToUtc } from '$lib/time/jd';
 import { AU_KM, LIGHT_YEAR_KM, SPEED_OF_LIGHT_KM_S } from '$lib/math/units';
 import { G0_M_S2, GM_SUN_KM3_S2, SEC_PER_DAY } from './constants';
 import {
@@ -736,9 +736,11 @@ describe('the place of an end', () => {
 
 	it('stays right past the range of a Date', () => {
 		const n = PLANET.body.elements.n;
-		const far = J2000 + (1e8 * 360) / n;
+		// Whole turns on the TDB scale of the elements: the clock's dates are
+		// ΔT behind it, and ΔT is not the same at both ends.
+		const far = tdbToUtc(J2000 + (1e8 * 360) / n);
 		expect(far).toBeGreaterThan(1e9);
-		const shift = norm(sub(endPlaceKm(PLANET, far), endPlaceKm(PLANET, J2000)));
+		const shift = norm(sub(endPlaceKm(PLANET, far), endPlaceKm(PLANET, tdbToUtc(J2000))));
 		expect(shift / AU_KM).toBeLessThan(1e-3);
 	});
 });
