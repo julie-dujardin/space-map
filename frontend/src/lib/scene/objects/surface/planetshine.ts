@@ -14,6 +14,7 @@
  */
 
 import { type Color, type MeshStandardMaterial, Vector3, Vector4 } from 'three';
+import { SUN_LIGHT_COLOUR } from '$lib/scene/lighting';
 import { chainShaderHook } from '$lib/scene/shaders/program-cache-key';
 
 /** Shiners per receiver. A moon has one planet. The second slot is for a large neighbour. */
@@ -177,7 +178,10 @@ export function selectShiners(
 		else continue;
 		_strength[slot] = strength;
 		dirs[slot].set(dx / d, dy / d, dz / d, k);
-		lights[slot].set(s.albedo.r, s.albedo.g, s.albedo.b).multiplyScalar(s.sunlight * fraction);
+		const [sr, sg, sb] = SUN_LIGHT_COLOUR;
+		lights[slot]
+			.set(s.albedo.r * sr, s.albedo.g * sg, s.albedo.b * sb)
+			.multiplyScalar(s.sunlight * fraction);
 		for (; slot > 0 && _strength[slot - 1] < strength; slot--) {
 			_strength[slot] = _strength[slot - 1];
 			_strength[slot - 1] = strength;

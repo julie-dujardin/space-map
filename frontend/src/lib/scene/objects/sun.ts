@@ -14,7 +14,7 @@ import {
 	SpriteMaterial,
 	Vector3
 } from 'three';
-import { SUN_LIGHT_INTENSITY } from '$lib/scene/lighting';
+import { SUN_LIGHT_COLOUR, SUN_LIGHT_INTENSITY } from '$lib/scene/lighting';
 import { dustBounds } from '$lib/scene/dust/extinction';
 import { starColours } from '../starfield/colour';
 import { makeStarMaterial, starUniforms } from '../starfield/material';
@@ -183,7 +183,7 @@ function makeStarPoint(): Points {
 
 /** Keeps lighting and the unresolved point at the body's moving position. */
 export function buildStarExtras(root: Object3D, radius: number, color: string): StarExtras {
-	const light = new PointLight(0xffffff, SUN_LIGHT_INTENSITY, 0, 0);
+	const light = new PointLight(new Color(...SUN_LIGHT_COLOUR), SUN_LIGHT_INTENSITY, 0, 0);
 	root.add(light);
 	const corona = makeStarGlow(radius, color);
 	root.add(corona);

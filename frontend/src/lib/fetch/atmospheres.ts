@@ -10,6 +10,7 @@ import type {
 	AtmosphereParams,
 	AtmosphereSeasonalTable
 } from '$lib/scene/objects/surface/atmosphere';
+import { SUN_LIGHT_COLOUR } from '$lib/scene/lighting';
 import { dataBase } from './data-base';
 import { fetchWithTimeout } from './fetch-timeout';
 
@@ -150,7 +151,7 @@ export function loadAtmospheres(): Promise<void> {
 				bakedCompensation: entry.baked_compensation,
 				multiScatterGain: entry.multi_scatter_gain,
 				sunIntensity: entry.sun_intensity,
-				sunColor: [1, 1, 1],
+				sunColor: [...SUN_LIGHT_COLOUR],
 				realisticSunAlways: entry.realistic_sun_always,
 				refractivity: entry.refractivity,
 				groundAlbedo: entry.ground_albedo,

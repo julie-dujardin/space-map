@@ -11,7 +11,7 @@
  * has no bundle to draw from: its catalogue record gives its size and colour.
  */
 
-import { SUN_ID } from '$lib/constants';
+import { SUN_ID, SUN_TEFF } from '$lib/constants';
 import { extrasolarIdOf, isStarObjectId, planetOfObjectId } from '$lib/fetch/extrasolar/ids';
 import { formatSizeKm } from '$lib/format/distance';
 import { localName } from '$lib/format/name';
@@ -35,7 +35,6 @@ import { fetchModelIndex, type ModelIndexEntry } from '$lib/fetch/models';
 import type { LineupBody } from '../../components/detail/charts/BodyLineup.svelte';
 import { craftWidthRatio } from '../../components/detail/charts/lineup-fit';
 import { RENDER_HINTS } from '../../components/detail/charts/lineup';
-import { SUN_TEFF } from '../../components/detail/charts/lineup-star';
 import { groupHref } from '$lib/state/page-href';
 import { rocketBodies, rocketBySlug } from './rockets';
 

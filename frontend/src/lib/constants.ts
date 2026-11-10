@@ -57,6 +57,8 @@ export const THIRD_PARTY_NOTICES_URL = '/THIRD_PARTY_NOTICES.txt';
 
 /** Common NAIF ids referenced by name across the renderer. */
 export const SUN_ID = 'naif-10';
+/** The Sun's effective temperature, K (IAU 2015 Resolution B3). */
+export const SUN_TEFF = 5772;
 export const EARTH_ID = 'naif-399';
 export const SSB_ID = 'naif-0';
 

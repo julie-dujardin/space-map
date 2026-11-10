@@ -41,8 +41,6 @@ const SOLAR_CELLS = 80;
 /** On screen, cells under this many pixels are not drawn: they would alias. */
 const CELL_MIN_PX: [number, number] = [2.5, 6];
 
-/** The Sun's effective temperature, K (IAU 2015 Resolution B3). */
-export const SUN_TEFF = 5772;
 /** Space, in either theme: a white-hot disc on the light drawer disappears. */
 export const LINEUP_SKY = '#05060b';
 

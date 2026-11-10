@@ -116,6 +116,7 @@ import {
 	AMBIENT_BOOST_INTENSITY,
 	AMBIENT_INTENSITY,
 	ENV_BASE_INTENSITY,
+	SUN_LIGHT_COLOUR,
 	SUN_LIGHT_INTENSITY,
 	makeEnvMap,
 	sunIrradianceFactor
@@ -2306,7 +2307,12 @@ export class SceneRenderer {
 		this._tmpV3.copy(bo.root.position);
 		const inView = evaluateEclipseFactor(this._tmpV3, this._tmpV3);
 		const leak = evaluateEclipseLeak(this._tmpV3, this._tmpV3, this._tmpLeak);
-		this.modelLight.color.setRGB(inView + leak.x, inView + leak.y, inView + leak.z);
+		const [sr, sg, sb] = SUN_LIGHT_COLOUR;
+		this.modelLight.color.setRGB(
+			sr * (inView + leak.x),
+			sg * (inView + leak.y),
+			sb * (inView + leak.z)
+		);
 		this.modelLight.intensity = SUN_LIGHT_INTENSITY * irradiance * this.sunIntensityScale;
 		this.modelScene.environmentIntensity = ENV_BASE_INTENSITY * inView * irradiance;
 

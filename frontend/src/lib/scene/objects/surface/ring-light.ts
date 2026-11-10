@@ -47,7 +47,7 @@ import {
 	Vector3,
 	Vector4
 } from 'three';
-import { SUN_LIGHT_INTENSITY } from '$lib/scene/lighting';
+import { SUN_LIGHT_COLOUR, SUN_LIGHT_INTENSITY } from '$lib/scene/lighting';
 import { chainShaderHook } from '$lib/scene/shaders/program-cache-key';
 
 /** Tint of the unlit face, from Björn Jónsson's notes. */
@@ -744,6 +744,9 @@ export function writeRingshine(
 	const lit = light.profile.litTint;
 	const unlitLuminance = luminance(...UNLIT_TINT);
 	const [litFace, unlitFace] = sinB >= 0 ? [above, below] : [below, above];
-	litFace.set(lit.r, lit.g, lit.b).multiplyScalar(lightScale);
-	unlitFace.set(...UNLIT_TINT).multiplyScalar(lightScale / unlitLuminance);
+	const [sr, sg, sb] = SUN_LIGHT_COLOUR;
+	litFace.set(lit.r * sr, lit.g * sg, lit.b * sb).multiplyScalar(lightScale);
+	unlitFace
+		.set(UNLIT_TINT[0] * sr, UNLIT_TINT[1] * sg, UNLIT_TINT[2] * sb)
+		.multiplyScalar(lightScale / unlitLuminance);
 }

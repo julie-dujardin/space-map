@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { Color } from 'three';
+import { SUN_LIGHT_COLOUR } from '$lib/scene/lighting';
 import {
 	lambertSpherePhase,
 	makePlanetshineUniforms,
@@ -152,7 +153,7 @@ describe('selectShiners', () => {
 		expect(b.toArray()).toEqual([1, 0, 0, 0.1]);
 	});
 
-	it('gives the irradiance of the shiner in the units of its sunlight', () => {
+	it('gives the irradiance of the shiner in the units and colour of its sunlight', () => {
 		const out = makePlanetshineUniforms();
 		// The Sun is behind the receiver: the shiner is full.
 		const s = shiner([10, 0, 0], 2, [-1, 0, 0], 0.5, 3.5);
@@ -160,16 +161,20 @@ describe('selectShiners', () => {
 		selectShiners(out, 0, 0, 0, [s], 1);
 		const light = out.uShineLight.value[0];
 		const fraction = (2 / 3) * 0.04;
-		expect(light.x).toBeCloseTo(3.5 * fraction * 0.6, 12);
-		expect(light.y).toBeCloseTo(3.5 * fraction * 0.5, 12);
-		expect(light.z).toBeCloseTo(3.5 * fraction * 0.4, 12);
+		const [r, g, b] = SUN_LIGHT_COLOUR;
+		expect(light.x).toBeCloseTo(3.5 * fraction * 0.6 * r, 12);
+		expect(light.y).toBeCloseTo(3.5 * fraction * 0.5 * g, 12);
+		expect(light.z).toBeCloseTo(3.5 * fraction * 0.4 * b, 12);
 	});
 
 	it('takes the phase angle at the shiner', () => {
 		const out = makePlanetshineUniforms();
 		// The Sun is beside the shiner, 90 deg from the receiver.
 		selectShiners(out, 0, 0, 0, [shiner([10, 0, 0], 2, [0, 1, 0])], 1);
-		expect(out.uShineLight.value[0].x).toBeCloseTo(((2 / 3) * 0.04) / Math.PI, 12);
+		expect(out.uShineLight.value[0].x).toBeCloseTo(
+			(((2 / 3) * 0.04) / Math.PI) * SUN_LIGHT_COLOUR[0],
+			12
+		);
 		// The Sun is behind the shiner: the receiver sees its night side.
 		expect(selectShiners(out, 0, 0, 0, [shiner([10, 0, 0], 2, [1, 0, 0])], 1)).toBe(0);
 	});

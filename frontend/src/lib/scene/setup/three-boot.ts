@@ -1,6 +1,7 @@
 import {
 	ACESFilmicToneMapping,
 	AmbientLight,
+	Color,
 	DepthTexture,
 	DirectionalLight,
 	FloatType,
@@ -23,7 +24,7 @@ import { currentRenderTier, renderPixelRatio } from '$lib/scene/render-tier';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { ThrottledCSS2DRenderer } from '$lib/scene/label/throttled-renderer';
 import { setTrailResolution } from '$lib/scene/objects/trail/material';
-import { AMBIENT_INTENSITY, BLOOM_THRESHOLD } from '$lib/scene/lighting';
+import { AMBIENT_INTENSITY, BLOOM_THRESHOLD, SUN_LIGHT_COLOUR } from '$lib/scene/lighting';
 import { installBloomHighPass } from './bloom-high-pass';
 import { installLogDepthChunks, setReversedDepth } from './depth-mode';
 import { installOutputDither } from './output-dither';
@@ -142,7 +143,7 @@ export function bootThree(
 	const scene = new Scene();
 	const ambientLight = new AmbientLight(0xffffff, AMBIENT_INTENSITY);
 	scene.add(ambientLight);
-	const shadowLight = new DirectionalLight(0xffffff, 0);
+	const shadowLight = new DirectionalLight(new Color(...SUN_LIGHT_COLOUR), 0);
 	shadowLight.castShadow = false;
 	// A grazing-Sun shadow across a model-tight frustum wants 4096²; low tiers take less.
 	shadowLight.shadow.mapSize.set(tier.shadowMapSize, tier.shadowMapSize);

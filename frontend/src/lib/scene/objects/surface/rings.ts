@@ -34,6 +34,7 @@ import {
 	Vector2,
 	Vector3
 } from 'three';
+import { SUN_LIGHT_COLOUR } from '$lib/scene/lighting';
 import { kmToScene } from '$lib/math/units';
 import { versionedUrl } from '$lib/fetch/data-base';
 import { tagShaderModifier } from '$lib/scene/shaders/program-cache-key';
@@ -369,6 +370,7 @@ const FRAGMENT_SHADER = `
 	// Solar irradiance factor for the realistic-lighting toggle; 1 otherwise.
 	// The BJJ profiles are pre-lit albedo, so scene lights never touch rings.
 	uniform float uLightScale;
+	uniform vec3 uSunColor;
 	// Stored channel value × this = physical brightness/opacity. 1 for
 	// Saturn's measured profiles; ~1e-6..0.7 for the synthetic tenuous
 	// systems. The overexpose-rings toggle sets it to 1.
@@ -508,7 +510,7 @@ const FRAGMENT_SHADER = `
 		float shadow = planetShadow();
 
 		gl_FragColor = vec4(
-			(sunLit * shadow + planetLit) * uIntensityScale * uLightScale * share,
+			uSunColor * (sunLit * shadow + planetLit) * uIntensityScale * uLightScale * share,
 			layerAlpha
 		);
 		#include <logdepthbuf_fragment>
@@ -759,6 +761,7 @@ export async function loadRingNode(
 			uPlanetEquatorialScene: { value: 0 },
 			uPlanetPolarScene: { value: 0 },
 			uLightScale: { value: 1 },
+			uSunColor: { value: new Vector3(...SUN_LIGHT_COLOUR) },
 			uIntensityScale: { value: intensityScale },
 			uPlanetLight: { value: light.planetLight },
 			uPlanetAlbedo: { value: new Color(0, 0, 0) },

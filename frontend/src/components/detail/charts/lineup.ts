@@ -1,4 +1,4 @@
-import { SUN_ID } from '$lib/constants';
+import { SUN_ID, SUN_TEFF } from '$lib/constants';
 import { isExtrasolarObjectId, isStarObjectId, planetOfObjectId } from '$lib/fetch/extrasolar/ids';
 import type { NotableMemberEntry } from '$lib/fetch/groups/details';
 import type { ModelIndexEntry } from '$lib/fetch/models';
@@ -6,7 +6,6 @@ import type { ModelBundleMeta } from '$lib/scene/objects/body/model';
 import { lunarWeightScaleOf } from '$lib/scene/exoplanets/photometry';
 import { teffFromBpRp } from '$lib/scene/starfield/colour';
 import type { LineupBody } from './BodyLineup.svelte';
-import { SUN_TEFF } from './lineup-star';
 
 /** The body-class-specific part of a LineupBody: geometry plus optional flat
  *  colour / render hints. The routing id, localized name and hover description
