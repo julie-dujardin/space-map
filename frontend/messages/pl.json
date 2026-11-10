@@ -636,6 +636,7 @@
 	"time_now_tooltip": "Przejdź do bieżącego czasu zegarowego",
 	"time_pick_date": "Wybierz datę",
 	"time_pick_time": "Wybierz godzinę",
+	"time_find_year": "Wpisz rok",
 	"time_scale_realtime": "1×",
 	"time_scale_min_per_sec": "1 min/s",
 	"time_scale_hour_per_sec": "1 h/s",

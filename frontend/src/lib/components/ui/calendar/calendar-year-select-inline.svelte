@@ -12,6 +12,8 @@
 		locale: string;
 		placeholder: DateValue | undefined;
 		onSelect: (newPlaceholder: DateValue) => void;
+		/** Names the field that narrows the list as a year is typed. */
+		searchLabel?: string;
 		class?: string;
 	}
 
@@ -21,12 +23,15 @@
 		locale,
 		placeholder,
 		onSelect,
+		searchLabel,
 		class: className
 	}: Props = $props();
 
 	let open = $state(false);
+	let query = $state('');
 	let triggerRef = $state<HTMLButtonElement | null>(null);
 	let menuRef = $state<HTMLDivElement | null>(null);
+	let listRef = $state<HTMLDivElement | null>(null);
 
 	const DEFAULT_YEARS = (() => {
 		const cy = new Date().getFullYear();
@@ -47,6 +52,16 @@
 	let items = $derived(yearList.map((value) => ({ value, label: formatYear(value) })));
 	let selectedValue = $derived(placeholder ? placeholder.year : new Date().getFullYear());
 	let selectedLabel = $derived(items.find((i) => i.value === selectedValue)?.label ?? '');
+	// Centuries of years are too many to scroll through: typing the first
+	// digits narrows the list.
+	let shown = $derived.by(() => {
+		const q = query.trim();
+		if (!q) return items;
+		return items.filter((i) => String(i.value).startsWith(q) || i.label.startsWith(q));
+	});
+	let rangeHint = $derived(
+		items.length > 1 ? `${items[0].label}–${items[items.length - 1].label}` : ''
+	);
 
 	function pick(value: number) {
 		if (!placeholder) {
@@ -75,6 +90,7 @@
 
 	$effect(() => {
 		if (!open) return;
+		query = '';
 		document.addEventListener('mousedown', handleDocClick);
 		document.addEventListener('keydown', handleKey);
 		// Scroll the selected year into view once the menu mounts.
@@ -106,23 +122,39 @@
 	{#if open}
 		<div
 			bind:this={menuRef}
-			role="listbox"
-			class="absolute top-full start-0 z-20 mt-1 max-h-60 min-w-full overflow-y-auto rounded-md border bg-popover text-popover-foreground shadow-md py-1"
+			class="absolute top-full start-0 z-20 mt-1 flex max-h-60 min-w-full flex-col rounded-md border bg-popover text-popover-foreground shadow-md"
 		>
-			{#each items as item (item.value)}
-				<button
-					type="button"
-					role="option"
-					aria-selected={item.value === selectedValue}
-					onclick={() => pick(item.value)}
-					class="block w-full text-start px-3 py-1.5 text-sm cursor-pointer transition-colors
-						{item.value === selectedValue
-						? 'bg-accent text-accent-foreground'
-						: 'hover:bg-accent hover:text-accent-foreground'}"
-				>
-					{item.label}
-				</button>
-			{/each}
+			<div class="shrink-0 p-1">
+				<input
+					type="text"
+					inputmode="numeric"
+					bind:value={query}
+					oninput={() => listRef && (listRef.scrollTop = 0)}
+					placeholder={rangeHint}
+					aria-label={searchLabel}
+					onkeydown={(e) => {
+						if (e.key === 'Enter' && shown.length > 0) pick(shown[0].value);
+					}}
+					class="h-8 w-full min-w-24 rounded-md border bg-transparent px-2 text-sm tabular-nums
+						focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring"
+				/>
+			</div>
+			<div bind:this={listRef} role="listbox" class="min-h-0 overflow-y-auto pb-1">
+				{#each shown as item (item.value)}
+					<button
+						type="button"
+						role="option"
+						aria-selected={item.value === selectedValue}
+						onclick={() => pick(item.value)}
+						class="block w-full text-start px-3 py-1.5 text-sm cursor-pointer transition-colors
+							{item.value === selectedValue
+							? 'bg-accent text-accent-foreground'
+							: 'hover:bg-accent hover:text-accent-foreground'}"
+					>
+						{item.label}
+					</button>
+				{/each}
+			</div>
 		</div>
 	{/if}
 </span>

@@ -9,14 +9,10 @@
 	import { formatJulianDateTime } from '$lib/format/date';
 	import { getLocale } from '$lib/paraglide/runtime.js';
 	import * as m from '$lib/paraglide/messages.js';
-	import {
-		TIME_DATE_OPTS,
-		TIME_SCALES,
-		PICKER_MIN_DATE,
-		PICKER_MAX_DATE
-	} from '$lib/time/time-scales';
+	import { TIME_DATE_OPTS, TIME_SCALES } from '$lib/time/time-scales';
+	import { loadPickerRange, pickerRange } from '$lib/time/picker-range.svelte';
 	import type { SimClock } from '$lib/scene/state/clock.svelte';
-	import { untrack } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import {
 		applyDateToClock,
 		applyTimeToClock,
@@ -54,12 +50,18 @@
 
 	let dateLabel = $derived(formatJulianDateTime(shownJd, TIME_DATE_OPTS));
 
+	onMount(loadPickerRange);
+
 	// The inline year-select doesn't see minValue/maxValue and would otherwise
 	// fall back to a hardcoded [currentYear-100, currentYear] window.
-	const PICKER_YEARS = Array.from(
-		{ length: PICKER_MAX_DATE.year - PICKER_MIN_DATE.year + 1 },
-		(_, i) => PICKER_MIN_DATE.year + i
-	);
+	const pickerYears = $derived.by(() => {
+		const range = pickerRange();
+		if (!range) return undefined;
+		return Array.from(
+			{ length: range.max.year - range.min.year + 1 },
+			(_, i) => range.min.year + i
+		);
+	});
 </script>
 
 <div class="flex flex-col gap-4">
@@ -93,9 +95,10 @@
 				onValueChange={handleDateChange}
 				captionLayout="dropdown-inline"
 				locale={getLocale()}
-				minValue={PICKER_MIN_DATE}
-				maxValue={PICKER_MAX_DATE}
-				years={PICKER_YEARS}
+				minValue={pickerRange()?.min}
+				maxValue={pickerRange()?.max}
+				years={pickerYears}
+				yearSearchLabel={m.time_find_year()}
 			/>
 			<div class="border-t p-3">
 				<input

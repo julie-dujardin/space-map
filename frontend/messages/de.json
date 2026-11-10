@@ -622,6 +622,7 @@
 	"time_now_tooltip": "Zur aktuellen Uhrzeit springen",
 	"time_pick_date": "Datum wählen",
 	"time_pick_time": "Uhrzeit wählen",
+	"time_find_year": "Jahr eingeben",
 	"time_scale_realtime": "1×",
 	"time_scale_min_per_sec": "1 Min/s",
 	"time_scale_hour_per_sec": "1 Std/s",

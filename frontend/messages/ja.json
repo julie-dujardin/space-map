@@ -547,6 +547,7 @@
 	"time_now_tooltip": "現在の実時刻にジャンプ",
 	"time_pick_date": "日付を選択",
 	"time_pick_time": "時刻を選択",
+	"time_find_year": "年を入力",
 	"time_scale_min_per_sec": "1分/秒",
 	"time_scale_hour_per_sec": "1時間/秒",
 	"time_scale_day_per_sec": "1日/秒",

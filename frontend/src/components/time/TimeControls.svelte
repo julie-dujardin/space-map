@@ -11,13 +11,9 @@
 	import * as Popover from '$lib/components/ui/popover';
 	import { Calendar } from '$lib/components/ui/calendar';
 	import { type DateValue } from '@internationalized/date';
-	import { untrack } from 'svelte';
-	import {
-		TIME_SCALES,
-		TIME_DATE_OPTS,
-		PICKER_MIN_DATE,
-		PICKER_MAX_DATE
-	} from '$lib/time/time-scales';
+	import { onMount, untrack } from 'svelte';
+	import { TIME_SCALES, TIME_DATE_OPTS } from '$lib/time/time-scales';
+	import { loadPickerRange, pickerRange } from '$lib/time/picker-range.svelte';
 	import {
 		applyDateToClock,
 		applyTimeToClock,
@@ -36,6 +32,8 @@
 	}
 
 	let { clock, panelOpen = false, onFitChange }: Props = $props();
+
+	onMount(loadPickerRange);
 
 	/** The bottom-end button stack: 1rem margin, 2.5rem button, 0.75rem gap. */
 	const END_RESERVE_PX = 68;
@@ -209,8 +207,8 @@
 				onValueChange={handleDateChange}
 				captionLayout="dropdown"
 				locale={getLocale()}
-				minValue={PICKER_MIN_DATE}
-				maxValue={PICKER_MAX_DATE}
+				minValue={pickerRange()?.min}
+				maxValue={pickerRange()?.max}
 			/>
 			<div class="border-t p-3">
 				<input

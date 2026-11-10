@@ -21,6 +21,7 @@
 		yearFormat = 'numeric',
 		day,
 		disableDaysOutsideMonth = false,
+		yearSearchLabel,
 		...restProps
 	}: WithoutChildrenOrChild<CalendarPrimitive.RootProps> & {
 		buttonVariant?: ButtonVariant;
@@ -30,6 +31,8 @@
 		monthFormat?: CalendarPrimitive.MonthSelectProps['monthFormat'];
 		yearFormat?: CalendarPrimitive.YearSelectProps['yearFormat'];
 		day?: Snippet<[{ day: DateValue; outsideMonth: boolean }]>;
+		/** Names the year field of the `dropdown-inline` caption. */
+		yearSearchLabel?: string;
 	} = $props();
 
 	const monthFormat = $derived.by(() => {
@@ -90,6 +93,7 @@ get along, so we shut typescript up by casting `value` to `never`.
 							bind:placeholder
 							{locale}
 							{monthIndex}
+							{yearSearchLabel}
 						/>
 					</Calendar.Header>
 					<Calendar.Grid>

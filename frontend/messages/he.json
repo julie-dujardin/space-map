@@ -636,6 +636,7 @@
 	"time_now_tooltip": "קפיצה לזמן הנוכחי",
 	"time_pick_date": "בחר תאריך",
 	"time_pick_time": "בחר שעה",
+	"time_find_year": "הקלד שנה",
 	"time_scale_realtime": "1×",
 	"time_scale_min_per_sec": "1 דק'/ש",
 	"time_scale_hour_per_sec": "1 ש'/ש",

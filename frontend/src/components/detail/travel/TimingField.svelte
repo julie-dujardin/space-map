@@ -9,10 +9,11 @@
 -->
 <script lang="ts">
 	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
+	import { onMount } from 'svelte';
 	import { type DateValue } from '@internationalized/date';
 	import * as Popover from '$lib/components/ui/popover';
 	import { Calendar } from '$lib/components/ui/calendar';
-	import { PICKER_MAX_DATE, PICKER_MIN_DATE } from '$lib/time/time-scales';
+	import { loadPickerRange, pickerRange } from '$lib/time/picker-range.svelte';
 	import { formatJulianDate } from '$lib/format/date';
 	import { getLocale } from '$lib/paraglide/runtime.js';
 	import * as m from '$lib/paraglide/messages.js';
@@ -28,6 +29,8 @@
 		onDateChange: (jd: number) => void;
 	}
 	let { mode, jd, onModeChange, onDateChange }: Props = $props();
+
+	onMount(loadPickerRange);
 
 	let open = $state(false);
 	let value = $derived<DateValue | undefined>(jdToCalendarDate(jd));
@@ -122,8 +125,8 @@
 				onValueChange={pick}
 				captionLayout="dropdown"
 				locale={getLocale()}
-				minValue={PICKER_MIN_DATE}
-				maxValue={PICKER_MAX_DATE}
+				minValue={pickerRange()?.min}
+				maxValue={pickerRange()?.max}
 			/>
 		{/if}
 	</Popover.Content>

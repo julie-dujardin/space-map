@@ -16,7 +16,8 @@
 		month,
 		locale,
 		placeholder = $bindable(),
-		monthIndex = 0
+		monthIndex = 0,
+		yearSearchLabel
 	}: {
 		captionLayout: ComponentProps<typeof Calendar>['captionLayout'];
 		months: ComponentProps<typeof CalendarMonthSelect>['months'];
@@ -27,6 +28,7 @@
 		placeholder: DateValue | undefined;
 		locale: string;
 		monthIndex: number;
+		yearSearchLabel?: string;
 	} = $props();
 
 	function formatYear(date: DateValue) {
@@ -77,6 +79,7 @@
 		{yearFormat}
 		{locale}
 		{placeholder}
+		searchLabel={yearSearchLabel}
 		onSelect={(next) => (placeholder = next)}
 	/>
 {/snippet}

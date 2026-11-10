@@ -549,6 +549,7 @@
 	"time_now_tooltip": "跳转到当前时间",
 	"time_pick_date": "选择日期",
 	"time_pick_time": "选择时间",
+	"time_find_year": "输入年份",
 	"time_scale_min_per_sec": "1分钟/秒",
 	"time_scale_hour_per_sec": "1小时/秒",
 	"time_scale_day_per_sec": "1天/秒",

@@ -629,6 +629,7 @@
 	"time_now_tooltip": "Saltar para a hora atual do relógio",
 	"time_pick_date": "Escolher uma data",
 	"time_pick_time": "Escolher uma hora",
+	"time_find_year": "Escrever um ano",
 	"time_scale_realtime": "1×",
 	"time_scale_min_per_sec": "1 min/s",
 	"time_scale_hour_per_sec": "1 h/s",

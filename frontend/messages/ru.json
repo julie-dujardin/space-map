@@ -571,6 +571,7 @@
 	"time_now_tooltip": "Перейти к текущему времени",
 	"time_pick_date": "Выбрать дату",
 	"time_pick_time": "Выбрать время",
+	"time_find_year": "Ввести год",
 	"time_scale_min_per_sec": "1 мин/с",
 	"time_scale_hour_per_sec": "1 ч/с",
 	"time_scale_day_per_sec": "1 д/с",
