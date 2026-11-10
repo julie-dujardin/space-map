@@ -317,30 +317,29 @@ function hostBody(planet: PositionedBody): Promise<PositionedBody | null> {
 	});
 }
 
-/** The held stars of the node `id`, also those of its inner nodes. */
-function heldStars(id: number, nodes: ReadonlyMap<number, SystemNode>): number[] {
+/** The stars of the node `id`, also those of its inner nodes. */
+function nodeStars(id: number, nodes: ReadonlyMap<number, SystemNode>): number[] {
 	return (nodes.get(id)?.members ?? []).flatMap(({ id: member, kind }) => {
 		if (member === null) return [];
-		if (kind === 'held star') return [member];
-		return kind === 'system' ? heldStars(member, nodes) : [];
+		if (kind === 'held star' || kind === 'star') return [member];
+		return kind === 'system' ? nodeStars(member, nodes) : [];
 	});
 }
 
-/** The clearance of a point of several stars, km: the largest radius of the
- *  stars it holds. The point itself has no radius. */
-async function heldRadiusKm(
+/** The clearance of a node, km: the largest radius of the stars it holds. A
+ *  node has no radius of its own, and a circumbinary planet's host is one. */
+async function nodeRadiusKm(
 	id: number,
 	nodes: ReadonlyMap<number, SystemNode>
 ): Promise<number | null> {
-	if (!nodes.get(id)?.point) return null;
-	const found = await Promise.all(heldStars(id, nodes).map((star) => extrasolarLookup.live(star)));
+	const found = await Promise.all(nodeStars(id, nodes).map((star) => extrasolarLookup.live(star)));
 	const radii = found.flatMap((f) => (f.kind === 'live' && starRadiusKm(f.record.metadata)) || []);
 	return radii.length > 0 ? Math.max(...radii) : null;
 }
 
 /** The orbits `star` is drawn on in its system, the place they turn about, the
  *  μ of a star of unknown mass, and its clearance: a held star's own radius,
- *  which the scene gives it only where it draws, or a point's held stars'.
+ *  which the scene gives it only where it draws, or a node's stars'.
  *  The system's tables give μ before the pair's orbit, because Kepler's sum goes
  *  as a³ and a poor orbit gives a mass far off. A system that does not load
  *  leaves the star at its catalogue place, and so does a barycentre with no
@@ -358,7 +357,7 @@ async function onItsOrbits(
 		const listed = listedMass(record.id, nodes);
 		const mu = listed === null ? memberMu(record.id, pairs) : listed * GM_SUN_KM3_S2;
 		const radiusKm =
-			star.radiusKm ?? starRadiusKm(record.metadata) ?? (await heldRadiusKm(record.id, nodes));
+			star.radiusKm ?? starRadiusKm(record.metadata) ?? (await nodeRadiusKm(record.id, nodes));
 		const weighed = { ...star, muKm3S2: star.muKm3S2 ?? mu, radiusKm };
 		const { orbits, top } = carryingOrbits(record.id, pairs);
 		if (!top) return weighed;

@@ -131,10 +131,7 @@ export class ExoplanetSystems {
 	 *  system. The root keys the file of a star system. */
 	private planetSystemOf(star: number): number | undefined {
 		const store = this.ctx.exoplanets;
-		const held = store.heldHostOf(star);
-		const index = store.index!;
-		const own = index.host(star) ?? (held === undefined ? undefined : index.host(held));
-		return own?.system ?? this.starSystem.drawnRoot;
+		return store.index!.host(store.planetHostOf(star))?.system ?? this.starSystem.drawnRoot;
 	}
 
 	/** Publish the shares of the hosts, of the stars on drawn orbits and of the

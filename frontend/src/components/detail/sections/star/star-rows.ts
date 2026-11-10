@@ -17,7 +17,13 @@ import {
 } from '$lib/fetch/extrasolar/lookup';
 import { starSourceName } from '$lib/credits/star-sources';
 import { PC_AU } from '$lib/scene/starfield/tree';
-import { flameFitHolds, isCompact, starMass, type FlameRun } from '$lib/scene/starfield/record';
+import {
+	flameFitHolds,
+	isCompact,
+	starMass,
+	starTeff,
+	type FlameRun
+} from '$lib/scene/starfield/record';
 import {
 	boundErrors,
 	formatDeclination,
@@ -649,6 +655,21 @@ export function pointDistanceStat(ps: TableRow, orbit: TableRow | null): Stat | 
 	return distance && distanceStat(distance.pc, uncertainty(distance));
 }
 
+/** The diameter card of a star of `radius` solar radii. */
+export function diameterStat(radius: number): Stat {
+	return {
+		label: m.diameter(),
+		value: formatCompactKm(2 * radius * SOLAR_RADIUS_KM),
+		tooltip: sizeComparison(radius * SOLAR_RADIUS_KM)
+	};
+}
+
+/** The mass card of a star of `mass` solar masses. */
+export function massStat(mass: number): Stat {
+	const kg = mass * SOLAR_MASS_KG;
+	return { label: m.star_stat_mass(), value: formatMass(kg), tooltip: massComparison(kg) };
+}
+
 /** The three most useful available facts. */
 export function starStats(record: ExtrasolarRecord): Stat[][] {
 	const ps = pointSource(record);
@@ -656,22 +677,11 @@ export function starStats(record: ExtrasolarRecord): Stat[][] {
 	const out: (Stat | null)[] = [];
 	const radius = record.metadata.radius?.solar ?? null;
 	const mass = starMass(ps)?.solar ?? null;
-	if (radius !== null) {
-		out.push({
-			label: m.diameter(),
-			value: formatCompactKm(2 * radius * SOLAR_RADIUS_KM),
-			tooltip: sizeComparison(radius * SOLAR_RADIUS_KM)
-		});
-	} else if (mass !== null) {
-		out.push({
-			label: m.star_stat_mass(),
-			value: formatMass(mass * SOLAR_MASS_KG),
-			tooltip: massComparison(mass * SOLAR_MASS_KG)
-		});
-	}
+	if (radius !== null) out.push(diameterStat(radius));
+	else if (mass !== null) out.push(massStat(mass));
 	const distance = pointDistanceStat(ps, astrometricOrbit(record));
 	if (distance) out.push(distance);
-	const teff = ps.number('teff');
+	const teff = starTeff(ps);
 	const spType = spectralType(record.metadata.spectralType);
 	if (teff !== null) {
 		out.push({

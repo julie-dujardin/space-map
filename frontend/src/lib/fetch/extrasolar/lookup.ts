@@ -65,7 +65,9 @@ export interface MetadataRow {
 	familiesEstimated: bigint;
 	/** The MK spectral type that gives the star families; null for none. */
 	spectralType: string | null;
-	/** Null for a star with none and for a node of a star system. */
+	/** Null for a star with none, a resolved node, and a point whose dominant
+	 *  held star stands for it. Any other point of several stars keeps the
+	 *  radius it was measured at, since no one star can take its light. */
 	radius: StarRadius | null;
 	/** True when the site's object bundles hold an entry for the ID: its
 	 *  names in other languages, its Wikidata and Wikipedia text, the papers

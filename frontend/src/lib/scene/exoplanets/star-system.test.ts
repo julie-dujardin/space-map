@@ -14,6 +14,7 @@ import {
 	loadStarSystem,
 	type StarSystemPlan
 } from './star-system';
+import { ExoplanetStore } from './store';
 import { ExoplanetSystems, type SystemsFrame } from './systems';
 
 vi.mock('$lib/scene/setup/extrasolar', () => ({
@@ -127,7 +128,8 @@ function scene(bodies: PositionedBody[], plan: StarSystemPlan) {
 			index: null,
 			loadIndex: async () => {},
 			ensureStarSystem: async () => plan,
-			heldHostOf: (id: number) => plan.heldHosts.get(id)
+			heldHostOf: (id: number) => plan.heldHosts.get(id),
+			planetHostOf: ExoplanetStore.prototype.planetHostOf
 		},
 		bodies: { notifyBodiesAdded: notify, pinExtrasolar: () => {} },
 		visibility: {}
@@ -285,7 +287,8 @@ describe('a held host on no drawn orbit', () => {
 	function useHeld(ctx: ContextManager, plan: StarSystemPlan): void {
 		Object.assign(ctx.exoplanets, {
 			ensureStarSystem: async () => plan,
-			heldHostOf: (id: number) => plan.heldHosts.get(id)
+			heldHostOf: (id: number) => plan.heldHosts.get(id),
+			planetHostOf: ExoplanetStore.prototype.planetHostOf
 		});
 	}
 

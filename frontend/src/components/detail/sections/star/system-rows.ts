@@ -23,23 +23,23 @@ import {
 import type { EntityRef } from '$lib/fetch/objects/object-data';
 import { ltrIsolate } from '$lib/format/bidi';
 import { formatDeclination, formatRightAscension } from '$lib/format/star';
-import { formatMass, massComparison, SOLAR_MASS_KG, sizeComparison } from '$lib/format/mass';
-import { formatCompactKm } from '$lib/format/distance';
+import { formatMass, massComparison, SOLAR_MASS_KG } from '$lib/format/mass';
 import { formatUnit, joinParts, sigFigures } from '$lib/format/quantities';
 import { formatTemperature } from '$lib/format/temperature';
-import { SOLAR_RADIUS_KM } from '$lib/math/units';
 import { systemRows, type StarSystem, type SystemRow } from '$lib/state/star-system';
 import type { Stat } from '../kit/StatCard.svelte';
 import { formatJulianDay, formatPeriod } from '../planet/planet-rows';
 import {
 	PC_LY,
 	diameterRow,
+	diameterStat,
 	distanceStat,
 	epochLabel,
 	gravityRow,
 	hint,
 	hostAgeRow,
 	hostMetallicityRow,
+	massStat,
 	meanDensityRow,
 	photosphere,
 	pointDistanceStat,
@@ -82,13 +82,7 @@ function rowDistanceStat(node: SystemNode): Stat | null {
 }
 
 function massCard(star: HeldStarValues): Stat | null {
-	if (star.mass === null) return null;
-	const kg = star.mass * SOLAR_MASS_KG;
-	return { label: m.star_stat_mass(), value: formatMass(kg), tooltip: massComparison(kg) };
-}
-
-function diameterValue(radius: number): string {
-	return formatCompactKm(2 * radius * SOLAR_RADIUS_KM);
+	return star.mass === null ? null : massStat(star.mass);
 }
 
 function heldStarStats(
@@ -96,11 +90,7 @@ function heldStarStats(
 	star: HeldStarValues,
 	radius: StarRadius | null
 ): (Stat | null)[] {
-	const diameter = radius && {
-		label: m.diameter(),
-		value: diameterValue(radius.solar),
-		tooltip: sizeComparison(radius.solar * SOLAR_RADIUS_KM)
-	};
+	const diameter = radius && diameterStat(radius.solar);
 	const code = spectralType(star.spectralType);
 	const nature =
 		star.teff !== null

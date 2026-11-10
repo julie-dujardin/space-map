@@ -183,17 +183,23 @@ function takeOver(star: PositionedBody, point: StarAnchor, values: HeldStarValue
 	const host = star.extrasolar!;
 	host.scene = point.scene;
 	host.tree = point.tree;
-	host.absMag = point.absMag;
-	host.teff = values?.teff ?? null;
-	host.colour = host.teff === null ? point.colour : bpRpFromTeff(host.teff);
-	giveSphere(star);
+	drawHeld(star, point.absMag, values?.teff ?? null, point.colour);
 	star.data.starColor = starCssColour(host.teff, host.colour);
 }
 
-/** A held star takes its radius only where it draws on its own, so the
- *  camera never frames a sphere that does not draw. */
-function giveSphere(star: PositionedBody): void {
+/** A held star that draws on its own: `absMag` of light, the colour of
+ *  `teff`, else `colour`, and its sphere. It takes its radius only here, so
+ *  the camera never frames a sphere that does not draw. */
+function drawHeld(
+	star: PositionedBody,
+	absMag: number | null,
+	teff: number | null,
+	colour: number | null
+): void {
 	const anchor = star.extrasolar!;
+	anchor.absMag = absMag;
+	anchor.teff = teff;
+	anchor.colour = teff === null ? colour : bpRpFromTeff(teff);
 	anchor.radiusKm = starRadiusKm(anchor.record.metadata);
 	star.data.radiusKm = anchor.radiusKm ?? NaN;
 }
@@ -236,12 +242,7 @@ function describeMembers(
 		const anchor = star?.extrasolar;
 		if (!star || !anchor) continue;
 		const held = values[i];
-		if (held) {
-			anchor.absMag = light[i];
-			anchor.teff = held.teff;
-			anchor.colour = held.teff === null ? (primary?.colour ?? null) : bpRpFromTeff(held.teff);
-			giveSphere(star);
-		}
+		if (held) drawHeld(star, light[i], held.teff, primary?.colour ?? null);
 		const inner = plan.nodes.get(member.id!)?.primary;
 		const look = inner ? body(inner)?.extrasolar : anchor;
 		star.data.starColor = starCssColour(look?.teff ?? null, look?.colour ?? null);

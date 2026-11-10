@@ -484,7 +484,7 @@ describe('resolving an end from the export', () => {
 		expect((await resolveExtrasolarEnd('x-5'))?.body.id).toBe('x-5');
 	});
 
-	describe('at a point of several stars', () => {
+	describe('at a node of several stars', () => {
 		/** A held star of the point, at the place of its System row. */
 		const heldStar = (id: number, solar: number): ExtrasolarRecord => {
 			const base = resolvedSystemRecord(id, null);
@@ -502,6 +502,15 @@ describe('resolving an end from the export', () => {
 			};
 		};
 
+		const node = (id: number, point: boolean, members: [number, string][]) =>
+			({
+				id,
+				point,
+				depth: point ? 0 : 1,
+				orbit: null,
+				members: members.map(([id, kind]) => ({ id, kind }))
+			}) as unknown as SystemNode;
+
 		/** The point 5 holds the star 6 and the pair 8 of the stars 7 and 9. */
 		function point() {
 			const record = { ...starRecord([], null), id: 5 };
@@ -517,14 +526,6 @@ describe('resolving an end from the export', () => {
 				record: records.get(Number(id))!
 			}));
 			vi.spyOn(planetCatalogue, 'index').mockResolvedValue(null);
-			const node = (id: number, point: boolean, members: [number, string][]) =>
-				({
-					id,
-					point,
-					depth: point ? 0 : 1,
-					orbit: null,
-					members: members.map(([id, kind]) => ({ id, kind }))
-				}) as unknown as SystemNode;
 			vi.mocked(loadSystemNodes).mockResolvedValue([
 				node(5, true, [
 					[6, 'held star'],
@@ -547,6 +548,17 @@ describe('resolving an end from the export', () => {
 		it('stops clear of a held star by its own radius, which the scene does not draw', async () => {
 			point();
 			expect((await resolveExtrasolarEnd('x-6'))!.star.radiusKm).toBe(3 * SOLAR_RADIUS_KM);
+		});
+
+		it('stops clear of the largest star of a resolved node', async () => {
+			point();
+			vi.mocked(loadSystemNodes).mockResolvedValue([
+				node(5, false, [
+					[6, 'star'],
+					[9, 'star']
+				])
+			]);
+			expect((await resolveExtrasolarEnd('x-5'))!.star.radiusKm).toBe(4 * SOLAR_RADIUS_KM);
 		});
 	});
 

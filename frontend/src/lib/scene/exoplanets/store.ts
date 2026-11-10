@@ -193,8 +193,7 @@ export class ExoplanetStore {
 		const planet = planetOfObjectId(objectId);
 		const asked = planet?.host ?? extrasolarIdOf(objectId);
 		if (asked === null) return null;
-		// A point's own planets come before those of the held host that took it over.
-		const hostId = planet || this.index?.host(asked) ? asked : (this.heldHostOf(asked) ?? asked);
+		const hostId = planet ? asked : this.planetHostOf(asked);
 		const held = this.held(hostId);
 		const star = this.ctx.getBody(extrasolarObjectId(hostId))?.extrasolar;
 		const pair = planet ? null : this.pairOf(star);
@@ -205,6 +204,12 @@ export class ExoplanetStore {
 		const plane = own ?? pair?.orbit ?? outermostElements(planets);
 		const normal = plane ? orbitNormal(plane.i, plane.om) : null;
 		return { at, normal, outer: Math.max(pair?.orbit.a ?? 0, outerOrbitAU(planets) ?? 0) };
+	}
+
+	/** The star whose planets a link to the star `id` means: itself when it has
+	 *  planets, else the held host that took over its point. */
+	planetHostOf(id: number): number {
+		return this.index?.host(id) ? id : (this.heldHostOf(id) ?? id);
 	}
 
 	/** The held host that took over the point `id`, once its plan is in. */
