@@ -85,16 +85,23 @@ const FAR_KM = 400000;
 const FIRST = chunk(utcToTdb(JD), NEAR_KM);
 const SECOND = chunk(utcToTdb(LATER), FAR_KM);
 const withoutEarth = (records: ChebyshevBody[]) => records.filter((r) => r.naifId !== 399);
+const withoutMoon = (records: ChebyshevBody[]) => records.filter((r) => r.naifId !== 301);
+
+const withWindow = (body: ChebyshevBody) => ({
+	zone: 'major',
+	body,
+	startJd: body.startJds[0],
+	endJd: body.endJds[0]
+});
 
 /** The bodies as the loader builds them at `JD`, over a store that answers each
- *  date with the records of the chunk that covers it. */
-function loaded(records: ChebyshevBody[]) {
+ *  date with the records of the chunk that covers it. `strays` are records of
+ *  other chunks, for bodies the chunks at `JD` lack. */
+function loaded(records: ChebyshevBody[], strays: ChebyshevBody[] = []) {
 	const covers = (r: ChebyshevBody, jd: number) => r.startJds[0] <= jd && jd < r.endJds[0];
 	const store = {
-		bodiesAt: (jd: number) =>
-			records
-				.filter((r) => covers(r, jd))
-				.map((body) => ({ zone: 'major', body, startJd: body.startJds[0], endJd: body.endJds[0] })),
+		bodiesAt: (jd: number) => records.filter((r) => covers(r, jd)).map(withWindow),
+		strayBodies: () => strays.map(withWindow).values(),
 		body: (id: string, jd: number) => records.find((r) => r.id === id && covers(r, jd)) ?? null
 	} as unknown as ChebyshevStore;
 	return new ChunkLoader(store).processChebyshev(jdToDate(JD), new Map());
@@ -133,6 +140,23 @@ describe('ChunkLoader.processChebyshev, a moon', () => {
 		expect(moon.orbitCenterId).toBe('naif-399');
 		expect(moon.orbitElements).toBeUndefined();
 		expect(moon.rederiveElements!(JD)).toBeNull();
+	});
+
+	it('is built from a record of another chunk when the chunks of the date lack it', () => {
+		const moon = loaded(
+			withoutMoon(FIRST),
+			SECOND.filter((r) => r.naifId === 301)
+		).find((b) => b.data.id === 'naif-301')!;
+		expect(moon.orbitCenterId).toBe('naif-399');
+		expect(moon.data.validityStart).toBe(SECOND[0].startJds[0]);
+	});
+
+	it('is built once when a stray record repeats one of the date', () => {
+		const built = loaded(
+			FIRST,
+			FIRST.filter((r) => r.naifId === 301)
+		);
+		expect(built.filter((b) => b.data.id === 'naif-301')).toHaveLength(1);
 	});
 
 	it('has no later elements while the record of its planet for that date is not there', () => {
@@ -184,6 +208,7 @@ describe('ChunkLoader.processChebyshev, a date before the ephemeris', () => {
 					startJd: body.startJds[0],
 					endJd: body.endJds[0]
 				})),
+			strayBodies: () => [].values(),
 			body: (id: string) => FIRST.find((r) => r.id === id) ?? null
 		} as unknown as ChebyshevStore;
 		return new ChunkLoader(store).processChebyshev(jdToDate(BEFORE), new Map());

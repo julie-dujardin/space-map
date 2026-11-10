@@ -155,8 +155,9 @@ export class ChunkLoader {
 	constructor(private readonly cheb: ChebyshevStore | null) {}
 
 	/**
-	 * Build PositionedBody[] for every chebyshev body in the chunks for `date`. Caller
-	 * must `await store.load(jd)` first. Walks barycenter-first so a
+	 * Build PositionedBody[] for every chebyshev body in the chunks for `date`, and
+	 * for the store's strays. Caller must `await store.load(jd)` and
+	 * `store.loadStrays(jd)` first. Walks barycenter-first so a
 	 * planet finds the elements of its barycenter; each body carries osculating
 	 * Keplerian elements matching the SBDB/Horizons shape for the unified
 	 * kepler trail curve. The placement pass gives the bodies their places.
@@ -176,6 +177,8 @@ export class ChunkLoader {
 		// (object_type=3) and dwarves (4), then moons (5+). Within a tier,
 		// stable by naif_id so the major bodies appear in a deterministic order.
 		const all = Array.from(this.cheb.bodiesAt(jd));
+		const held = new Set(all.map(({ body }) => body.id));
+		for (const stray of this.cheb.strayBodies()) if (!held.has(stray.body.id)) all.push(stray);
 		all.sort((a, b) => {
 			// Barycentres, the Sun, planets, then the rest: a moon's elements are
 			// taken about its planet, so the planet's position has to exist first.

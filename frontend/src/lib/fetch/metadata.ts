@@ -60,6 +60,9 @@ export interface ChebyshevZoom {
 	chunk_days: number;
 	start_jd: number;
 	end_jd: number;
+	/** Each body's kernel reach inside the zone: sorted, disjoint `[start, end]`
+	 *  spans, JD TDB. A chunk holds a body when one of its spans overlaps it. */
+	bodies: Record<string, [number, number][]>;
 }
 
 /** Probe zones — emitted directly at zone level (no `zooms` wrapper), URL
@@ -378,7 +381,8 @@ export function chebyshevZoneParams(meta: Metadata): Map<string, ChebyshevZonePa
 			chunks: cheb.chunks,
 			chunk_days: cheb.chunk_days,
 			start_jd: cheb.start_jd,
-			end_jd: cheb.end_jd
+			end_jd: cheb.end_jd,
+			bodies: cheb.bodies
 		});
 	}
 	return out;

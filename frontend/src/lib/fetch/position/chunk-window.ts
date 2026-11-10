@@ -205,7 +205,6 @@ export abstract class ChunkWindow<TChunk, TParams extends ChunkRange> {
 		if (!zoneMap) this.chunks.set(zone, (zoneMap = new Map()));
 		zoneMap.set(chunkIdx, chunk);
 		this._version++;
-		this.afterStore(zone, chunk);
 	}
 
 	/** Whether a file exists for `chunkIdx`, consulted before any GET. */
@@ -219,7 +218,4 @@ export abstract class ChunkWindow<TChunk, TParams extends ChunkRange> {
 		chunkIdx: number,
 		priority: RequestPriority
 	): Promise<TChunk>;
-
-	/** Update whatever the subclass indexes beside the chunk map. */
-	protected abstract afterStore(zone: string, chunk: TChunk): void;
 }

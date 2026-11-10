@@ -1,7 +1,37 @@
 import { toast } from 'svelte-sonner';
 import * as m from '$lib/paraglide/messages.js';
 import { formatJulianDate } from '$lib/format/date';
-import type { ArtistImpressionNotice, Notice, OutOfRangeNotice } from '$lib/scene/notice';
+import { getLocale } from '$lib/paraglide/runtime.js';
+import type {
+	ArtistImpressionNotice,
+	Notice,
+	OutOfRangeNotice,
+	UncoveredBodies
+} from '$lib/scene/notice';
+
+/** Names shown in full on a line; past this many, the rest are counted. */
+const NAMES_SHOWN = 3;
+
+/** "Puck, Cordelia and Ophelia", or "Puck, Cordelia, Ophelia and 4 more". */
+function nameList(names: string[]): string {
+	const shown =
+		names.length <= NAMES_SHOWN + 1
+			? names
+			: [
+					...names.slice(0, NAMES_SHOWN),
+					m.out_of_range_more({ count: names.length - NAMES_SHOWN })
+				];
+	return new Intl.ListFormat(getLocale(), { type: 'conjunction' }).format(shown);
+}
+
+function bodiesLine(group: UncoveredBodies): string {
+	const names = nameList(group.names);
+	if (group.side === 'outside') return m.out_of_range_bodies_outside({ names });
+	const date = formatJulianDate(group.jd);
+	return group.side === 'after'
+		? m.out_of_range_bodies_after({ names, date })
+		: m.out_of_range_bodies_before({ names, date });
+}
 
 function outOfRangeLines(notice: OutOfRangeNotice): string[] {
 	const lines: string[] = [];
@@ -17,9 +47,8 @@ function outOfRangeLines(notice: OutOfRangeNotice): string[] {
 		lines.push(m.out_of_range_major_bodies_after({ date: formatJulianDate(major.jd) }));
 	} else if (major?.side === 'before') {
 		lines.push(m.out_of_range_major_bodies_before({ date: formatJulianDate(major.jd) }));
-	} else if (major?.side === 'outside') {
-		lines.push(m.out_of_range_major_bodies_outside());
 	}
+	for (const group of notice.bodies) lines.push(bodiesLine(group));
 	return lines;
 }
 

@@ -116,7 +116,8 @@ describe('zoom-shape discriminators', () => {
 		chunks: 20,
 		chunk_days: 1826.25,
 		start_jd: 2433282.5,
-		end_jd: 2469807.5
+		end_jd: 2469807.5,
+		bodies: {}
 	};
 
 	it('isChunkIndexed picks only the chunked-parted/index shape', () => {
@@ -245,7 +246,8 @@ describe('chebyshevZoneParams / probeZoneParams', () => {
 		chunks: 10,
 		chunk_days: 365,
 		start_jd: start,
-		end_jd: start + 3650
+		end_jd: start + 3650,
+		bodies: { [`naif-${start}`]: [[start, start + 1000]] }
 	});
 	const meta = {
 		position: {
@@ -275,6 +277,7 @@ describe('chebyshevZoneParams / probeZoneParams', () => {
 		expect(params.get('major')!.zoom).toBe(0);
 		expect(params.get('major_asteroids')!.zoom).toBeNull();
 		expect(params.get('moons/mars')!.zoom).toBeNull();
+		expect(params.get('major')!.bodies).toEqual({ 'naif-2400000': [[2400000, 2401000]] });
 	});
 
 	it('probeZoneParams picks only the probes-shaped zone', () => {

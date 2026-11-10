@@ -38,7 +38,10 @@ function mkBody(data: Partial<BodyData> & Pick<BodyData, 'id' | 'parentId'>): Po
 interface FakeCheb {
 	ids: string[];
 	offset: (id: string, jd: number) => [number, number, number] | null;
-	coverage?: { start: number; end: number };
+	/** Each body's kernel spans; one span over the zone for a body not listed. */
+	spans?: Record<string, [number, number][]>;
+	/** The zone's span. */
+	zone?: { start: number; end: number };
 	/** A chunk for the date is on its way. */
 	loading?: boolean;
 	/** Catalogue rows of the bodies that have one. */
@@ -69,7 +72,9 @@ function placerOver(
 			? {
 					has: (id: string) => cheb.ids.includes(id),
 					positionScene: cheb.offset,
-					zoneCoverage: () => cheb.coverage ?? null,
+					coverage: (id: string) =>
+						cheb.spans?.[id] ?? (cheb.zone ? [[cheb.zone.start, cheb.zone.end]] : undefined),
+					zoneCoverage: () => cheb.zone,
 					isAwaited: () => cheb.loading ?? false
 				}
 			: null,
@@ -246,8 +251,13 @@ describe('a scene held at the date of its last pass', () => {
 
 describe('a body the ephemeris tracks', () => {
 	const moon = () =>
-		mkBody({ id: 'naif-301', parentId: 'naif-0', orbitalSource: OrbitalSource.SPICE });
-	const coverage = { start: JD - 100, end: JD + 100 };
+		mkBody({
+			id: 'naif-301',
+			parentId: 'naif-0',
+			objectType: ObjectType.MOON,
+			orbitalSource: OrbitalSource.SPICE
+		});
+	const zone = { start: JD - 100, end: JD + 100 };
 
 	it('is placed from the ephemeris', () => {
 		const body = moon();
@@ -268,7 +278,7 @@ describe('a body the ephemeris tracks', () => {
 		const placer = placerOver([body], {
 			ids: ['naif-301'],
 			offset: () => null,
-			coverage,
+			zone,
 			loading: true
 		});
 		expect(placer.place(body, JD)).toBeNull();
@@ -277,22 +287,78 @@ describe('a body the ephemeris tracks', () => {
 
 	it('has no data inside its coverage when no chunk is on its way', () => {
 		const body = moon();
-		const placer = placerOver([body], { ids: ['naif-301'], offset: () => null, coverage });
+		const placer = placerOver([body], { ids: ['naif-301'], offset: () => null, zone });
 		expect(placer.place(body, JD)).toBeNull();
 		expect(body.unplaced).toBe('no-data');
+		expect(placer.noData.count).toBe(0);
 	});
 
-	it('has no data outside the coverage of its zone, and the pass counts it', () => {
+	it('has no data past the end of the ephemeris, and the pass says so', () => {
 		const body = moon();
-		const placer = placerOver([body], { ids: ['naif-301'], offset: () => null, coverage });
+		const placer = placerOver([body], { ids: ['naif-301'], offset: () => null, zone });
 		placer.begin(JD + 500, undefined, undefined);
 		placer.placeInPass(body);
 		expect(body.unplaced).toBe('no-data');
-		expect(placer.noData).toEqual({
-			count: 1,
-			earliestStart: coverage.start,
-			latestEnd: coverage.end
+		expect(placer.noData.count).toBe(1);
+		expect(placer.noData.sides[0]).toBe('after');
+		expect(placer.noData.edges[0]).toBe(zone.end);
+		expect(placer.noData.ephemerisEdges[0]).toBe(true);
+	});
+
+	it('names a body past its own kernels while the ephemeris goes on', () => {
+		const body = moon();
+		body.data.name = 'Moon';
+		const placer = placerOver([body], {
+			ids: ['naif-301'],
+			offset: () => null,
+			zone,
+			spans: { 'naif-301': [[JD - 100, JD - 50]] },
+			// Its chunk for the date is on its way, and holds nothing of it.
+			loading: true
 		});
+		placer.begin(JD, undefined, undefined);
+		placer.placeInPass(body);
+		expect(body.unplaced).toBe('no-data');
+		expect(placer.noData.names.slice(0, placer.noData.count)).toEqual(['Moon']);
+		expect(placer.noData.edges[0]).toBe(JD - 50);
+		expect(placer.noData.ephemerisEdges[0]).toBe(false);
+	});
+
+	it('is in a hole between two spans', () => {
+		const body = moon();
+		const placer = placerOver([body], {
+			ids: ['naif-301'],
+			offset: () => null,
+			zone,
+			spans: {
+				'naif-301': [
+					[JD - 100, JD - 10],
+					[JD + 10, JD + 100]
+				]
+			}
+		});
+		placer.begin(JD, undefined, undefined);
+		placer.placeInPass(body);
+		expect(placer.noData.sides[0]).toBe('outside');
+	});
+
+	it('says nothing of a body before its discovery, out of its kernels or not', () => {
+		const body = moon();
+		body.data.visibleFromDays = JD + 1000 - J2000_JD;
+		const placer = placerOver([body], { ids: ['naif-301'], offset: () => null, zone });
+		placer.begin(JD + 500, undefined, undefined);
+		placer.placeInPass(body);
+		expect(body.unplaced).toBe('not-yet');
+		expect(placer.noData.count).toBe(0);
+	});
+
+	it('leaves a body that is not a planet or a moon out of the notice', () => {
+		const rock = mkBody({ id: 'spkid-2', parentId: 'naif-0', orbitalSource: OrbitalSource.SPICE });
+		const placer = placerOver([rock], { ids: ['spkid-2'], offset: () => null, zone });
+		placer.begin(JD + 500, undefined, undefined);
+		placer.placeInPass(rock);
+		expect(rock.unplaced).toBe('no-data');
+		expect(placer.noData.count).toBe(0);
 	});
 
 	it('is placed from its catalogue row where the ephemeris ends', () => {
@@ -301,7 +367,7 @@ describe('a body the ephemeris tracks', () => {
 		const placer = placerOver([body], {
 			ids: ['spkid-1'],
 			offset: () => null,
-			coverage,
+			zone,
 			rows: new Map([['spkid-1', row.data]])
 		});
 		expect(placer.place(body, JD)).not.toBeNull();

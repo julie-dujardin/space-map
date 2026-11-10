@@ -44,8 +44,6 @@ class TestWindow extends ChunkWindow<{ idx: number }, TestParams> {
 		for (const job of jobs) job();
 	}
 
-	protected afterStore(): void {}
-
 	settle(): void {
 		const jobs = this.pending;
 		this.pending = [];

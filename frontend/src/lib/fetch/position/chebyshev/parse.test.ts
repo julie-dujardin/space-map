@@ -247,7 +247,7 @@ describe('chebyshevPositionKm — Chebyshev evaluation', () => {
 	const body = parse(buf).bodies[0];
 
 	it('returns null when jd is before the covered range', () => {
-		expect(chebyshevPositionKm(body, -1)).toBeNull();
+		expect(chebyshevPositionKm(body, tdbToUtc(-1))).toBeNull();
 	});
 
 	it('returns null when jd is at or past the covered range end', () => {

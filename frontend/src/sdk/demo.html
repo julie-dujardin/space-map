@@ -431,7 +431,9 @@
 						const parts = [];
 						if (notice.focusedOutOfRange) parts.push('the focused object has no data here');
 						if (notice.satellites) parts.push('satellites are out of range');
-						if (notice.majorBodies) parts.push('some planets are out of range');
+						if (notice.majorBodies) parts.push('the planets are out of range');
+						for (const group of notice.bodies)
+							parts.push(`${group.names.join(', ')} are out of range`);
 						notices.set(notice.topic, `At this date, ${parts.join(', ')}.`);
 						break;
 					}

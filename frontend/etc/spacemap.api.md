@@ -964,15 +964,10 @@ export type OrbitClass = 'inner' | 'main-belt' | 'trojan' | 'centaur' | 'tno';
 
 // @public
 export interface OutOfRangeNotice {
+	bodies: UncoveredBodies[];
 	// (undocumented)
 	focusedOutOfRange: boolean;
-	// (undocumented)
-	majorBodies:
-		| CoverageEdge
-		| {
-				side: 'outside';
-		  }
-		| null;
+	majorBodies: CoverageEdge | null;
 	satellites:
 		| {
 				side: 'after';
@@ -1706,6 +1701,17 @@ export interface TrajectorySample {
 	jd: number;
 	km: OffsetKm;
 }
+
+// @public
+export type UncoveredBodies = (
+	| CoverageEdge
+	| {
+			side: 'outside';
+	  }
+) & {
+	ids: string[];
+	names: string[];
+};
 
 // @public (undocumented)
 export interface VectorLayer {

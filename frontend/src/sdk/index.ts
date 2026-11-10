@@ -409,7 +409,8 @@ export type {
 	CoveragePauseNotice,
 	Notice,
 	NoticeTopic,
-	OutOfRangeNotice
+	OutOfRangeNotice,
+	UncoveredBodies
 } from '$lib/scene/notice';
 
 // -- the flat map -------------------------------------------------------------

@@ -253,7 +253,14 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 		for (const zone of params.keys()) if (ctx.layers.skipsZone(zone)) params.delete(zone);
 		if (params.size === 0) return null;
 		const store = new ChebyshevStore(params);
-		await store.load(jd);
+		// Without its record a body outside its kernels at boot is never built.
+		// The strays are read from the manifest, so they load beside the date's chunks.
+		await Promise.all([
+			store.load(jd),
+			store
+				.loadStrays(jd)
+				.catch((e) => console.warn('scene-load: bodies outside their kernels did not load:', e))
+		]);
 		return store;
 	});
 	const probePromise = metadataPromise.then((metadata) =>

@@ -14,8 +14,32 @@ import { fetchChebyshev, type FetchedChebyshev } from '$lib/fetch/position/cheby
 import { chebyshevPositionScene } from '$lib/fetch/position/chebyshev/propagate';
 import type { ChebyshevBody } from '$lib/fetch/position/chebyshev/parse';
 import { chunkIndexForJd } from '$lib/fetch/metadata';
-import { ChunkWindow } from '$lib/fetch/position/chunk-window';
-import { tdbToUtc } from '$lib/time/jd';
+import { ChunkWindow, chunkKey } from '$lib/fetch/position/chunk-window';
+import type { CoverageWindow } from '$lib/fetch/coverage';
+import { tdbToUtc, utcToTdb } from '$lib/time/jd';
+
+/** The date of `spans` nearest `tdb`, a little inside so it falls in a chunk
+ *  that holds the body. */
+function nearestInside(spans: [number, number][], tdb: number): number {
+	let best = NaN;
+	let bestDistance = Infinity;
+	for (const [a, b] of spans) {
+		const inset = Math.min(1, (b - a) / 2);
+		for (const edge of [a + inset, b - inset]) {
+			const distance = Math.abs(edge - tdb);
+			if (distance < bestDistance) {
+				best = edge;
+				bestDistance = distance;
+			}
+		}
+	}
+	return best;
+}
+
+/** True when one of `spans` reaches into `[start, end)`. */
+function overlaps(spans: readonly [number, number][], start: number, end: number): boolean {
+	return spans.some(([a, b]) => a < end && b > start);
+}
 
 /** Walk the chunk for jd in every loaded zone and yield each body alongside
  *  the chunk's validity window (used by callers that build PositionedBody).
@@ -36,6 +60,8 @@ export interface ChebyshevZoneParams {
 	chunk_days: number;
 	start_jd: number;
 	end_jd: number;
+	/** Each body's kernel reach: sorted, disjoint spans, JD TDB. */
+	bodies: Record<string, [number, number][]>;
 }
 
 interface BodyLocation {
@@ -44,13 +70,39 @@ interface BodyLocation {
 	body: ChebyshevBody;
 }
 
-export class ChebyshevStore extends ChunkWindow<FetchedChebyshev, ChebyshevZoneParams> {
-	/** `objectId → zone` so a position query routes without scanning zones. */
-	private readonly idToZone = new Map<string, string>();
+/** A body's reach and its zone's, in app (UTC) JD. */
+interface Reach {
+	zone: string;
+	spans: readonly CoverageWindow[];
+	zoneSpan: { start: number; end: number };
+}
 
-	/** Every chunk of a chebyshev zone ships. */
-	protected isLoadable(): boolean {
-		return true;
+export class ChebyshevStore extends ChunkWindow<FetchedChebyshev, ChebyshevZoneParams> {
+	/** Every body the manifest lists, so a query routes without scanning zones
+	 *  and a body no loaded chunk holds still has its edges. */
+	private readonly reach = new Map<string, Reach>();
+	/** Records of the bodies the chunks at the boot date do not hold. */
+	private readonly strays = new Map<string, BodyWithWindow>();
+
+	constructor(zoneParams: Map<string, ChebyshevZoneParams>) {
+		super(zoneParams);
+		for (const [zone, params] of zoneParams) {
+			const zoneSpan = { start: tdbToUtc(params.start_jd), end: tdbToUtc(params.end_jd) };
+			for (const [id, spans] of Object.entries(params.bodies)) {
+				if (this.reach.has(id)) continue;
+				const utc = spans.map(([a, b]): CoverageWindow => [tdbToUtc(a), tdbToUtc(b)]);
+				this.reach.set(id, { zone, spans: utc, zoneSpan });
+			}
+		}
+	}
+
+	/** The writer leaves out a chunk no body has segments in: asking for it
+	 *  would fail, and the boot that waits on it with it. */
+	protected isLoadable(params: ChebyshevZoneParams, chunkIdx: number): boolean {
+		const start = params.start_jd + chunkIdx * params.chunk_days;
+		const end = start + params.chunk_days;
+		for (const spans of Object.values(params.bodies)) if (overlaps(spans, start, end)) return true;
+		return false;
 	}
 
 	protected fetchChunk(
@@ -62,40 +114,31 @@ export class ChebyshevStore extends ChunkWindow<FetchedChebyshev, ChebyshevZoneP
 		return fetchChebyshev(zone, params.zoom, chunkIdx, priority);
 	}
 
-	protected afterStore(zone: string, chunk: FetchedChebyshev): void {
-		for (const id of chunk.byId.keys()) {
-			// Multiple chunks list the same body; zone assignment is stable across
-			// chunks by construction (same writer partitions). First write wins.
-			if (!this.idToZone.has(id)) this.idToZone.set(id, zone);
-		}
-	}
-
 	has(objectId: string): boolean {
-		return this.idToZone.has(objectId);
+		return this.reach.has(objectId);
 	}
 
-	/**
-	 * The UTC span that the zone hosting `objectId` covers, over all its chunks.
-	 * It tells a date outside the export (worth a notice) from a chunk that is
-	 * still loading. Null when the body isn't tracked or its zone is not seen yet.
-	 */
-	zoneCoverage(objectId: string): { start: number; end: number } | null {
-		const zone = this.idToZone.get(objectId);
-		if (zone === undefined) return null;
-		const params = this.zoneParams.get(zone);
-		if (!params) return null;
-		return { start: tdbToUtc(params.start_jd), end: tdbToUtc(params.end_jd) };
+	/** The UTC spans the kernels of `objectId` cover, sorted. Undefined when the
+	 *  ephemeris does not track it. */
+	coverage(objectId: string): readonly CoverageWindow[] | undefined {
+		return this.reach.get(objectId)?.spans;
+	}
+
+	/** The UTC span of the zone that holds `objectId`: a body edge at it is where
+	 *  the whole ephemeris ends, not the body's own kernel. */
+	zoneCoverage(objectId: string): { start: number; end: number } | undefined {
+		return this.reach.get(objectId)?.zoneSpan;
 	}
 
 	/** True while the chunk that covers `jd` for `objectId` is still to come:
 	 *  on its way, or waiting for another try. */
 	isAwaited(objectId: string, jd: number): boolean {
-		const zone = this.idToZone.get(objectId);
+		const zone = this.reach.get(objectId)?.zone;
 		return zone !== undefined && this.awaitedAt(jd, zone);
 	}
 
 	private resolve(objectId: string, jd: number): BodyLocation | null {
-		const zone = this.idToZone.get(objectId);
+		const zone = this.reach.get(objectId)?.zone;
 		if (zone === undefined) return null;
 		const params = this.zoneParams.get(zone);
 		if (!params) return null;
@@ -134,6 +177,53 @@ export class ChebyshevStore extends ChunkWindow<FetchedChebyshev, ChebyshevZoneP
 				yield { zone, body, startJd: chunk.startJd, endJd: chunk.endJd };
 			}
 		}
+	}
+
+	/**
+	 * Load a record for each body the chunks at `jd` do not hold, from the chunk
+	 * of its span nearest `jd`. The scene builds its bodies once, at the boot
+	 * date: one born outside its kernels needs a record to be built from, so it
+	 * is there when the clock enters them.
+	 */
+	async loadStrays(jd: number): Promise<void> {
+		const tdb = utcToTdb(jd);
+		const wanted = new Map<string, [zone: string, chunkIdx: number, ids: string[]]>();
+		for (const [zone, params] of this.zoneParams) {
+			const here = chunkIndexForJd(params, jd);
+			const chunkStart = params.start_jd + here * params.chunk_days;
+			const chunkEnd = chunkStart + params.chunk_days;
+			for (const [id, spans] of Object.entries(params.bodies)) {
+				if (this.reach.get(id)?.zone !== zone || this.strays.has(id)) continue;
+				if (spans.length === 0 || overlaps(spans, chunkStart, chunkEnd)) continue;
+				const at = nearestInside(spans, tdb);
+				const idx = Math.max(
+					0,
+					Math.min(params.chunks - 1, Math.floor((at - params.start_jd) / params.chunk_days))
+				);
+				const key = chunkKey(zone, idx);
+				const entry = wanted.get(key) ?? [zone, idx, []];
+				entry[2].push(id);
+				wanted.set(key, entry);
+			}
+		}
+		// Every chunk is waited for: a stray landing after the scene is built is
+		// never built.
+		const results = await Promise.allSettled(
+			[...wanted.values()].map(async ([zone, idx, ids]) => {
+				const chunk = await this.fetchChunk(zone, this.zoneParams.get(zone)!, idx, 'high');
+				for (const id of ids) {
+					const body = chunk.byId.get(id);
+					if (body) this.strays.set(id, { zone, body, startJd: chunk.startJd, endJd: chunk.endJd });
+				}
+			})
+		);
+		const failed = results.find((r) => r.status === 'rejected');
+		if (failed) throw failed.reason;
+	}
+
+	/** The records {@link loadStrays} found. */
+	strayBodies(): IterableIterator<BodyWithWindow> {
+		return this.strays.values();
 	}
 
 	/**

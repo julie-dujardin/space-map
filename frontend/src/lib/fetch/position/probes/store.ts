@@ -135,8 +135,6 @@ export class ProbeStore extends ChunkWindow<FetchedProbes, ProbeZoneParams> {
 		return fetchProbes(zone, chunkIdx, params.float64_coeffs, priority);
 	}
 
-	protected afterStore(): void {}
-
 	/** Load whatever covers `jd` for the trip planner, off to one side. The
 	 *  window above belongs to the clock (one date, drops the rest); a planner
 	 *  query years away would evict the clock's own chunks, so these are kept

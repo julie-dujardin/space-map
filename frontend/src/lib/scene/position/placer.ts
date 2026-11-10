@@ -36,7 +36,7 @@ import { ADAPTIVE_MIN_STEP_FACTOR } from '$lib/fetch/position/trail-buffer';
 import type { BodyObjects } from '$lib/scene/types';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import type { Vec3 } from '$lib/scene/animation/math';
-import { emptyGroup, type OutOfRangeGroup } from '$lib/scene/out-of-range-notice';
+import { UncoveredPass, type EdgeSide } from '$lib/scene/out-of-range-notice';
 import { renderLandedProbe } from './landed-probe';
 import { posePlanet } from '$lib/scene/exoplanets/pose';
 import { setSpacecraftGlyph } from '$lib/scene/label/factory';
@@ -44,6 +44,16 @@ import { setLabelAnnotation } from '$lib/scene/label/annotations';
 import { host } from '$lib/host';
 import type { PositionDiagnostics } from './diagnostics';
 import { SSB_POSITION, setOrbitCenter, setPlaced, setTrailAnchor, setUnplaced } from './placement';
+
+/** Where `jd` falls against sorted `spans`: null inside one. A body with no
+ *  span is past them all. */
+function outsideSpans(spans: readonly (readonly [number, number])[], jd: number): EdgeSide | null {
+	if (spans.length === 0) return 'outside';
+	if (jd < spans[0][0]) return 'before';
+	if (jd > spans[spans.length - 1][1]) return 'after';
+	for (const [start, end] of spans) if (jd >= start && jd <= end) return null;
+	return 'outside';
+}
 
 /** An extrasolar object on no orbit stays where its record puts it, at every
  *  date. */
@@ -130,8 +140,10 @@ export function turnBody(body: PositionedBody, bo: BodyObjects, jd: number): voi
 export class Placer {
 	/** Placed on every frame, hidden or not. */
 	focusedId: string | undefined;
-	/** Major bodies the ephemeris does not reach at the pass date. */
-	noData: OutOfRangeGroup = emptyGroup();
+	/** Planets and moons past their kernels at the pass date. Hidden bodies
+	 *  that are not planets or moons are placed on some frames only, and would
+	 *  make the list flicker. */
+	readonly noData = new UncoveredPass();
 	private passJd = NaN;
 	private frame: number | undefined;
 	/** Bodies settled for `passJd`, by id. A body that replaces one under its
@@ -163,7 +175,7 @@ export class Placer {
 		this.focusedId = focusedId;
 		this.frame = frame;
 		this.settled.clear();
-		this.noData = emptyGroup();
+		this.noData.reset();
 	}
 
 	/** Place of the body `id` at `jd`. Null when it has none or is not loaded. */
@@ -281,11 +293,12 @@ export class Placer {
 			// A probe target's ephemeris spans its mission only: its element row
 			// carries it the rest of the time. A body with no row has no place
 			// then: an extrapolated planet or moon would break eclipse geometry.
+			// Discovery is asked first: an undiscovered body is hidden without a word.
 			offset = !existsAt(d, jd)
 				? 'not-yet'
 				: (ctx.chebStore.positionScene(d.id, jd) ??
 					this.rowOffset(body, parentPos, jd) ??
-					this.chebMiss(d.id, jd));
+					this.chebMiss(body, jd));
 		} else {
 			offset = elementsOffset(d, jd);
 		}
@@ -301,25 +314,26 @@ export class Placer {
 		);
 	}
 
-	/** Why the ephemeris has nothing for `id` at `jd`: the chunk for the date is
-	 *  still to come, or the ephemeris does not reach the date. A chunk that
-	 *  failed and waits for another try is still to come: "no data at this
-	 *  date" would be false of it. */
-	private chebMiss(id: string, jd: number): Unplaced {
+	/** Why the ephemeris has nothing for `body` at `jd`: the date is outside its
+	 *  kernels, or the chunk for the date is still to come. A chunk that failed
+	 *  and waits for another try is still to come: "no data at this date" would
+	 *  be false of it. */
+	private chebMiss(body: PositionedBody, jd: number): Unplaced {
 		const store = this.ctx.chebStore!;
-		if (store.isAwaited(id, jd)) return 'loading';
-		const coverage = store.zoneCoverage(id);
-		const outside = coverage !== null && (jd < coverage.start || jd > coverage.end);
-		if (outside && jd === this.passJd) {
-			this.noData.count++;
-			if (coverage.start < this.noData.earliestStart) this.noData.earliestStart = coverage.start;
-			if (coverage.end > this.noData.latestEnd) this.noData.latestEnd = coverage.end;
+		const d = body.data;
+		const spans = store.coverage(d.id);
+		const side = spans ? outsideSpans(spans, jd) : null;
+		if (side === null && store.isAwaited(d.id, jd)) return 'loading';
+		if (spans && side !== null && jd === this.passJd && isMajorBody(d.objectType)) {
+			const edge =
+				side === 'before' ? spans[0][0] : side === 'after' ? spans[spans.length - 1][1] : NaN;
+			const zone = store.zoneCoverage(d.id);
+			const ephemerisEdge = edge === zone?.start || edge === zone?.end;
+			this.noData.add(d.id, d.name ?? d.id, side, edge, ephemerisEdge);
 		}
-		this.diagnostics.warnOnce('cheb-null', id, () => {
-			const cov = coverage
-				? `[${coverage.start.toFixed(1)},${coverage.end.toFixed(1)}]`
-				: 'unknown';
-			return `chebStore.positionScene[${id}] returned null at jd=${jd.toFixed(3)} (coverage=${cov})`;
+		this.diagnostics.warnOnce('cheb-null', d.id, () => {
+			const cov = spans?.map(([a, b]) => `[${a.toFixed(1)},${b.toFixed(1)}]`).join('') || 'none';
+			return `chebStore.positionScene[${d.id}] returned null at jd=${jd.toFixed(3)} (coverage=${cov})`;
 		});
 		return 'no-data';
 	}
