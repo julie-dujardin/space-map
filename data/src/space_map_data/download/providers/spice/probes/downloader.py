@@ -21,8 +21,9 @@ from tqdm import tqdm
 
 from space_map_data.constants.providers import PROVIDERS
 from space_map_data.download.downloader import Downloader
+from space_map_data.utils.spk import merge_intervals
 
-from ..naif_http import merge_intervals, spk_coverage, spk_targets, stream_to
+from ..naif_http import spk_coverage, spk_targets, stream_to
 from .attitude.ck_kernels import download_attitude_capped
 from .layout import LANDED_MISSIONS_DIR, MISSIONS_DIR
 from .listings import list_mission_pcks, list_mission_spks

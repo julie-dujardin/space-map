@@ -13,8 +13,9 @@ from space_map_data.constants.earth_sats.satcat import (
     parse_orbit_center,
 )
 from space_map_data.utils.paths import SOURCES_POSITION_DIR
+from space_map_data.utils.spk import merge_intervals
 
-from ..naif_http import merge_intervals, spk_coverage
+from ..naif_http import spk_coverage
 from .horizons_api import HORIZONS_URL
 from .layout import SYNTH_CACHE_ROOT, SYNTH_KERNELS_DIR
 

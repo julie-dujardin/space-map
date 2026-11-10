@@ -51,6 +51,13 @@ captures J2/J4 nodal regression and apsidal precession on small moons
 (Phobos' ~−160°/yr, inner Saturn/Neptune moons up to ~−300°/yr) without
 shipping per-frame Chebyshev coefficients.
 
+In the chunk-indexed `moons` zone each chunk refits these elements, and a moon
+is in a chunk only when the chunk's whole validity window lies inside its own
+kernel coverage: past a kernel's end the moon is absent, so the map hides it.
+A chunk Method C can't fit (moons too fast for its sampling, orbits that turn
+unbound inside the fit window) carries the osculating elements at its midpoint
+with zero drift instead.
+
 ## ObjectType ordinals
 
 ```

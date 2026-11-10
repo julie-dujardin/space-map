@@ -26,7 +26,8 @@ from space_map_data.utils.naif import (
     classify_object,
 )
 from space_map_data.utils.paths import DERIVED_POSITION_DIR, SOURCES_POSITION_DIR
-from space_map_data.utils.time import DAYS_PER_YEAR, year_to_jd
+from space_map_data.utils.spk import coverage_windows
+from space_map_data.utils.time import DAYS_PER_YEAR, S_PER_DAY, year_to_jd
 
 from ..naif_http import spk_targets
 from ..probes.layout import MISSIONS_DIR
@@ -34,6 +35,7 @@ from .elements import (
     METHOD_C_RESIDUAL_WARN_ARCMIN,
     MOON_CHUNK_YEARS,
     dominant_partner_mu,
+    fill_osculating_chunks,
     fit_moon_chunked_elements,
     fit_moon_mean_elements,
     load_chebyshev_config,
@@ -51,6 +53,10 @@ from .pck_extract import (
 )
 
 logger = logging.getLogger(__name__)
+
+# SPICE cells are only reclaimed lazily, so one is allocated per run and reset
+# per body.
+_COVERAGE_CELL_SIZE = 10_000
 
 # Barycenters that don't appear in SPK but we need (0=SSB, 1-9=planet barycenters, 10=Sun)
 _EXTRA_NAIF_IDS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
@@ -199,6 +205,7 @@ class SpiceDownloader(Downloader):
         for path in extra_pcks:
             spiceypy.furnsh(str(path))
 
+        # In list order, so later kernels win wherever coverage overlaps.
         for path in kernel_paths:
             spiceypy.furnsh(str(path))
 
@@ -219,12 +226,11 @@ class SpiceDownloader(Downloader):
         rows, moon_chunk_targets = self._extract_orbital_rows(bodies, et, epoch_jd)
         self._write_csv("bodies.csv", _BODY_FIELDNAMES, rows)
 
-        # Time-chunked Method C fits for non-whitelisted moons: one sidecar
-        # .npz per moon with per-chunk secular elements, consumed by the
-        # elements export to write per-chunk binary files.
-        chunk_count = self._extract_moon_chunks(moon_chunk_targets)
+        # One sidecar per moon with per-chunk elements, which the export
+        # writes as the chunks of the `moons` zone.
+        chunk_count = self._extract_moon_chunks(moon_chunk_targets, kernel_paths)
         logger.info(
-            "Time-chunked Method C fits: %d moons × ~%d chunks",
+            "Moon chunk sidecars: %d moons × ~%d chunks",
             len(moon_chunk_targets),
             chunk_count,
         )
@@ -309,16 +315,15 @@ class SpiceDownloader(Downloader):
 
     def _extract_orbital_rows(
         self, bodies: list[MajorBody], et: float, epoch_jd: float
-    ) -> tuple[list[dict], list[tuple[int, int, float]]]:
+    ) -> tuple[list[dict], list[tuple[int, int, float, bool]]]:
         """Compute Keplerian elements per body for bodies.csv.
 
-        Returns (rows, moon_chunk_targets). Moon-chunk targets are the
-        non-whitelisted moons whose single-epoch Method C fit succeeded —
-        the caller passes them to `_extract_moon_chunks` for the sidecar
-        windowed-fit pass.
+        Returns (rows, moon_chunk_targets): every moon as `(naif_id,
+        parent_id, mu, method_c)`, for `_extract_moon_chunks`; `method_c`
+        marks those whose single-epoch Method C fit succeeded.
         """
         rows: list[dict] = []
-        moon_chunk_targets: list[tuple[int, int, float]] = []
+        moon_chunk_targets: list[tuple[int, int, float, bool]] = []
         gm_sun = spiceypy.bodvrd("10", "GM", 1)[1][0]
 
         for body in tqdm(bodies, desc="SPICE elements", unit="body"):
@@ -344,10 +349,10 @@ class SpiceDownloader(Downloader):
                 )
                 continue
 
-            elts = self._fit_or_snapshot(
-                body, state, et, gm, epoch_jd, moon_chunk_targets
-            )
+            elts, method_c = self._fit_or_snapshot(body, state, et, gm)
             rows.append(_make_row(body, epoch_jd, elts))
+            if body.object_type == ObjectType.moon:
+                moon_chunk_targets.append((body.naif_id, body.parent_id, gm, method_c))
 
         return rows, moon_chunk_targets
 
@@ -429,14 +434,12 @@ class SpiceDownloader(Downloader):
         state: list[float],
         et: float,
         gm: float,
-        epoch_jd: float,
-        moon_chunk_targets: list[tuple[int, int, float]],
-    ) -> dict:
+    ) -> tuple[dict, bool]:
         """Resolve elements for `body`: Method C fit when applicable, else snapshot.
 
         For non-whitelisted moons of major planets, tries the secular Keplerian
-        fit first (captures J2/J4 drift), recording it as a moon-chunk target
-        on success; falls through to an osculating snapshot otherwise.
+        fit first (captures J2/J4 drift); falls through to an osculating
+        snapshot otherwise. The flag is True for a Method C fit.
         """
         if (
             body.object_type == ObjectType.moon
@@ -446,7 +449,6 @@ class SpiceDownloader(Downloader):
             fit = fit_moon_mean_elements(body.naif_id, body.parent_id, et, gm)
             if fit is not None:
                 elts, res_rms = fit
-                moon_chunk_targets.append((body.naif_id, body.parent_id, gm))
                 res_arcmin = math.degrees(res_rms) * 60
                 if res_arcmin > METHOD_C_RESIDUAL_WARN_ARCMIN:
                     logger.warning(
@@ -460,7 +462,7 @@ class SpiceDownloader(Downloader):
                         res_arcmin,
                         METHOD_C_RESIDUAL_WARN_ARCMIN,
                     )
-                return elts
+                return elts, True
 
         snap = state_to_elements(list(state), et, gm)
         if snap is None:
@@ -471,7 +473,7 @@ class SpiceDownloader(Downloader):
                 body.name,
                 body.naif_id,
             )
-            return dict(_ZERO_ROW)
+            return dict(_ZERO_ROW), False
         if (
             body.object_type in (ObjectType.planet, ObjectType.dwarf_planet)
             and 1 <= body.parent_id <= 9
@@ -486,9 +488,9 @@ class SpiceDownloader(Downloader):
                 body.naif_id,
                 snap["EC"],
             )
-            return dict(_ZERO_ROW)
+            return dict(_ZERO_ROW), False
         # Pure osculating snapshot — no secular drift terms apply.
-        return {**snap, "OM_DOT": 0.0, "W_DOT": 0.0}
+        return {**snap, "OM_DOT": 0.0, "W_DOT": 0.0}, False
 
     def _enumerate_spk_bodies(self, kernel_paths: list[Path]) -> set[int]:
         """Get all body NAIF IDs covered by loaded SPK kernels."""
@@ -500,13 +502,18 @@ class SpiceDownloader(Downloader):
 
     def _extract_moon_chunks(
         self,
-        targets: list[tuple[int, int, float]],
+        targets: list[tuple[int, int, float, bool]],
+        kernel_paths: list[Path],
     ) -> int:
-        """Compute time-chunked Method C secular elements for non-whitelisted moons.
+        """Compute per-chunk elements for every moon on a 6-month grid spanning
+        the configured Chebyshev year range.
 
-        Fits a per-chunk linear secular model on a 6-month grid spanning the
-        configured Chebyshev year range; writes one `.npz` per moon under
-        `moon_chunks/<naif_id>.npz`. Returns the per-moon chunk count.
+        Chunks get Method C secular elements where `method_c` is set and the
+        fit succeeds, else osculating elements at their midpoint. Writes one
+        `.npz` per moon under `moon_chunks/<naif_id>.npz`, each carrying the
+        whole grid with NaN rows for chunks outside the moon's SPK coverage:
+        the export reads a moon's years from it, so every moon needs one.
+        Returns the per-moon chunk count.
         """
         cheb_cfg = load_chebyshev_config()
         start_year = int(cheb_cfg["start_year"])
@@ -519,32 +526,64 @@ class SpiceDownloader(Downloader):
         chunk_midpoints_jd = [
             start_jd + (i + 0.5) * chunk_days for i in range(n_chunks)
         ]
+        half_width_s = 0.5 * chunk_days * S_PER_DAY
 
         out_dir = self.moon_chunks_dir
         if out_dir.exists():
             shutil.rmtree(out_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
 
+        spk_paths = [p for p in kernel_paths if p.suffix == ".bsp"]
+        cell = spiceypy.support_types.SPICEDOUBLE_CELL(_COVERAGE_CELL_SIZE)
         skipped = 0
-        for naif_id, parent_id, mu in tqdm(targets, desc="Moon chunks", unit="body"):
-            result = fit_moon_chunked_elements(
-                naif_id, parent_id, mu, chunk_midpoints_jd
+        partial = 0
+        osculating = 0
+        for naif_id, parent_id, mu, method_c in tqdm(
+            targets, desc="Moon chunks", unit="body"
+        ):
+            coverage = coverage_windows(spk_paths, naif_id, cell)
+            fit = (
+                fit_moon_chunked_elements(
+                    naif_id, parent_id, mu, chunk_midpoints_jd, half_width_s, coverage
+                )
+                if method_c
+                else None
             )
-            if result is None:
+            fitted = fit[1] if fit is not None else np.full((n_chunks, 9), np.nan)
+            elements = fill_osculating_chunks(
+                fitted,
+                naif_id,
+                parent_id,
+                mu,
+                chunk_midpoints_jd,
+                half_width_s,
+                coverage,
+            )
+            if np.isnan(elements[:, 0]).all():
                 skipped += 1
                 continue
-            midpoints, elements = result
+            osculating += bool(
+                (np.isnan(fitted[:, 0]) & ~np.isnan(elements[:, 0])).any()
+            )
+            partial += bool(np.isnan(elements[:, 0]).any())
             np.savez(
                 out_dir / f"{naif_id}.npz",
-                chunk_midpoints_jd=midpoints,
+                chunk_midpoints_jd=np.asarray(chunk_midpoints_jd, dtype=np.float64),
                 elements=elements.astype(np.float32),
                 meta=np.array([naif_id, parent_id, n_chunks], dtype=np.int64),
             )
 
+        logger.info(
+            "Moon chunks: %d/%d moons cover only part of the range, %d use "
+            "osculating elements in some chunks",
+            partial,
+            len(targets) - skipped,
+            osculating,
+        )
         if skipped:
             logger.warning(
-                "Moon chunks: %d/%d targets skipped (degenerate orbit or "
-                "missing SPK coverage in fit window)",
+                "Moon chunks: %d/%d moons skipped (no chunk inside SPK "
+                "coverage with a bound orbit); the export leaves them out",
                 skipped,
                 len(targets),
             )

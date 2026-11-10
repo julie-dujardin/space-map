@@ -27,13 +27,13 @@ import logging
 from collections import defaultdict
 from dataclasses import dataclass
 
-from space_map_data.download.providers.spice.naif_http import merge_intervals
 from space_map_data.download.providers.spice.probes import (
     LANDED_MISSIONS_DIR,
     MISSIONS_DIR,
 )
 from space_map_data.probes.events import EVENTS_DIR, event_jd
 from space_map_data.probes.probe_id import load_registry
+from space_map_data.utils.spk import merge_intervals
 from space_map_data.utils.time import et_to_jd
 
 logger = logging.getLogger(__name__)

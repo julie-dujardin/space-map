@@ -6,11 +6,10 @@ emits one gzipped binary per (zone, chunk_idx) aggregating EVERY probe whose
 trajectory intersects it. The frontend loads one zone's chunks at a time,
 dispatching per sub-chunk on the method byte.
 
-Chunks align to a global `start_jd` (1950-01-01), matching the chebyshev
-exporter's convention. Incremental: per-probe fits are cached, so a change
-to one probe's kernels only invalidates that probe's fits — the chunk
-sidecar tracks per-probe fit-signature hashes and repacks only the chunks
-whose probe set changed (see `fit_cache.py` / `sidecar.py`).
+Chunks align to a global `start_jd` (1950-01-01). Incremental: per-probe fits
+are cached, so a change to one probe's kernels only invalidates that probe's
+fits — the chunk sidecar tracks per-probe fit-signature hashes and repacks only
+the chunks whose probe set changed (see `fit_cache.py` / `sidecar.py`).
 
 Pipeline split: kernel discovery in `kernels.py`, dataclasses in `plan.py`,
 landed-phase fits in `landed.py`, time math in `time_grid.py`, the passes in

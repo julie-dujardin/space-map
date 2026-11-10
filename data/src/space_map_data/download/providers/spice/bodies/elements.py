@@ -25,8 +25,8 @@ logger = logging.getLogger(__name__)
 AU_KM = 149_597_870.7
 
 _CHEBYSHEV_DEFAULTS: dict[str, int | float] = {
-    "start_year": 1950,
-    "end_year": 2050,
+    "start_year": 1600,
+    "end_year": 2600,
     "chunk_years": 5,  # major / major_asteroids zones; moon zones use the
     # per-parent cadences in `CHEBYSHEV_PARENT_CHUNK_YEARS`
 }
@@ -55,9 +55,15 @@ _MOON_CHUNK_FIT_HALF_WINDOW_S = 5 * 365.25 * 86400.0  # ±5 years of samples per
 # Density of pre-samples for chunked fits. Coarser than the single-epoch fit
 # (5 samples/period instead of 2/period) because we slice many windows out of
 # one sample sequence, and outer irregulars have multi-hundred-day periods.
+# Bounded per year so a long coverage window samples as densely as a short one.
 _MOON_CHUNK_SAMPLES_PER_PERIOD = 5
-_MOON_CHUNK_MIN_SAMPLES = 200
-_MOON_CHUNK_MAX_SAMPLES = 4000
+_MOON_CHUNK_MIN_SAMPLES_PER_YEAR = 2.0
+_MOON_CHUNK_MAX_SAMPLES_PER_YEAR = 36.0
+# Fewest samples a chunk's linear fit is run on.
+_MOON_CHUNK_MIN_FIT_SAMPLES = 5
+# How far a chunk's validity span may poke past coverage: rounding only, since
+# chunk edges and kernel edges both land on year boundaries.
+_MOON_CHUNK_EDGE_TOLERANCE_S = 1.0
 
 
 def load_chebyshev_config() -> dict[str, int | float]:
@@ -255,77 +261,12 @@ def fit_moon_mean_elements(
     )
 
 
-def fit_moon_chunked_elements(
-    naif_id: int,
-    parent_id: int,
-    mu: float,
-    chunk_midpoints_jd: list[float],
-) -> tuple[np.ndarray, np.ndarray] | None:
-    """Compute Method C secular elements for each chunk midpoint.
-
-    Pre-samples SPK once at high density across the full chunk range, then runs
-    a windowed linear fit per midpoint — reusing samples across chunks brings
-    the cost from ~200 spkezr calls/chunk to ~1000 calls/body total.
-
-    Returns (chunk_midpoints_jd, elements_array), shape (n_chunks, 9):
-    [a_au, e, i_deg, om_deg, w_deg, ma_deg, n_deg_day, om_dot_deg_day, w_dot_deg_day].
-    None if any pre-sample fails (degenerate orbit, missing coverage).
-    """
-    if not chunk_midpoints_jd:
-        return None
-    midpoints_et = [jd_to_et(jd) for jd in chunk_midpoints_jd]
-    et_min = min(midpoints_et) - _MOON_CHUNK_FIT_HALF_WINDOW_S
-    et_max = max(midpoints_et) + _MOON_CHUNK_FIT_HALF_WINDOW_S
-
-    # Estimate orbital period from a probe sample.
-    try:
-        probe_state, _ = spiceypy.spkezr(
-            str(naif_id),
-            midpoints_et[len(midpoints_et) // 2],
-            "ECLIPJ2000",
-            "NONE",
-            str(parent_id),
-        )
-    except spiceypy.exceptions.SpiceyError:
-        return None
-    probe = state_to_elements(list(probe_state), midpoints_et[0], mu)
-    if probe is None:
-        return None
-    period_s = 2 * math.pi * math.sqrt((probe["A"] * AU_KM) ** 3 / mu)
-
-    span_s = et_max - et_min
-    n_samples = int(
-        max(
-            _MOON_CHUNK_MIN_SAMPLES,
-            min(
-                _MOON_CHUNK_MAX_SAMPLES,
-                span_s / period_s * _MOON_CHUNK_SAMPLES_PER_PERIOD,
-            ),
-        )
-    )
-    # Same alias guard as `fit_moon_mean_elements`. The cap at
-    # `_MOON_CHUNK_MAX_SAMPLES` means very fast moons over a 110-year span
-    # can land below Nyquist; refuse the fit so the caller ships no chunked
-    # sidecar and the body stays on its single-epoch fallback.
-    samples_per_period = n_samples * period_s / span_s
-    if samples_per_period < _METHOD_C_MIN_SAMPLES_PER_PERIOD:
-        logger.warning(
-            "naif %d: chunked fit %.2f samples/period below alias threshold "
-            "%.0f (period=%.3f d) — skipping. Add to CHEBYSHEV_MOON_WHITELIST.",
-            naif_id,
-            samples_per_period,
-            _METHOD_C_MIN_SAMPLES_PER_PERIOD,
-            period_s / 86400.0,
-        )
-        return None
-    times = np.linspace(et_min, et_max, n_samples)
-
-    a_arr = np.empty(n_samples)
-    e_arr = np.empty(n_samples)
-    i_arr = np.empty(n_samples)
-    om_arr = np.empty(n_samples)
-    w_arr = np.empty(n_samples)
-    M_arr = np.empty(n_samples)
+def _sample_elements(
+    naif_id: int, parent_id: int, mu: float, times: np.ndarray
+) -> np.ndarray | None:
+    """`(6, n)` osculating `[a_km, e, i, om, w, M]` at `times`, angles in
+    radians and unwrapped. None on an unbound or unsampleable state."""
+    out = np.empty((6, times.size))
     for k, t in enumerate(times):
         try:
             st, _ = spiceypy.spkezr(
@@ -337,40 +278,180 @@ def fit_moon_chunked_elements(
         rp, ecc, inc, lnode, argp, m0, _t0, _mu = elts
         if ecc >= 1.0 or rp <= 0:
             return None
-        a_arr[k] = rp / (1 - ecc)
-        e_arr[k] = ecc
-        i_arr[k] = inc
-        om_arr[k] = lnode
-        w_arr[k] = argp
-        M_arr[k] = m0
+        out[:, k] = (rp / (1 - ecc), ecc, inc, lnode, argp, m0)
+    for row in (3, 4, 5):
+        out[row] = np.unwrap(out[row])
+    return out
 
-    om_un = np.unwrap(om_arr)
-    w_un = np.unwrap(w_arr)
-    M_un = np.unwrap(M_arr)
+
+def _chunks_in_coverage(
+    midpoints_et: np.ndarray,
+    chunk_half_width_s: float,
+    coverage_et: list[tuple[float, float]],
+) -> list[tuple[float, float, np.ndarray]]:
+    """`(lo, hi, selected)` per coverage window holding at least one chunk's
+    whole validity span; `selected` masks those chunks."""
+    in_window = []
+    for lo, hi in coverage_et:
+        selected = (
+            midpoints_et - chunk_half_width_s >= lo - _MOON_CHUNK_EDGE_TOLERANCE_S
+        ) & (midpoints_et + chunk_half_width_s <= hi + _MOON_CHUNK_EDGE_TOLERANCE_S)
+        if selected.any():
+            in_window.append((lo, hi, selected))
+    return in_window
+
+
+def fit_moon_chunked_elements(
+    naif_id: int,
+    parent_id: int,
+    mu: float,
+    chunk_midpoints_jd: list[float],
+    chunk_half_width_s: float,
+    coverage_et: list[tuple[float, float]],
+) -> tuple[np.ndarray, np.ndarray] | None:
+    """Compute Method C secular elements for each chunk midpoint.
+
+    A chunk gets elements only when its validity span (midpoint ±
+    `chunk_half_width_s`) lies inside one window of `coverage_et`, the moon's
+    merged SPK coverage; its fit samples are the ±5-year neighbourhood cut to
+    that window, so chunks near a coverage edge fit on a shorter span instead
+    of reaching past it. Each window is pre-sampled once at high density and
+    sliced per chunk — ~1000 spkezr calls per body instead of ~200 per chunk.
+
+    Returns (chunk_midpoints_jd, elements_array), shape (n_chunks, 9):
+    [a_au, e, i_deg, om_deg, w_deg, ma_deg, n_deg_day, om_dot_deg_day,
+    w_dot_deg_day], NaN rows for chunks left without elements. None when no
+    chunk gets elements, or a pre-sample fails (degenerate orbit).
+    """
+    midpoints_et = np.array([jd_to_et(jd) for jd in chunk_midpoints_jd])
+    in_window = _chunks_in_coverage(midpoints_et, chunk_half_width_s, coverage_et)
+    if not in_window:
+        return None
+
+    # Orbital period from a state inside the first useful window.
+    probe_et = float(midpoints_et[in_window[0][2]][0])
+    try:
+        probe_state, _ = spiceypy.spkezr(
+            str(naif_id), probe_et, "ECLIPJ2000", "NONE", str(parent_id)
+        )
+    except spiceypy.exceptions.SpiceyError:
+        return None
+    probe = state_to_elements(list(probe_state), probe_et, mu)
+    if probe is None:
+        return None
+    period_s = 2 * math.pi * math.sqrt((probe["A"] * AU_KM) ** 3 / mu)
+    year_s = 365.25 * S_PER_DAY
+    samples_per_year = min(
+        _MOON_CHUNK_MAX_SAMPLES_PER_YEAR,
+        max(
+            _MOON_CHUNK_MIN_SAMPLES_PER_YEAR,
+            year_s / period_s * _MOON_CHUNK_SAMPLES_PER_PERIOD,
+        ),
+    )
+    # Same alias guard as `fit_moon_mean_elements`: the per-year cap leaves very
+    # fast moons below Nyquist, so they ship no chunked sidecar and stay on
+    # their single-epoch fallback.
+    samples_per_period = samples_per_year * period_s / year_s
+    if samples_per_period < _METHOD_C_MIN_SAMPLES_PER_PERIOD:
+        logger.warning(
+            "naif %d: chunked fit %.2f samples/period below alias threshold "
+            "%.0f (period=%.3f d) — skipping. Add to CHEBYSHEV_MOON_WHITELIST.",
+            naif_id,
+            samples_per_period,
+            _METHOD_C_MIN_SAMPLES_PER_PERIOD,
+            period_s / 86400.0,
+        )
+        return None
 
     deg_per_day_per_rad_per_s = math.degrees(1.0) * S_PER_DAY
-    out = np.empty((len(midpoints_et), 9), dtype=np.float64)
-    for idx, midpoint_et in enumerate(midpoints_et):
-        mask = (times >= midpoint_et - _MOON_CHUNK_FIT_HALF_WINDOW_S) & (
-            times <= midpoint_et + _MOON_CHUNK_FIT_HALF_WINDOW_S
+    out = np.full((midpoints_et.size, 9), np.nan, dtype=np.float64)
+    for lo, hi, selected in in_window:
+        # Only the neighbourhood the selected chunks fit on is sampled.
+        chosen = midpoints_et[selected]
+        s_lo = max(lo, float(chosen[0]) - _MOON_CHUNK_FIT_HALF_WINDOW_S)
+        s_hi = min(hi, float(chosen[-1]) + _MOON_CHUNK_FIT_HALF_WINDOW_S)
+        n_samples = max(
+            _MOON_CHUNK_MIN_FIT_SAMPLES, int((s_hi - s_lo) / year_s * samples_per_year)
         )
-        if mask.sum() < 5:
+        times = np.linspace(s_lo, s_hi, n_samples)
+        sampled = _sample_elements(naif_id, parent_id, mu, times)
+        if sampled is None:
             return None
-        t_rel = times[mask] - midpoint_et
-        om_dot, om0 = np.polyfit(t_rel, om_un[mask], 1)
-        w_dot, w0 = np.polyfit(t_rel, w_un[mask], 1)
-        n_rad_s, M0 = np.polyfit(t_rel, M_un[mask], 1)
-        a_mean_km = float(np.mean(a_arr[mask]))
-        if a_mean_km <= 0 or n_rad_s <= 0:
-            return None
-        out[idx, 0] = a_mean_km / AU_KM
-        out[idx, 1] = float(np.mean(e_arr[mask]))
-        out[idx, 2] = math.degrees(float(np.mean(i_arr[mask])))
-        out[idx, 3] = math.degrees(float(om0))
-        out[idx, 4] = math.degrees(float(w0))
-        out[idx, 5] = math.degrees(float(M0))
-        out[idx, 6] = float(n_rad_s) * deg_per_day_per_rad_per_s
-        out[idx, 7] = float(om_dot) * deg_per_day_per_rad_per_s
-        out[idx, 8] = float(w_dot) * deg_per_day_per_rad_per_s
+        a_arr, e_arr, i_arr, om_un, w_un, M_un = sampled
+        for idx in np.flatnonzero(selected):
+            midpoint_et = midpoints_et[idx]
+            mask = (times >= midpoint_et - _MOON_CHUNK_FIT_HALF_WINDOW_S) & (
+                times <= midpoint_et + _MOON_CHUNK_FIT_HALF_WINDOW_S
+            )
+            if mask.sum() < _MOON_CHUNK_MIN_FIT_SAMPLES:
+                continue
+            t_rel = times[mask] - midpoint_et
+            om_dot, om0 = np.polyfit(t_rel, om_un[mask], 1)
+            w_dot, w0 = np.polyfit(t_rel, w_un[mask], 1)
+            n_rad_s, M0 = np.polyfit(t_rel, M_un[mask], 1)
+            a_mean_km = float(np.mean(a_arr[mask]))
+            if a_mean_km <= 0 or n_rad_s <= 0:
+                continue
+            out[idx] = (
+                a_mean_km / AU_KM,
+                float(np.mean(e_arr[mask])),
+                math.degrees(float(np.mean(i_arr[mask]))),
+                math.degrees(float(om0)),
+                math.degrees(float(w0)),
+                math.degrees(float(M0)),
+                float(n_rad_s) * deg_per_day_per_rad_per_s,
+                float(om_dot) * deg_per_day_per_rad_per_s,
+                float(w_dot) * deg_per_day_per_rad_per_s,
+            )
 
+    if np.isnan(out[:, 0]).all():
+        return None
     return np.asarray(chunk_midpoints_jd, dtype=np.float64), out
+
+
+def fill_osculating_chunks(
+    elements: np.ndarray,
+    naif_id: int,
+    parent_id: int,
+    mu: float,
+    chunk_midpoints_jd: list[float],
+    chunk_half_width_s: float,
+    coverage_et: list[tuple[float, float]],
+) -> np.ndarray:
+    """`elements` with each NaN row of a chunk inside coverage set to the
+    osculating elements at its midpoint, without drift.
+
+    For chunks Method C leaves empty — moons too fast for its sampling, or
+    whose osculating orbit turns unbound inside the fit window. One element
+    set per chunk keeps such a moon to its kernel's years and resets its
+    drift every chunk. A chunk whose midpoint state is unbound stays NaN.
+    Same `(n_chunks, 9)` layout as `fit_moon_chunked_elements`.
+    """
+    out = elements.copy()
+    midpoints_et = np.array([jd_to_et(jd) for jd in chunk_midpoints_jd])
+    for _lo, _hi, selected in _chunks_in_coverage(
+        midpoints_et, chunk_half_width_s, coverage_et
+    ):
+        for idx in np.flatnonzero(selected & np.isnan(out[:, 0])):
+            et = float(midpoints_et[idx])
+            try:
+                state, _ = spiceypy.spkezr(
+                    str(naif_id), et, "ECLIPJ2000", "NONE", str(parent_id)
+                )
+            except spiceypy.exceptions.SpiceyError:
+                continue
+            elts = state_to_elements(list(state), et, mu)
+            if elts is None:
+                continue
+            out[idx] = (
+                elts["A"],
+                elts["EC"],
+                elts["IN"],
+                elts["OM"],
+                elts["W"],
+                elts["MA"],
+                elts["N"],
+                0.0,
+                0.0,
+            )
+    return out

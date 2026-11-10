@@ -22,7 +22,12 @@ Two tiers; the coarse set shares chunk cadence across zones, while moons
 ship per-zone (per-parent) cadence so each chunk lands at ~200 KB regardless
 of body density.
 
-**Coarse, always-loaded set** (5y chunks, ~20 chunks over 100y):
+Zones span the configured range (1600–2600), but each body is fit only over
+its own kernel coverage inside it, so a chunk holds just the bodies whose
+kernels reach it: Puck and the Saturn ring moons drop out of the chunks past
+their kernels' end, and are hidden there rather than extrapolated.
+
+**Coarse, always-loaded set** (5y chunks, 200 chunks over 1000y):
 - `major` — Sun, planets, dwarf planets, planetary-system barycenters.
 - `major_asteroids` — the ~15 sb441-n16 perturber asteroids (Pallas, Vesta,
   Juno, Hebe, Iris, Hygiea, Eunomia, Psyche, Amphitrite, Europa-asteroid,

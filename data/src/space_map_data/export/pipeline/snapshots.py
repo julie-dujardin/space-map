@@ -97,10 +97,11 @@ def moons_snapshots(
     """Snapshot stream for moons: one snapshot per Method C time chunk.
 
     Reads pre-computed `moon-chunks/<naif_id>.npz` sidecars from the derived
-    position tree and applies each chunk's secular elements as an overlay
-    before the chunk is written. Whitelisted moons (those without a sidecar
-    — they're covered by Chebyshev) keep their single-epoch DB elements
-    unchanged across all chunks; the overlay is a no-op for them.
+    position tree and applies each chunk's elements as an overlay before the
+    chunk is written. A moon is in a chunk only where its sidecar has a row:
+    a NaN row is a chunk outside its SPK coverage, and a moon with no sidecar
+    has no known coverage, so it is left out everywhere rather than carried
+    across the whole range on its single-epoch DB elements.
 
     Chunk grid is read from the first .npz file's `chunk_midpoints_jd`; all
     moons share the same grid (built in `_extract_moon_chunks`).
@@ -145,40 +146,23 @@ def moons_snapshots(
         if o.horizons is None:
             raise ValueError(f"{o.id}: missing horizons relation for moon overlay")
         base_by_naif[o.naif_id] = (o, o.horizons)
-    base_snapshot: dict[int, dict[str, float | None]] = {
-        nid: {
-            "JDTDB": h.JDTDB,
-            "A": h.A,
-            "EC": h.EC,
-            "IN_": h.IN_,
-            "OM": h.OM,
-            "W": h.W,
-            "MA": h.MA,
-            "N": h.N,
-            "om_dot": h.om_dot,
-            "w_dot": h.w_dot,
-        }
-        for nid, (_o, h) in base_by_naif.items()
-    }
+    missing = sorted(nid for nid in base_by_naif if nid not in overlays)
+    if missing:
+        logger.warning(
+            "moons: %d moon(s) without a moon-chunks sidecar left out: %s",
+            len(missing),
+            missing,
+        )
 
     def apply_overlay(chunk_idx: int) -> list[Object]:
-        for nid, (_o, h) in base_by_naif.items():
+        kept: list[Object] = []
+        for nid, (o, h) in base_by_naif.items():
             row = overlays.get(nid)
             if row is None:
-                # Whitelisted moon — keep DB single-epoch elements as-is.
-                snap = base_snapshot[nid]
-                h.JDTDB = snap["JDTDB"]
-                h.A = snap["A"]
-                h.EC = snap["EC"]
-                h.IN_ = snap["IN_"]
-                h.OM = snap["OM"]
-                h.W = snap["W"]
-                h.MA = snap["MA"]
-                h.N = snap["N"]
-                h.om_dot = snap["om_dot"]
-                h.w_dot = snap["w_dot"]
                 continue
             elements = row[chunk_idx]
+            if np.isnan(elements[0]):
+                continue
             h.JDTDB = float(midpoints_jd[chunk_idx])
             h.A = float(elements[0])
             h.EC = float(elements[1])
@@ -189,7 +173,8 @@ def moons_snapshots(
             h.N = float(elements[6])
             h.om_dot = float(elements[7])
             h.w_dot = float(elements[8])
-        return [o for o, _h in base_by_naif.values()]
+            kept.append(o)
+        return kept
 
     def iterate() -> Iterator[Snapshot]:
         for chunk_idx in range(n_chunks):

@@ -9,6 +9,8 @@ from pathlib import Path
 import httpx
 import spiceypy
 
+from space_map_data.utils.spk import merge_intervals
+
 logger = logging.getLogger(__name__)
 
 _HREF_RE = re.compile(r'href="([^"?/][^"]*)"')
@@ -126,23 +128,6 @@ def spk_coverage(path: Path, naif_id: int) -> list[tuple[float, float]]:
         start, stop = spiceypy.wnfetd(cell, i)
         out.append((start, stop))
     return merge_intervals(out)
-
-
-def merge_intervals(
-    intervals: list[tuple[float, float]],
-) -> list[tuple[float, float]]:
-    """Merge overlapping/touching intervals; sorted by start."""
-    if not intervals:
-        return []
-    sorted_iv = sorted(intervals)
-    merged: list[tuple[float, float]] = [sorted_iv[0]]
-    for start, stop in sorted_iv[1:]:
-        last_start, last_stop = merged[-1]
-        if start <= last_stop:
-            merged[-1] = (last_start, max(last_stop, stop))
-        else:
-            merged.append((start, stop))
-    return merged
 
 
 def intervals_overlap(

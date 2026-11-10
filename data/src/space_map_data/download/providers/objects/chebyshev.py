@@ -5,6 +5,10 @@ later export. Samples with spiceypy.spkezr and fits via numpy.polynomial.chebysh
 picking sub-interval length and degree from each body's native SPK segment (read
 with jplephem) to mirror the source kernel's accuracy/density tradeoff.
 
+Each body is fit only where its own kernels cover the configured range, so a
+moon whose kernel stops in 2100 ships segments to 2100 and nothing after:
+outside its coverage the map hides it rather than extrapolate.
+
 Passing "ECLIPJ2000" to spkezr does the ICRF → ecliptic rotation inside SPICE, so
 coefficients are already in the frame the rest of the export uses.
 """
@@ -24,7 +28,8 @@ from space_map_data.utils.naif import (
     CHEBYSHEV_MOON_WHITELIST,
     MajorBody,
 )
-from space_map_data.utils.time import S_PER_DAY, et_to_jd
+from space_map_data.utils.spk import clip_windows, coverage_windows
+from space_map_data.utils.time import S_PER_DAY, et_to_jd, jd_to_et, year_to_jd
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +60,15 @@ _MOON_MIN_INTLEN_S = 0.5 * S_PER_DAY
 # fast-moving ones (e.g. Mars 499 lives in mar099.bsp alongside Phobos). The
 # floor avoids inheriting those fast-sibling intervals.
 _SLOW_BODY_MIN_INTLEN_S = 8 * S_PER_DAY
+
+# Fit parameters for a body whose kernels hold no Chebyshev segment to inherit
+# them from (Daphnis' Type 17 precessing conics). Matches what the fastest
+# whitelisted moons get from their own kernels; the per-type floors still apply.
+_NON_CHEBYSHEV_PARAMS = (_MOON_MIN_INTLEN_S, 15)
+
+# SPICE cells are only reclaimed lazily, so one is allocated per run and reset
+# per body. Each kernel holds a handful of intervals per body.
+_CELL_SIZE = 10_000
 
 
 def _native_params(
@@ -93,13 +107,13 @@ def _cache_is_valid(
     body: MajorBody,
     intlen_s: float,
     degree: int,
-    start_et: float,
-    end_et: float,
+    windows_jd: np.ndarray,
 ) -> bool:
     """Check whether the on-disk npz still matches the requested parameters.
 
-    Invalidates on any change to parent, intlen, degree, or time range so we
-    don't ship coefficients fit against a different configuration.
+    Keyed on the clipped coverage windows rather than the configured range: a
+    kernel that extends or cuts a body's coverage refits it even when the
+    range stays put.
     """
     if not path.exists():
         return False
@@ -107,10 +121,11 @@ def _cache_is_valid(
         with np.load(path) as data:
             meta = data["meta"]
             params = data["params"]
+            windows = data["windows"]
             coeffs_dtype = data["coeffs"].dtype
     except Exception:
         return False
-    if meta.shape != (3,) or params.shape != (3,):
+    if meta.shape != (3,) or params.shape != (1,):
         return False
     # Stored coeffs must be float64 — the writer downcasts at pack time if
     # the destination zone is float32, but it needs the full-precision source
@@ -123,21 +138,18 @@ def _cache_is_valid(
         return False
     if int(meta[2]) != degree:
         return False
-    expected_start_jd = et_to_jd(start_et)
-    expected_end_jd = et_to_jd(end_et)
+    if windows.shape != windows_jd.shape:
+        return False
     # JD-day comparisons need only sub-second precision; 1e-6 d ≈ 0.09 s.
-    if abs(float(params[0]) - expected_start_jd) > 1e-6:
+    if not np.allclose(windows, windows_jd, rtol=0.0, atol=1e-6):
         return False
-    if abs(float(params[1]) - expected_end_jd) > 1e-6:
-        return False
-    return abs(float(params[2]) - intlen_s) <= 1e-6
+    return abs(float(params[0]) - intlen_s) <= 1e-6
 
 
 def _sample_body(
     naif_id: int,
     parent_id: int,
-    start_et: float,
-    end_et: float,
+    windows_et: list[tuple[float, float]],
     intlen_s: float,
     degree: int,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -145,9 +157,12 @@ def _sample_body(
     Chebyshev-Lobatto nodes so the fit is an exact interpolant of degree
     `degree` from `degree+1` samples.
 
-    Returns `(start_jds, end_jds, coeffs)`: sub-interval bounds in JD TDB, and
-    `(n, 3, degree+1)` float64 coefficients for position in km, ECLIPJ2000,
-    parent-relative — downcast to float32 later if the zone's
+    Each window gets its own grid from its start, so a gap between windows
+    stays a gap. A sub-interval SPICE can't evaluate is logged and left out.
+
+    Returns `(start_jds, end_jds, coeffs)`: ascending sub-interval bounds in JD
+    TDB, and `(n, 3, degree+1)` float64 coefficients for position in km,
+    ECLIPJ2000, parent-relative — downcast to float32 later if the zone's
     `float64_coeffs` flag is off.
     """
     n_nodes = degree + 1
@@ -155,41 +170,58 @@ def _sample_body(
     # Chebyshev–Lobatto extrema on [-1, 1]: x_k = cos(pi * k / N)
     nodes_tau = np.cos(np.pi * k / degree) if degree > 0 else np.zeros(1)
 
-    n_intervals = math.ceil((end_et - start_et) / intlen_s)
-    start_jds = np.empty(n_intervals, dtype=np.float64)
-    end_jds = np.empty(n_intervals, dtype=np.float64)
-    coeffs = np.empty((n_intervals, 3, n_nodes), dtype=np.float64)
-
     target_str = str(naif_id)
     parent_str = str(parent_id)
-
-    for i in range(n_intervals):
-        seg_start_et = start_et + i * intlen_s
-        seg_end_et = min(seg_start_et + intlen_s, end_et)
-        mid = 0.5 * (seg_start_et + seg_end_et)
-        half = 0.5 * (seg_end_et - seg_start_et)
-        sample_ets = mid + half * nodes_tau
-
-        positions = np.empty((n_nodes, 3), dtype=np.float64)
-        for j, et in enumerate(sample_ets):
-            state, _ = spiceypy.spkezr(target_str, et, "ECLIPJ2000", "NONE", parent_str)
-            positions[j, 0] = state[0]
-            positions[j, 1] = state[1]
-            positions[j, 2] = state[2]
-
-        # Fit per axis (chebfit uses least-squares; with node-count == deg+1 at
-        # Chebyshev extrema this is an exact interpolant). Stored at full
-        # float64 precision — the per-zone writer chooses whether to truncate
-        # to float32 when packing the binary.
-        for axis in range(3):
-            coeffs[i, axis, :] = np.polynomial.chebyshev.chebfit(
-                nodes_tau, positions[:, axis], degree
-            )
-
-        start_jds[i] = et_to_jd(seg_start_et)
-        end_jds[i] = et_to_jd(seg_end_et)
-
-    return start_jds, end_jds, coeffs
+    start_jds: list[float] = []
+    end_jds: list[float] = []
+    coeffs: list[np.ndarray] = []
+    failed = 0
+    for w_start_et, w_end_et in windows_et:
+        n_intervals = math.ceil((w_end_et - w_start_et) / intlen_s)
+        for i in range(n_intervals):
+            seg_start_et = w_start_et + i * intlen_s
+            seg_end_et = min(seg_start_et + intlen_s, w_end_et)
+            mid = 0.5 * (seg_start_et + seg_end_et)
+            half = 0.5 * (seg_end_et - seg_start_et)
+            positions = np.empty((n_nodes, 3), dtype=np.float64)
+            try:
+                for j, tau in enumerate(nodes_tau):
+                    positions[j] = spiceypy.spkezr(
+                        target_str, mid + half * tau, "ECLIPJ2000", "NONE", parent_str
+                    )[0][:3]
+            except spiceypy.exceptions.SpiceyError as e:
+                if failed == 0:
+                    logger.warning(
+                        "Chebyshev sampling failed for %d at JD %.1f: %s",
+                        naif_id,
+                        et_to_jd(seg_start_et),
+                        e,
+                    )
+                failed += 1
+                continue
+            # Least squares at deg+1 Chebyshev extrema is an exact
+            # interpolant. Kept at float64; the zone writer picks the dtype.
+            seg_coeffs = np.empty((3, n_nodes), dtype=np.float64)
+            for axis in range(3):
+                seg_coeffs[axis] = np.polynomial.chebyshev.chebfit(
+                    nodes_tau, positions[:, axis], degree
+                )
+            start_jds.append(et_to_jd(seg_start_et))
+            end_jds.append(et_to_jd(seg_end_et))
+            coeffs.append(seg_coeffs)
+    if failed:
+        logger.warning("Chebyshev: %d sub-interval(s) of %d left out", failed, naif_id)
+    if not coeffs:
+        return (
+            np.empty(0, dtype=np.float64),
+            np.empty(0, dtype=np.float64),
+            np.empty((0, 3, n_nodes), dtype=np.float64),
+        )
+    return (
+        np.array(start_jds, dtype=np.float64),
+        np.array(end_jds, dtype=np.float64),
+        np.stack(coeffs),
+    )
 
 
 def _should_extract(body: MajorBody) -> bool:
@@ -221,45 +253,56 @@ def extract_chebyshev(
 ) -> int:
     """Extract Chebyshev ephemeris for every body in `bodies` that we want to ship.
 
-    Writes one `.npz` per body under `cheb_dir/{naif_id}.npz`, skipping bodies whose
-    cache already matches; stale files are removed at the end so the directory always
-    reflects the current filter policy. Caller must have furnished all relevant
-    kernels before invoking. Returns the number of bodies present after the run.
+    Writes one `.npz` per body under `cheb_dir/{naif_id}.npz`, fit over the
+    body's merged SPK coverage across `kernel_paths` clipped to the year range.
+    Skips bodies whose cache already matches; stale files are removed at the
+    end so the directory always reflects the current filter policy. Caller must
+    have furnished all relevant kernels before invoking. Returns the number of
+    bodies present after the run.
     """
     cheb_dir.mkdir(parents=True, exist_ok=True)
 
-    start_et = spiceypy.str2et(f"{start_year}-01-01T00:00:00")
-    end_et = spiceypy.str2et(f"{end_year}-01-01T00:00:00")
+    # The same TDB bounds as the export's chunk grid, so a body covered over
+    # the whole range spans exactly the zone's `start_jd`..`end_jd`.
+    start_et = jd_to_et(year_to_jd(start_year))
+    end_et = jd_to_et(year_to_jd(end_year))
     logger.info(
         "Extracting Chebyshev ephemeris: %d → %d (%.1f days covered)",
         start_year,
         end_year,
         (end_et - start_et) / S_PER_DAY,
     )
+    spk_paths = [p for p in kernel_paths if p.suffix == ".bsp"]
+    cell = spiceypy.support_types.SPICEDOUBLE_CELL(_CELL_SIZE)
 
     # Plan first so we can report the work split (extract vs. cache vs. skip)
     # before the sampling progress bar starts — sampling dominates wall time,
     # so an up-front summary lets the operator know whether this run is mostly
     # cached or mostly cold.
-    to_extract: list[tuple[MajorBody, float, int, Path]] = []
+    to_extract: list[
+        tuple[MajorBody, list[tuple[float, float]], np.ndarray, float, int, Path]
+    ] = []
     cached = 0
     skipped_no_spk = 0
     skipped_filter = 0
     kept_paths: set[Path] = set()
     for body in bodies:
-        native = _native_params(kernel_paths, body.naif_id)
-        if native is None:
-            # No raw SPK segment — e.g. the body is classified as a moon/planet
-            # but isn't actually in any loaded kernel. Skip rather than
-            # fabricate defaults: we wouldn't get valid positions anyway.
-            skipped_no_spk += 1
-            continue
-
-        intlen_s, degree = native
         if not _should_extract(body):
             skipped_filter += 1
             continue
+        windows_et = clip_windows(
+            coverage_windows(spk_paths, body.naif_id, cell), start_et, end_et
+        )
+        if not windows_et:
+            # No SPK coverage in range — e.g. the body is classified as a
+            # moon/planet but isn't in any loaded kernel, or its kernel ends
+            # before the range opens. Nothing to fit.
+            skipped_no_spk += 1
+            continue
 
+        intlen_s, degree = (
+            _native_params(spk_paths, body.naif_id) or _NON_CHEBYSHEV_PARAMS
+        )
         if (
             body.object_type in _CORE_BODY_TYPES
             or body.object_type == ObjectType.asteroid
@@ -285,13 +328,16 @@ def extract_chebyshev(
             )
             degree = _MAX_DEGREE
 
+        windows_jd = np.array(
+            [[et_to_jd(lo), et_to_jd(hi)] for lo, hi in windows_et], dtype=np.float64
+        )
         out_path = cheb_dir / f"{body.naif_id}.npz"
-        if _cache_is_valid(out_path, body, intlen_s, degree, start_et, end_et):
+        if _cache_is_valid(out_path, body, intlen_s, degree, windows_jd):
             kept_paths.add(out_path)
             cached += 1
             continue
 
-        to_extract.append((body, intlen_s, degree, out_path))
+        to_extract.append((body, windows_et, windows_jd, intlen_s, degree, out_path))
 
     logger.info(
         "Chebyshev plan: %d to extract, %d reused from cache, %d skipped "
@@ -303,27 +349,19 @@ def extract_chebyshev(
     )
 
     extracted = 0
-    for body, intlen_s, degree, out_path in tqdm(
+    for body, windows_et, windows_jd, intlen_s, degree, out_path in tqdm(
         to_extract, desc="Chebyshev", unit="body"
     ):
-        try:
-            start_jds, end_jds, coeffs = _sample_body(
-                body.naif_id,
-                body.parent_id,
-                start_et,
-                end_et,
-                intlen_s,
-                degree,
-            )
-        except spiceypy.exceptions.SpiceyError as e:
+        start_jds, end_jds, coeffs = _sample_body(
+            body.naif_id, body.parent_id, windows_et, intlen_s, degree
+        )
+        if start_jds.size == 0:
             logger.warning(
-                "Chebyshev sampling failed for %s (%d): %s",
+                "Chebyshev: %s (%d) has coverage but no sampleable interval",
                 body.name,
                 body.naif_id,
-                e,
             )
             continue
-
         np.savez(
             out_path,
             start_jds=start_jds,
@@ -333,10 +371,9 @@ def extract_chebyshev(
                 [body.naif_id, body.parent_id, degree],
                 dtype=np.int64,
             ),
-            params=np.array(
-                [et_to_jd(start_et), et_to_jd(end_et), intlen_s],
-                dtype=np.float64,
-            ),
+            params=np.array([intlen_s], dtype=np.float64),
+            # The clipped coverage the fit was asked for, as `(n, 2)` JD TDB.
+            windows=windows_jd,
         )
         kept_paths.add(out_path)
         extracted += 1

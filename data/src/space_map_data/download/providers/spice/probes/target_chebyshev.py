@@ -34,9 +34,10 @@ from space_map_data.download.providers.spice.bodies.elements import (
 from space_map_data.probes.small_bodies import SMALL_BODY_TARGET_NAIF_IDS
 from space_map_data.utils.content_stamp import content_stamps
 from space_map_data.utils.paths import DERIVED_POSITION_DIR
+from space_map_data.utils.spk import clip_windows, coverage_windows
 from space_map_data.utils.time import S_PER_DAY, et_to_jd, jd_to_et, year_to_jd
 
-from ..naif_http import merge_intervals, spk_targets
+from ..naif_http import spk_targets
 from .layout import MISSIONS_DIR, collect_generic_kernels
 
 logger = logging.getLogger(__name__)
@@ -71,29 +72,6 @@ _CELL_SIZE = 10_000
 # at — the fit is exact at the nodes, so error has to be read between them.
 _NODES_TAU = np.cos(np.pi * np.arange(_DEGREE + 1) / _DEGREE)
 _TEST_TAU = 0.5 * (_NODES_TAU[:-1] + _NODES_TAU[1:])
-
-
-def _coverage_windows(
-    paths: list[Path], naif_id: int, cell
-) -> list[tuple[float, float]]:
-    """Merged `(start_et, end_et)` intervals covering `naif_id` across `paths`.
-
-    Takes a caller-owned cell rather than calling `naif_http.spk_coverage`,
-    which allocates a 200k-double cell per call — Bennu alone matches 335
-    OSIRIS-REx kernels, and SPICE cells are only reclaimed lazily.
-    """
-    raw: list[tuple[float, float]] = []
-    for path in paths:
-        spiceypy.scard(0, cell)
-        try:
-            spiceypy.spkcov(str(path), naif_id, cell)
-        except spiceypy.exceptions.SpiceyError:
-            continue
-        for i in range(spiceypy.wncard(cell)):
-            lo, hi = spiceypy.wnfetd(cell, i)
-            if hi > lo:
-                raw.append((lo, hi))
-    return merge_intervals(raw)
 
 
 def _positions_at(naif_id: int, ets: np.ndarray) -> np.ndarray:
@@ -278,11 +256,11 @@ def extract_target_chebyshev(out_dir: Path = TARGET_CHEBYSHEV_DIR) -> int:
         start_et = jd_to_et(year_to_jd(start_year))
         end_et = jd_to_et(year_to_jd(end_year))
         for naif_id in tqdm(sorted(targets), desc="Small-body Chebyshev", unit="body"):
-            windows = [
-                (max(lo, start_et), min(hi, end_et))
-                for lo, hi in _coverage_windows(sources[naif_id], naif_id, win_cell)
-                if hi > start_et and lo < end_et
-            ]
+            windows = clip_windows(
+                coverage_windows(sources[naif_id], naif_id, win_cell),
+                start_et,
+                end_et,
+            )
             if not windows:
                 uncovered.append(naif_id)
                 continue
@@ -308,9 +286,8 @@ def extract_target_chebyshev(out_dir: Path = TARGET_CHEBYSHEV_DIR) -> int:
                 end_jds=ends,
                 coeffs=coeffs,
                 meta=np.array([naif_id, FIT_PARENT_NAIF_ID, _DEGREE], dtype=np.int64),
-                # The requested range and the fit knobs, not the covered range
-                # — this is what `_cached` compares against. The major-body pool
-                # keeps the same first three slots.
+                # The requested range, not the covered one: with the source
+                # digest it fixes the coverage, so `_cached` needs no more.
                 params=np.array(
                     [
                         et_to_jd(start_et),

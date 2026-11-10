@@ -16,12 +16,13 @@ logger = logging.getLogger(__name__)
 
 
 def chebyshev_coverage(session: Session, download_dir: Path) -> set[str]:
-    """Object IDs the chebyshev export positions over the whole timeline.
+    """Object IDs the chebyshev export positions wherever their kernels reach.
 
     Filters cheb-covered bodies out of the elements zones — the frontend can
     derive Kepler elements from chebyshev positions, so a duplicate row is
-    just dead bytes. Probe-target fits are left out: they cover a flyby, not
-    the export range, so those bodies keep the element row that carries them
+    just dead bytes, and past its kernel's reach such a body is meant to be
+    hidden, not carried by elements. Probe-target fits are left out: they
+    cover a flyby, so those bodies keep the element row that carries them
     the rest of the time.
     """
     return _ids_for(session, chebyshev_npz_paths(download_dir, full_range_only=True))

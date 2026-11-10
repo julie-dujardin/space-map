@@ -8,8 +8,8 @@
   in any SPK kernel and still need a Kepler propagator.
 - `major_asteroids` — the ~15 sb441-n16 perturber asteroids plus the
   probe-visited small bodies (chebyshev only).
-- `moons` — non-whitelisted moons of planets with Method-C secular elements
-  (chunk-indexed). Excludes SBDB-discovered satellites of small bodies — those
+- `moons` — non-whitelisted moons of planets with Method-C secular elements,
+  osculating where the fit fails (chunk-indexed). Excludes SBDB-discovered satellites of small bodies — those
   ride in `small_body_moons`.
 - `moons/{parent}` — whitelisted moons under each parent body, chebyshev coverage.
 - `small_body_moons` — moons of asteroids and comets (e.g. Dactyl around Ida,
@@ -117,6 +117,7 @@ manifest:
   linear approximation across the whole range. Path:
   `position/moons/{chunk_idx}/{part}.bin.gz`. Compute the chunk index from
   a JD with `floor((jd - start_jd) / (chunk_years * 365.25))`. Header
-  `start_jd`/`end_jd` bound the chunk's validity window. Whitelisted moons
-  are absent from `moons` — they ride in their parent's chebyshev zone
-  instead.
+  `start_jd`/`end_jd` bound the chunk's validity window. A moon is in a chunk
+  only when that window lies inside its own kernel coverage, so outside it the
+  map hides the moon. Whitelisted moons are absent from `moons` — they ride in
+  their parent's chebyshev zone instead.
