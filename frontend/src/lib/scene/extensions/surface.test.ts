@@ -38,7 +38,8 @@ function frame(ctx: ContextManager, basis: [number, number, number]): ExtensionF
 function vertices(shape: SurfaceShapeExtension, at: number): Float32Array {
 	const { geometry } = shape.object.children[at] as Mesh<BufferGeometry>;
 	const outline = geometry.getAttribute('segStart') as InterleavedBufferAttribute | undefined;
-	return (outline?.data ?? geometry.getAttribute('position')).array as Float32Array;
+	if (outline) return (outline.data.array as Float32Array).subarray(outline.offset);
+	return geometry.getAttribute('position').array as Float32Array;
 }
 
 describe('SurfaceShapeExtension', () => {

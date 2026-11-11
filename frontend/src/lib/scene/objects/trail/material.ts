@@ -68,12 +68,17 @@ const TRIM_DEPTH = CAMERA_NEAR / 2;
  *  distance from the basis: some ten times the float32 rounding of a vertex
  *  there, and near enough that a line passing the camera runs off the screen. */
 const TRIM_SHARE = 1e-6;
+/** Farthest a mitred corner reaches from the line's middle, in half widths,
+ *  before it is bevelled instead: SVG's default. */
+const MITER_LIMIT = 4;
 
 /**
  * Fat-line shader: same alpha logic as {@link makeTrailMaterial}, but draws
  * each segment of `makeFatTrailGeometry` as a quad `uLineWidth` pixels wide on
- * screen, cut where it passes behind the camera. With `dash`, a dash and a gap
- * in pixels, it also reads how far along the line each point is on screen.
+ * screen, cut where it passes behind the camera. Neighbouring quads meet on a
+ * mitre, so a see-through line has no overlap or notch where it turns. With
+ * `dash`, a dash and a gap in pixels, it also reads how far along the line each
+ * point is on screen.
  */
 export function makeFatTrailMaterial(
 	color: string,
@@ -106,9 +111,11 @@ export function makeFatTrailMaterial(
 			uniform float uLineWidth;
 			uniform vec2 uResolution;
 			uniform vec2 uTrim;
-			attribute vec2 corner;
+			attribute vec3 corner;
+			attribute vec3 segPrev;
 			attribute vec3 segStart;
 			attribute vec3 segEnd;
+			attribute vec3 segNext;
 			attribute vec2 alphaStart;
 			attribute vec2 alphaEnd;
 			varying float vAlpha;
@@ -118,9 +125,78 @@ export function makeFatTrailMaterial(
 			varying float vDistW;
 			varying float vW;
 			#endif
+			vec3 toView(vec3 point) {
+				return mat3(viewMatrix) * (point + uCenterOffset);
+			}
+			vec2 toPx(vec3 view) {
+				vec4 clip = projectionMatrix * vec4(view, 1.0);
+				return clip.xy / clip.w * uResolution * 0.5;
+			}
+			// The unit direction on screen from one point to another, with the
+			// distance in pixels in z.
+			vec3 heading(vec2 from, vec2 to) {
+				vec2 d = to - from;
+				// Scaled before normalising: an end cut just ahead of the camera can
+				// sit 1e20 px off screen, and its square overflows a float.
+				float span = max(abs(d.x), abs(d.y));
+				// Seen end on: any direction will do.
+				if (span < 1e-4) return vec3(1.0, 0.0, 0.0);
+				vec2 u = d / span;
+				return vec3(normalize(u), span * length(u));
+			}
+			// The screen headings into and out of the middle of three points. Both
+			// segments at a turn call this with the same points, so they place
+			// their shared corners alike.
+			void turnAt(vec3 before, vec3 at, vec3 after, out vec3 din, out vec3 dout) {
+				vec2 p = toPx(toView(at));
+				din = heading(toPx(toView(before)), p);
+				dout = heading(p, toPx(toView(after)));
+			}
+			// A mitred corner: its offset, and how far along the quad's own
+			// segment it moves.
+			vec3 mitredAt(vec2 offset, vec2 own) {
+				return vec3(offset, dot(offset, own));
+			}
+			// This corner's offset in pixels from the point where the line turns
+			// from din to dout, and in z how far it moves along the quad's own
+			// segment, own. The quads either side compute it from the same three
+			// points, so they meet exactly. A square end, the fallback, moves
+			// nothing along: exactly nothing, since a dash can end right there.
+			vec3 cornerAt(vec3 din, vec3 dout, vec2 own, bool joins) {
+				float h = uLineWidth * 0.5;
+				vec3 square = vec3(vec2(-own.y, own.x) * corner.x * h, 0.0);
+				bool bevel = corner.z > 0.5;
+				if (!joins || din.z == 0.0 || dout.z == 0.0) return bevel ? vec3(0.0) : square;
+				float inner = din.x * dout.y - din.y * dout.x >= 0.0 ? 1.0 : -1.0;
+				vec2 bisector = din.xy + dout.xy;
+				// The cosine of half the turn.
+				float cosHalf = length(bisector) * 0.5;
+				float safeCos = max(cosHalf, 1e-6);
+				vec2 mitre = vec2(-bisector.y, bisector.x) / (2.0 * safeCos) * (h / safeCos);
+				// How far along each segment the inner corner moves. Past half the
+				// shorter segment it would cross that segment's other corner, and
+				// square ends overlap instead, as with no join.
+				float reach = h * sqrt(max(1.0 - cosHalf * cosHalf, 0.0)) / safeCos;
+				bool fits = cosHalf > 1e-3 && reach <= 0.5 * min(din.z, dout.z);
+				bool mitred = fits && cosHalf * ${MITER_LIMIT.toFixed(1)} >= 1.0;
+				if (bevel) {
+					// Each segment's square outer corner and the inner corner they
+					// share, at the turn's own distance along the line. Flat under a
+					// mitre, which covers the turn by itself, and beside a segment
+					// shorter than the line is wide, where it could reach into the
+					// quad past that segment.
+					if (mitred || (!fits && min(din.z, dout.z) < uLineWidth)) return vec3(0.0);
+					if (corner.z < 1.5) return vec3(-inner * vec2(-din.y, din.x) * h, 0.0);
+					if (corner.z < 2.5) return vec3(-inner * vec2(-dout.y, dout.x) * h, 0.0);
+					return vec3(fits ? inner * mitre : vec2(0.0), 0.0);
+				}
+				if (!fits) return square;
+				if (corner.x == inner) return mitredAt(inner * mitre, own);
+				return mitred ? mitredAt(-inner * mitre, own) : square;
+			}
 			void main() {
-				vec3 a = mat3(viewMatrix) * (segStart + uCenterOffset);
-				vec3 b = mat3(viewMatrix) * (segEnd + uCenterOffset);
+				vec3 a = toView(segStart);
+				vec3 b = toView(segEnd);
 				float aheadA = -a.z;
 				float aheadB = -b.z;
 				float front = max(aheadA, aheadB);
@@ -142,28 +218,32 @@ export function makeFatTrailMaterial(
 				float cutB = aheadB < uTrim.x ? (cut - aheadB) / (aheadA - aheadB) : 0.0;
 				if (cutA > 0.0) a = vec3(mix(a.xy, b.xy, cutA), -cut);
 				if (cutB > 0.0) b = vec3(mix(b.xy, a.xy, cutB), -cut);
-				vec4 clipA = projectionMatrix * vec4(a, 1.0);
-				vec4 clipB = projectionMatrix * vec4(b, 1.0);
-				vec2 ndcA = clipA.xy / clipA.w;
-				vec2 ndcB = clipB.xy / clipB.w;
-				vec2 dirPx = (ndcB - ndcA) * uResolution * 0.5;
-				// Scaled before normalising: an end cut just ahead of the camera can
-				// sit 1e20 px off screen, and its square overflows a float.
-				float span = max(abs(dirPx.x), abs(dirPx.y));
-				// A segment seen end on: any perpendicular will do.
-				vec2 dirN = span < 1e-4 ? vec2(1.0, 0.0) : normalize(dirPx / span);
-				vec2 offsetNDC = vec2(-dirN.y, dirN.x) * corner.x * uLineWidth / uResolution;
 				bool atEnd = corner.y > 0.5;
-				vec4 clip = atEnd ? clipB : clipA;
-				vec2 ndc = atEnd ? ndcB : ndcA;
-				gl_Position = vec4((ndc + offsetNDC) * clip.w, clip.zw);
+				vec3 own = heading(toPx(a), toPx(b));
+				// The turn this corner sits on, read in the line's direction: only
+				// with all three of its points ahead of the camera, so that both
+				// segments at the turn agree on it.
+				bool joins = cutA == 0.0 && cutB == 0.0 && -toView(atEnd ? segNext : segPrev).z >= uTrim.x;
+				vec3 din = own;
+				vec3 dout = own;
+				if (joins) {
+					if (atEnd) turnAt(segStart, segEnd, segNext, din, dout);
+					else turnAt(segPrev, segStart, segEnd, din, dout);
+					own = atEnd ? din : dout;
+				}
+				vec3 offset = cornerAt(din, dout, own.xy, joins);
+				vec4 clip = projectionMatrix * vec4(atEnd ? b : a, 1.0);
+				gl_Position = vec4((clip.xy / clip.w + offset.xy * 2.0 / uResolution) * clip.w, clip.zw);
 				vec2 alphas = atEnd ? mix(alphaEnd, alphaStart, cutB) : mix(alphaStart, alphaEnd, cutA);
 				vAlpha = mix(alphas.x, alphas.y, uShowFull);
 				#ifdef DASHED
 				// Carried times w and divided back out per fragment, which undoes
 				// the perspective a varying is interpolated with: the dashes are
-				// even on screen however much nearer one end is.
+				// even on screen however much nearer one end is. A corner a mitre
+				// moves along the segment counts on by as much, so dash ends stay
+				// square to the line.
 				float dist = atEnd ? mix(distEnd, distStart, cutB) : mix(distStart, distEnd, cutA);
+				dist += offset.z;
 				vDistW = dist * clip.w;
 				vW = clip.w;
 				#endif

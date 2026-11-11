@@ -16,10 +16,11 @@ import { writeTrailAlphas } from './points';
 // (POINT_CLOUD_RENDER_ORDER) so trails draw over the dots.
 const TRAIL_RENDER_ORDER = 3;
 
-/** A fat line segment's quad: each corner's side of the line (±1) and end
- *  (0 at the segment's start, 1 at its end). */
-const QUAD_CORNERS = [-1, 0, 1, 0, -1, 1, 1, 1];
-const QUAD_INDICES = [0, 1, 2, 2, 1, 3];
+/** A fat line segment's corners: each one's side of the line (±1), its end (0
+ *  at the segment's start, 1 at its end) and its part: 0 for the quad, then
+ *  1 to 3 for the bevel that fills the outside of a sharp turn at its start. */
+const CORNERS = [-1, 0, 0, 1, 0, 0, -1, 1, 0, 1, 1, 0, 0, 0, 1, 0, 0, 2, 0, 0, 3];
+const CORNER_INDICES = [0, 1, 2, 2, 1, 3, 4, 5, 6];
 
 /** The instanced buffer behind a fat line's attribute `name`. */
 function instanced(geometry: BufferGeometry, name: string): InstancedInterleavedBuffer {
@@ -27,33 +28,36 @@ function instanced(geometry: BufferGeometry, name: string): InstancedInterleaved
 		.data as InstancedInterleavedBuffer;
 }
 
-/** Two attributes on one buffer of `stride` floats a point: a segment's start
- *  point, and its end, read one point further on. */
-function setSegmentAttributes(
+/** Attributes on one buffer of `count` points, `stride` floats each, every
+ *  one read a point further on than the one before. */
+function setPointAttributes(
 	geometry: BufferGeometry,
-	names: [string, string],
-	capacity: number,
+	names: readonly string[],
+	count: number,
 	stride: number
 ): void {
-	const buffer = new InstancedInterleavedBuffer(new Float32Array(capacity * stride), stride);
-	geometry.setAttribute(names[0], new InterleavedBufferAttribute(buffer, stride, 0));
-	geometry.setAttribute(names[1], new InterleavedBufferAttribute(buffer, stride, stride));
+	const buffer = new InstancedInterleavedBuffer(new Float32Array(count * stride), stride);
+	names.forEach((name, i) =>
+		geometry.setAttribute(name, new InterleavedBufferAttribute(buffer, stride, i * stride))
+	);
 }
 
 /**
  * Geometry for a fat line of up to `capacity` points, one instance per segment:
- * a quad the shader widens on screen and cuts at the camera, which it can only
- * do with both ends of a segment in hand. The quad is the geometry's own, since
- * disposing a geometry deletes the GL buffers of all its attributes. Refresh
- * paths fill the points via {@link writeFatTrailVertices}.
+ * a quad the shader widens on screen, joins to its neighbours and cuts at the
+ * camera, so it reads the points either side of the segment too. The corners
+ * are the geometry's own, since disposing a geometry deletes the GL buffers of
+ * all its attributes. Refresh paths fill the points via
+ * {@link writeFatTrailVertices}.
  */
 export function makeFatTrailGeometry(capacity: number): InstancedBufferGeometry {
 	const geometry = new InstancedBufferGeometry();
-	geometry.setAttribute('corner', new Float32BufferAttribute(QUAD_CORNERS, 2));
-	geometry.setIndex(QUAD_INDICES);
-	setSegmentAttributes(geometry, ['segStart', 'segEnd'], capacity, 3);
+	geometry.setAttribute('corner', new Float32BufferAttribute(CORNERS, 3));
+	geometry.setIndex(CORNER_INDICES);
+	// One more point at each end, for the neighbour the end joins with.
+	setPointAttributes(geometry, ['segPrev', 'segStart', 'segEnd', 'segNext'], capacity + 2, 3);
 	// Trail alpha then full alpha, for each point.
-	setSegmentAttributes(geometry, ['alphaStart', 'alphaEnd'], capacity, 2);
+	setPointAttributes(geometry, ['alphaStart', 'alphaEnd'], capacity, 2);
 	geometry.instanceCount = 0;
 	return geometry;
 }
@@ -68,8 +72,20 @@ export function writeFatTrailVertices(
 ): void {
 	const points = instanced(geometry, 'segStart');
 	const alphas = instanced(geometry, 'alphaStart');
-	const m = Math.min(n, points.count);
-	(points.array as Float32Array).set(posSrc.subarray(0, m * 3));
+	const m = Math.min(n, alphas.count);
+	const arr = points.array as Float32Array;
+	arr.set(posSrc.subarray(0, m * 3), 3);
+	// The point past each end: around a closed line, the one across its seam, so
+	// the seam joins like any other turn; else the end's own point, which the
+	// shader takes for no turn to join.
+	const last = (m - 1) * 3;
+	const closed =
+		m > 2 &&
+		posSrc[0] === posSrc[last] &&
+		posSrc[1] === posSrc[last + 1] &&
+		posSrc[2] === posSrc[last + 2];
+	arr.copyWithin(0, closed ? last : 3, closed ? last + 3 : 6);
+	arr.copyWithin((m + 1) * 3, closed ? 6 : m * 3, closed ? 9 : (m + 1) * 3);
 	const alphaArr = alphas.array as Float32Array;
 	for (let i = 0; i < m; i++) {
 		alphaArr[2 * i] = trailSrc[i];
@@ -80,7 +96,7 @@ export function writeFatTrailVertices(
 	// Each instance reads its end one point on, so the last point starts none.
 	(geometry as InstancedBufferGeometry).instanceCount = Math.max(0, m - 1);
 	// commitTrail empties the range for a line too short to draw.
-	geometry.setDrawRange(0, QUAD_INDICES.length);
+	geometry.setDrawRange(0, CORNER_INDICES.length);
 }
 
 export function makeEmptyTrail(): Line | Mesh {
@@ -136,7 +152,7 @@ export function buildFatLineFromThin(
 	dash?: readonly [number, number]
 ): Mesh {
 	const geometry = makeFatTrailGeometry(capacity);
-	if (dash) setSegmentAttributes(geometry, ['distStart', 'distEnd'], capacity, 1);
+	if (dash) setPointAttributes(geometry, ['distStart', 'distEnd'], capacity, 1);
 	writeFatTrailVertices(geometry, posArr, trailAlphas, fullAlphas, total);
 	const mesh = new Mesh(geometry, makeFatTrailMaterial(color, lineWidth, brightness, dash));
 	mesh.matrixAutoUpdate = false;
