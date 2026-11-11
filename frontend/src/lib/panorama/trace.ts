@@ -284,6 +284,12 @@ export class TraverseTrace implements Extension {
 			return;
 		}
 
+		// The vertices are written from the camera, where float32 is finest: from
+		// the render origin they round anew each frame as the body turns, and the
+		// line shimmers close up.
+		this.object.matrix.makeTranslation(cam);
+		this.object.updateMatrixWorld(true);
+
 		let at = 0;
 		for (const run of this.runs) {
 			const dirs = run.ground.of(run.dirs, body.drawnRadii);
@@ -321,7 +327,8 @@ export class TraverseTrace implements Extension {
 	/** Lay the run's strip and dots in the ground's plane at each place: the
 	 *  side is across the run and along the ground, the width is what the
 	 *  screen asks for at the place's distance, and the alpha goes to zero
-	 *  where the ground faces away from the camera. */
+	 *  where the ground faces away from the camera. Vertices are relative to
+	 *  `cam`, the group's translation. */
 	private ribbon(run: Run, perPx: number, cam: Vector3): void {
 		const { placed, positions, alphas, count } = run;
 		const half = this.options.widthPx / 2;
@@ -346,7 +353,7 @@ export class TraverseTrace implements Extension {
 			const distance = this.u.length();
 			const hw = half * perPx * distance;
 			const alpha = this.normal.dot(this.u) > 0 ? 1 : 0;
-			this.v.addScaledVector(this.normal, distance * LIFT);
+			this.v.addScaledVector(this.normal, distance * LIFT).sub(cam);
 			positions[i * 6] = this.v.x + this.side.x * hw;
 			positions[i * 6 + 1] = this.v.y + this.side.y * hw;
 			positions[i * 6 + 2] = this.v.z + this.side.z * hw;

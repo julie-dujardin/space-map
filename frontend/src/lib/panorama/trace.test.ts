@@ -1,5 +1,10 @@
+import { Mesh, PerspectiveCamera, Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
-import { hitOnScreen } from './trace';
+import type { PanoramaEntry } from '$lib/fetch/objects/object-data';
+import { AU_KM, AU_SCALE, kmToScene } from '$lib/math/units';
+import { surfaceDirection } from '$lib/scene/extensions/anchor';
+import type { ExtensionFrame } from '$lib/scene/extensions/registry';
+import { hitOnScreen, TraverseTrace } from './trace';
 
 describe('hitOnScreen', () => {
 	const screen = new Float32Array([10, 10, 50, 50, 52, 50]);
@@ -66,5 +71,57 @@ describe('hitOnScreen', () => {
 	it('skips places on the far side', () => {
 		expect(hit(screen, [3], 51, 50, depth, new Uint8Array([1, 0, 0]))).toBeNull();
 		expect(hit(screen, [3], 30, 30, depth, new Uint8Array([1, 0, 1]))).toBeNull();
+	});
+});
+
+describe('TraverseTrace', () => {
+	it('keeps its vertices within a centimetre a few km from the camera on a planet', () => {
+		const radiusKm = 3389.5;
+		const entries = [0, 1, 2, 3].map(
+			(k): PanoramaEntry => ({
+				id: `p${k}`,
+				time: '',
+				lat: -4.78,
+				lon: 137.38 + k * 0.01,
+				north_offset_deg: 0
+			})
+		);
+		const trace = new TraverseTrace({
+			body: 'mars',
+			runs: [entries],
+			ground: () => 0,
+			widthPx: 15,
+			color: '#60a5fa'
+		});
+		const body = { data: { id: 'mars', radiusKm } };
+		const ctx = { getBody: () => body, place: () => [0, 0, 0] };
+		const camera = new PerspectiveCamera(60, 2, 1e-12, 1);
+		const [x, y, z] = surfaceDirection(entries[0].lat, entries[0].lon);
+		camera.position.set(x, y, z).multiplyScalar(kmToScene(radiusKm + 3));
+		camera.lookAt(0, 0, 0);
+		camera.updateMatrixWorld();
+		trace.update({
+			jd: 2461000,
+			basis: [0, 0, 0],
+			camera,
+			viewportPx: 800,
+			ctx
+		} as unknown as ExtensionFrame);
+
+		const mesh = trace.object.children[0] as Mesh;
+		const positions = mesh.geometry.getAttribute('position').array;
+		const metresPerUnit = (AU_KM / AU_SCALE) * 1000;
+		for (let i = 0; i < entries.length; i++) {
+			// The strip's two edges meet halfway at the place, lifted off the ground.
+			const drawn = new Vector3(
+				(positions[i * 6] + positions[i * 6 + 3]) / 2,
+				(positions[i * 6 + 1] + positions[i * 6 + 4]) / 2,
+				(positions[i * 6 + 2] + positions[i * 6 + 5]) / 2
+			).applyMatrix4(mesh.matrixWorld);
+			const place = new Vector3(...surfaceDirection(entries[i].lat, entries[i].lon));
+			const ground = place.clone().multiplyScalar(kmToScene(radiusKm));
+			const lifted = ground.addScaledVector(place, ground.distanceTo(camera.position) * 0.002);
+			expect(drawn.distanceTo(lifted) * metresPerUnit).toBeLessThan(0.01);
+		}
 	});
 });
