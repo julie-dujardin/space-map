@@ -1,10 +1,12 @@
 import {
 	BufferGeometry,
 	Float32BufferAttribute,
+	InstancedBufferGeometry,
+	InstancedInterleavedBuffer,
+	InterleavedBufferAttribute,
 	Line,
 	Mesh,
-	ShaderMaterial,
-	Uint16BufferAttribute
+	ShaderMaterial
 } from 'three';
 import { makeFatTrailMaterial, makeTrailMaterial } from './material';
 import { writeTrailAlphas } from './points';
@@ -14,53 +16,49 @@ import { writeTrailAlphas } from './points';
 // (POINT_CLOUD_RENDER_ORDER) so trails draw over the dots.
 const TRAIL_RENDER_ORDER = 3;
 
-/**
- * Indexed triangle geometry for a fat trail: vertices come in `(-1, +1)`
- * side pairs perpendicular to the segment in screen space, with the index
- * buffer pre-filled for `(capacity - 1)` quads. Refresh paths fill the
- * per-vertex arrays via {@link writeFatTrailVertices}.
- */
-export function makeFatTrailGeometry(capacity: number): BufferGeometry {
-	const vertCount = 2 * capacity;
-	const positions = new Float32Array(vertCount * 3);
-	const nextPositions = new Float32Array(vertCount * 3);
-	const sides = new Float32Array(vertCount);
-	const trailAlphas = new Float32Array(vertCount);
-	const fullAlphas = new Float32Array(vertCount);
-	for (let i = 0; i < capacity; i++) {
-		sides[2 * i] = -1;
-		sides[2 * i + 1] = 1;
-	}
-	const indices = new Uint16Array(Math.max(0, 6 * (capacity - 1)));
-	for (let i = 0; i < capacity - 1; i++) {
-		const a = 2 * i;
-		const b = 2 * i + 1;
-		const c = 2 * (i + 1);
-		const d = 2 * (i + 1) + 1;
-		const o = i * 6;
-		indices[o] = a;
-		indices[o + 1] = b;
-		indices[o + 2] = c;
-		indices[o + 3] = c;
-		indices[o + 4] = b;
-		indices[o + 5] = d;
-	}
+/** A fat line segment's quad: each corner's side of the line (±1) and end
+ *  (0 at the segment's start, 1 at its end). */
+const QUAD_CORNERS = [-1, 0, 1, 0, -1, 1, 1, 1];
+const QUAD_INDICES = [0, 1, 2, 2, 1, 3];
 
-	const geometry = new BufferGeometry();
-	geometry.setAttribute('position', new Float32BufferAttribute(positions, 3));
-	geometry.setAttribute('nextPosition', new Float32BufferAttribute(nextPositions, 3));
-	geometry.setAttribute('side', new Float32BufferAttribute(sides, 1));
-	geometry.setAttribute('trailAlpha', new Float32BufferAttribute(trailAlphas, 1));
-	geometry.setAttribute('fullAlpha', new Float32BufferAttribute(fullAlphas, 1));
-	geometry.setIndex(new Uint16BufferAttribute(indices, 1));
-	return geometry;
+/** The instanced buffer behind a fat line's attribute `name`. */
+function instanced(geometry: BufferGeometry, name: string): InstancedInterleavedBuffer {
+	return (geometry.getAttribute(name) as InterleavedBufferAttribute)
+		.data as InstancedInterleavedBuffer;
+}
+
+/** Two attributes on one buffer of `stride` floats a point: a segment's start
+ *  point, and its end, read one point further on. */
+function setSegmentAttributes(
+	geometry: BufferGeometry,
+	names: [string, string],
+	capacity: number,
+	stride: number
+): void {
+	const buffer = new InstancedInterleavedBuffer(new Float32Array(capacity * stride), stride);
+	geometry.setAttribute(names[0], new InterleavedBufferAttribute(buffer, stride, 0));
+	geometry.setAttribute(names[1], new InterleavedBufferAttribute(buffer, stride, stride));
 }
 
 /**
- * Populate a fat trail's vertex arrays from `n` points + alpha ramps, each
- * duplicated into a (-1, +1) side pair. The last point's `nextPosition`
- * falls back to itself so the shader's degenerate-segment branch stays stable.
+ * Geometry for a fat line of up to `capacity` points, one instance per segment:
+ * a quad the shader widens on screen and cuts at the camera, which it can only
+ * do with both ends of a segment in hand. The quad is the geometry's own, since
+ * disposing a geometry deletes the GL buffers of all its attributes. Refresh
+ * paths fill the points via {@link writeFatTrailVertices}.
  */
+export function makeFatTrailGeometry(capacity: number): InstancedBufferGeometry {
+	const geometry = new InstancedBufferGeometry();
+	geometry.setAttribute('corner', new Float32BufferAttribute(QUAD_CORNERS, 2));
+	geometry.setIndex(QUAD_INDICES);
+	setSegmentAttributes(geometry, ['segStart', 'segEnd'], capacity, 3);
+	// Trail alpha then full alpha, for each point.
+	setSegmentAttributes(geometry, ['alphaStart', 'alphaEnd'], capacity, 2);
+	geometry.instanceCount = 0;
+	return geometry;
+}
+
+/** Fill a fat line with `n` points and their alpha ramps. */
 export function writeFatTrailVertices(
 	geometry: BufferGeometry,
 	posSrc: Float32Array,
@@ -68,49 +66,21 @@ export function writeFatTrailVertices(
 	fullSrc: Float32Array,
 	n: number
 ): void {
-	const posAttr = geometry.getAttribute('position');
-	const nextAttr = geometry.getAttribute('nextPosition');
-	const trailAttr = geometry.getAttribute('trailAlpha');
-	const fullAttr = geometry.getAttribute('fullAlpha');
-	const posArr = posAttr.array as Float32Array;
-	const nextArr = nextAttr.array as Float32Array;
-	const trailArr = trailAttr.array as Float32Array;
-	const fullArr = fullAttr.array as Float32Array;
-	const cap = trailArr.length / 2;
-	const m = Math.min(n, cap);
+	const points = instanced(geometry, 'segStart');
+	const alphas = instanced(geometry, 'alphaStart');
+	const m = Math.min(n, points.count);
+	(points.array as Float32Array).set(posSrc.subarray(0, m * 3));
+	const alphaArr = alphas.array as Float32Array;
 	for (let i = 0; i < m; i++) {
-		const px = posSrc[i * 3];
-		const py = posSrc[i * 3 + 1];
-		const pz = posSrc[i * 3 + 2];
-		const nextI = i < m - 1 ? i + 1 : i;
-		const nx = posSrc[nextI * 3];
-		const ny = posSrc[nextI * 3 + 1];
-		const nz = posSrc[nextI * 3 + 2];
-		const baseA = 2 * i * 3;
-		posArr[baseA] = px;
-		posArr[baseA + 1] = py;
-		posArr[baseA + 2] = pz;
-		posArr[baseA + 3] = px;
-		posArr[baseA + 4] = py;
-		posArr[baseA + 5] = pz;
-		nextArr[baseA] = nx;
-		nextArr[baseA + 1] = ny;
-		nextArr[baseA + 2] = nz;
-		nextArr[baseA + 3] = nx;
-		nextArr[baseA + 4] = ny;
-		nextArr[baseA + 5] = nz;
-		const tA = trailSrc[i];
-		const fA = fullSrc[i];
-		trailArr[2 * i] = tA;
-		trailArr[2 * i + 1] = tA;
-		fullArr[2 * i] = fA;
-		fullArr[2 * i + 1] = fA;
+		alphaArr[2 * i] = trailSrc[i];
+		alphaArr[2 * i + 1] = fullSrc[i];
 	}
-	posAttr.needsUpdate = true;
-	nextAttr.needsUpdate = true;
-	trailAttr.needsUpdate = true;
-	fullAttr.needsUpdate = true;
-	geometry.setDrawRange(0, Math.max(0, 6 * (m - 1)));
+	points.needsUpdate = true;
+	alphas.needsUpdate = true;
+	// Each instance reads its end one point on, so the last point starts none.
+	(geometry as InstancedBufferGeometry).instanceCount = Math.max(0, m - 1);
+	// commitTrail empties the range for a line too short to draw.
+	geometry.setDrawRange(0, QUAD_INDICES.length);
 }
 
 export function makeEmptyTrail(): Line | Mesh {
@@ -144,14 +114,11 @@ export function buildThinLineFromArrays(
 	return line;
 }
 
-/** A dashed fat line's `lineDistance`: `n` lengths along the line, each
- *  duplicated into its point's side pair. */
+/** A dashed fat line's length along itself to each of its `n` points. */
 export function writeLineDistances(geometry: BufferGeometry, src: Float32Array, n: number): void {
-	const attr = geometry.getAttribute('lineDistance');
-	const arr = attr.array as Float32Array;
-	const m = Math.min(n, arr.length / 2);
-	for (let i = 0; i < m; i++) arr[2 * i] = arr[2 * i + 1] = src[i];
-	attr.needsUpdate = true;
+	const distances = instanced(geometry, 'distStart');
+	(distances.array as Float32Array).set(src.subarray(0, Math.min(n, distances.count)));
+	distances.needsUpdate = true;
 }
 
 /** Wrap pre-computed thin arrays into a fat-line `Mesh`. `brightness` defaults
@@ -169,12 +136,7 @@ export function buildFatLineFromThin(
 	dash?: readonly [number, number]
 ): Mesh {
 	const geometry = makeFatTrailGeometry(capacity);
-	if (dash) {
-		geometry.setAttribute(
-			'lineDistance',
-			new Float32BufferAttribute(new Float32Array(2 * capacity), 1)
-		);
-	}
+	if (dash) setSegmentAttributes(geometry, ['distStart', 'distEnd'], capacity, 1);
 	writeFatTrailVertices(geometry, posArr, trailAlphas, fullAlphas, total);
 	const mesh = new Mesh(geometry, makeFatTrailMaterial(color, lineWidth, brightness, dash));
 	mesh.matrixAutoUpdate = false;
@@ -184,8 +146,8 @@ export function buildFatLineFromThin(
 
 /**
  * Working arrays for per-frame trail refresh: live geometry attributes for
- * thin `Line`s, userData scratch for fat `Mesh`es (later expanded by
- * {@link writeFatTrailVertices}). `capacity` is logical points, not vertices.
+ * thin `Line`s, userData scratch for fat `Mesh`es (copied in by
+ * {@link writeFatTrailVertices}). `capacity` is in points.
  */
 export function getTrailWorkingArrays(line: Line | Mesh): {
 	posArr: Float32Array;
@@ -212,8 +174,8 @@ export function getTrailWorkingArrays(line: Line | Mesh): {
 }
 
 /**
- * Finish a trail refresh: compute alpha ramps, then expand into fat-line
- * geometry or mark thin-line attrs dirty. `n < 2` draws nothing. Both refresh
+ * Finish a trail refresh: compute alpha ramps, then write them into the fat
+ * line or mark thin-line attrs dirty. `n < 2` draws nothing. Both refresh
  * paths (chebyshev buffer, Kepler/SGP4 curve) call this after filling `posArr`.
  */
 export function commitTrail(

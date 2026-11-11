@@ -13,7 +13,6 @@ import { Vector3, type PerspectiveCamera } from 'three';
 const REACH = 3;
 
 const viewed = new Vector3();
-const ahead = [0, 0, 0];
 
 /** A dash and a gap in pixels from a pattern written as the flat map takes
  *  it, `"4 3"`; one number is both. Null for a solid line. */
@@ -38,20 +37,6 @@ function view(points: Float32Array, i: number, camera: PerspectiveCamera, out: n
 	out[0] = viewed.x;
 	out[1] = viewed.y;
 	out[2] = -viewed.z;
-}
-
-/** Whether any of the line is behind the camera, where the line's shader has
- *  no screen position to widen it from. */
-export function reachesBehind(
-	points: Float32Array,
-	count: number,
-	camera: PerspectiveCamera
-): boolean {
-	for (let i = 0; i < count; i++) {
-		view(points, i, camera, ahead);
-		if (ahead[2] < camera.near * 2) return true;
-	}
-	return false;
 }
 
 /**
@@ -89,7 +74,7 @@ export function screenLengths(
 /**
  * The part of a line the camera can draw. A stretch out of view is left out,
  * and the pieces either side of it are joined by a stretch at no opacity, so
- * the whole is still one strip.
+ * the whole is still one line.
  */
 export class SeenLine {
 	points = new Float32Array(0);

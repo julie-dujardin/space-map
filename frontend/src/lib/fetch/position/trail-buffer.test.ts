@@ -128,4 +128,15 @@ describe('TrailBuffer', () => {
 		buf.writeVertices(out, 0, 0, 0);
 		expect(Array.from(out)).toEqual([5, 0, 0, 1, 0, 0]);
 	});
+
+	it('keeps a sample far from its centre exact near the camera', () => {
+		// 2.25 AU from the centre, drawn from a basis 0.26 m from the sample.
+		const sample = [15 + 1e-11, -15 - 1e-11, 7.5 + 1e-11];
+		const basis = [15, -15, 7.5];
+		const buf = new TrailBuffer(2, 1);
+		buf.append(1, sample[0], sample[1], sample[2]);
+		const out = new Float32Array(3);
+		buf.writeVertices(out, -basis[0], -basis[1], -basis[2]);
+		for (let k = 0; k < 3; k++) expect(out[k]).toBeCloseTo(sample[k] - basis[k], 12);
+	});
 });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { PerspectiveCamera } from 'three';
-import { SeenLine, parseDash, reachesBehind, screenLengths } from './screen';
+import { SeenLine, parseDash, screenLengths } from './screen';
 
 describe('parseDash', () => {
 	it('reads a dash and a gap', () => {
@@ -69,10 +69,8 @@ describe('SeenLine', () => {
 	});
 
 	it('cuts a line that runs behind the camera where it leaves the view', () => {
-		const points = new Float32Array([0, 0, -10, 0, 0, 10]);
-		expect(reachesBehind(points, 2, camera)).toBe(true);
 		const line = new SeenLine();
-		line.see(points, solid(2), 2, camera, 800);
+		line.see(new Float32Array([0, 0, -10, 0, 0, 10]), solid(2), 2, camera, 800);
 		expect(line.count).toBe(2);
 		expect(at(line, 1)[2]).toBeCloseTo(-0.2, 5);
 	});

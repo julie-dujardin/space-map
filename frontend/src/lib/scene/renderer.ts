@@ -970,12 +970,7 @@ export class SceneRenderer {
 		this.travelPath.setVisible(true);
 		this.travelPath.setClock(this.craftJd);
 		// Planet-frame ends hang off the live body, which may not be streamed in.
-		this.travelPath.reposition(
-			center,
-			this.focus.focusTruePos,
-			(id) => this.where(id),
-			this.camera
-		);
+		this.travelPath.reposition(center, this.focus.focusTruePos, (id) => this.where(id));
 		this.travelPath.updateCameraOffset(this.camera.position);
 		this.reserveTravelLabelSpace();
 	}

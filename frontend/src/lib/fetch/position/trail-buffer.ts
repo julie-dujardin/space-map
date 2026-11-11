@@ -1,9 +1,12 @@
 /**
  * Fixed-capacity ring buffer of past trail positions for a probe with
  * chebyshev sub-chunks, stored in the fit-center-relative frame so rendering
- * just adds the current parent position. `append` overwrites the oldest entry
- * when full; time-speed agnostic since samples are spaced by `stepDays` on
- * average, keeping one orbital period of coverage once full.
+ * just adds the current parent position. Stored in float64: a sample is an
+ * orbit's size from its centre, where float32 rounds by metres to kilometres,
+ * and a close-up camera sees the rounding as the trail swinging about.
+ * `append` overwrites the oldest entry when full; time-speed agnostic since
+ * samples are spaced by `stepDays` on average, keeping one orbital period of
+ * coverage once full.
  *
  * When `epsilonScene` is finite, callers may sample non-uniformly via
  * chord-error adaptive subdivision (dense near periapsis, sparse near
@@ -34,7 +37,7 @@ export class TrailBuffer {
 	/** Back-fill still owed: it runs the first frame the trail is visible, not
 	 *  at load, since most probe trails never show. */
 	needsPopulate = false;
-	private readonly positions: Float32Array;
+	private readonly positions: Float64Array;
 	private readonly jds: Float64Array;
 	/** Index of the next write slot. `(head − 1) mod capacity` is the newest. */
 	private head = 0;
@@ -52,7 +55,7 @@ export class TrailBuffer {
 		this.epsilonScene = epsilonScene;
 		this.spanDays = spanDays ?? stepDays * capacity;
 		this.lengthShare = lengthShare;
-		this.positions = new Float32Array(capacity * 3);
+		this.positions = new Float64Array(capacity * 3);
 		this.jds = new Float64Array(capacity);
 	}
 

@@ -10,6 +10,8 @@
  *   date is in, and then the camera is on the body as before;
  * - a lander has its place before the page reads it, on a link and on a click;
  * - the ground under a lander holds still on screen while its body turns;
+ * - a probe's trail seen from close by holds still while the clock runs, and
+ *   keeps its width where it runs on behind the camera;
  * - a link with no camera opens framed on its body;
  * - a click on a star turns the camera to it as a click on a dot does, and a
  *   star that loads after a later navigation does not take the focus.
@@ -463,6 +465,161 @@ const GALE_NOON = '2026-08-30T13:06:00.000Z';
 const LANDER_ZOOM = 7.7e-10;
 const ISS = 'norad_satcat-25544';
 const SPUTNIK = 'norad_satcat-2';
+const TIANWEN_LANDER = 'probe-113217539';
+/** The Tianwen-1 lander days before Mars, 155 m from the camera, its trail
+ *  running back past the camera. */
+const TIANWEN_APPROACH =
+	'/p/113217539/Tianwen-1%20lander?at=2021-02-08T21:58:19.123Z,36.23247,-130.45019,1.03501863e-8';
+
+/** Runs before each page of the tab: the render tier the HiDPI screens get, so
+ *  the trails draw as the wide lines they draw there. What the profile held is
+ *  kept in `__smSettingsBefore` to be put back, from before the first page: a
+ *  reload must not take the seeded settings for the profile's own. */
+const HIGH_TIER = `(() => {
+	const key = 'space-map-settings';
+	const kept = sessionStorage.getItem('smSettingsBefore');
+	const before = kept === null ? localStorage.getItem(key) : JSON.parse(kept);
+	if (kept === null) sessionStorage.setItem('smSettingsBefore', JSON.stringify(before));
+	window.__smSettingsBefore = before;
+	const settings = JSON.parse(before ?? '{}');
+	settings.atmosphereQuality = 'high';
+	settings.atmosphereCalibration = { key: 'scenario', tier: 'high', worstMs: {} };
+	localStorage.setItem(key, JSON.stringify(settings));
+})()`;
+/** Nothing was seeded when no page of the app loaded. */
+const RESTORE_SETTINGS = `(() => {
+	if (!('__smSettingsBefore' in window)) return;
+	const before = window.__smSettingsBefore;
+	if (before === null) localStorage.removeItem('space-map-settings');
+	else localStorage.setItem('space-map-settings', before);
+})()`;
+
+/** Runs in the page: whether the trail of `id` is drawn from the samples it
+ *  should be, within a metre of the body where the clock has it. */
+const trailOnItsSampler = (id) => `(async () => {
+	const { buildParentGatedSampler } = await import('/src/lib/fetch/position/probes/trail.ts');
+	const ctx = window.__smCtx, r = window.__smRenderer, body = ctx.getBody('${id}');
+	const parent = body.data.parentId, centre = ctx.getBody(parent).position;
+	const head = body.trailAnchor ?? body.position;
+	const at = buildParentGatedSampler(ctx.probeStore, ctx.chebStore, '${id}', parent)(r.placedJd);
+	const offKm = at
+		? Math.hypot(...[0, 1, 2].map((k) => at[k] - (head[k] - centre[k]))) * ${KM}
+		: null;
+	return { parent, offKm };
+})()`;
+
+/** How far out on screen from the body the trail is looked at, CSS px: the
+ *  angle at the first, the width at each. A line widened from a point behind
+ *  the camera opens out away from the body. */
+const TRAIL_REACHES_PX = [60, 120, 240, 480];
+
+/**
+ * Runs in the page: watches the trail of `id` for `ms` of drawn frames. For
+ * each: the angle on screen at which the drawn line leaves the body, worked
+ * out from its points in float64; the most device pixels across it is lit at
+ * any of the reaches on screen, and whether one of those lies on a segment
+ * running on behind the camera; and the time of the trail's newest sample.
+ */
+const trailLeaving = (id, ms) => `(async () => {
+	const r = window.__smRenderer, cam = r.camera, canvas = r.renderer.domElement;
+	const line = r.bodyObjects.get('${id}').trail;
+	const ratio = r.renderer.getPixelRatio(), across = 12 * ratio;
+	const box = 2 * (across + 2);
+	const copy = document.createElement('canvas');
+	copy.width = copy.height = box;
+	const g = copy.getContext('2d', { willReadFrequently: true });
+	const frames = [];
+	// Point i on the camera's axes, then on screen in device px.
+	const view = (p, i) => {
+		const e = cam.matrixWorldInverse.elements, [x, y, z] = [p[3 * i], p[3 * i + 1], p[3 * i + 2]];
+		return [0, 1, 2].map((k) => e[k] * x + e[k + 4] * y + e[k + 8] * z + e[k + 12]);
+	};
+	const screen = (v) => {
+		const P = cam.projectionMatrix.elements;
+		return [
+			((P[0] * v[0] + P[8] * v[2]) / -v[2] + 1) / 2 * canvas.width,
+			(1 - (P[5] * v[1] + P[9] * v[2]) / -v[2]) / 2 * canvas.height
+		];
+	};
+	// The stretch of a segment ahead of the near plane, or null.
+	const ahead = (a, b) => {
+		const near = cam.near, da = -a[2], db = -b[2];
+		if (da < near && db < near) return null;
+		const cut = (p, q, dp, dq) => p.map((c, k) => c + (q[k] - c) * ((near - dp) / (dq - dp)));
+		return [da < near ? cut(a, b, da, db) : a, db < near ? cut(b, a, db, da) : b];
+	};
+	// The place on the line \`reach\` device px from the body on screen.
+	const leaving = (reach) => {
+		const points = line.userData.thinPositions, n = line.geometry.instanceCount + 1;
+		if (!(n >= 2)) return null;
+		const vs = [];
+		for (let i = 0; i < n; i++) vs.push(view(points, i));
+		const head = screen(vs[0]);
+		for (let i = 0; i + 1 < n; i++) {
+			const seen = ahead(vs[i], vs[i + 1]);
+			if (!seen) continue;
+			const [a, b] = seen.map(screen);
+			const d = [b[0] - a[0], b[1] - a[1]], w = [a[0] - head[0], a[1] - head[1]];
+			const A = d[0] ** 2 + d[1] ** 2, B = 2 * (d[0] * w[0] + d[1] * w[1]);
+			const C = w[0] ** 2 + w[1] ** 2 - reach ** 2;
+			if (A === 0 || C >= 0) continue;
+			const u = (-B + Math.sqrt(B * B - 4 * A * C)) / (2 * A);
+			if (u > 1) continue;
+			const at = [a[0] + d[0] * u, a[1] + d[1] * u];
+			const len = Math.sqrt(A), dir = [d[0] / len, d[1] / len];
+			return {
+				at,
+				dir,
+				angle: (Math.atan2(head[1] - at[1], at[0] - head[0]) * 180) / Math.PI,
+				crossing: -vs[i][2] < cam.near || -vs[i + 1][2] < cam.near
+			};
+		}
+		return null;
+	};
+	// Lit device pixels in a run across the line through \`at\`: undefined off
+	// the screen, null where nothing is drawn there.
+	const width = ({ at, dir }) => {
+		const x0 = Math.round(at[0]) - box / 2, y0 = Math.round(at[1]) - box / 2;
+		if (x0 < 0 || y0 < 0 || x0 + box > canvas.width || y0 + box > canvas.height) return undefined;
+		g.clearRect(0, 0, box, box);
+		g.drawImage(canvas, x0, y0, box, box, 0, 0, box, box);
+		const d = g.getImageData(0, 0, box, box).data;
+		const grey = (k) => {
+			const x = Math.round(at[0] - dir[1] * k) - x0, y = Math.round(at[1] + dir[0] * k) - y0;
+			const i = 4 * (y * box + x);
+			return (d[i] + d[i + 1] + d[i + 2]) / 765;
+		};
+		let peak = 0, top = 0;
+		for (let k = -2 * ratio; k <= 2 * ratio; k++) if (grey(k) > peak) [peak, top] = [grey(k), k];
+		if (peak < 0.05) return null;
+		let lo = top, hi = top;
+		while (lo > -across && grey(lo - 1) >= peak / 2) lo--;
+		while (hi < across && grey(hi + 1) >= peak / 2) hi++;
+		return hi - lo + 1;
+	};
+	const render = r.composer.render;
+	// Read in the call that drew it: the buffer is gone after the frame.
+	r.composer.render = function (...a) {
+		render.apply(this, a);
+		const reaches = ${JSON.stringify(TRAIL_REACHES_PX)}.map((px) => leaving(px * ratio));
+		const looked = reaches
+			.filter(Boolean)
+			.map((p) => ({ width: width(p), crossing: p.crossing }))
+			.filter((p) => p.width !== undefined);
+		const widths = looked.map((p) => p.width);
+		frames.push(
+			reaches[0] && {
+				angle: reaches[0].angle,
+				width: widths.includes(null) ? null : Math.max(...widths),
+				crossing: looked.some((p) => p.crossing),
+				newest: line.userData.trailBuffer.newestJd
+			}
+		);
+	};
+	await new Promise((done) => setTimeout(done, ${ms}));
+	r.composer.render = render;
+	return { frames, ratio, lineWidth: line.material.uniforms.uLineWidth.value };
+})()`;
 
 const SCENARIOS = {
 	/** A satellite that re-entered in 2001, opened today. */
@@ -762,6 +919,72 @@ const SCENARIOS = {
 		check(f, contrast > 0.05, `the ground is flat on screen: contrast ${contrast}`);
 		check(f, change < 2e-4, `two frames differ by ${change} of the range of a pixel`);
 		return tab.eval(`${SNAPSHOT}('${CURIOSITY}')`);
+	},
+
+	/** Seen from 155 m, a float32 trail sample is metres off and the segment from
+	 *  the body to it swings about as the samples are replaced; and a segment
+	 *  running on behind the camera has no screen place to widen from. */
+	async 'probe trail holds still close up while the clock runs'(tab, f) {
+		await tab.send('Emulation.setDeviceMetricsOverride', {
+			width: 1600,
+			height: 900,
+			deviceScaleFactor: 2,
+			mobile: false
+		});
+		await tab.send('Page.addScriptToEvaluateOnNewDocument', { source: HIGH_TIER });
+		try {
+			await tab.goto(TIANWEN_APPROACH);
+			await tab.until(
+				`${READY} && ${focusedIs(TIANWEN_LANDER)} && !!window.__smCtx.getBody('${TIANWEN_LANDER}')?.position && window.__smRenderer.bodyObjects.get('${TIANWEN_LANDER}')?.trail?.visible`,
+				'the Tianwen-1 lander placed and its trail drawn'
+			);
+			await sleep(3000);
+			const clock = await tab.eval(
+				`(({ playing, timeScale }) => ({ playing, timeScale }))(window.__smRenderer.clock)`
+			);
+			check(f, clock.playing && clock.timeScale === 1, `clock ${JSON.stringify(clock)}`);
+			const sampler = await tab.eval(trailOnItsSampler(TIANWEN_LANDER));
+			check(f, sampler.parent === 'naif-499', `the trail is drawn round ${sampler.parent}`);
+			check(
+				f,
+				sampler.offKm !== null && sampler.offKm < 1e-3,
+				`the trail's samples are ${sampler.offKm} km off the lander`
+			);
+			const fat = await tab.eval(
+				`window.__smRenderer.bodyObjects.get('${TIANWEN_LANDER}').trail.userData.isFatLine === true`
+			);
+			check(f, fat, 'the trail is not drawn as a wide line');
+			const watch = await tab.eval(trailLeaving(TIANWEN_LANDER, 3000));
+			check(f, watch.ratio >= 1.5, `pixel ratio ${watch.ratio}`);
+			const seen = watch.frames.filter(Boolean);
+			check(
+				f,
+				seen.length > 30 && seen.length === watch.frames.length,
+				`the trail left the body on screen in ${seen.length} of ${watch.frames.length} frames`
+			);
+			// Without these the watch saw neither fault: the swing comes as the
+			// newest sample is replaced, the widening on a segment through the camera.
+			const samples = new Set(seen.map((s) => s.newest)).size;
+			check(f, samples >= 3, `the trail's newest sample changed ${samples - 1} times`);
+			check(
+				f,
+				seen.some((s) => s.crossing),
+				'no width was measured on a segment running behind the camera'
+			);
+			const angles = seen.map((s) => s.angle);
+			const swing = Math.max(...angles) - Math.min(...angles);
+			check(f, swing < 0.1, `the trail swung through ${swing.toFixed(3)}°`);
+			const widths = seen.map((s) => s.width ?? Infinity);
+			const widest = Math.max(...widths);
+			check(
+				f,
+				widest <= watch.lineWidth * watch.ratio + 3,
+				`the line is up to ${widest} device px across, unlit in ${widths.filter((w) => w === Infinity).length} frames`
+			);
+			return await tab.eval(`${SNAPSHOT}('${TIANWEN_LANDER}')`);
+		} finally {
+			await tab.eval(RESTORE_SETTINGS);
+		}
 	},
 
 	/** The page frames Saturn after the scene has put the camera 1.5 AU out, the

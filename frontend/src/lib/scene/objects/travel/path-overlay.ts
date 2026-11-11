@@ -48,7 +48,6 @@ import type { PathEndLabel, PathStep, LabelledPath } from '$lib/travel/labelled-
 import { craftPositionAt, crossingWindow } from '$lib/math/travel/path-sample';
 import { eclipticToScene } from '$lib/math/travel/state';
 import { kmToScene } from '$lib/math/units';
-import { stopAtCamera } from './stop-at-camera';
 import { buildFatLineFromThin, writeFatTrailVertices } from '$lib/scene/objects/trail/geometry';
 import type { Vec3 } from '$lib/scene/animation/math';
 // A coast is the plan itself; a drive held all the way is a different kind of
@@ -154,11 +153,6 @@ const HAZARD_CHIP_GAP_PX = 16;
  *  Long enough to read as the line letting go rather than as it being cut. */
 const FADE_FRACTION = 0.2;
 
-/** How far ahead of the camera a line stops, as a share of the camera's distance
- *  from the basis: above Float32 rounding there, and close enough that a line
- *  passing the camera runs off the screen. */
-const CAMERA_CLEARANCE = 1e-5;
-
 /** A filled dot, for the points on the trip where something is spent. */
 function dotTexture(color: string): CanvasTexture {
 	const size = 64;
@@ -249,7 +243,7 @@ interface DrawnArc {
 	renderOrder: number;
 	/** Scene units, relative to whatever `anchorId` names. */
 	local: Float64Array;
-	/** Scratch the rebase writes into before the fat geometry is expanded. */
+	/** Scratch the rebase writes into before the fat line takes it. */
 	positions: Float32Array;
 	alphas: Float32Array;
 	count: number;
@@ -430,8 +424,6 @@ export class TravelPathOverlay {
 	private layer: number | null = null;
 	private readonly offset = new Vector3();
 	private readonly projected = new Vector3();
-	/** Which way the camera looks, read once a frame. */
-	private readonly ahead = new Vector3();
 	/** Pooled screen rects handed to the label cull; never reallocated. */
 	private readonly rects: AcceptedRect[] = [];
 	/** Scratch for settling the labels against each other, nearest first. */
@@ -1033,16 +1025,8 @@ export class TravelPathOverlay {
 	 * answers for planet-frame ends, which hang off their own body rather than
 	 * the transfer's centre. One whose body has no place is not drawn.
 	 */
-	reposition(
-		centerScenePos: Vec3,
-		basis: Vec3,
-		bodyScenePos: (id: string) => Vec3 | null,
-		camera: PerspectiveCamera
-	): void {
+	reposition(centerScenePos: Vec3, basis: Vec3, bodyScenePos: (id: string) => Vec3 | null): void {
 		if (this.center === null) return;
-		const eye = camera.position;
-		camera.getWorldDirection(this.ahead);
-		const clearance = eye.length() * CAMERA_CLEARANCE;
 		const dx = centerScenePos[0] - basis[0];
 		const dy = centerScenePos[1] - basis[1];
 		const dz = centerScenePos[2] - basis[2];
@@ -1068,7 +1052,6 @@ export class TravelPathOverlay {
 				arc.positions[i * 3 + 1] = arc.local[i * 3 + 1] + ay;
 				arc.positions[i * 3 + 2] = arc.local[i * 3 + 2] + az;
 			}
-			stopAtCamera(arc.positions, arc.count, eye, this.ahead, clearance);
 			writeFatTrailVertices(arc.line.geometry, arc.positions, arc.alphas, arc.alphas, arc.count);
 		}
 		for (const marker of this.markers) {

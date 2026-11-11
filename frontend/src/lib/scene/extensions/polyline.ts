@@ -14,7 +14,7 @@ import {
 	writeLineDistances
 } from '$lib/scene/objects/trail/geometry';
 import { resolveAnchor, type Anchor, type OffsetKm } from './anchor';
-import { SeenLine, parseDash, reachesBehind } from './screen';
+import { SeenLine, parseDash } from './screen';
 import type { Extension, ExtensionFrame } from './registry';
 
 export interface PolylineOptions {
@@ -67,8 +67,7 @@ export class PolylineExtension implements Extension, Polyline {
 	private local: Float64Array;
 	private count = 0;
 	private mesh: Mesh<Mesh['geometry'], ShaderMaterial> | null = null;
-	/** Points as the fat-line expander wants them: one float32 triple each,
-	 *  before it duplicates them into the side pairs it draws. */
+	/** Points as the fat line takes them: one float32 triple each. */
 	private scratch = new Float32Array(0);
 	private alphas = new Float32Array(0);
 	private readonly seen = new SeenLine();
@@ -158,19 +157,18 @@ export class PolylineExtension implements Extension, Polyline {
 			for (let i = 0; i < this.count * 3; i++) this.scratch[i] = this.local[i] + origin[i % 3];
 			this.lastOrigin = origin;
 		}
-		// Dashes are counted on screen and a line through the camera is cut at
-		// it, so either is drawn again whenever the camera moves.
-		const cut = this.dash !== null || reachesBehind(this.scratch, this.count, camera);
-		if (cut) {
+		// Dashes are counted on screen, so a dashed line is drawn again whenever
+		// the camera moves.
+		if (this.dash) {
 			const { seen } = this;
 			seen.see(this.scratch, this.alphas, this.count, camera, viewportPx);
 			if (seen.count > this.capacity) this.rebuild(seen.count);
 			writeFatTrailVertices(this.mesh.geometry, seen.points, seen.alphas, seen.alphas, seen.count);
-			if (this.dash) writeLineDistances(this.mesh.geometry, seen.lengths, seen.count);
+			writeLineDistances(this.mesh.geometry, seen.lengths, seen.count);
 		} else if (moved) {
 			writeFatTrailVertices(this.mesh.geometry, this.scratch, this.alphas, this.alphas, this.count);
 		}
-		this.dirty = cut;
+		this.dirty = this.dash !== null;
 		const mesh = this.mesh;
 		// The line's shader is camera-relative, which is what keeps a
 		// kilometre-scale line steady when the camera is an astronomical unit out.

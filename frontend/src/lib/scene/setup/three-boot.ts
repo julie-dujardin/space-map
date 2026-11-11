@@ -18,7 +18,7 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { AU_SCALE, kmToScene } from '$lib/math/units';
+import { AU_SCALE } from '$lib/math/units';
 import { PC_SCENE } from '$lib/scene/starfield/tree';
 import { currentRenderTier, renderPixelRatio } from '$lib/scene/render-tier';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
@@ -26,6 +26,7 @@ import { ThrottledCSS2DRenderer } from '$lib/scene/label/throttled-renderer';
 import { setTrailResolution } from '$lib/scene/objects/trail/material';
 import { AMBIENT_INTENSITY, BLOOM_THRESHOLD, SUN_LIGHT_COLOUR } from '$lib/scene/lighting';
 import { installBloomHighPass } from './bloom-high-pass';
+import { CAMERA_NEAR } from './camera-near';
 import { installLogDepthChunks, setReversedDepth } from './depth-mode';
 import { installOutputDither } from './output-dither';
 
@@ -153,7 +154,7 @@ export function bootThree(
 
 	const aspect = canvas.clientWidth / canvas.clientHeight;
 	const far = renderer.capabilities.reversedDepthBuffer ? CAMERA_FAR_REVERSED : CAMERA_FAR_DEFAULT;
-	const camera = new PerspectiveCamera(60, aspect, kmToScene(0.001), far);
+	const camera = new PerspectiveCamera(60, aspect, CAMERA_NEAR, far);
 
 	// The canvas's own antialiasing does not reach this target. The renderer sets its sample count.
 	const composerTarget = new WebGLRenderTarget(canvas.clientWidth, canvas.clientHeight, {

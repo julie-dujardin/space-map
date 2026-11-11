@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { PerspectiveCamera, type BufferGeometry, type Mesh } from 'three';
+import {
+	PerspectiveCamera,
+	type BufferGeometry,
+	type InterleavedBufferAttribute,
+	type Mesh
+} from 'three';
 import { AU_SCALE } from '$lib/math/units';
 import { SurfaceShapeExtension } from './surface';
 import type { ExtensionFrame } from './registry';
@@ -28,11 +33,12 @@ function frame(ctx: ContextManager, basis: [number, number, number]): ExtensionF
 	return { jd: 2460000, basis, camera: new PerspectiveCamera(), viewportPx: 900, ctx };
 }
 
-/** Vertices of one of the shape's meshes, as the side pairs the fat line draws
- *  them in for the outline and as plain triangles for the fill. */
+/** Vertices of one of the shape's meshes: the outline's points as the fat
+ *  line holds them, and the fill's triangles. */
 function vertices(shape: SurfaceShapeExtension, at: number): Float32Array {
-	const mesh = shape.object.children[at] as Mesh<BufferGeometry>;
-	return mesh.geometry.getAttribute('position').array as Float32Array;
+	const { geometry } = shape.object.children[at] as Mesh<BufferGeometry>;
+	const outline = geometry.getAttribute('segStart') as InterleavedBufferAttribute | undefined;
+	return (outline?.data ?? geometry.getAttribute('position')).array as Float32Array;
 }
 
 describe('SurfaceShapeExtension', () => {
