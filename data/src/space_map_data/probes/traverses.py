@@ -24,7 +24,8 @@ are in that frame, so the craft stands where they were taken. A lander has a
 landing point and no waypoints.
 
 A waypoint is the first time the archive shows the rover at a place. The rover
-stays there until the next waypoint.
+stays there until the next waypoint. Its time is UTC, read with the leap
+seconds, because the waypoints of a helicopter are one second apart.
 """
 
 import itertools
@@ -37,7 +38,7 @@ from pathlib import Path
 from space_map_data.constants.traverses.references import TRAVERSE_SOURCES
 from space_map_data.probes.events import event_jd
 from space_map_data.utils.paths import DERIVED_POSITION_DIR
-from space_map_data.utils.time import jd_to_et
+from space_map_data.utils.time import jd_to_et, utc_jd_to_tdb
 
 logger = logging.getLogger(__name__)
 
@@ -101,7 +102,11 @@ def _read(path: Path) -> Traverse:
     if data["schema_version"] != SCHEMA_VERSION:
         raise ValueError(f"{path}: schema {data['schema_version']} is not supported")
     waypoints = tuple(
-        Waypoint(event_jd(w["time"]), float(w["lat_deg"]), float(w["lon_deg"]))
+        Waypoint(
+            utc_jd_to_tdb(event_jd(w["time"])),
+            float(w["lat_deg"]),
+            float(w["lon_deg"]),
+        )
         for w in data["waypoints"]
     )
     if any(a.jd >= b.jd for a, b in itertools.pairwise(waypoints)):
@@ -134,6 +139,16 @@ def load_traverses(root: Path | None = None) -> dict[int, Traverse]:
         out[traverse.probe_id] = traverse
     logger.info("traverses: %d loaded", len(out))
     return out
+
+
+def distance_m(
+    a: tuple[float, float], b: tuple[float, float], radius_m: float
+) -> float:
+    """Metres between two near `(lat_deg, lon_deg)` points on a sphere."""
+    lat = math.radians((a[0] + b[0]) / 2)
+    dy = math.radians(b[0] - a[0])
+    dx = math.radians(b[1] - a[1]) * math.cos(lat)
+    return radius_m * math.hypot(dx, dy)
 
 
 def write_traverse(

@@ -9,6 +9,7 @@ import json
 import logging
 from pathlib import Path
 
+from space_map_data.constants.traverses.references import TRAVERSE_SOURCES
 from space_map_data.download.providers.spice.probes import (
     LANDED_MISSIONS_DIR,
     MISSIONS_DIR,
@@ -46,6 +47,7 @@ ARCHIVE_SPACETRACK = "spacetrack"
 ARCHIVE_GCAT_DEEP = "gcat-deepcat"
 ARCHIVE_NSDB = "nsdb"
 ARCHIVE_CLPDS = "clpds"
+ARCHIVE_M20_MAP = "m20-map"
 
 # Archive byte of a probe's chunk header, so the scene credits a trajectory
 # without the detail fetch. Must stay in sync with `PROBE_ARCHIVES` in
@@ -61,11 +63,12 @@ PROBE_ARCHIVE_ORDINAL: dict[str | None, int] = {
     ARCHIVE_GCAT_DEEP: 7,
     ARCHIVE_SPACETRACK: 8,
     ARCHIVE_CLPDS: 9,
+    ARCHIVE_M20_MAP: 10,
 }
 
-# The traverse sources that are archives. The other ones are papers, which a
-# scene credit never names.
-_TRAVERSE_ARCHIVES = {"clpds": ARCHIVE_CLPDS}
+# The traverse sources that the scene credits. The others are papers and web
+# pages, which only the /credits page lists.
+_TRAVERSE_ARCHIVES = {"clpds": ARCHIVE_CLPDS, "m20_heli": ARCHIVE_M20_MAP}
 
 
 # `server` strings written into `_index.json` by `ProbesDownloader`. Synth
@@ -315,5 +318,10 @@ EPHEMERIS_ARCHIVES: list[dict[str, str]] = [
         "id": ARCHIVE_CLPDS,
         "source": "https://clpds.bao.ac.cn/",
         "organisation": "Lunar and Planetary Data Release System (CNSA / GRAS)",
+    },
+    {
+        "id": ARCHIVE_M20_MAP,
+        "source": TRAVERSE_SOURCES["m20_heli"].url,
+        "organisation": "NASA/JPL-Caltech, Mars 2020 location map",
     },
 ]

@@ -30,6 +30,12 @@ TRAVERSE_SOURCES: dict[str, TraverseReference] = {
         "Positions of Spirit and Opportunity at each stop of their drives",
         "rover positions",
     ),
+    "m20_heli": TraverseReference(
+        "NASA/JPL-Caltech, Mars 2020 location map",
+        "https://science.nasa.gov/mission/mars-2020-perseverance/location-map/",
+        "Airfields and ground tracks of the 72 flights of Ingenuity",
+        "flight paths",
+    ),
     "viking_sites": TraverseReference(
         "NASA Science, Viking mission page",
         "https://science.nasa.gov/mission/viking/",

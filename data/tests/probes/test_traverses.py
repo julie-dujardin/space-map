@@ -7,7 +7,7 @@ import pytest
 
 from space_map_data.probes import traverses
 from space_map_data.probes.events import event_jd
-from space_map_data.utils.time import jd_to_et
+from space_map_data.utils.time import jd_to_et, utc_jd_to_tdb
 
 
 def _write(root: Path, **overrides) -> Path:
@@ -38,9 +38,22 @@ class TestLoad:
         traverse = found[113217538]
         assert traverse.body_naif == 499
         assert [w.jd for w in traverse.waypoints] == [
-            event_jd("2021-06-03T09:01:52Z"),
-            event_jd("2021-06-05T10:51:15Z"),
+            utc_jd_to_tdb(event_jd("2021-06-03T09:01:52Z")),
+            utc_jd_to_tdb(event_jd("2021-06-05T10:51:15Z")),
         ]
+
+    def test_a_waypoint_time_is_utc(self, tmp_path: Path):
+        _write(
+            tmp_path,
+            waypoints=[
+                {"time": "2021-04-19T07:34:10Z", "lat_deg": 25.0, "lon_deg": 109.0}
+            ],
+        )
+        traverse = traverses.load_traverses(tmp_path)[113217538]
+        # SPICE's str2et of the same time.
+        assert jd_to_et(traverse.waypoints[0].jd) == pytest.approx(
+            672089719.1856, abs=0.01
+        )
 
     def test_a_missing_directory_holds_no_traverse(self, tmp_path: Path):
         assert traverses.load_traverses(tmp_path / "absent") == {}
@@ -151,5 +164,7 @@ class TestWrite:
             177.5991,
         )
         assert traverse.waypoints == (
-            traverses.Waypoint(event_jd("2019-01-04T04:15:18Z"), -45.44502, 177.599017),
+            traverses.Waypoint(
+                utc_jd_to_tdb(event_jd("2019-01-04T04:15:18Z")), -45.44502, 177.599017
+            ),
         )

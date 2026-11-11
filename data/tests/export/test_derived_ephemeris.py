@@ -14,6 +14,7 @@ from space_map_data.export import ephemeris
 from space_map_data.export.ephemeris import (
     ARCHIVE_CLPDS,
     ARCHIVE_GCAT_DEEP,
+    ARCHIVE_M20_MAP,
     ARCHIVE_NAIF,
     ARCHIVE_SPACETRACK,
     EPHEMERIS_ARCHIVES,
@@ -110,14 +111,18 @@ class TestCredit:
             lambda: {PROBE_ID: SimpleNamespace(sources=sources)},
         )
 
+    @pytest.mark.parametrize(
+        ("source", "archive"),
+        [("clpds", ARCHIVE_CLPDS), ("m20_heli", ARCHIVE_M20_MAP)],
+    )
     def test_rover_with_no_kernels_credits_its_traverse_archive(
-        self, tree, monkeypatch
+        self, tree, monkeypatch, source, archive
     ):
         tree.write_text(
             json.dumps(_registry([{"mission": "EVENTS-DB", "naif_id": NAIF}]))
         )
-        self._traverse(monkeypatch, "clpds")
-        assert load_probe_kernel_sources()[PROBE_ID] == ARCHIVE_CLPDS
+        self._traverse(monkeypatch, source)
+        assert load_probe_kernel_sources()[PROBE_ID] == archive
 
     def test_a_kernel_archive_outranks_the_traverse(self, tree, monkeypatch):
         tree.write_text(

@@ -20,6 +20,7 @@ dependencies = [
     "pillow>=13.0.0",
     "py360convert>=1.0.4",
     "pyarrow>=25.0.0",
+    "pyerfa>=2.0.1.5",
     "pyshp>=2.4.1",
     "pyyaml>=6.0.3",
     "ruamel-yaml>=0.19.1",

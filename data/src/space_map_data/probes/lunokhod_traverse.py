@@ -12,11 +12,14 @@ paper does, and Luna 17 1 m from where the 2013 paper does.
 import argparse
 import datetime
 import logging
-import math
 from pathlib import Path
 from typing import NamedTuple
 
-from space_map_data.probes.traverses import TRAVERSES_DIR, write_traverse
+from space_map_data.probes.traverses import (
+    TRAVERSES_DIR,
+    distance_m,
+    write_traverse,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -102,13 +105,6 @@ LUNOKHOD_2 = Rover(
 ROVERS = {"lunokhod-1": LUNOKHOD_1, "lunokhod-2": LUNOKHOD_2}
 
 
-def _distance_m(a: tuple[float, float], b: tuple[float, float]) -> float:
-    lat = math.radians((a[0] + b[0]) / 2)
-    dy = math.radians(b[0] - a[0])
-    dx = math.radians(b[1] - a[1]) * math.cos(lat)
-    return MOON_RADIUS_M * math.hypot(dx, dy)
-
-
 def waypoints(rover: Rover) -> list[tuple[str, float, float]]:
     """A waypoint for each new place. The tables date a place to the day only,
     so the places of one day are spread over it in table order. A later row of
@@ -123,7 +119,7 @@ def waypoints(rover: Rover) -> list[tuple[str, float, float]]:
     track: list[tuple[str, tuple[float, float]]] = []
     last = rover.landing
     for date, _, place in visits:
-        if _distance_m(last, place) >= SAME_PLACE_M:
+        if distance_m(last, place, MOON_RADIUS_M) >= SAME_PLACE_M:
             track.append((date, place))
         elif track:
             track[-1] = (track[-1][0], place)

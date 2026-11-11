@@ -33,6 +33,7 @@ class PROVIDERS(StrEnum):
     EARTH_WATER = "earth_water"
     IAU_NOMENCLATURE = "iau_nomenclature"
     GVP = "gvp"
+    INGENUITY = "ingenuity"
     TEXTURE_SOURCES = "texture_sources"
     TEXTURE_FILES = "texture_files"
     BJJ_RINGS = "bjj_rings"

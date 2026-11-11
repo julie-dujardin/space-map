@@ -179,6 +179,15 @@ et al. 2013 and 2017), which `probes/lunokhod_traverse.py` holds:
 uv run python -m space_map_data.probes.lunokhod_traverse
 ```
 
+Ingenuity is built from the airfields and flight tracks of NASA's Mars 2020
+location map (`space-map-download --sources ingenuity`). They are in the frame
+of Perseverance's kernels. Its `landing` event is the drop onto the first
+airfield, at the instant its ride on Perseverance ends.
+
+```
+uv run python -m space_map_data.probes.ingenuity_traverse
+```
+
 ## Editing
 
 Events are ordered by date within a probe; a landed phase ends at the next

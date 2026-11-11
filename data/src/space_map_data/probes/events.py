@@ -155,8 +155,8 @@ def event_jd(value: str) -> float:
 
 
 def _jd(value: str, precision: DatePrecision) -> float:
-    """UTC is treated as TDB — the ~37 s offset is below the precision of
-    even the second-level records here."""
+    """UTC is read as TDB, which puts an event about a minute early. No
+    event needs a closer time."""
     if precision == "year":
         dt = datetime.datetime(int(value), 1, 1)
     elif precision == "month":

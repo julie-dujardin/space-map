@@ -75,6 +75,7 @@ from space_map_data.download.providers.images.earth_water import (
 from space_map_data.download.providers.images.texture_files import (
     TextureFilesDownloader,
 )
+from space_map_data.download.providers.ingenuity import IngenuityDownloader
 from space_map_data.download.providers.launch_performance import (
     LaunchPerformanceDownloader,
 )
@@ -229,6 +230,7 @@ PROVIDERS_CLASSES = [
     LaunchPerformanceDownloader,
     PSGAtmosphereDownloader,
     GVPDownloader,
+    IngenuityDownloader,
     NASA3DResourcesDownloader,
     ESA3DDownloader,
     BodyShapesDownloader,
