@@ -39,6 +39,7 @@ describe('screenLengths', () => {
 		const turned = new PerspectiveCamera(90, 1, 0.1, 1000);
 		turned.position.set(5, 0, 0);
 		turned.lookAt(5, 0, 10);
+		turned.updateMatrixWorld();
 		const points = new Float32Array([5, 0, 10, 5, 10, 10]);
 		const out = new Float32Array(2);
 		screenLengths(points, 2, turned, 800, out);

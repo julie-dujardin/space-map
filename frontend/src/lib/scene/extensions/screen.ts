@@ -12,9 +12,8 @@ import { Vector3, type PerspectiveCamera } from 'three';
  *  number a float32 can count dashes in. */
 const REACH = 3;
 
-const right = new Vector3();
-const up = new Vector3();
-const forward = new Vector3();
+const viewed = new Vector3();
+const ahead = [0, 0, 0];
 
 /** A dash and a gap in pixels from a pattern written as the flat map takes
  *  it, `"4 3"`; one number is both. Null for a solid line. */
@@ -26,23 +25,19 @@ export function parseDash(pattern: string | undefined): [number, number] | null 
 	return dash > 0 && gap > 0 ? [dash, gap] : null;
 }
 
-/** Pixels per unit of sideways distance over depth. Sets the camera's axes
- *  from its pose rather than its matrices, which are a frame behind here. */
-function aim(camera: PerspectiveCamera, viewportPx: number): number {
-	right.set(1, 0, 0).applyQuaternion(camera.quaternion);
-	up.set(0, 1, 0).applyQuaternion(camera.quaternion);
-	forward.set(0, 0, -1).applyQuaternion(camera.quaternion);
+/** Pixels per unit of sideways distance over depth. */
+function focalPx(camera: PerspectiveCamera, viewportPx: number): number {
 	return viewportPx / (2 * Math.tan((camera.getEffectiveFOV() * Math.PI) / 360));
 }
 
 /** Point `i` of `points` on the camera's axes: right, up, and depth ahead. */
 function view(points: Float32Array, i: number, camera: PerspectiveCamera, out: number[]): void {
-	const x = points[i * 3] - camera.position.x;
-	const y = points[i * 3 + 1] - camera.position.y;
-	const z = points[i * 3 + 2] - camera.position.z;
-	out[0] = x * right.x + y * right.y + z * right.z;
-	out[1] = x * up.x + y * up.y + z * up.z;
-	out[2] = x * forward.x + y * forward.y + z * forward.z;
+	viewed
+		.set(points[i * 3], points[i * 3 + 1], points[i * 3 + 2])
+		.applyMatrix4(camera.matrixWorldInverse);
+	out[0] = viewed.x;
+	out[1] = viewed.y;
+	out[2] = -viewed.z;
 }
 
 /** Whether any of the line is behind the camera, where the line's shader has
@@ -52,14 +47,9 @@ export function reachesBehind(
 	count: number,
 	camera: PerspectiveCamera
 ): boolean {
-	forward.set(0, 0, -1).applyQuaternion(camera.quaternion);
-	const { x, y, z } = camera.position;
 	for (let i = 0; i < count; i++) {
-		const depth =
-			(points[i * 3] - x) * forward.x +
-			(points[i * 3 + 1] - y) * forward.y +
-			(points[i * 3 + 2] - z) * forward.z;
-		if (depth < camera.near * 2) return true;
+		view(points, i, camera, ahead);
+		if (ahead[2] < camera.near * 2) return true;
 	}
 	return false;
 }
@@ -76,7 +66,7 @@ export function screenLengths(
 	viewportPx: number,
 	out: Float32Array
 ): void {
-	const focal = aim(camera, viewportPx);
+	const focal = focalPx(camera, viewportPx);
 	const at = [0, 0, 0];
 	let length = 0;
 	let lastX = 0;
@@ -126,7 +116,7 @@ export class SeenLine {
 			this.lengths = new Float32Array(count * 4);
 		}
 		this.count = 0;
-		const focal = aim(camera, viewportPx);
+		const focal = focalPx(camera, viewportPx);
 		const halfW = (viewportPx * camera.aspect * REACH) / 2;
 		const halfH = (viewportPx * REACH) / 2;
 		const near = camera.near * 2;

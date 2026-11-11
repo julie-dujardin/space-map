@@ -12,6 +12,7 @@ export interface ExtensionFrame {
 	jd: number;
 	/** Render origin: world position the scene is currently drawn around. */
 	basis: Vec3;
+	/** Its matrices hold the pose drawn this frame. */
 	camera: PerspectiveCamera;
 	/** Canvas height in CSS pixels, for anything sized on screen. */
 	viewportPx: number;

@@ -1347,8 +1347,7 @@ export class SceneRenderer {
 			this.applyReaderLimits(nowMs);
 			const near = this.controls.turned ? this.nearSurfaces() : undefined;
 			if (near) this.clampToSurfaces(near);
-			this.settleLook();
-			this.focusController.holdInitialView();
+			this.settleCamera();
 			return;
 		}
 		if (this.fpsSamples.length < SceneRenderer.FPS_SAMPLE_FRAMES) {
@@ -1407,8 +1406,7 @@ export class SceneRenderer {
 		} else {
 			this.setMotionScale({ rotate: 1, translate: 1 });
 		}
-		this.settleLook();
-		this.focusController.holdInitialView();
+		this.settleCamera();
 
 		if (this.pendingUrlWrite && controlsSettled && !this.focusController.awaitsInitialView) {
 			this.pendingUrlWrite = false;
@@ -1596,8 +1594,6 @@ export class SceneRenderer {
 
 		this.updateDepthFar();
 		this.updateSunProxy(atmoState.sunRefraction);
-		// The view cone the stars are culled to is this frame's.
-		this.camera.updateMatrixWorld();
 		const focusedStar = this.focusController.current;
 		const exactStars = this.exoplanetSystems.exactStars(focusedStar, this.travelPath.endIds);
 		this.starfield.setExactStars(exactStars, this.exoplanetSystems.companions(exactStars));
@@ -1751,6 +1747,16 @@ export class SceneRenderer {
 	private spinningBody(): PositionedBody | undefined {
 		const focused = this.focusController.current;
 		return focused && (this.standingOn(focused) ?? focused);
+	}
+
+	/** The last move of the camera in a tick. The controls, clamps and flights
+	 *  set the pose but not `matrixWorld`, so it is set here, after all of
+	 *  them. The rest of the frame and the pointer handlers until the next
+	 *  tick project with it. */
+	private settleCamera(): void {
+		this.settleLook();
+		this.focusController.holdInitialView();
+		this.camera.updateMatrixWorld();
 	}
 
 	/** A flight or a held camera owns the camera, and ends a turn where the

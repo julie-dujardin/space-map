@@ -98,10 +98,12 @@
 	});
 
 	/** The card: the panorama's preview over its craft and sol, a link into
-	 *  it, with a hit disc at the place itself so the click lands where the
-	 *  pointer already is. */
+	 *  it. It stands where the pointer meets the line, with a hit disc at its
+	 *  foot, so a click lands on it. */
 	function buildPreview(): {
 		element: HTMLAnchorElement;
+		/** Everything above the foot. */
+		face: HTMLElement;
 		show: (body: string, entry: PanoramaEntry) => void;
 	} {
 		const a = document.createElement('a');
@@ -113,6 +115,7 @@
 		let shown = '';
 		return {
 			element: a,
+			face: caption,
 			show(body, entry) {
 				a.href = panoramaHref(body, entry);
 				img.src = panoramaPreviewUrl(entry);
@@ -173,24 +176,36 @@
 		};
 		const onPointer = (e: PointerEvent) => {
 			const target = e.target as Element | null;
-			// Resting on the card is staying with it.
-			if (target?.closest('.panorama-trace-preview')) return;
+			const onCard = !!target?.closest('.panorama-trace-preview');
+			// The card's face keeps the card. Its foot stands on the line, where the
+			// line answers and a miss keeps the card.
+			if (onCard && e.clientY < preview.face.getBoundingClientRect().bottom) return;
 			// Only through open ground: a label, halo or marker over the line takes
 			// the pointer for itself, so the line must not answer from under it.
-			if (!target?.matches('.sm-map__canvas')) return hide();
-			canvas = target as HTMLCanvasElement;
+			if (!onCard && !target?.matches('.sm-map__canvas')) return hide();
+			if (!onCard) canvas = target as HTMLCanvasElement;
+			if (!canvas) return;
 			const rect = canvas.getBoundingClientRect();
-			const i = trace.nearest(e.clientX - rect.left, e.clientY - rect.top, REACH_PX);
-			if (i < 0) return hide();
-			if (i === hovered) return;
-			hovered = i;
-			const entry = trace.entryAt(i);
-			preview.show(body, entry);
+			const hit = trace.hit(e.clientX - rect.left, e.clientY - rect.top, REACH_PX);
+			if (!hit) {
+				if (!onCard) hide();
+				return;
+			}
+			const entry = trace.entryAt(hit.index);
+			if (hit.index !== hovered) preview.show(body, entry);
+			hovered = hit.index;
+			const toward = trace.entryAt(hit.toward);
+			const t = hit.share;
+			// The shorter way round, across the antimeridian too.
+			const dLon = ((toward.lon - entry.lon + 540) % 360) - 180;
+			const from = ground(entry);
+			const to = toward === entry ? from : ground(toward);
+			// On the ribbon's straight segment, not on the terrain under it.
 			marker.setAnchor({
 				body,
-				latitude: entry.lat,
-				longitude: entry.lon,
-				altitudeKm: ground(entry)
+				latitude: entry.lat + (toward.lat - entry.lat) * t,
+				longitude: entry.lon + dLon * t,
+				altitudeKm: from + (to - from) * t
 			});
 			marker.setVisible(true);
 			canvas.style.cursor = 'pointer';

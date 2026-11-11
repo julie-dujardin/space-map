@@ -8,9 +8,8 @@
  * does; the far side of the body hides it by fading the vertices past the
  * horizon, where no depth remains to tell.
  *
- * The same placement puts every panorama on screen, so the pointer can be
- * matched to the nearest one: the ribbon is in the scene, which the DOM
- * cannot hit-test.
+ * The DOM cannot hit-test the ribbon. The same placement puts every panorama
+ * on screen, and the pointer is matched against the lines between them.
  */
 
 import {
@@ -57,29 +56,76 @@ const DOT_SEGMENTS = 20;
  *  resolution at every range, which a fixed height cannot be from orbit. */
 const LIFT = 0.002;
 
-/** Index of the nearest place to (x, y) within `withinPx`, or −1. Places on
- *  the far side of the body are skipped. */
-export function nearestOnScreen(
+/** Where the pointer meets the line. `index` is the place that answers: the
+ *  end of the segment under the pointer that is nearer on the ground. The
+ *  pointer is `share` of the way along the ground from it toward `toward`,
+ *  which is `index` itself at a lone place. */
+export interface LineHit {
+	index: number;
+	toward: number;
+	share: number;
+}
+
+/**
+ * The line within `withinPx` of (x, y), or null. The pointer is on a drawn line
+ * when it is within `onLinePx` of it. A part of the line the pointer is on
+ * beats one it only reaches. Among those, the answering place nearest the
+ * pointer wins, so a place under the pointer beats a track that crosses it.
+ * The answering place is the nearer end on the ground. `runs` holds the place
+ * count of each run; no segment joins two runs. `depth` is each place's
+ * distance ahead of the camera. Places on the far side are skipped.
+ */
+export function hitOnScreen(
 	screen: Float32Array,
 	facing: Uint8Array,
-	count: number,
+	depth: Float32Array,
+	runs: readonly number[],
 	x: number,
 	y: number,
-	withinPx: number
-): number {
-	let best = -1;
-	let bestD2 = withinPx * withinPx;
-	for (let i = 0; i < count; i++) {
-		if (!facing[i]) continue;
-		const dx = screen[i * 2] - x;
-		const dy = screen[i * 2 + 1] - y;
-		const d2 = dx * dx + dy * dy;
-		if (d2 <= bestD2) {
-			best = i;
-			bestD2 = d2;
+	withinPx: number,
+	onLinePx: number
+): LineHit | null {
+	const reach2 = withinPx * withinPx;
+	const on2 = onLinePx * onLinePx;
+	let hit: LineHit | null = null;
+	let bestOff = Infinity;
+	let bestPlace = Infinity;
+	let bestLine = Infinity;
+	let start = 0;
+	for (const count of runs) {
+		const end = start + count;
+		for (let i = start; i < end; i++) {
+			if (!facing[i]) continue;
+			const j = i + 1 < end && facing[i + 1] ? i + 1 : i;
+			const ax = screen[i * 2];
+			const ay = screen[i * 2 + 1];
+			const sx = screen[j * 2] - ax;
+			const sy = screen[j * 2 + 1] - ay;
+			const len2 = sx * sx + sy * sy;
+			const s = len2 > 0 ? Math.min(1, Math.max(0, ((x - ax) * sx + (y - ay) * sy) / len2)) : 0;
+			const lx = ax + sx * s - x;
+			const ly = ay + sy * s - y;
+			const line = lx * lx + ly * ly;
+			if (line > reach2) continue;
+			// Perspective packs the far end of a segment into fewer pixels.
+			const near = depth[i] * s;
+			const t = near > 0 ? near / ((1 - s) * depth[j] + near) : 0;
+			const index = t < 0.5 ? i : j;
+			const px = screen[index * 2] - x;
+			const py = screen[index * 2 + 1] - y;
+			const place = px * px + py * py;
+			const off = line > on2 ? line : 0;
+			const better =
+				off !== bestOff ? off < bestOff : place !== bestPlace ? place < bestPlace : line < bestLine;
+			if (!better) continue;
+			bestOff = off;
+			bestPlace = place;
+			bestLine = line;
+			hit = index === i ? { index, toward: j, share: t } : { index, toward: i, share: 1 - t };
 		}
+		start = end;
 	}
-	return best;
+	return hit;
 }
 
 function makeMaterial(color: string): ShaderMaterial {
@@ -172,9 +218,11 @@ export class TraverseTrace implements Extension {
 	/** 1 where the place is on the near side of the body and in front of the
 	 *  camera. */
 	readonly facing: Uint8Array;
-	readonly count: number;
+	/** Distance of every panorama ahead of the camera. */
+	private readonly depth: Float32Array;
 	private readonly entries: PanoramaEntry[];
 	private readonly runs: Run[];
+	private readonly runCounts: number[];
 	private readonly material: ShaderMaterial;
 	private readonly turned: [number, number, number] = [0, 0, 0];
 	private readonly v = new Vector3();
@@ -188,16 +236,18 @@ export class TraverseTrace implements Extension {
 	constructor(private readonly options: TraverseTraceOptions) {
 		this.material = makeMaterial(options.color);
 		this.runs = options.runs.map((run) => new Run(run, this.material));
+		this.runCounts = this.runs.map((run) => run.count);
 		for (const run of this.runs) this.object.add(run.mesh);
 		this.entries = options.runs.flat();
-		this.count = this.entries.length;
-		this.screen = new Float32Array(this.count * 2);
-		this.facing = new Uint8Array(this.count);
+		this.screen = new Float32Array(this.entries.length * 2);
+		this.facing = new Uint8Array(this.entries.length);
+		this.depth = new Float32Array(this.entries.length);
 		this.object.matrixAutoUpdate = false;
 	}
 
-	nearest(x: number, y: number, withinPx: number): number {
-		return nearestOnScreen(this.screen, this.facing, this.count, x, y, withinPx);
+	hit(x: number, y: number, withinPx: number): LineHit | null {
+		const { screen, facing, depth, runCounts } = this;
+		return hitOnScreen(screen, facing, depth, runCounts, x, y, withinPx, this.options.widthPx / 2);
 	}
 
 	entryAt(index: number): PanoramaEntry {
@@ -256,9 +306,11 @@ export class TraverseTrace implements Extension {
 				const d = i * 3;
 				this.v.set(run.placed[d], run.placed[d + 1], run.placed[d + 2]);
 				const above = run.alphas[i * 2] > 0;
-				this.v.project(camera);
+				this.v.applyMatrix4(camera.matrixWorldInverse);
 				const k = at + i;
-				this.facing[k] = above && this.v.z < 1 ? 1 : 0;
+				this.depth[k] = -this.v.z;
+				this.v.applyMatrix4(camera.projectionMatrix);
+				this.facing[k] = above && this.depth[k] > 0 ? 1 : 0;
 				this.screen[k * 2] = ((this.v.x + 1) / 2) * width;
 				this.screen[k * 2 + 1] = ((1 - this.v.y) / 2) * viewportPx;
 			}
