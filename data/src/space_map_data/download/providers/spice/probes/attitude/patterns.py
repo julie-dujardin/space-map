@@ -100,13 +100,6 @@ PATTERNS: dict[str, AttitudePattern | list[AttitudePattern]] = {
         frame_name="SIRTF_SC_BUS",
         estimated_total_mib=500,
     ),
-    "PHSRM": AttitudePattern(
-        ck_glob="phsrm_sc_*.bc",
-        fk_glob="phsrm_v*.tf",
-        sclk_glob="phsrm_*.tsc",
-        frame_name="PHSRM_SPACECRAFT",
-        estimated_total_mib=500,
-    ),
     "INTEGRAL": AttitudePattern(
         # Per-year reconstructed bus attitude. Exclude the eight cumulative-
         # from-launch dumps (~500 MB each) that all start at 20021017 and

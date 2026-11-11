@@ -28,7 +28,7 @@ from space_map_data.utils.time import jd_to_et
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["EVENTS_DIR", "LandingPhase", "load_phases", "probe_ids_with_phases"]
+__all__ = ["EVENTS_DIR", "LandingPhase", "load_phases", "outside_kernel_spans"]
 
 # Events that terminate a landed phase. `mission_end`/`contact_loss` are
 # excluded — dying on the surface still counts as landed. `stage_separation`
@@ -128,24 +128,6 @@ def _phase_end_et(
     return None
 
 
-def _spk_covered_probe_ids() -> set[int]:
-    """Probe_ids whose craft a SPICE kernel already flies.
-
-    The SPICE landed pipeline owns those, and a phase from here as well would
-    double-render the spacecraft. Only a probe's own kernel counts: a COSPAR
-    designator is shared by everything one launch carried, so matching on it
-    suppressed the rovers and helicopters that rode down with a lander and have
-    no kernel of their own.
-    """
-    from space_map_data.probes.probe_id import load_registry
-
-    return {
-        int(entry["probe_id"])
-        for entry in load_registry()
-        if any(s["mission"] != "EVENTS-DB" for s in entry["kernel_sources"])
-    }
-
-
 def _phase_waypoints(
     traverse: Traverse | None,
     body: tuple[int, int],
@@ -169,19 +151,10 @@ def load_phases(end_et_for_indefinite: float) -> list[LandingPhase]:
     ``end_et_for_indefinite`` is the upper bound for probes that stay on the
     surface (caller passes ``jd_to_et(year_to_jd(PROBE_EXPORT_END_YEAR))``).
     """
-    spk_covered = _spk_covered_probe_ids()
     traverses = load_traverses()
     out: list[LandingPhase] = []
     skipped_no_target = 0
-    skipped_spk_covered = 0
     for probe in load_event_probes():
-        if probe.probe_id in spk_covered:
-            skipped_spk_covered += 1
-            logger.debug(
-                "events: %s has SPK coverage; deferring to the SPICE pipeline",
-                probe.name,
-            )
-            continue
         for i, ev in enumerate(probe.events):
             # No site means no fixed surface point was reached: an impact whose
             # place was never established. A burn-up's site is a ground track,
@@ -225,26 +198,53 @@ def load_phases(end_et_for_indefinite: float) -> list[LandingPhase]:
                     ),
                 )
             )
-    placed = {p.probe_id for p in out if p.waypoints}
-    # The SPICE classify pass reads the traverses of the probes it lands.
-    for probe_id in sorted(set(traverses) - placed - spk_covered):
+    # A traverse with no waypoints still places the site for the SPICE pass.
+    matched = {
+        p.probe_id
+        for p in out
+        if p.probe_id in traverses
+        and (p.body_id_type, p.body_id_value)
+        == (_NAIF, traverses[p.probe_id].body_naif)
+    }
+    for probe_id in sorted(set(traverses) - matched):
         logger.warning(
             "events: traverse of probe %d matches no landed phase; not used",
             probe_id,
         )
     logger.info(
-        "events: loaded %d landed phases, %d of them with a traverse (skipped: "
-        "%d landings with no body, %d deferred to SPICE)",
+        "events: loaded %d landed phases, %d of them with a traverse "
+        "(skipped: %d landings with no body)",
         len(out),
-        len(placed),
+        sum(1 for p in out if p.waypoints),
         skipped_no_target,
-        skipped_spk_covered,
     )
     return out
 
 
-def probe_ids_with_phases(end_et_for_indefinite: float) -> set[int]:
-    """Set of registry probe_ids that have at least one resolvable landed
-    phase. Used by the ingestor to decide which EVENTS-DB-only registry
-    entries need an Object row."""
-    return {p.probe_id for p in load_phases(end_et_for_indefinite)}
+def outside_kernel_spans(
+    phases: list[LandingPhase],
+    kernel_spans: dict[int, list[tuple[float, float]]],
+) -> list[LandingPhase]:
+    """The phases at times the probe's own kernels do not place it.
+
+    A phase drawn while a kernel also places the craft would draw it twice, so
+    the kernel wins there. A kernel that ends before the touchdown, archive or
+    derived, leaves the site to the events.
+    """
+    kept: list[LandingPhase] = []
+    for phase in phases:
+        spans = kernel_spans.get(phase.probe_id, ())
+        if any(a < phase.end_et and b > phase.start_et for a, b in spans):
+            logger.debug(
+                "events: %s's kernels already cover its phase from %.0f",
+                phase.probe_name,
+                phase.start_et,
+            )
+            continue
+        kept.append(phase)
+    logger.info(
+        "events: %d landed phases kept, %d left to the kernels",
+        len(kept),
+        len(phases) - len(kept),
+    )
+    return kept

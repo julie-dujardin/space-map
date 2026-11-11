@@ -10,8 +10,8 @@ craft, however good the rest of the archive is. Two failure shapes:
     Orbiter is missing for five years mid-mission)
 
 Coverage is the union of SPK windows across every kernel the exporter
-furnishes, plus the landed phases `landing_events.py` synthesises for craft
-with no kernel at all — the same two sources `write_probes` draws from.
+furnishes, plus the landed phases `landing_events.py` synthesises where no
+kernel places the craft — the same two sources `write_probes` draws from.
 
 Run from data/:
     uv run python scripts/probe_event_coverage.py

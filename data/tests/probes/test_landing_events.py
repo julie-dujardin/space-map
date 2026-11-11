@@ -2,15 +2,14 @@
 
 import json
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
 from space_map_data.constants.providers import ID_TYPES
 from space_map_data.export.position.format import ID_TYPE_ORDINAL
-from space_map_data.probes import events, landing_events, probe_id
+from space_map_data.probes import events, landing_events
 from space_map_data.probes.events import event_jd
-from space_map_data.probes.probe_id import REGISTRY_PATH, load_registry
+from space_map_data.probes.probe_id import REGISTRY_PATH
 from space_map_data.probes.traverses import Traverse, Waypoint
 from space_map_data.utils.time import jd_to_et
 
@@ -39,7 +38,6 @@ def events_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     root = tmp_path / "events"
     root.mkdir()
     monkeypatch.setattr(events, "EVENTS_DIR", root)
-    monkeypatch.setattr(landing_events, "_spk_covered_probe_ids", set)
     monkeypatch.setattr(landing_events, "load_traverses", dict)
     return root
 
@@ -402,35 +400,6 @@ def test_lower_precision_followup_is_skipped(events_root: Path) -> None:
     )
 
 
-def test_spk_covered_probe_is_skipped(
-    events_root: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """A craft a SPICE kernel already flies is left to the SPICE pipeline, so
-    it isn't rendered twice."""
-    monkeypatch.setattr(landing_events, "_spk_covered_probe_ids", lambda: {46006272})
-    _write(
-        events_root,
-        "mars.json",
-        [
-            {
-                "probe_id": 46006272,
-                "name": "Viking 1 Lander",
-                "events": [
-                    {
-                        "type": "landing",
-                        "date": "1976-07-20T11:53:06Z",
-                        "description": "Touchdown in Chryse Planitia.",
-                        "target": {"naif": 499, "name": "Mars"},
-                        "outcome": "controlled",
-                        "site": {"lat_deg": 22.697, "lon_deg": -48.222},
-                    }
-                ],
-            }
-        ],
-    )
-    assert landing_events.load_phases(_INDEFINITE_END) == []
-
-
 _MARS = {"naif": 499, "name": "Mars"}
 _ROVER = 113217538
 
@@ -548,14 +517,12 @@ class TestTraverse:
         assert phase.waypoints == ()
         assert phase.position_at(_et("2030-01-01T00:00:00Z")) == (25.066, 109.925)
 
-    def test_a_traverse_the_kernels_land_is_not_reported_unused(
+    def test_a_traverse_a_phase_carries_is_not_reported_unused(
         self,
         events_root: Path,
         monkeypatch: pytest.MonkeyPatch,
         caplog: pytest.LogCaptureFixture,
     ):
-        """The SPICE classify pass reads it."""
-        monkeypatch.setattr(landing_events, "_spk_covered_probe_ids", lambda: {_ROVER})
         monkeypatch.setattr(
             landing_events,
             "load_traverses",
@@ -563,51 +530,84 @@ class TestTraverse:
         )
         _write(events_root, "mars.json", [_rover({})])
         with caplog.at_level("WARNING"):
-            assert landing_events.load_phases(_INDEFINITE_END) == []
+            [phase] = landing_events.load_phases(_INDEFINITE_END)
+        assert phase.waypoints
+        assert "matches no landed phase" not in caplog.text
+
+    def test_a_traverse_on_no_landed_body_is_reported_unused(
+        self,
+        events_root: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ):
+        monkeypatch.setattr(
+            landing_events,
+            "load_traverses",
+            lambda: _traverse(301, "2021-06-03T09:01:52Z"),
+        )
+        _write(events_root, "mars.json", [_rover({})])
+        with caplog.at_level("WARNING"):
+            landing_events.load_phases(_INDEFINITE_END)
+        assert "matches no landed phase" in caplog.text
+
+    def test_a_traverse_without_waypoints_is_not_reported_unused(
+        self,
+        events_root: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ):
+        """The Viking landers' traverses only move the site."""
+        monkeypatch.setattr(landing_events, "load_traverses", lambda: _traverse(499))
+        _write(events_root, "mars.json", [_rover({})])
+        with caplog.at_level("WARNING"):
+            landing_events.load_phases(_INDEFINITE_END)
         assert "matches no landed phase" not in caplog.text
 
 
-class TestWhichProbesTheKernelsAlreadyFly:
-    """A landed phase here on top of a SPICE trajectory would draw the craft
-    twice, so those probes are left out — but only those."""
+_VIKING_1_LANDER = 46006272
 
-    def test_a_probe_with_its_own_kernel_is_left_out(self):
-        registry = [
+
+def _viking_1_lander() -> dict:
+    return {
+        "probe_id": _VIKING_1_LANDER,
+        "name": "Viking 1 Lander",
+        "events": [
             {
-                "probe_id": 1,
-                "cospar_id": "1975-075C",
-                "kernel_sources": [{"mission": "VIKING"}, {"mission": "EVENTS-DB"}],
-            },
-        ]
-        with patch.object(probe_id, "load_registry", return_value=registry):
-            assert landing_events._spk_covered_probe_ids() == {1}
+                "type": "landing",
+                "date": "1976-07-20T11:53:06Z",
+                "description": "Touchdown in Chryse Planitia.",
+                "target": _MARS,
+                "outcome": "controlled",
+                "site": {"lat_deg": 22.697, "lon_deg": -48.222},
+            }
+        ],
+    }
 
-    def test_a_craft_carried_down_by_one_keeps_its_phase(self):
-        """A designator names a launch, not a spacecraft: Ingenuity shares
-        Perseverance's, and has no kernel of its own to be drawn from."""
-        registry = [
-            {
-                "probe_id": 1,
-                "cospar_id": "2020-052A",
-                "kernel_sources": [{"mission": "MARS2020"}],
-            },
-            {
-                "probe_id": 2,
-                "cospar_id": "2020-052A",
-                "kernel_sources": [{"mission": "EVENTS-DB"}],
-            },
-        ]
-        with patch.object(probe_id, "load_registry", return_value=registry):
-            assert landing_events._spk_covered_probe_ids() == {1}
 
-    @needs_registry
-    def test_the_real_registry_leaves_the_carried_craft_in(self):
-        covered = landing_events._spk_covered_probe_ids()
-        carried = {
-            entry["probe_id"]
-            for entry in load_registry()
-            if entry.get("name")
-            in {"Ingenuity", "Sojourner", "LEV-1", "LEV-2 (SORA-Q)"}
-        }
+class TestWhichPhasesTheKernelsAlreadyPlace:
+    """A phase drawn while a kernel also places the craft would draw it
+    twice, so the kernel wins there and only there."""
 
-        assert carried and not (carried & covered)
+    def test_a_phase_its_kernel_covers_is_left_to_the_kernel(self, events_root: Path):
+        _write(events_root, "mars.json", [_viking_1_lander()])
+        touchdown = _et("1976-07-20T11:53:06Z")
+        spans = {_VIKING_1_LANDER: [(touchdown - 86400.0, touchdown + 86400.0)]}
+        phases = landing_events.load_phases(_INDEFINITE_END)
+        assert landing_events.outside_kernel_spans(phases, spans) == []
+
+    def test_a_kernel_ending_before_touchdown_keeps_the_phase(self, events_root: Path):
+        """Venera 7's catalogue conic and Lunar Prospector's archive kernel
+        both stop short of the surface."""
+        _write(events_root, "mars.json", [_viking_1_lander()])
+        touchdown = _et("1976-07-20T11:53:06Z")
+        spans = {_VIKING_1_LANDER: [(touchdown - 30 * 86400.0, touchdown - 3600.0)]}
+        phases = landing_events.load_phases(_INDEFINITE_END)
+        assert landing_events.outside_kernel_spans(phases, spans) == phases
+
+    def test_a_craft_carried_down_keeps_its_phase(self, events_root: Path):
+        """Ingenuity rode down with Perseverance and has no kernel of its own."""
+        _write(events_root, "mars.json", [_rover({})])
+        landing = _et("2021-05-14T23:18:00Z")
+        spans = {_ROVER + 1: [(landing - 86400.0, landing + 86400.0)]}
+        phases = landing_events.load_phases(_INDEFINITE_END)
+        assert landing_events.outside_kernel_spans(phases, spans) == phases

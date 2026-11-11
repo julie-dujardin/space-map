@@ -1,8 +1,8 @@
 """Classify events-driven landed phases into ProbePlans.
 
-Covers the complement of the SPICE classify pass (``classify.py``): probes
-whose only registry source is ``EVENTS-DB``, landings from
-``sources/position/probe-events/*.json``. No SPICE, no parallelism.
+Covers what the SPICE classify pass (``classify.py``) cannot place: landings
+from ``sources/position/probe-events/*.json`` at times no kernel of the probe
+covers. No SPICE, no parallelism.
 
 Routing: planet/moon NAIF → ``zone_for_landed_body`` (the planet zone owns
 the chunk file). Asteroid/comet SPKID → ``interplanetary`` zone,
@@ -37,13 +37,12 @@ def classify_events_phases(
     metas_by_probe_id: dict[int, ProbeMeta],
     start_jd: float,
 ) -> tuple[list[ProbePlan], dict[str, dict[int, list[ProbePlan]]]]:
-    """Build events-only ProbePlans. Returns the same shape as
-    ``classify_pass`` so the orchestrator can merge them.
+    """Build the plans of the curated landing sites, in the shape
+    ``classify_pass`` returns so the orchestrator can merge them.
 
-    One ``ProbePlan`` per probe_id. Probes already represented in
-    ``classify_pass`` plans (SPK coverage too) are NOT touched — the SPICE
-    pipeline owns them. `metas_by_probe_id` gates emission: a phase whose
-    probe has no Object row is dropped + logged.
+    One ``ProbePlan`` per probe_id, with no kernels; a probe whose kernel ends
+    before its touchdown has a SPICE plan beside it. `metas_by_probe_id` gates
+    emission: a phase whose probe has no Object row is dropped + logged.
     """
     by_pid: dict[int, ProbePlan] = {}
     chunk_index: dict[str, dict[int, list[ProbePlan]]] = defaultdict(

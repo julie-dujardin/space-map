@@ -207,7 +207,9 @@ MISSION_INCLUDE: dict[str, tuple[str, ...]] = {
     "CHANDRA": (),  # Earth-orbit (HEO); tracked via celestrak (norad_satcat-25867)
     "APOLLO": (r"^apollo15-1\.bsp$", r"^a16_subsat_ssd_lp150q\.bsp$"),
     "MPL": (r"^mpl_cruise\.bsp$",),  # Mars Polar Lander (lost during EDL)
-    "PHSRM": (r"^phsrm_\d+_\d+_\d+_nom\d+\.bsp$",),  # Phobos-Grunt (planned)
+    # Fobos-Grunt never left Earth orbit, and NAIF has only the pre-launch plan
+    # that flies it to Mars. The Space-Track TLEs carry its real orbit.
+    "PHSRM": (),
     "PHOBOS88": (r"^p88mrg\.bsp$", r"^iam_r2\.bsp$"),  # Phobos 2
     "LPM": (r"^lp_ask_\d+-\d+\.bsp$",),  # Lunar Prospector
     # `raj2021` is the 2021 reanalysis of the Jupiter tour and starts at

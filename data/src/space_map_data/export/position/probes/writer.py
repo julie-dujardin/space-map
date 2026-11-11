@@ -18,6 +18,7 @@ orchestrator.
 """
 
 import logging
+from collections import defaultdict
 from pathlib import Path
 from typing import NotRequired, TypedDict
 
@@ -58,6 +59,7 @@ from space_map_data.probes.fit_centers import (
     small_body_candidates,
 )
 from space_map_data.probes.landing_events import load_phases as load_landing_phases
+from space_map_data.probes.landing_events import outside_kernel_spans
 from space_map_data.probes.probe_id import index_by_source, load_registry
 from space_map_data.probes.zones import ALL_ZONES, SMALL_BODIES
 from space_map_data.utils.time import et_to_jd, jd_to_et, year_to_jd
@@ -298,11 +300,16 @@ def write_probes(
             start_jd,
         )
 
-        # Events-driven landings for probes without SPK coverage (Apollo
-        # descent stages, Veneras, Pathfinder, Beagle 2, …). Synthesised
-        # plans have empty kernels; the fit pass detects that and builds
-        # a static LandedFit directly from the events JSON's lat/lng.
-        events_phases = load_landing_phases(jd_to_et(end_jd))
+        # Curated landing sites wherever no kernel places the craft: Apollo
+        # descent stages, Beagle 2, and kernels that end before touchdown.
+        kernel_spans: dict[int, list[tuple[float, float]]] = defaultdict(list)
+        for plan in plans:
+            kernel_spans[plan.probe_id].extend(
+                (c.c_start_et, c.c_end_et) for c in plan.contributions
+            )
+        events_phases = outside_kernel_spans(
+            load_landing_phases(jd_to_et(end_jd)), kernel_spans
+        )
         events_plans, events_chunk_index = classify_events_phases(
             events_phases,
             probe_registry,

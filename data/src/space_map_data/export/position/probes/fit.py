@@ -27,10 +27,6 @@ from pathlib import Path
 import spiceypy
 from tqdm import tqdm
 
-from space_map_data.export.position.format import (
-    MISSING_ID_TYPE,
-    MISSING_INT32,
-)
 from space_map_data.export.position.probes import fit_cache, sidecar
 from space_map_data.export.position.probes.landed import (
     fit_landed_chunk,
@@ -81,7 +77,8 @@ def expected_fit_sigs(
 
     When multiple plans share a probe_id (Cassini classified across two
     mission dirs), the kernel list folded in is the union of all plans'
-    kernels, matching what `build_fits` will actually furnish.
+    kernels. A chunk only kernel-less plans reach (a curated landing site)
+    reads none of them, so a kernel update leaves its fit alone.
     """
     events_hash = sidecar.events_files_hash()
     kernels_by_probe: dict[int, list[Path]] = defaultdict(list)
@@ -93,7 +90,7 @@ def expected_fit_sigs(
             seen_kernels[p.probe_id].add(k)
             kernels_by_probe[p.probe_id].append(k)
     presence: dict[tuple[int, str, int], dict[str, bool]] = defaultdict(
-        lambda: {"flying": False, "landed": False}
+        lambda: {"flying": False, "landed": False, "kernels": False}
     )
     for p in plans:
         for c in p.contributions:
@@ -102,13 +99,15 @@ def expected_fit_sigs(
                 presence[key]["flying"] = True
             elif c.kind == "landed":
                 presence[key]["landed"] = True
+            if p.kernels:
+                presence[key]["kernels"] = True
 
     sigs: dict[tuple[int, str, int], dict] = {}
     for (probe_id, zone_key, chunk_idx), kinds in presence.items():
         zone = ZONES_BY_KEY[zone_key]
         sigs[(probe_id, zone_key, chunk_idx)] = fit_cache.build_fit_signature(
             zone=zone,
-            kernels=kernels_by_probe[probe_id],
+            kernels=kernels_by_probe[probe_id] if kinds["kernels"] else [],
             download_dir=download_dir,
             candidates_hash=candidates_hash_by_zone.get(zone_key, ""),
             events_hash=events_hash,
@@ -198,6 +197,7 @@ def _fit_probe_keys(
     # None = small-bodies chunk with no matchable target; skip its
     # contributions instead of falling back to a Sun-relative fit.
     fit_center_naif_by_key: dict[tuple[str, int], int | None] = {}
+    fit_center_fields_by_key: dict[tuple[str, int], tuple[int, int]] = {}
     # First plan to fit a (zone, chunk) claims it — see build_fits
     # docstring on multi-source dedupe.
     flying_owner_by_key: dict[tuple[str, int], int] = {}
@@ -263,6 +263,10 @@ def _fit_probe_keys(
                             if chosen is None and zone.key == SMALL_BODIES.key
                             else center_naif
                         )
+                        fit_center_fields_by_key[key] = (
+                            center_id_value,
+                            center_id_type,
+                        )
                         if fit_center_naif_by_key[key] is None:
                             continue
                     else:
@@ -270,12 +274,7 @@ def _fit_probe_keys(
                         if cached_center is None:
                             continue
                         center_naif = cached_center
-                        center_id_value = (
-                            rec.fit_center_id_value if rec else MISSING_INT32
-                        )
-                        center_id_type = (
-                            rec.fit_center_id_type if rec else MISSING_ID_TYPE
-                        )
+                        center_id_value, center_id_type = fit_center_fields_by_key[key]
                     chunk_sizing = size_chunk(
                         plan.naif_id,
                         zone,
@@ -289,13 +288,14 @@ def _fit_probe_keys(
                         (chunk_sizing.sub_chunks[0].t_start_et - chunk_start_et) / sub_s
                     )
                     if rec is None:
-                        rec = ChunkProbeRecord(
-                            probe_id=probe_id,
-                            first_offset=first_offset,
-                            fit_center_id_value=center_id_value,
-                            fit_center_id_type=center_id_type,
-                        )
+                        rec = ChunkProbeRecord(probe_id=probe_id, first_offset=0)
                         by_chunk[key] = rec
+                    if not rec.flying:
+                        # The record may come from a landed contribution of a
+                        # plan sorted first, which knows no grid or center.
+                        rec.first_offset = first_offset
+                        rec.fit_center_id_value = center_id_value
+                        rec.fit_center_id_type = center_id_type
                     rec.flying.extend(chunk_sizing.sub_chunks)
                     flying_owner_by_key.setdefault(key, plan_idx)
                     if plan_idx not in contributing[key]:
