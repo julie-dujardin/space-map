@@ -45,6 +45,7 @@ export const ORBIT_ARCHIVE_ORGANISATIONS: Record<OrbitArchive, string> = {
 	esa: 'ESA',
 	'naif-pds3': 'NASA',
 	'naif-pds4': 'NASA',
+	'm20-map': 'NASA',
 	'jaxa-darts': 'JAXA',
 	'gcat-deepcat': 'McDowell Deep Space Catalog',
 	clpds: 'CNSA',

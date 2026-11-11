@@ -2098,6 +2098,8 @@
 	"archive_role_naif_pds3": "مسارات مركبات فضائية مؤرشفة",
 	"archive_role_gcat_deep": "مسارات مستنتجة من عناصر مدارية منشورة",
 	"archive_role_clpds": "مواقع المركبات الجوالة",
+	"source_archive_m20_map": "خريطة مواقع Mars 2020 من NASA",
+	"archive_role_m20_map": "مسارات طيران المروحية",
 	"archive_role_nsdb": "المدارات المتبادلة لأقمار الكويكبات",
 	"source_johnston_role": "حصر أقمار الكويكبات وأحجامها وسجل اكتشافها",
 	"source_iau_wgccre_short": "IAU WGCCRE",

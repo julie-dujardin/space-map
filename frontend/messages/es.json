@@ -1637,6 +1637,8 @@
 	"archive_role_naif_pds3": "trayectorias archivadas de naves espaciales",
 	"archive_role_gcat_deep": "trayectorias derivadas de elementos publicados",
 	"archive_role_clpds": "posiciones de los róveres",
+	"source_archive_m20_map": "Mapa de ubicación de Mars 2020 (NASA)",
+	"archive_role_m20_map": "trayectorias de vuelo del helicóptero",
 	"archive_role_nsdb": "órbitas mutuas de satélites de asteroides",
 	"source_johnston_role": "censo de satélites de asteroides, tamaños y datos de descubrimiento",
 	"source_iau_wgccre_name": "Grupo de Trabajo de la IAU sobre coordenadas cartográficas y elementos de rotación",

@@ -48,6 +48,7 @@
 		naif: m.provider_nasa(),
 		'naif-pds3': m.provider_nasa(),
 		'naif-pds4': m.provider_nasa(),
+		'm20-map': m.provider_nasa(),
 		esa: m.provider_esa(),
 		'jaxa-darts': m.provider_jaxa(),
 		'gcat-deepcat': m.source_archive_gcat_deep(),

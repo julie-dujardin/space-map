@@ -2013,6 +2013,8 @@
 	"archive_role_naif_pds3": "アーカイブされた宇宙機の軌道",
 	"archive_role_gcat_deep": "公表された軌道要素から導出した軌道",
 	"archive_role_clpds": "ローバーの位置",
+	"source_archive_m20_map": "NASA マーズ2020 位置マップ",
+	"archive_role_m20_map": "ヘリコプターの飛行経路",
 	"archive_role_nsdb": "小惑星の衛星の相互軌道",
 	"source_johnston_role": "小惑星の衛星の一覧・サイズ・発見記録",
 	"source_iau_wgccre_short": "IAU WGCCRE",

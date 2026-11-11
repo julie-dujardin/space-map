@@ -1660,6 +1660,8 @@
 	"archive_role_naif_pds3": "מסלולי חלליות בארכיון",
 	"archive_role_gcat_deep": "מסלולים שנגזרו מאלמנטים מסלוליים שפורסמו",
 	"archive_role_clpds": "מיקומי הרכבים",
+	"source_archive_m20_map": "מפת המיקום של Mars 2020 מבית NASA",
+	"archive_role_m20_map": "מסלולי הטיסה של המסוק",
 	"archive_role_nsdb": "מסלולים הדדיים של ירחי אסטרואידים",
 	"source_johnston_role": "מפקד ירחי אסטרואידים, גדלים ורישום התגליות",
 	"source_iau_wgccre_name": "קבוצת העבודה של IAU לקואורדינטות קרטוגרפיות ואלמנטים סיבוביים",

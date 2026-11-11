@@ -71,6 +71,11 @@ const ARCHIVES: Record<string, Archive> = {
 		label: m.source_archive_clpds,
 		url: 'https://clpds.bao.ac.cn/',
 		role: m.archive_role_clpds
+	},
+	'm20-map': {
+		label: m.source_archive_m20_map,
+		url: 'https://science.nasa.gov/mission/mars-2020-perseverance/location-map/',
+		role: m.archive_role_m20_map
 	}
 };
 

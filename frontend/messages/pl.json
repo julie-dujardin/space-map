@@ -1660,6 +1660,8 @@
 	"archive_role_naif_pds3": "zarchiwizowane trajektorie statków kosmicznych",
 	"archive_role_gcat_deep": "trajektorie wyznaczone z opublikowanych elementów",
 	"archive_role_clpds": "pozycje łazików",
+	"source_archive_m20_map": "Mapa położenia Mars 2020 (NASA)",
+	"archive_role_m20_map": "trasy lotów śmigłowca",
 	"archive_role_nsdb": "orbity wzajemne księżyców planetoid",
 	"source_johnston_role": "spis księżyców planetoid, rozmiary i okoliczności odkrycia",
 	"source_iau_wgccre_name": "Grupa Robocza IAU ds. Współrzędnych Kartograficznych i Elementów Rotacyjnych",
