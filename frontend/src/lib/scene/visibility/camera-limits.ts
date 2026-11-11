@@ -58,17 +58,24 @@ const _corner = new Vector3();
  *  map spans about three of a 1000 px tall view. */
 const CLEARANCE_PER_TEXEL = 300;
 
+/** Cap on the clearance, in body radii: a type's fixed clearance would hold
+ *  the camera far off a body much smaller than its kind, like an 80 m moonlet
+ *  under a moon's 1 km. */
+const MAX_CLEARANCE_RADII = 0.25;
+
 /**
- * Surface clearance in km for a body. Spacecraft/debris span ~0.3 m to ~100 m;
- * a fixed clearance would block close approach to tiny craft, so fall back to a
- * fraction of the radius to keep max zoom-in proportional to real size.
+ * Surface clearance in km for a body: its type's, capped at a share of its
+ * radius so max zoom-in stays proportional to real size.
  *
  * Maps finer than that let the camera down until their finest pixel spans a
  * few on screen. One floor for the whole body, so it does not move from place
  * to place.
  */
 export function surfaceClearanceKm(body: PositionedBody, finestTexelKm?: number): number {
-	const typical = SURFACE_CLEARANCE_KM[body.data.objectType] ?? effectiveRadiusKm(body.data) * 0.25;
+	const typical = Math.min(
+		SURFACE_CLEARANCE_KM[body.data.objectType] ?? Infinity,
+		effectiveRadiusKm(body.data) * MAX_CLEARANCE_RADII
+	);
 	return finestTexelKm === undefined
 		? typical
 		: Math.min(typical, finestTexelKm * CLEARANCE_PER_TEXEL);

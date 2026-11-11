@@ -415,6 +415,11 @@ describe('surfaceClearanceKm', () => {
 		expect(finestTexelKm(tiled(3390, 11, 16))).toBeLessThan(finestTexelKm(tiled(3390, 11))! / 30);
 	});
 
+	it('keeps a body much smaller than its type within a share of its radius', () => {
+		const moonlet = mkBody({ id: 'spkid-120065803', objectType: ObjectType.MOON, radiusKm: 0.08 });
+		expect(surfaceClearanceKm(moonlet)).toBeCloseTo(0.02, 9);
+	});
+
 	it('never lets a coarse map hold the camera farther out than its type', () => {
 		const bo = tiled(6371, 0);
 		expect(surfaceClearanceKm(bo.body, finestTexelKm(bo))).toBe(100);

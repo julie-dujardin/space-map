@@ -576,7 +576,7 @@ export function updateBodyVisibility(
 
 		const nomScreenR = bo.radiusScene > 0 ? (bo.radiusScene / dist) * projScale : 0;
 		const isNomFocused = showNomenclature && body.data.id === nomFocusedBodyId;
-		updateNomenclatureVisibility(bo, isNomFocused, nomScreenR, camera, screenW, screenH);
+		updateNomenclatureVisibility(bo, isNomFocused, nomScreenR, projScale, camera, screenW, screenH);
 	}
 
 	// Screen-space label occlusion runs every frame (cheap: typically 0-2 occluders).

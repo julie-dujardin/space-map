@@ -1,20 +1,16 @@
 /**
- * IAU planetary nomenclature labels — surface labels for craters, mons, etc.
+ * IAU planetary nomenclature labels: names for craters, mountains and other
+ * surface features.
  *
- * Labels are CSS2DObjects parented to the body's mesh, inheriting
- * `applyOrientation`'s spin and `applyRadiiToMesh`'s triaxial scale (pole on
- * +Y, prime meridian on +X, longitude increasing east). Shape-model bodies
- * parent to `bo.nomenclatureAnchor` instead — an identity-scale group with
- * the model's IAU orientation — with positions from ray-casting the model,
- * mapped to scene units via `modelUnitScene`.
+ * Labels are CSS2DObjects on the body's mesh, or on `bo.nomenclatureAnchor`
+ * for a shape model, so they follow the body's spin and shape.
  *
- * A label shows only when its on-screen diameter falls in the
- * `[MIN_FEATURE_PX, MAX_FEATURE_FRACTION · viewport]` band; survivors go
- * through a greedy AABB collision cull in priority order (largest diameter
- * first, fixed at attach so the per-frame loop is sort-free). Non-circular
- * feature types are dropped client-side until a vector dataset can render
- * their real geometry. Zero-diameter records fall back to
- * {@link DEFAULT_FEATURE_DIAMETER_M}.
+ * A label shows when its on-screen diameter, seen from the camera, falls in
+ * the `[MIN_FEATURE_PX, MAX_FEATURE_FRACTION · viewport]` band. Survivors go
+ * through a collision cull, largest feature first. Non-circular features
+ * label only when selected: a centre and a diameter put a name in the wrong
+ * place along a valley or a ridge. Records with no diameter use
+ * {@link DEFAULT_FEATURE_DIAMETER_RADII}.
  */
 
 import { behindGround } from '$lib/scene/visibility/horizon';
@@ -64,18 +60,31 @@ const MIN_FEATURE_PX = 24;
  *  hiding the big one lets contained sub-features compete in the collision pass. */
 const MAX_FEATURE_FRACTION = 0.2;
 
-/** Fallback diameter assigned to IAU records with no recorded extent (mostly
- *  Mars/Triton/Rhea albedo features). Small enough that they only surface at
- *  extreme zoom — accurate sizes would need a separate dataset. */
-const DEFAULT_FEATURE_DIAMETER_M = 100;
+/** While the body is small the size cap is this many
+ *  {@link MIN_BODY_SCREEN_RADIUS_PX} at the gate, shrinking as 1/screenR: a
+ *  region wider than the body, or any large one on a phone, would otherwise be
+ *  past the cap the moment labels switch on. Shrinking, not switching off, so
+ *  each one hides at its own zoom. */
+const GATE_CAP_RADII = 4;
+
+/** Fallback diameter, in body radii, for IAU records with no recorded extent.
+ *  Most are albedo regions (Mercury, Mars, Titan) far wider than this, but a
+ *  body-sized share keeps the guess within reach of the camera on any body. */
+const DEFAULT_FEATURE_DIAMETER_RADII = 0.1;
+
+/** A feature's diameter in metres, with the fallback for one the IAU leaves
+ *  at 0, so labels and every path that frames a feature agree. */
+export function featureDiameterM(diameterM: number, hostRadiusKm: number): number {
+	return diameterM > 0 ? diameterM : hostRadiusKm * 1000 * DEFAULT_FEATURE_DIAMETER_RADII;
+}
 
 /** Approximate text-box height (px) of `.scene-feature-label` (12px font +
  *  line-height + shadow). Used as the y-overlap threshold in the collision cull. */
 const FEATURE_LINE_H = 16;
 
 /** Feature types whose geometry isn't usefully approximated by a center+radius
- *  circle. Hidden until a dedicated vector layer can render them properly.
- *  Codes are IAU descriptor codes — see `FEATURE_TYPES` in the data package. */
+ *  circle, so their label shows only when the feature is selected. Codes are
+ *  IAU descriptor codes — see `FEATURE_TYPES` in the data package. */
 const NON_CIRCULAR_TYPE_CODES = new Set([
 	'CA', // catena — crater chains
 	'CH', // chasma — deep elongated depressions
@@ -88,9 +97,8 @@ const NON_CIRCULAR_TYPE_CODES = new Set([
 	'VA' // vallis — valleys
 ]);
 
-/** Click on a feature label — fired with the feature's id and the lat/lon
- *  the camera should fly to. Diameter is forwarded so the caller can pick a
- *  zoom level (small features need to fly closer than large ones). */
+/** Click on a feature label: the feature's id, the lat/lon to fly to, and its
+ *  IAU diameter (0 when unknown) for the zoom. */
 export type OnFeatureSelect = (
 	featureId: number,
 	lat: number,
@@ -112,12 +120,11 @@ export async function attachNomenclatureLabels(
 	const features = await fetchBodyNomenclature(bo.body.data.id);
 	if (bo.nomenclatureLabels) return;
 
-	const renderable = features.filter((f) => !NON_CIRCULAR_TYPE_CODES.has(f.typeCode));
-	renderable.sort((a, b) => {
-		const da = a.diameterM > 0 ? a.diameterM : DEFAULT_FEATURE_DIAMETER_M;
-		const db = b.diameterM > 0 ? b.diameterM : DEFAULT_FEATURE_DIAMETER_M;
-		return db - da;
-	});
+	const radiusKm = effectiveRadiusKm(bo.body.data);
+	// 0 fails every size check, leaving only the selected-feature exemption.
+	const drawnDiameterM = (f: (typeof features)[number]) =>
+		NON_CIRCULAR_TYPE_CODES.has(f.typeCode) ? 0 : featureDiameterM(f.diameterM, radiusKm);
+	const renderable = [...features].sort((a, b) => drawnDiameterM(b) - drawnDiameterM(a));
 	const n = renderable.length;
 
 	// Per-feature radial label distance in parent-local units, and the parent
@@ -160,7 +167,7 @@ export async function attachNomenclatureLabels(
 				bo,
 				bo.body.data.id,
 				detail.global.displacement,
-				effectiveRadiusKm(bo.body.data),
+				radiusKm,
 				renderable.map((f) => ({ latRad: f.lat * DEG2RAD, lonRad: f.lon * DEG2RAD }))
 			);
 			if (bo.nomenclatureLabels || !bo.mesh) return;
@@ -177,8 +184,7 @@ export async function attachNomenclatureLabels(
 	let fallbackCount = 0;
 	for (let i = 0; i < n; i++) {
 		const feature = renderable[i];
-		const effDiam = feature.diameterM > 0 ? feature.diameterM : DEFAULT_FEATURE_DIAMETER_M;
-		if (feature.diameterM <= 0) fallbackCount++;
+		if (feature.diameterM <= 0 && !NON_CIRCULAR_TYPE_CODES.has(feature.typeCode)) fallbackCount++;
 
 		const el = document.createElement('div');
 		el.className = 'scene-feature-label';
@@ -192,7 +198,9 @@ export async function attachNomenclatureLabels(
 		attachCanvasForwarders(el, canvas);
 
 		if (onFeatureSelect) {
-			onTapNotDrag(el, () => onFeatureSelect(feature.featureId, feature.lat, feature.lon, effDiam));
+			onTapNotDrag(el, () =>
+				onFeatureSelect(feature.featureId, feature.lat, feature.lon, feature.diameterM)
+			);
 		}
 
 		const [ux, uy, uz] = bodyFixedUnit(feature.lat * DEG2RAD, feature.lon * DEG2RAD);
@@ -201,17 +209,18 @@ export async function attachNomenclatureLabels(
 		obj.position.set(rf * ux, rf * uy, rf * uz);
 		parent.add(obj);
 		labels[i] = obj;
-		diamsM[i] = effDiam;
+		diamsM[i] = drawnDiameterM(feature);
 	}
 
 	if (fallbackCount > 0) {
 		console.log(
-			`[nomenclature] ${bo.body.data.id}: ${fallbackCount}/${n} features have no diameter — using ${DEFAULT_FEATURE_DIAMETER_M}m fallback`
+			`[nomenclature] ${bo.body.data.id}: ${fallbackCount}/${n} features have no diameter — using ${Math.round(featureDiameterM(0, radiusKm))} m`
 		);
 	}
 
 	bo.nomenclatureLabels = labels;
 	bo.nomenclatureDiamsM = diamsM;
+	bo.nomenclatureMaxRadial = radial.reduce((a, b) => Math.max(a, b), 0);
 	bo.nomenclatureWidths = widths;
 	bo.nomenclatureSX = sx;
 	bo.nomenclatureSY = sy;
@@ -290,6 +299,7 @@ export function disposeNomenclatureLabels(bo: BodyObjects): void {
 	bo.nomenclatureNormals = undefined;
 	bo.nomenclatureLabels = null;
 	bo.nomenclatureDiamsM = undefined;
+	bo.nomenclatureMaxRadial = undefined;
 	bo.nomenclatureWidths = undefined;
 	bo.nomenclatureSX = undefined;
 	bo.nomenclatureSY = undefined;
@@ -315,7 +325,10 @@ const MODEL_HORIZON_MARGIN = 0.12;
  * focused and projects to at least {@link MIN_BODY_SCREEN_RADIUS_PX}, sits on
  * the front hemisphere within {@link LABEL_DISC_FRACTION} of the disc, and
  * its on-screen diameter falls in the `[MIN_FEATURE_PX, MAX_FEATURE_FRACTION
- * · min(screenW, screenH)]` band.
+ * · min(screenW, screenH)]` band, the cap raised while the body is small
+ * ({@link GATE_CAP_RADII}). That diameter is taken at the camera's
+ * distance to the label, not to the body centre: near the ground the centre
+ * stays a radius away, which would cap every feature's size.
  *
  * The URL-selected feature is exempted from the size/disc-fraction checks
  * (but not the hemisphere check, so it can't bleed through the far side).
@@ -328,6 +341,7 @@ export function updateNomenclatureVisibility(
 	bo: BodyObjects,
 	isFocused: boolean,
 	screenR: number,
+	projScale: number,
 	camera: Camera,
 	screenW: number,
 	screenH: number
@@ -347,18 +361,17 @@ export function updateNomenclatureVisibility(
 	const n = labels.length;
 	const cloudsVisible = !!bo.clouds?.mesh.visible;
 
-	const realRadiusM = effectiveRadiusKm(bo.body.data) * 1000;
-	const pxPerMeter = screenR / realRadiusM;
-	const maxFeaturePx = MAX_FEATURE_FRACTION * Math.min(screenW, screenH);
-
-	// Fast path: labels are pre-sorted by effective diameter desc, so if the
-	// largest feature can't clear MIN_FEATURE_PX, none can. Same shortcut when
-	// clouds occlude the surface — every non-active label is suppressed.
-	// Skipped when an active feature is set so its label still gets projected.
-	if (activeIdx < 0 && (n === 0 || cloudsVisible || diamsM[0] * pxPerMeter < MIN_FEATURE_PX)) {
+	// Clouds hide every label but the active one.
+	if (activeIdx < 0 && (n === 0 || cloudsVisible)) {
 		for (const lbl of labels) lbl.visible = false;
 		return;
 	}
+
+	const pxPerMeterAtUnit = projScale * kmToScene(0.001);
+	const maxFeaturePx = Math.max(
+		MAX_FEATURE_FRACTION * Math.min(screenW, screenH),
+		(GATE_CAP_RADII * MIN_BODY_SCREEN_RADIUS_PX ** 2) / screenR
+	);
 
 	bo.group.getWorldPosition(_bodyWorld);
 	camera.getWorldPosition(_camWorld);
@@ -377,6 +390,30 @@ export function updateNomenclatureVisibility(
 	const halfW = 0.5 * screenW;
 	const halfH = 0.5 * screenH;
 
+	// Labels carry no rotation or scale of their own, so one parent matrix
+	// places them all.
+	const parent = labels[0].parent!;
+	parent.updateWorldMatrix(true, false);
+	const parentWorld = parent.matrixWorld;
+
+	// No label is nearer than the camera's distance to the parent minus the
+	// outermost label, so past the first label too small from there (largest
+	// first) every one is.
+	const pe = parentWorld.elements;
+	const nearest =
+		Math.hypot(_camWorld.x - pe[12], _camWorld.y - pe[13], _camWorld.z - pe[14]) -
+		bo.nomenclatureMaxRadial! * parentWorld.getMaxScaleOnAxis();
+	let end = n;
+	if (nearest > 0) {
+		const smallestM = (MIN_FEATURE_PX * nearest) / pxPerMeterAtUnit;
+		let lo = 0;
+		while (lo < end) {
+			const mid = (lo + end) >> 1;
+			if (diamsM[mid] < smallestM) end = mid;
+			else lo = mid + 1;
+		}
+	}
+
 	// Shape-model bodies carry per-label body-fixed surface normals; rotate
 	// them by the anchor's attitude for the per-label local-horizon test.
 	const normals = bo.nomenclatureNormals;
@@ -385,24 +422,27 @@ export function updateNomenclatureVisibility(
 	for (let i = 0; i < n; i++) {
 		const lbl = labels[i];
 		const isActive = i === activeIdx;
-		const featurePx = diamsM[i] * pxPerMeter;
-		const occluded = cloudsVisible && !isActive;
-		if (occluded || (!isActive && (featurePx < MIN_FEATURE_PX || featurePx > maxFeaturePx))) {
-			lbl.visible = false;
-			sxA[i] = NaN;
-			syA[i] = NaN;
+		if (!isActive && (i >= end || cloudsVisible || diamsM[i] === 0)) {
+			hideLabel(bo, i);
 			continue;
 		}
-		lbl.getWorldPosition(_labelWorld);
+		_labelWorld.copy(lbl.position).applyMatrix4(parentWorld);
 		const lx = _labelWorld.x - _bodyWorld.x;
 		const ly = _labelWorld.y - _bodyWorld.y;
 		const lz = _labelWorld.z - _bodyWorld.z;
+		const vx = cdx - lx;
+		const vy = cdy - ly;
+		const vz = cdz - lz;
+		const vLen = Math.sqrt(vx * vx + vy * vy + vz * vz);
+		const featurePx = (diamsM[i] * pxPerMeterAtUnit) / vLen;
+		if (!isActive && (featurePx < MIN_FEATURE_PX || featurePx > maxFeaturePx)) {
+			hideLabel(bo, i);
+			continue;
+		}
 		// Past the curve, the active feature too: CSS2D doesn't depth-test, so
 		// its label would otherwise bleed through the planet from the far side.
 		if (behindGround(lx, ly, lz, cdx, cdy, cdz)) {
-			lbl.visible = false;
-			sxA[i] = NaN;
-			syA[i] = NaN;
+			hideLabel(bo, i);
 			continue;
 		}
 		// Local-horizon reject (shape models): the cap test treats each label
@@ -413,15 +453,9 @@ export function updateNomenclatureVisibility(
 			_normalWorld
 				.set(normals[i * 3], normals[i * 3 + 1], normals[i * 3 + 2])
 				.applyQuaternion(_anchorQuat);
-			const vx = cdx - lx;
-			const vy = cdy - ly;
-			const vz = cdz - lz;
-			const vLen = Math.sqrt(vx * vx + vy * vy + vz * vz);
 			const facing = _normalWorld.x * vx + _normalWorld.y * vy + _normalWorld.z * vz;
 			if (facing < MODEL_HORIZON_MARGIN * vLen) {
-				lbl.visible = false;
-				sxA[i] = NaN;
-				syA[i] = NaN;
+				hideLabel(bo, i);
 				continue;
 			}
 		}
@@ -429,15 +463,19 @@ export function updateNomenclatureVisibility(
 		const dxPx = (_labelNdc.x - _bodyNdc.x) * halfW;
 		const dyPx = (_labelNdc.y - _bodyNdc.y) * halfH;
 		if (!isActive && dxPx * dxPx + dyPx * dyPx >= maxPxSq) {
-			lbl.visible = false;
-			sxA[i] = NaN;
-			syA[i] = NaN;
+			hideLabel(bo, i);
 			continue;
 		}
 		lbl.visible = true;
 		sxA[i] = (_labelNdc.x * 0.5 + 0.5) * screenW;
 		syA[i] = (-_labelNdc.y * 0.5 + 0.5) * screenH;
 	}
+}
+
+function hideLabel(bo: BodyObjects, i: number): void {
+	bo.nomenclatureLabels![i].visible = false;
+	bo.nomenclatureSX![i] = NaN;
+	bo.nomenclatureSY![i] = NaN;
 }
 
 // AABB pool for the collision cull. Module-level: only one focused body's

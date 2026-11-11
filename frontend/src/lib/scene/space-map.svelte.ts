@@ -71,6 +71,7 @@ import { LayerSet, MAP_LAYERS, type MapLayerId } from './layers';
 import { ControlHost, type Control, type ControlPosition } from './controls';
 import { onExtrasolarStale } from '$lib/fetch/extrasolar/files';
 import { isExtrasolarObjectId } from '$lib/fetch/extrasolar/ids';
+import { featureDiameterM } from '$lib/scene/objects/surface/nomenclature';
 import './map.css';
 
 export interface SpaceMapOptions {
@@ -183,6 +184,7 @@ export interface FeatureRef {
 	/** Planetographic degrees, IAU convention. */
 	lat: number;
 	lon: number;
+	/** IAU diameter in metres; 0 when it gives none. */
 	diameterM: number;
 }
 
@@ -1480,7 +1482,9 @@ export class SpaceMap {
 	): number {
 		const hostBody = this.ctx.getBody(bodyId);
 		if (!hostBody) return 0;
-		const idealScene = kmToScene((diameterM * 4) / 1000);
+		const idealScene = kmToScene(
+			(featureDiameterM(diameterM, effectiveRadiusKm(hostBody.data)) * 4) / 1000
+		);
 		const minScene = kmToScene(0.02);
 		const maxScene = kmToScene(effectiveRadiusKm(hostBody.data) * 5);
 		const zoom = Math.min(Math.max(idealScene, minScene), maxScene);

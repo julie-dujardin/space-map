@@ -341,7 +341,6 @@ export interface Extent {
 
 // @public
 export interface FeatureRef {
-	// (undocumented)
 	diameterM: number;
 	// (undocumented)
 	featureId: number;

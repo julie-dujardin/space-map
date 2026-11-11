@@ -222,9 +222,13 @@ export interface BodyObjects {
 	 *  mesh can't host them (invisible + non-uniform triaxial scale). Receives
 	 *  the same IAU orientation as the overlay model each frame. */
 	nomenclatureAnchor?: Group | null;
-	/** Parallel to {@link nomenclatureLabels}: effective feature diameter in metres,
-	 *  with a fallback applied for IAU records that omit it. */
+	/** Parallel to {@link nomenclatureLabels}: drawn feature diameter in metres,
+	 *  with a fallback for IAU records that omit it; 0 for a non-circular
+	 *  feature, which labels only when selected. */
 	nomenclatureDiamsM?: Float32Array;
+	/** Distance of the outermost label from its parent's origin, in parent-local
+	 *  units: bounds how near the camera any label can be. */
+	nomenclatureMaxRadial?: number;
 	/** Parallel to {@link nomenclatureLabels}, shape-model path only: body-fixed
 	 *  surface normals (xyz triplets) for the per-frame local-horizon test. */
 	nomenclatureNormals?: Float32Array;
