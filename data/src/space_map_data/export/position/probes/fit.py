@@ -92,6 +92,11 @@ def expected_fit_sigs(
     presence: dict[tuple[int, str, int], dict[str, bool]] = defaultdict(
         lambda: {"flying": False, "landed": False, "kernels": False}
     )
+    cut_windows: dict[tuple[int, str, int], tuple[float, float]] = {
+        (p.probe_id, *key): window
+        for p in plans
+        for key, window in p.cut_chunks.items()
+    }
     for p in plans:
         for c in p.contributions:
             key = (p.probe_id, c.zone_key, c.chunk_idx)
@@ -113,6 +118,7 @@ def expected_fit_sigs(
             events_hash=events_hash,
             has_flying=kinds["flying"],
             has_landed=kinds["landed"],
+            flight_window=cut_windows.get((probe_id, zone_key, chunk_idx)),
         )
     return sigs
 

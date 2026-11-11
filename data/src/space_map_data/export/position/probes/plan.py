@@ -87,6 +87,9 @@ class ProbePlan:
     kernels: list[Path]
     contributions: list[ChunkContribution] = field(default_factory=list)
     system_intervals: list[tuple[float, float, int]] = field(default_factory=list)
+    # The launch-to-end window, on each (zone_key, chunk_idx) where it cut the
+    # kernels' coverage.
+    cut_chunks: dict[tuple[str, int], tuple[float, float]] = field(default_factory=dict)
 
 
 @dataclass

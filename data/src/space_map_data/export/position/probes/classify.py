@@ -7,6 +7,7 @@ builds the plans.
 """
 
 import logging
+import math
 import multiprocessing
 from collections import defaultdict
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -30,10 +31,12 @@ from space_map_data.export.position.probes.time_grid import (
     chunk_aligned_range,
     landed_chunk_range,
 )
+from space_map_data.probes.events import load_event_probes
 from space_map_data.probes.probe_id import assign, et_to_mjd
 from space_map_data.probes.trace import classify_trace, coverage_intervals, inception_et
 from space_map_data.probes.traverses import load_traverses
 from space_map_data.probes.zones import ZONES_BY_KEY
+from space_map_data.utils.time import S_PER_DAY, jd_to_et
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +96,58 @@ def _classify_worker(
     finally:
         for k in kernel_paths:
             spiceypy.unload(k)
+
+
+def flight_windows() -> dict[int, tuple[float, float]]:
+    """``probe_id -> (start_et, end_et)`` from each probe's curated launch and
+    its re-entry or crash, either bound open (``±inf``) when it has none.
+
+    A mission's kernels can run past both: a plan made for an earlier launch
+    date, a pre-encounter predict that flies on after the impact. The end is
+    read as the landing phases read it, so the craft stops where its crash
+    site starts. A record holding a companion's crash ends at the latest one.
+    """
+    windows: dict[int, tuple[float, float]] = {}
+    for probe in load_event_probes():
+        launches = [
+            ev.jd for ev in probe.events if ev.type == "launch" and not ev.failed
+        ]
+        ends = [ev.jd for ev in probe.events if ev.ends_flight]
+        if launches or ends:
+            windows[probe.probe_id] = (
+                jd_to_et(launches[0]) if launches else -math.inf,
+                jd_to_et(max(ends)) if ends else math.inf,
+            )
+    return windows
+
+
+def clip_intervals[K](
+    intervals: list[tuple[K, float, float]], window: tuple[float, float]
+) -> list[tuple[K, float, float]]:
+    """``intervals`` cut to ``window``; those wholly outside it are dropped."""
+    lo, hi = window
+    return [
+        (key, max(start, lo), min(end, hi))
+        for key, start, end in intervals
+        if start < hi and end > lo
+    ]
+
+
+def _cut_chunks(
+    spans: list[tuple[str, float, float]], window: tuple[float, float], start_jd: float
+) -> set[tuple[str, int]]:
+    """The ``(zone_key, chunk_idx)`` holding each bound of ``window`` that cut
+    one of ``spans``, which are all the chunks the cut changed."""
+    lo, hi = window
+    anchor = jd_to_et(start_jd)
+    out: set[tuple[str, int]] = set()
+    for zone_key, start, end in spans:
+        chunk_s = ZONES_BY_KEY[zone_key].chunk_days * S_PER_DAY
+        if start < lo:
+            out.add((zone_key, math.floor((lo - anchor) / chunk_s)))
+        if end > hi:
+            out.add((zone_key, math.ceil((hi - anchor) / chunk_s) - 1))
+    return out
 
 
 def _compute_system_intervals(
@@ -209,6 +264,8 @@ def classify_pass(
         lambda: defaultdict(list)
     )
     traverses = load_traverses()
+    windows = flight_windows()
+    clipped_probes: set[int] = set()
     for i, (mdir, kernels, naif_id) in enumerate(probes_raw, 1):
         result = results.get((mdir.name, naif_id))
         if result is None:
@@ -235,16 +292,36 @@ def classify_pass(
             )
             continue
 
+        intervals = result["intervals"]
         landed_phases = result.get("landed_phases", [])
+        window = windows.get(probe_id)
+        cut: dict[tuple[str, int], tuple[float, float]] = {}
+        if window is not None:
+            spans = list(intervals)
+            for body_naif, start, end in landed_phases:
+                zone = zone_for_landed_body(int(body_naif))
+                if zone is not None:
+                    spans.append((zone.key, start, end))
+            cut = dict.fromkeys(_cut_chunks(spans, window, start_jd), window)
+            if cut:
+                logger.info(
+                    "%s/%d: kernel coverage cut%s%s",
+                    mdir.name,
+                    naif_id,
+                    " before launch" if any(s < window[0] for _, s, _ in spans) else "",
+                    " after its end" if any(e > window[1] for _, _, e in spans) else "",
+                )
+                clipped_probes.add(probe_id)
+            intervals = clip_intervals(intervals, window)
+            landed_phases = clip_intervals(landed_phases, window)
         plan = ProbePlan(
             probe_id=probe_id,
             naif_id=naif_id,
             kernels=kernels,
-            system_intervals=_compute_system_intervals(
-                result["intervals"], landed_phases
-            ),
+            system_intervals=_compute_system_intervals(intervals, landed_phases),
+            cut_chunks=cut,
         )
-        for zone_key, iv_start, iv_end in result["intervals"]:
+        for zone_key, iv_start, iv_end in intervals:
             zone = ZONES_BY_KEY[zone_key]
             for chunk_idx, c_start, c_end in chunk_aligned_range(
                 zone.chunk_days,
@@ -305,10 +382,14 @@ def classify_pass(
             mdir.name,
             naif_id,
             probe_id,
-            len(result["intervals"]),
+            len(intervals),
             len(plan.contributions),
             len(landed_phases),
         )
 
-    logger.info("Classified %d probes into plans", len(plans))
+    logger.info(
+        "Classified %d probes into plans, %d cut to their flight",
+        len(plans),
+        len(clipped_probes),
+    )
     return plans, chunk_index

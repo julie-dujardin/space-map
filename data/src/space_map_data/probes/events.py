@@ -248,6 +248,16 @@ class ProbeEvent:
     def end_jd(self) -> float | None:
         return event_jd(self.end_date) if self.end_date else None
 
+    @property
+    def ends_flight(self) -> bool:
+        """The craft is gone after it, burnt up or destroyed against a surface.
+        An atmospheric entry is not such an end: landers make one on the way down."""
+        if self.failed:
+            return False
+        return self.type == "reentry" or (
+            self.type == "landing" and self.outcome == "destroyed_at_landing"
+        )
+
 
 @dataclass(frozen=True)
 class EventProbe:

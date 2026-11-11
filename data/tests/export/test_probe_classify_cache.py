@@ -1,5 +1,6 @@
 """Probe classify: a cache hit skips the worker, a changed input misses."""
 
+import math
 import os
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -32,6 +33,7 @@ class _Env:
         monkeypatch.setattr(classify, "_classify_worker", self._worker)
         monkeypatch.setattr(classify, "enumerate_probes", lambda: list(self.probes))
         monkeypatch.setattr(classify, "load_traverses", dict)
+        monkeypatch.setattr(classify, "flight_windows", dict)
         self.calls: list[tuple[str, int]] = []
         self.failing: set[int] = set()
         self.lsk = tmp_path / "naif.tls"
@@ -130,6 +132,22 @@ class TestClassifyPass:
             "A/-2.json",
             "notes.txt",
         ]
+
+
+class TestFlightWindow:
+    """The curated end cuts cached and fresh results alike."""
+
+    def test_flying_and_landed_coverage_stop_at_the_end(
+        self, env: _Env, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        probe_id = env.registry[0]["probe_id"]
+        window = (-math.inf, 1.085e8)
+        monkeypatch.setattr(classify, "flight_windows", lambda: {probe_id: window})
+        for plans in (env.run(), env.run()):
+            plan = next(p for p in plans if p.probe_id == probe_id)
+            assert max(c.c_end_et for c in plan.contributions) <= 1.085e8
+            assert plan.cut_chunks and set(plan.cut_chunks.values()) == {window}
+            assert all(not p.cut_chunks for p in plans if p.probe_id != probe_id)
 
 
 class TestCacheEntry:

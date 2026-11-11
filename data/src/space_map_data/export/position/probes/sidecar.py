@@ -44,6 +44,10 @@ LANDED_VERSION = 1
 # to the packing that the fit signatures cannot see.
 PACK_VERSION = 5
 
+# Bump for a change to how the plans are built from the classify results. It
+# reopens the probes pass; the fit signatures pick out which chunks refit.
+PLAN_VERSION = 1
+
 
 def zone_signature(zone: Zone) -> str:
     """Stable short hash of the zone parameters that affect fit output."""

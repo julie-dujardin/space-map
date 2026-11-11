@@ -14,6 +14,7 @@ Pickle is used since the payload never ships to clients and the dataclasses
 import hashlib
 import json
 import logging
+import math
 import pickle
 import shutil
 from pathlib import Path
@@ -52,6 +53,7 @@ def build_fit_signature(
     events_hash: str,
     has_flying: bool,
     has_landed: bool,
+    flight_window: tuple[float, float] | None = None,
 ) -> dict:
     """Per-probe signature for the cached `ChunkProbeRecord` — captures only
     inputs that affect the fit (trajectory data), not the wire-header bits.
@@ -75,6 +77,11 @@ def build_fit_signature(
     }
     if has_flying:
         sig["candidates_hash"] = candidates_hash
+    # Only a chunk the flight window cuts carries it, so no other fit moves.
+    if flight_window is not None:
+        sig["flight_window"] = [
+            bound if math.isfinite(bound) else None for bound in flight_window
+        ]
     if has_landed:
         sig["events_hash"] = events_hash
         sig["landed_version"] = LANDED_VERSION
