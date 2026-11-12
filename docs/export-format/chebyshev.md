@@ -92,7 +92,7 @@ on top. A body is in a chunk exactly when one of its spans overlaps it.
 | 20     | uint8   | object_type (`ObjectType` ordinal — same map as the elements `objectType` column) |
 | 21     | uint8   | Reserved |
 | 22     | uint16  | segment_count |
-| 24     | float32 | visible_from_days (days from J2000 to discovery; NaN = always visible — same gate as the elements column) |
+| 24     | float32 | visible_from_days (days from J2000 to discovery; NaN = always visible — same gate as the elements column, the same in every chunk) |
 | 28     | uint32  | Reserved (keeps the float64 segment payload 8-aligned) |
 
 Combine `id_type` with `obj_id_value` to rebuild the full Object ID for

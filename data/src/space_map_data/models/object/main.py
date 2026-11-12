@@ -227,6 +227,10 @@ class Object(Base):
     # for bodies known since antiquity and for small bodies, which carry their
     # own first-observed date.
     discovery_year: Mapped[int | None] = mapped_column(default=None)
+    # Earliest Wikidata P575 of an SBDB body, `YYYY-MM-DD` with a leading `-`
+    # before the Common Era. Gates pre-discovery rendering where it is earlier
+    # than SBDB's first_obs, which dates the orbit fit's arc (Ceres in 1995).
+    discovery_date: Mapped[str | None] = mapped_column(default=None)
     # Slug of the 3D-model bundle under EXPORT_DIR/v1/models/{slug}/. Many
     # objects may point at the same slug (Viking 1/2 share an orbiter model;
     # Cluster II spacecraft share a constellation model). Authored by the

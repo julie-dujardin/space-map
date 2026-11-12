@@ -12,6 +12,7 @@ from space_map_data.ingest.providers import (
     image_selection,
     planet_discovery,
     sitelinks,
+    small_body_discovery,
     wikipedia,
 )
 from space_map_data.ingest.providers.objects import (
@@ -85,7 +86,7 @@ def ingest_features(download_dir: Path) -> None:
 
 def ingest_wikidata(download_dir: Path) -> None:
     """Ingest Wikidata QIDs for objects and features, then what is read off
-    each Object's entity: sitelink counts and the planets' discovery years.
+    each Object's entity: sitelink counts and the discovery dates.
     Those run last so every Object's ``wikidata_qid`` is in place.
     """
     objects.ingest(download_dir)
@@ -97,6 +98,7 @@ def ingest_wikidata(download_dir: Path) -> None:
     nomenclature.ingest(download_dir)
     sitelinks.ingest()
     planet_discovery.ingest()
+    small_body_discovery.ingest()
 
 
 def ingest_images() -> None:

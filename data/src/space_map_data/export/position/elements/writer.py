@@ -222,7 +222,7 @@ def write_elements(
 
     _write_has_localized(buf, objects, has_localized)
     _write_flags(buf, objects)
-    _write_visible_from_days(buf, objects, start_jd)
+    _write_visible_from_days(buf, objects)
 
     out_file.write_bytes(gzip.compress(buf.getvalue()))
 
@@ -285,7 +285,7 @@ def write_sgp4_elements(
 
     _write_has_localized(buf, objects, has_localized)
     _write_flags(buf, objects)
-    _write_visible_from_days(buf, objects, start_jd)
+    _write_visible_from_days(buf, objects)
 
     out_file.write_bytes(gzip.compress(buf.getvalue()))
 
@@ -359,7 +359,7 @@ def write_parabolic_elements(
 
     _write_has_localized(buf, objects, has_localized)
     _write_flags(buf, objects)
-    _write_visible_from_days(buf, objects, start_jd)
+    _write_visible_from_days(buf, objects)
 
     out_file.write_bytes(gzip.compress(buf.getvalue()))
 
@@ -504,10 +504,10 @@ def _write_flags(f, objects: list[Object]) -> None:
     _write_uint8(f, n, [_flags_byte(o) for o in objects])
 
 
-def _write_visible_from_days(f, objects: list[Object], start_jd: float) -> None:
+def _write_visible_from_days(f, objects: list[Object]) -> None:
     """Write the trailing `visible_from_days` float32 column (last on v11+)."""
     n = len(objects)
-    _write_float32(f, n, [visible_from_days(o, start_jd) for o in objects])
+    _write_float32(f, n, [visible_from_days(o) for o in objects])
 
 
 def _write_int32(f, n: int, values: list[int]) -> None:

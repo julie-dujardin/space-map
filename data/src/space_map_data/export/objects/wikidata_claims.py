@@ -1042,22 +1042,40 @@ def claim_reader[T](
     return of
 
 
+def _time_key(time: str) -> tuple[int, str]:
+    """Chronological sort key of a Wikidata time: the signed year, then the rest."""
+    split = time.index("-", 1)
+    return int(time[:split]), time[split:]
+
+
+def _earliest_discovery(
+    claims: dict, wikidata_entities: WikidataEntityCache | None = None
+) -> str | None:
+    """The earliest P575 time, as on the object detail page."""
+    times = _all_times(claims, "P575", wikidata_entities)
+    return min(times, key=_time_key) if times else None
+
+
 def discovery_year_from_claims(
     claims: dict, wikidata_entities: WikidataEntityCache | None = None
 ) -> int | None:
     """Discovery year from raw Wikidata claims (P575), or None.
 
-    The earliest claim wins, as on the object detail page. SBDB's `first_obs`
-    is no substitute: it dates the observation arc, so precovery plates put
-    Eris in 1954 and Ceres in 1995.
+    SBDB's `first_obs` is no substitute: it dates the observation arc, so
+    precovery plates put Eris in 1954 and Ceres in 1995.
     """
-    times = _all_times(claims, "P575", wikidata_entities)
-    if not times:
+    time = _earliest_discovery(claims, wikidata_entities)
+    return None if time is None else _time_key(time)[0]
+
+
+def discovery_date_from_claims(claims: dict) -> str | None:
+    """Earliest P575 as `YYYY-MM-DD`, an unknown month or day as its first,
+    with a leading `-` before the Common Era; None without one."""
+    time = _earliest_discovery(claims)
+    if time is None:
         return None
-    # Leading sign, then a zero-padded year: ISO strings sort chronologically.
-    year = min(times)[1:5]
-    try:
-        return int(year)
-    except ValueError:
-        logger.warning("Unparseable P575 year %r", min(times))
-        return None
+    year, month, day = time[1:].split("T")[0].split("-")
+    sign = "-" if time[0] == "-" else ""
+    month = month if month != "00" else "01"
+    day = day if day != "00" else "01"
+    return f"{sign}{year}-{month}-{day}"

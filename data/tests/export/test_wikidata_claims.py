@@ -18,6 +18,8 @@ from space_map_data.export.objects.wikidata_claims import (
     _single_quantity,
     _single_time,
     _stmt_value,
+    discovery_date_from_claims,
+    discovery_year_from_claims,
     extract_claims,
     radius_km_from_claims,
     resolve_entity_ref,
@@ -1298,3 +1300,30 @@ class TestRadiusKmFromClaims:
         claims = {"P2120": [_stmt(_qty_snak("+100", "Q999"))]}
         units = self._mock_units(None)
         assert radius_km_from_claims(claims, units, "Q2") is None
+
+
+class TestDiscoveryDate:
+    """discovery_date_from_claims / discovery_year_from_claims"""
+
+    def test_day_precision(self):
+        claims = {"P575": [_stmt(_time_snak("+1849-04-12T00:00:00Z"))]}
+        assert discovery_date_from_claims(claims) == "1849-04-12"
+
+    def test_unknown_month_and_day_take_the_first(self):
+        claims = {"P575": [_stmt(_time_snak("+1801-00-00T00:00:00Z", precision=9))]}
+        assert discovery_date_from_claims(claims) == "1801-01-01"
+
+    def test_before_the_common_era_sorts_first(self):
+        """Halley: a plain string sort puts +1758 before -0466."""
+        claims = {
+            "P575": [
+                _stmt(_time_snak("-0466-00-00T00:00:00Z", precision=9)),
+                _stmt(_time_snak("+1758-00-00T00:00:00Z", precision=9)),
+                _stmt(_time_snak("-0240-00-00T00:00:00Z", precision=9)),
+            ]
+        }
+        assert discovery_date_from_claims(claims) == "-0466-01-01"
+        assert discovery_year_from_claims(claims) == -466
+
+    def test_none_without_p575(self):
+        assert discovery_date_from_claims({}) is None

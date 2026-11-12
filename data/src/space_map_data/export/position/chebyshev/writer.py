@@ -27,6 +27,7 @@ from space_map_data.export.position.coverage import segment_runs
 from space_map_data.export.position.format import (
     CHEBYSHEV_FLAG_FLOAT64_COEFFS,
     ID_TYPE_ORDINAL,
+    MISSING_FLOAT32,
     MISSING_ID_TYPE,
     MISSING_INT32,
     MISSING_UINT8,
@@ -192,6 +193,22 @@ def _obj_id_parts(obj: Object) -> tuple[int, int]:
         return ordinal, MISSING_INT32
 
 
+def discovery_gates(bodies: list[tuple[Object, int, int]]) -> dict[str, float]:
+    """`visible_from_days` of each `(object, naif_id, parent_id)`. A barycentre
+    is known once its first member is, and always when one member always is."""
+    gates = {obj.id: visible_from_days(obj) for obj, _, _ in bodies}
+    members: dict[int, list[float]] = defaultdict(list)
+    for obj, _, parent_id in bodies:
+        members[parent_id].append(gates[obj.id])
+    for obj, naif_id, _ in bodies:
+        known = members.get(naif_id)
+        if obj.object_type == ObjectType.barycenter and known:
+            gates[obj.id] = (
+                MISSING_FLOAT32 if any(map(math.isnan, known)) else min(known)
+            )
+    return gates
+
+
 def _write_chunk_file(
     out_dir: Path,
     zone: str,
@@ -202,6 +219,7 @@ def _write_chunk_file(
         tuple[Object, int, int, np.ndarray, np.ndarray, np.ndarray, float, bool]
     ],
     float64_coeffs: bool,
+    gates: dict[str, float],
 ) -> int:
     """Write one chunk file at `position/{zone}[/0]/{chunk_idx}.bin.gz`. Returns
     bytes written."""
@@ -241,10 +259,7 @@ def _write_chunk_file(
                     obj.object_type, MISSING_UINT8
                 ),
                 segment_count=n_segments,
-                # Per-chunk start: a moon discovered before this chunk opens is
-                # always visible within it (NaN), so the gate only bites the
-                # chunk straddling its discovery and the ones before.
-                visible_from_days=visible_from_days(obj, chunk_start_jd),
+                visible_from_days=gates[obj.id],
             )
         )
         if n_segments == 0:
@@ -348,6 +363,9 @@ def write_chebyshev(
             skipped_filter,
         )
 
+    gates = discovery_gates(
+        [row[:3] for bodies in zone_bodies.values() for row in bodies]
+    )
     zone_manifest: dict[str, dict] = {}
     for zone, bodies in zone_bodies.items():
         # Deterministic body order inside each zone — stable by NAIF ID so
@@ -406,6 +424,7 @@ def write_chebyshev(
                 chunk_end_jd,
                 chunk_bodies,
                 float64_coeffs,
+                gates,
             )
             total_bytes += nbytes
         avg_kb = (total_bytes // n_chunks) // 1024 if n_chunks else 0
