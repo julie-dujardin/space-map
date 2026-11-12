@@ -50,7 +50,37 @@ function setup(radius: number | null = RADIUS, orbit = ORBIT) {
 		fire('pointermove', { ...base, clientX: 500 + dx, clientY: 500 + dy });
 		fire('pointerup', { ...base, clientX: 500 + dx, clientY: 500 + dy });
 	};
-	return { camera, controls, middleDrag };
+	/** Two fingers come down at `from`, go to `to` in `steps` even moves each,
+	 *  one finger and then the other, and lift. */
+	const twoFingers = (
+		from: [[number, number], [number, number]],
+		to: [[number, number], [number, number]],
+		steps = 20
+	) => {
+		const at = (id: number, [x, y]: [number, number]) => ({
+			pointerId: id,
+			pointerType: 'touch',
+			button: 0,
+			pageX: x,
+			pageY: y,
+			clientX: x,
+			clientY: y
+		});
+		const lerp = (i: number, t: number): [number, number] => [
+			from[i][0] + (to[i][0] - from[i][0]) * t,
+			from[i][1] + (to[i][1] - from[i][1]) * t
+		];
+		fire('pointerdown', at(1, from[0]));
+		fire('pointerdown', at(2, from[1]));
+		for (let step = 1; step <= steps; step++) {
+			fire('pointermove', at(1, lerp(0, step / steps)));
+			fire('pointermove', at(2, lerp(1, step / steps)));
+		}
+		fire('pointerup', at(1, to[0]));
+		fire('pointerup', at(2, to[1]));
+		controls.update();
+	};
+	return { camera, controls, middleDrag, twoFingers };
 }
 
 /** The ground point the untilted camera looks straight down on. */
@@ -226,6 +256,89 @@ describe('LookOrbitControls', () => {
 		const [x, y] = controls.toOrbitAxes(1, 0);
 		expect(x).toBeCloseTo(0, 9);
 		expect(y).toBeCloseTo(-1, 9);
+	});
+});
+
+describe('LookOrbitControls two fingers', () => {
+	it('tilts the view as both fingers slide up side by side', () => {
+		const { camera, controls, twoFingers } = setup();
+		const ground = groundUnder(camera.position);
+		twoFingers(
+			[
+				[400, 600],
+				[600, 600]
+			],
+			[
+				[400, 400],
+				[600, 400]
+			]
+		);
+		expect(controls.look.tilt).toBeGreaterThan(0.5);
+		expect(controls.look.heading).toBeCloseTo(0, 9);
+		expect(viewCentreOffset(camera, ground)).toBeLessThan(1e-9);
+		// As far as a middle drag the same way.
+		const twoFingerTilt = controls.look.tilt;
+		controls.endLook();
+		const fresh = setup();
+		fresh.middleDrag(0, -200);
+		expect(fresh.controls.look.tilt).toBeCloseTo(twoFingerTilt, 9);
+	});
+
+	it('turns the map with the fingers as they twist', () => {
+		const { camera, controls, twoFingers } = setup();
+		const c = [500, 500] as const;
+		const at = (angle: number, r: number): [number, number] => [
+			c[0] + r * Math.cos(angle),
+			c[1] + r * Math.sin(angle)
+		];
+		// A ground point just right of the centre of the view.
+		const point = new Vector3(0.05, 0, 1).normalize().multiplyScalar(RADIUS);
+		camera.updateMatrixWorld();
+		const before = point.clone().project(camera);
+		expect(before.x).toBeGreaterThan(0);
+		expect(before.y).toBeCloseTo(0, 9);
+		// 60° clockwise on screen.
+		const twist = Math.PI / 3;
+		twoFingers([at(Math.PI, 100), at(0, 100)], [at(Math.PI + twist, 100), at(twist, 100)], 60);
+		camera.updateMatrixWorld();
+		const after = point.clone().project(camera);
+		// Clockwise with y down is down the screen from the right: ndc y < 0.
+		const turnedBy = -Math.atan2(after.y, after.x);
+		expect(turnedBy).toBeGreaterThan(twist - 0.25);
+		expect(turnedBy).toBeLessThan(twist);
+		expect(controls.look.tilt).toBeCloseTo(0, 9);
+	});
+
+	it('leaves a twist alone out in space', () => {
+		const { camera, twoFingers } = setup(RADIUS, 3);
+		const before = camera.quaternion.clone();
+		twoFingers(
+			[
+				[400, 500],
+				[600, 500]
+			],
+			[
+				[500, 400],
+				[500, 600]
+			]
+		);
+		expect(camera.quaternion.angleTo(before)).toBeLessThan(1e-9);
+	});
+
+	it('still pinches to zoom', () => {
+		const { camera, twoFingers } = setup();
+		const range = camera.position.length();
+		twoFingers(
+			[
+				[450, 500],
+				[550, 500]
+			],
+			[
+				[350, 500],
+				[650, 500]
+			]
+		);
+		expect(camera.position.length()).toBeLessThan(range);
 	});
 });
 
