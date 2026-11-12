@@ -414,7 +414,11 @@
 	// A feature framed before its host's spin landed sits in an unrotated frame:
 	// it is framed again, the same way, once the spin arrives. Other bodies'
 	// spins landing must not move a camera framed on a real pole.
-	let reframe: { hostId: string; snap: boolean; view: typeof initialFeatureView } | null = null;
+	let reframe: {
+		hostId: string;
+		move: 'turn' | 'snap';
+		view: typeof initialFeatureView;
+	} | null = null;
 
 	const northChoices = $derived.by(() => {
 		void ctx.bodies.orientationVersion; // re-run when system data lands orientation
@@ -889,7 +893,7 @@
 		const r = reframe;
 		if (!f || !r || !ctx.getBody(r.hostId)?.orientation) return;
 		reframe = null;
-		map.focusOnFeature(r.hostId, f.featureId, f.lat, f.lon, f.diameterM, r.snap, r.view);
+		map.focusOnFeature(r.hostId, f.featureId, f.lat, f.lon, f.diameterM, r.move, r.view);
 	});
 
 	// Resolve `view.featureId` → `activeFeature`: the one path that frames the
@@ -924,16 +928,16 @@
 						panFeatureId = null;
 						reframe = null;
 					} else {
-						const snap = firstFeatureResolve;
+						const move = firstFeatureResolve ? 'snap' : 'turn';
 						const view = firstFeatureResolve ? initialFeatureView : null;
-						reframe = ctx.getBody(bodyId)?.orientation ? null : { hostId: bodyId, snap, view };
+						reframe = ctx.getBody(bodyId)?.orientation ? null : { hostId: bodyId, move, view };
 						map.focusOnFeature(
 							bodyId,
 							found.featureId,
 							found.lat,
 							found.lon,
 							found.diameterM,
-							snap,
+							move,
 							view
 						);
 					}

@@ -166,7 +166,13 @@ import {
 } from './types';
 import type { Vec3 } from './animation/math';
 import { type FocusState, FOCUS_DURATION_MS, stepFocusAnimation } from './animation/focus';
-import { FocusController, surfaceSite } from './focus/controller';
+import {
+	FocusController,
+	siteQuat,
+	surfaceSite,
+	underHalfRadius,
+	viewOverSite
+} from './focus/controller';
 import {
 	ballVantage,
 	openArea,
@@ -1250,6 +1256,10 @@ export class SceneRenderer {
 		const at = body && this.whereBody(body);
 		if (!body || !at) return null;
 		const camera: Vec3 = [at[0] + offset[0], at[1] + offset[1], at[2] + offset[2]];
+		// A move to a landed probe reads the degrees of the body it stands on.
+		const host = this.focusController.landedSite(body, this.sceneJd)?.host;
+		const hostAt = host && this.whereBody(host);
+		if (host && hostAt) return cartesianToSpherical(camera, hostAt, siteQuat(host, this.sceneJd));
 		return cartesianToSpherical(camera, at, this.focusController.focusedBodyQuat(body));
 	}
 
@@ -2979,15 +2989,16 @@ export class SceneRenderer {
 		return this.focusController.focusOnBody(id, zoom, latitude, longitude);
 	}
 
-	/** Turn the camera onto a surface feature of `anchor.hostId`, as onto any
-	 *  point of its ground ({@link FocusController.panToSurfacePoint}); from
-	 *  another body it flies to `zoom` above it. `snap` settles at once for a
-	 *  deep link, at `view` when the link carries one. Returns the duration in ms. */
+	/** Move the camera onto a surface feature of `anchor.hostId`. `turn` turns
+	 *  to it as to any point of its ground ({@link FocusController.panToSurfacePoint}),
+	 *  `frame` flies to `zoom` above it, `snap` is there at once, at `view`
+	 *  when a link carries one and `look` turned. Returns the duration in ms. */
 	focusOnFeature(
 		anchor: FeatureAnchor,
 		zoom: number,
-		snap = false,
-		view?: CameraView | null
+		move: 'turn' | 'frame' | 'snap' = 'turn',
+		view: CameraView | null = null,
+		look: LookAngles = LEVEL_LOOK
 	): number {
 		this.disarmLimits();
 		this.applyJdUpdate();
@@ -2996,23 +3007,26 @@ export class SceneRenderer {
 		const hostPos = host && this.whereBody(host);
 		// A feature of a body with no place has nowhere to be framed.
 		if (!host || !hostPos) return 0;
-		// The feature framing supersedes the URL's body-level at=: the queued
-		// initial-view replay (fired when the host's system data lands — see
-		// reapplyInitialViewIfPending) would otherwise re-frame the host and
-		// clobber a deep link's feature snap.
-		this.focusController.clearPendingInitialView();
+		// The held view of the host would put the camera back when the host's data lands.
+		const fc = this.focusController;
+		fc.clearPendingInitialView();
 		// Tag the feature's label active first, so the seat below is the
 		// labelled point once the label is placed.
 		const hostBo = this.bodyObjects.get(host.data.id);
 		this.selectedFeatureId = anchor.featureId;
 		if (hostBo) setActiveFeatureLabel(hostBo, anchor.featureId);
-		if (snap && view) {
-			this.focusController.snapOntoGround(host, view);
-			return 0;
-		}
 		const seat = featureSeat(anchor, host, hostPos, hostBo, this.sceneJd);
 		const site = surfaceSite(host, seat, hostPos, this.sceneJd);
-		return this.focusController.panToSurfacePoint(host, site, zoom, undefined, snap);
+		if (move === 'turn') return fc.panToSurfacePoint(host, site, zoom);
+		if (move === 'frame' || !view)
+			return fc.arriveAbove(host, site, zoom, undefined, move === 'snap', look);
+		if (underHalfRadius(host, view.zoom)) {
+			// Links made before at= was the host's hold the camera's offset from the feature, in scene axes.
+			const offset = sphericalToCartesian([0, 0, 0], view.latitude, view.longitude, view.zoom);
+			view = viewOverSite(site, new Vector3(...offset), siteQuat(host, this.sceneJd));
+		}
+		fc.snapOntoGround(host, view);
+		return 0;
 	}
 
 	/** Focused body when the NDC ray hits its overlay model, else null. Cast in

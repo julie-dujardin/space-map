@@ -188,7 +188,7 @@ export interface FeatureRef {
 /** Somewhere to move the camera to. What is left out is left as it is. */
 export interface CameraTarget extends CameraOptions {
 	/** A feature on `body` to look at, rather than the body as a whole. Its
-	 *  size frames the view, so `distanceKm` is not needed. */
+	 *  size frames the view: `lat`, `lon` and `distanceKm` are not read. */
 	feature?: FeatureRef;
 }
 
@@ -988,7 +988,7 @@ export class SpaceMap {
 	 */
 	async flyTo(target: CameraTarget): Promise<void> {
 		const body = this.targetBody(target);
-		if (target.feature) return this.toFeature(body, target.feature);
+		if (target.feature) return this.toFeature(body, target.feature, 'frame');
 		// Always with a distance: told to fly to a body and nothing more, the
 		// focus controller re-aims without approaching, and the host asked to be
 		// taken there.
@@ -1156,11 +1156,12 @@ export class SpaceMap {
 		});
 	}
 
-	/** Turn to a feature on the body already framed, without travelling to it —
-	 *  the move a click on its label makes. Resolves when the camera comes
-	 *  round. */
+	/** Turn to a feature on the body already framed, without travelling to it.
+	 *  This is the move a click on its label makes. On another body the camera
+	 *  flies to the feature, as {@link SpaceMap.flyTo} does. Resolves when the
+	 *  camera comes round. */
 	panTo(target: FeatureTarget): Promise<void> {
-		return this.toFeature(this.targetBody(target), target.feature);
+		return this.toFeature(this.targetBody(target), target.feature, 'turn');
 	}
 
 	/**
@@ -1212,8 +1213,7 @@ export class SpaceMap {
 		}
 		if (target.feature) {
 			const { featureId, lat, lon, diameterM } = target.feature;
-			this.focusOnFeature(body, featureId, lat, lon, diameterM, true);
-			this.renderer?.setLook(lookOf(target));
+			this.focusOnFeature(body, featureId, lat, lon, diameterM, 'snap', null, lookOf(target));
 			return;
 		}
 		const camera = this.getCamera();
@@ -1355,9 +1355,9 @@ export class SpaceMap {
 		this.cooperative?.allowsTouchDrag(e.touches.length);
 	};
 
-	private toFeature(body: string, feature: FeatureRef): Promise<void> {
+	private toFeature(body: string, feature: FeatureRef, move: 'turn' | 'frame'): Promise<void> {
 		const { featureId, lat, lon, diameterM } = feature;
-		return this.settled(this.focusOnFeature(body, featureId, lat, lon, diameterM));
+		return this.settled(this.focusOnFeature(body, featureId, lat, lon, diameterM, move));
 	}
 
 	/** The focus controller reports how long its move takes. One frame past
@@ -1460,19 +1460,21 @@ export class SpaceMap {
 		return (body) => renderer.viewFrom(body.data.id, vantage.offset) ?? {};
 	}
 
-	/** @internal Turn the camera onto a surface feature, its host becoming the
-	 *  body it orbits. From another body it flies in to a standoff that scales
-	 *  with the feature, floored and capped so it never collapses or
-	 *  overshoots. `snap` places it at once for a deep link, at `view` when
-	 *  the link carries one. */
+	/** @internal Move the camera onto a surface feature, its host becoming the
+	 *  body it orbits. `turn` turns to it from where the camera is, or from
+	 *  another body flies to a standoff over it. `frame` flies to that standoff
+	 *  and `snap` is there at once, at `view` when a link carries one and
+	 *  `look` turned. The standoff scales with the feature, floored and capped
+	 *  so it never collapses or overshoots. */
 	focusOnFeature(
 		bodyId: string,
 		featureId: number,
 		lat: number,
 		lon: number,
 		diameterM: number,
-		snap = false,
-		view: CameraView | null = null
+		move: 'turn' | 'frame' | 'snap' = 'turn',
+		view: CameraView | null = null,
+		look?: LookAngles
 	): number {
 		const hostBody = this.ctx.getBody(bodyId);
 		if (!hostBody) return 0;
@@ -1486,7 +1488,7 @@ export class SpaceMap {
 		// The host takes the focus inside, and that is a move onto the feature.
 		this.movingToFeature = true;
 		try {
-			return this.renderer?.focusOnFeature(anchor, zoom, snap, view) ?? 0;
+			return this.renderer?.focusOnFeature(anchor, zoom, move, view, look) ?? 0;
 		} finally {
 			this.movingToFeature = false;
 		}

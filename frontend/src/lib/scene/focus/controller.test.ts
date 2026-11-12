@@ -3,10 +3,11 @@ import { PerspectiveCamera, Quaternion, Vector3 } from 'three';
 import { ObjectType, type BodyData, type PositionedBody } from '$lib/types/objects';
 import { OrbitalSource } from '$lib/fetch/position/format';
 import { sphericalToCartesian } from '$lib/math/spherical';
-import { LEVEL_LOOK } from '$lib/scene/camera/look-controls';
+import { sceneToKm } from '$lib/math/units';
+import { LEVEL_LOOK, LookOrbitControls } from '$lib/scene/camera/look-controls';
 import type { Vec3 } from '$lib/scene/animation/math';
 import type { BodyObjects } from '$lib/scene/types';
-import { FocusController, type FocusDeps } from './controller';
+import { FocusController, viewOverSite, type FocusDeps } from './controller';
 import type { PromotionDeps } from './promotion';
 
 const landed = vi.hoisted(() => ({ now: true }));
@@ -71,7 +72,7 @@ const MARS_AT: Vec3 = [1000, 0, 0];
 const SITE = { latitude: 10, longitude: 20, radius: 1 };
 
 function harness({ spun }: { spun: boolean }) {
-	const mars = mkBody({ id: 'naif-499' }, MARS_AT);
+	const mars = mkBody({ id: 'naif-499', radiusKm: sceneToKm(SITE.radius) }, MARS_AT);
 	if (spun) mars.orientation = {} as PositionedBody['orientation'];
 	const quat = spun ? [...SPIN] : undefined;
 	const seat = sphericalToCartesian(
@@ -94,6 +95,8 @@ function harness({ spun }: { spun: boolean }) {
 	for (const b of [mars, earth]) {
 		bodyObjects.set(b.data.id, { body: b, mesh: { quaternion: new Quaternion() } } as BodyObjects);
 	}
+	/** The mesh takes the spin the IAU angles give. */
+	const spinMesh = () => bodyObjects.get(mars.data.id)!.mesh!.quaternion.set(...SPIN);
 	const onFocusChange = vi.fn();
 	const camera = new PerspectiveCamera();
 	const deps = {
@@ -111,7 +114,7 @@ function harness({ spun }: { spun: boolean }) {
 		controls: {
 			look: LEVEL_LOOK,
 			update: () => {},
-			setLook: () => {},
+			setLook: vi.fn(),
 			looksOver: () => false,
 			groundAlong: () => false
 		},
@@ -150,7 +153,7 @@ function harness({ spun }: { spun: boolean }) {
 			{ latitude: SITE.latitude, longitude: SITE.longitude, zoom: 1.5 },
 			rover
 		);
-	return { fc, deps, camera, mars, rover, earth, placed, onFocusChange, standOnMars };
+	return { fc, deps, camera, mars, rover, earth, placed, onFocusChange, standOnMars, spinMesh };
 }
 
 describe('FocusController with a landed probe in view', () => {
@@ -206,5 +209,98 @@ describe('FocusController with a landed probe in view', () => {
 		const target = new Vector3(...deps.focus.camTargetWorld!);
 		const want = new Vector3(...MARS_AT).lerp(new Vector3(...rover.position!), 1.5);
 		expect(target.distanceTo(want)).toBeLessThan(1e-9);
+	});
+
+	it('flies where a jump to the same view puts it', () => {
+		const cases = [
+			{ zoom: 3, lat: 30, lon: 40, want: sphericalToCartesian(MARS_AT, 30, 40, 3, [...SPIN]) },
+			// Under half the host's radius: a height over the probe.
+			{
+				zoom: 0.2,
+				lat: 30,
+				lon: 40,
+				want: new Vector3(...MARS_AT).lerp(new Vector3(...seatOf()), 1.2)
+			}
+		];
+		for (const { zoom, lat, lon, want } of cases) {
+			const flight = harness({ spun: true });
+			flight.spinMesh();
+			flight.fc.setFocusTarget(flight.earth);
+			flight.deps.focus.focusTruePos = [0, 0, 0];
+			flight.fc.focusOnBody('curiosity', zoom, lat, lon);
+			const landed = new Vector3(...flight.deps.focus.camTargetWorld!);
+			expect(landed.distanceTo(new Vector3(...want))).toBeLessThan(1e-9);
+
+			const jump = harness({ spun: true });
+			jump.spinMesh();
+			jump.fc.snapToBody('curiosity', lat, lon, zoom);
+			const at = jump.camera.position.clone().add(new Vector3(...jump.deps.focus.focusTruePos));
+			expect(at.distanceTo(landed)).toBeLessThan(1e-9);
+		}
+	});
+
+	it('keeps the look of a jump that frames the probe from above', () => {
+		const { fc, deps } = harness({ spun: true });
+		const look = { tilt: 0.6, heading: 0.3 };
+		fc.snapToBody('curiosity', 0, 0, 0.05, look);
+		expect(deps.controls.setLook).toHaveBeenLastCalledWith(look);
+		fc.reapplyInitialViewIfPending();
+		expect(deps.controls.setLook).toHaveBeenLastCalledWith(look);
+	});
+
+	it('puts a snap over its host at the height asked for, not where the camera was', () => {
+		const { fc, deps, camera, mars, spinMesh, standOnMars } = harness({ spun: true });
+		spinMesh();
+		standOnMars();
+		const site = { latitude: -20, longitude: 70, radius: 1 };
+		const look = { tilt: 0.4, heading: -0.2 };
+		fc.arriveAbove(mars, site, 0.01, undefined, true, look);
+		const want = sphericalToCartesian([0, 0, 0], -20, 70, 1.01, [...SPIN]);
+		expect(camera.position.distanceTo(new Vector3(...want))).toBeLessThan(1e-9);
+		expect(deps.focus.aim).toBeNull();
+		expect(deps.controls.setLook).toHaveBeenLastCalledWith(look);
+	});
+});
+
+/** The rover's seat in the spun harness. */
+function seatOf(): Vec3 {
+	return sphericalToCartesian(MARS_AT, SITE.latitude, SITE.longitude, SITE.radius, [...SPIN]);
+}
+
+describe('viewOverSite', () => {
+	/** Just enough of a canvas for OrbitControls. */
+	const canvas = {
+		style: {},
+		clientWidth: 1000,
+		clientHeight: 1000,
+		ownerDocument: { addEventListener() {}, removeEventListener() {} },
+		addEventListener() {},
+		removeEventListener() {},
+		getRootNode: () => ({ addEventListener() {}, removeEventListener() {} }),
+		getBoundingClientRect: () => ({ left: 0, top: 0, width: 1000, height: 1000 })
+	} as unknown as HTMLElement;
+
+	it('turns a camera held over the site back to where it stood, onto the site', () => {
+		const quat: [number, number, number, number] = [0, 0, 0, 1];
+		const site = { latitude: -7, longitude: 282, radius: 1 };
+		const seat = new Vector3(...sphericalToCartesian([0, 0, 0], -7, 282, 1, quat));
+		for (const offset of [
+			new Vector3(0.01, 0.02, 0.03),
+			new Vector3(-0.03, 0.01, -0.01),
+			seat.clone().multiplyScalar(0.02)
+		]) {
+			if (offset.dot(seat) <= 0) offset.addScaledVector(seat, 0.05);
+			const view = viewOverSite(site, offset, quat);
+			const camera = new PerspectiveCamera(50, 1, 1e-4, 10);
+			camera.position.set(...sphericalToCartesian([0, 0, 0], -7, 282, view.zoom, quat));
+			const controls = new LookOrbitControls(camera, canvas, () => site.radius);
+			controls.update();
+			controls.setLook(view.look!);
+			const stood = seat.clone().add(offset);
+			expect(camera.position.distanceTo(stood)).toBeLessThan(1e-9);
+			const toSeat = seat.clone().sub(camera.position).normalize();
+			const forward = camera.getWorldDirection(new Vector3());
+			expect(forward.angleTo(toSeat)).toBeLessThan(1e-6);
+		}
 	});
 });

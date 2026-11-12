@@ -1,4 +1,11 @@
-import { Quaternion, Vector3, type Mesh, type PerspectiveCamera, type Scene } from 'three';
+import {
+	MathUtils,
+	Quaternion,
+	Vector3,
+	type Mesh,
+	type PerspectiveCamera,
+	type Scene
+} from 'three';
 import {
 	ObjectType,
 	effectiveRadiusKm,
@@ -66,9 +73,38 @@ export function surfaceSite(
 
 /** The axes {@link surfaceSite} reads a site in: `host`'s spin at `jd`. Its
  *  mesh may not have that spin yet, or have no mesh at all. */
-function siteQuat(host: PositionedBody, jd: number): [number, number, number, number] | undefined {
+export function siteQuat(
+	host: PositionedBody,
+	jd: number
+): [number, number, number, number] | undefined {
 	const q = host.orientation && bodyQuaternion(host.orientation, jd, host.nutPrec);
 	return q ? [q.x, q.y, q.z, q.w] : undefined;
+}
+
+/** Whether `distance` from `host`'s centre is under half its radius. No
+ *  camera over its ground is that close, so it reads as a height over a point. */
+export function underHalfRadius(host: PositionedBody, distance: number): boolean {
+	return distance < kmToScene(effectiveRadiusKm(host.data)) / 2;
+}
+
+/** The view, held over `site`, that puts the camera at `offset` from it and
+ *  turns it onto the site. `quat` gives the axes of `site`. */
+export function viewOverSite(
+	site: SurfaceSite,
+	offset: Vector3,
+	quat?: [number, number, number, number]
+): CameraView {
+	const { latitude, longitude } = site;
+	const up = new Vector3(...sphericalToCartesian([0, 0, 0], latitude, longitude, 1, quat));
+	const down = new Vector3(
+		...sphericalToCartesian([0, 0, 0], latitude + 90, longitude, 1, quat)
+	).negate();
+	const range = offset.length();
+	const level = offset.clone().addScaledVector(up, -offset.dot(up));
+	// The angles of LookOrbitControls.lookToward, with north up.
+	const tilt = Math.acos(MathUtils.clamp(offset.dot(up) / range, -1, 1));
+	const heading = Math.atan2(new Vector3().crossVectors(down, level).dot(up), down.dot(level));
+	return { latitude, longitude, zoom: site.radius + range, look: { tilt, heading } };
 }
 
 const _from = new Vector3();
@@ -278,8 +314,7 @@ export class FocusController {
 		host: PositionedBody,
 		site: SurfaceSite,
 		height?: number,
-		subject?: PositionedBody,
-		instant = false
+		subject?: PositionedBody
 	): number {
 		const { focus, camera, controls, callbacks, pointClouds } = this.deps;
 		const hostPos = this.place(host);
@@ -289,7 +324,7 @@ export class FocusController {
 			current !== undefined &&
 			(current.data.id === host.data.id || this.landedSite(current)?.host.data.id === host.data.id);
 		if (!overHost && height !== undefined) {
-			return this.arriveAbove(host, site, height, subject, instant);
+			return this.arriveAbove(host, site, height, subject);
 		}
 
 		// The origin goes onto the host with the camera held where it is, so
@@ -326,21 +361,13 @@ export class FocusController {
 			focus.aimPose = controls.lookPose(from, ground, new Quaternion());
 			focus.aim = [ground.x, ground.y, ground.z];
 			focus.aimLooks = true;
-			focus.focusDurationMs = instant
-				? 0
-				: angularDuration(camera.quaternion.angleTo(focus.aimPose), FOCUS_ROT_PACING);
+			focus.focusDurationMs = angularDuration(
+				camera.quaternion.angleTo(focus.aimPose),
+				FOCUS_ROT_PACING
+			);
 			return focus.focusDurationMs;
 		}
 		const distance = from.length();
-		if (instant) {
-			this.snapOntoGround(
-				host,
-				{ latitude: site.latitude, longitude: site.longitude, zoom: distance },
-				subject
-			);
-			this.placedOffSubject = true;
-			return 0;
-		}
 		callbacks.onCameraPosition?.(site.latitude, site.longitude, distance);
 		const camPos = sphericalToCartesian(
 			[...hostPos],
@@ -690,7 +717,15 @@ export class FocusController {
 			return 0;
 		}
 		const landed = this.landedSite(body);
-		if (landed) return this.panToSurfacePoint(landed.host, landed.site, zoom, body);
+		if (landed) {
+			const { host, site } = landed;
+			// Read as snapToBody reads it, so that a flight and a jump meet.
+			if (zoom === undefined || underHalfRadius(host, zoom)) {
+				return this.panToSurfacePoint(host, site, zoom, body);
+			}
+			const view = { latitude: latitude ?? site.latitude, longitude: longitude ?? site.longitude };
+			return this.flyOntoGround(host, { ...view, zoom }, body);
+		}
 		let camPos: Vec3 | undefined;
 		if (zoom !== undefined) {
 			if (latitude !== undefined && longitude !== undefined) {
@@ -756,16 +791,12 @@ export class FocusController {
 		const body = this.deps.ctx.getBody(id);
 		const pos = body && this.place(body);
 		if (!body || !pos) return;
-		// A landed probe's view is read off the body it stands on. A distance
-		// no camera off that body's centre could have frames the probe instead.
+		// A landed probe's view is read off the body it stands on.
 		const landed = this.landedSite(body);
 		if (landed) {
 			const { host, site } = landed;
-			if (zoom < kmToScene(effectiveRadiusKm(host.data)) / 2) {
-				this.arriveAbove(host, site, zoom, body, true);
-			} else {
-				this.snapOntoGround(host, { latitude, longitude, zoom, look }, body);
-			}
+			if (underHalfRadius(host, zoom)) this.arriveAbove(host, site, zoom, body, true, look);
+			else this.snapOntoGround(host, { latitude, longitude, zoom, look }, body);
 			return;
 		}
 		this.settleOnBodyInstant(body, pos);
@@ -773,21 +804,27 @@ export class FocusController {
 	}
 
 	/** Go to `height` above `site` on `host`'s ground, looking straight down
-	 *  at it: a flight, or at once with `instant`. */
-	private arriveAbove(
+	 *  at it or turned by `look`: a flight, or at once with `instant`. The
+	 *  camera then goes with `subject` as its seat moves. */
+	arriveAbove(
 		host: PositionedBody,
 		site: SurfaceSite,
 		height: number,
 		subject?: PositionedBody,
-		instant = false
+		instant = false,
+		look: LookAngles = LEVEL_LOOK
 	): number {
-		const { focus, callbacks } = this.deps;
 		const view = { latitude: site.latitude, longitude: site.longitude, zoom: site.radius + height };
-		if (instant) {
-			this.snapOntoGround(host, view, subject);
-			this.placedOffSubject = true;
-			return 0;
-		}
+		if (!instant) return this.flyOntoGround(host, view, subject);
+		this.snapOntoGround(host, { ...view, look }, subject);
+		this.placedOffSubject = true;
+		return 0;
+	}
+
+	/** Fly onto `host` at `view`, looking down at its ground. Returns the
+	 *  duration in ms. */
+	private flyOntoGround(host: PositionedBody, view: CameraView, subject?: PositionedBody): number {
+		const { focus, callbacks } = this.deps;
 		const hostPos = this.place(host);
 		if (!hostPos) return 0;
 		const camPos = sphericalToCartesian(

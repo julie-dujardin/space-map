@@ -1412,8 +1412,9 @@ export class SpaceMap {
 		lat: number,
 		lon: number,
 		diameterM: number,
-		snap?: boolean,
-		view?: CameraView | null
+		move?: 'turn' | 'frame' | 'snap',
+		view?: CameraView | null,
+		look?: LookAngles
 	): number;
 	// @internal
 	focusOnPathPoint(centerId: string, rKm: readonly [number, number, number]): void;
