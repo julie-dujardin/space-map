@@ -18,7 +18,7 @@ import { Group, Quaternion, Vector3, type Camera, type Object3D, type SphereGeom
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 import { fetchBodyNomenclature } from '$lib/fetch/nomenclature/fetch';
-import { effectiveRadiusKm, isSurfaceFeature, type PositionedBody } from '$lib/types/objects';
+import { effectiveRadiusKm, type PositionedBody } from '$lib/types/objects';
 import { attachCanvasForwarders } from '$lib/scene/label/forward';
 import { bodyFixedUnit, displacementsKmAt } from '$lib/scene/position/rendered-surface';
 import { kmToScene } from '$lib/math/units';
@@ -27,14 +27,13 @@ import { castModelRadius, modelUnitScene } from '../body/model';
 import { onTapNotDrag } from '../tap-not-drag';
 import type { BodyObjects } from '$lib/scene/types';
 
-/** Effective focus for surface labels: a landed probe or a focused surface
- *  feature defers to its host body (where the labels actually live). */
+/** Effective focus for surface labels: a landed probe defers to its host
+ *  body (where the labels actually live). */
 export function nomenclatureBodyId(
 	focused: PositionedBody | undefined,
 	bodyObjects: Map<string, BodyObjects>
 ): string | undefined {
 	if (!focused) return undefined;
-	if (isSurfaceFeature(focused)) return focused.featureAnchor!.hostId;
 	const bo = bodyObjects.get(focused.data.id);
 	if (bo?.isLanded) return focused.data.parentId;
 	return focused.data.id;

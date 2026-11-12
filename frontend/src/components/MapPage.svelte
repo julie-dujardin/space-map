@@ -419,13 +419,11 @@
 	const northChoices = $derived.by(() => {
 		void ctx.bodies.orientationVersion; // re-run when system data lands orientation
 		void ctx.bodies.planeVersion; // and when an extrasolar system lands its plane
-		void activeFeature; // re-run when a surface feature is focused/cleared
 		return getNorthChoices(cameraFocus, ctx);
 	});
 	// Primitives, so the view's clock ticks wake neither.
 	const northRef = $derived(appState.view.north);
 	const viewId = $derived(appState.view.id);
-	const viewFeatured = $derived(appState.view.featureId !== null);
 	const northChoice = $derived(resolveNorthChoice(northChoices, northRef));
 
 	// One derived per end, not one object: `view` ticks twice a second, and an
@@ -872,7 +870,7 @@
 		const ref = northRef;
 		const focus = cameraFocus;
 		if (ref === null || !focus || focus.data.id !== viewId) return;
-		if (northRefHolds(ref, focus, viewFeatured, ctx) === false) appState.setNorth(null);
+		if (northRefHolds(ref, focus, ctx) === false) appState.setNorth(null);
 	});
 
 	// Repopulate selectedBody from ctx when a feature is picked on the body a
@@ -891,7 +889,7 @@
 		const r = reframe;
 		if (!f || !r || !ctx.getBody(r.hostId)?.orientation) return;
 		reframe = null;
-		map.focusOnFeature(r.hostId, f.featureId, f.lat, f.lon, f.diameterM, f.name, r.mode, r.view);
+		map.focusOnFeature(r.hostId, f.featureId, f.lat, f.lon, f.diameterM, r.mode, r.view);
 	});
 
 	// Resolve `view.featureId` → `activeFeature`: the one path that frames the
@@ -935,7 +933,6 @@
 							found.lat,
 							found.lon,
 							found.diameterM,
-							found.name,
 							mode,
 							view
 						);
@@ -1277,7 +1274,7 @@
 						});
 						// The $effect above resolves activeFeature; kick the camera here
 						// so the click feels instant instead of waiting on it.
-						map.focusOnFeature(bodyId, fid, lat, lon, d, f.name, 'pan');
+						map.focusOnFeature(bodyId, fid, lat, lon, d, 'pan');
 					}}
 					onConstellationSelect={(slug, figure, name) => appState.setGroup(slug, name, { figure })}
 					onUserPromotedChange={(count) => (userPromotedCount = count)}

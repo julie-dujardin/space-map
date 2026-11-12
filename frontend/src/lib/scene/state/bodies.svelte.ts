@@ -66,13 +66,8 @@ export class BodyIndex {
 	 *  rather than a {@link MinorBucket}. */
 	spacecraftByParent = new Map<string, Map<string, PositionedBody>>();
 
-	/** The one synthetic surface-feature body currently focused, if any. Kept off
-	 *  `bodiesById`/`majorBodies` — the renderer re-seats it each frame — but
-	 *  resolvable via {@link getBody}. */
-	focusFeature: PositionedBody | null = null;
-
 	/** Extrasolar objects looked up for a page, by id and by any alias that led
-	 *  to one. Kept off `bodiesById` like {@link focusFeature}: they have a
+	 *  to one. Kept off `bodiesById`: they have a
 	 *  fixed place and nothing per frame. */
 	private readonly extrasolar = new Map<string, PositionedBody>();
 	/** Extrasolar objects that planets orbit now: they stay past the LRU. */
@@ -148,7 +143,6 @@ export class BodyIndex {
 	getBody(id: string, zone?: string): PositionedBody | undefined {
 		const major = this.bodiesById.get(id);
 		if (major) return major;
-		if (this.focusFeature?.data.id === id) return this.focusFeature;
 		const star =
 			this.extrasolar.get(id) ?? this.exoplanets.get(this.exoplanetAliases.get(id) ?? id);
 		if (star) return star;

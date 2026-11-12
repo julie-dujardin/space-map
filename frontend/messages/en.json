@@ -1360,7 +1360,6 @@
 	"north_system_desc": "Orbital plane",
 	"north_body_desc": "Body rotation axis",
 	"north_probe_desc": "Spacecraft up axis",
-	"north_feature_desc": "Local vertical",
 	"north_galactic": "Galactic",
 	"north_galactic_desc": "Milky Way north pole",
 	"layers_title": "Layers",

@@ -225,10 +225,6 @@ export interface PositionedBody {
 	 *  focus when the model loads; the probe north reference reads it. Cleared on
 	 *  unfocus. */
 	modelBaseFrame?: Quaternion;
-	/** Set on synthetic surface-feature focus bodies. The camera orbits `position`
-	 *  (the seat); everything data-facing (terrain, nomenclature, attribution)
-	 *  defers to `featureAnchor.hostId`. */
-	featureAnchor?: FeatureAnchor;
 	/** Set on an object of the extrasolar catalogue (see {@link StarAnchor}). */
 	extrasolar?: StarAnchor;
 	/** Set on a planet of the extrasolar catalogue (see {@link PlanetAnchor}). */
@@ -292,11 +288,6 @@ export function isExoplanet(body: PositionedBody): boolean {
 	return body.data.objectType === ObjectType.EXOPLANET;
 }
 
-/** A synthetic surface-feature focus target — see {@link FeatureAnchor}. */
-export function isSurfaceFeature(body: PositionedBody): boolean {
-	return body.data.objectType === ObjectType.SURFACE_FEATURE;
-}
-
 /**
  * ObjectType ordinals — matches ObjectType StrEnum order in Python.
  * Used as uint8 values in elements.bin.
@@ -328,9 +319,7 @@ export enum ObjectType {
 	EXOPLANET = 18
 }
 
-/** Identifies a {@link PositionedBody} synthesised as an orbitable surface
- *  feature (see {@link ObjectType.SURFACE_FEATURE}). The camera orbits the seat;
- *  the `host` supplies terrain, nomenclature and attribution. */
+/** A surface feature the camera moves over: where it stands on `hostId`. */
 export interface FeatureAnchor {
 	hostId: string;
 	featureId: number;

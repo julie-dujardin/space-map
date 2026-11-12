@@ -1,12 +1,5 @@
 import { Quaternion, type Vector3 } from 'three';
-import {
-	isExtrasolar,
-	isMajorBody,
-	isSurfaceFeature,
-	type PositionedBody,
-	type Unplaced
-} from '$lib/types/objects';
-import { seatFeatureBody } from './feature-seat';
+import { isExtrasolar, isMajorBody, type PositionedBody, type Unplaced } from '$lib/types/objects';
 import { kmToScene } from '$lib/math/units';
 import {
 	applyOrientation,
@@ -214,11 +207,8 @@ export class Placer {
 			return null;
 		}
 		this.settling.add(id);
-		const pos = isSurfaceFeature(body)
-			? this.seatFeature(body, jd)
-			: isExtrasolar(body) && !body.data.parentId
-				? fixedPlace(body)
-				: this.settle(body, jd);
+		const pos =
+			isExtrasolar(body) && !body.data.parentId ? fixedPlace(body) : this.settle(body, jd);
 		this.settling.delete(id);
 		if (jd === this.passJd) this.settled.set(id, body);
 		return pos;
@@ -230,15 +220,6 @@ export class Placer {
 	private under(aboveId: string): Unplaced {
 		const why = (this.ctx.getBody(aboveId) ?? this.bodyObjects.get(aboveId)?.body)?.unplaced;
 		return why === 'loading' || why === 'never' ? why : 'parent';
-	}
-
-	/** A surface feature sits on its host. */
-	private seatFeature(body: PositionedBody, jd: number): Vec3 | null {
-		const hostId = body.featureAnchor!.hostId;
-		const host = this.ctx.getBody(hostId);
-		const hostPos = host && this.place(host, jd);
-		if (!host || !hostPos) return setUnplaced(body, this.under(hostId));
-		return seatFeatureBody(body, host, hostPos, this.bodyObjects.get(hostId), jd);
 	}
 
 	private rideAt(jd: number): ReturnType<typeof planRideMarkers> {

@@ -1225,7 +1225,6 @@
 	"north_system_desc": "Płaszczyzna orbity",
 	"north_body_desc": "Oś obrotu ciała",
 	"north_probe_desc": "Oś pionowa statku kosmicznego",
-	"north_feature_desc": "Lokalny pion",
 	"north_galactic": "Galaktyczne",
 	"north_galactic_desc": "Biegun północny Drogi Mlecznej",
 	"layers_title": "Warstwy",

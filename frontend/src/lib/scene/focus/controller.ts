@@ -1,11 +1,5 @@
 import { Quaternion, Vector3, type Mesh, type PerspectiveCamera, type Scene } from 'three';
-import {
-	ObjectType,
-	isExoplanet,
-	isExtrasolar,
-	isSurfaceFeature,
-	type PositionedBody
-} from '$lib/types/objects';
+import { ObjectType, isExoplanet, isExtrasolar, type PositionedBody } from '$lib/types/objects';
 import { OrbitalSource } from '$lib/fetch/position/format';
 import { cartesianToSpherical, offsetFacing, sphericalToCartesian } from '$lib/math/spherical';
 import type { BodyObjects, Callbacks, CameraView } from '$lib/scene/types';
@@ -170,13 +164,10 @@ export class FocusController {
 		];
 	}
 
-	/** Whether the focus holds `id`'s mesh and model: the focused body, the
-	 *  host a feature defers to, or another body the focus upgraded. */
+	/** Whether the focus holds `id`'s mesh and model: the focused body, or
+	 *  another body the focus upgraded. */
 	holdsModel(id: string): boolean {
-		const focused = this.focusedBody;
-		const own =
-			focused && (isSurfaceFeature(focused) ? focused.featureAnchor!.hostId : focused.data.id);
-		return id === own || this.upgradeTargetIds.has(id);
+		return id === this.focusedBody?.data.id || this.upgradeTargetIds.has(id);
 	}
 
 	/**
@@ -384,21 +375,18 @@ export class FocusController {
 	setFocusTarget(body: PositionedBody, camPos?: Vec3): void {
 		const { ctx, bodyObjects, callbacks, focus, camera, systemData, loadTexture } = this.deps;
 		this.focusSets++;
-		// A surface feature renders nothing itself: the host draws the terrain.
 		// An extrasolar object takes only its halo and name: the starfield draws
 		// it. A planet of another star is a dot, a halo, a name and an orbit line.
-		const drawsItself = !isSurfaceFeature(body) && !isExtrasolar(body) && !isExoplanet(body);
-		if (!isSurfaceFeature(body)) this.promotion.ensureBodyObjects(body);
+		const drawsItself = !isExtrasolar(body) && !isExoplanet(body);
+		this.promotion.ensureBodyObjects(body);
 
 		// Unfocused bodies stay halo-only for cost.
 		const prev = this.focusedBody;
 		// Labels live on the landing body, not the probe — dispose only when it changes.
 		const prevNomBodyId = nomenclatureBodyId(prev, bodyObjects);
 		const newNomBodyId = nomenclatureBodyId(body, bodyObjects);
-		// A surface feature defers its model to its host; unload only when that changes.
-		const prevModelId =
-			prev && (isSurfaceFeature(prev) ? prev.featureAnchor!.hostId : prev.data.id);
-		const newModelId = isSurfaceFeature(body) ? body.featureAnchor!.hostId : body.data.id;
+		const prevModelId = prev?.data.id;
+		const newModelId = body.data.id;
 		const newTargetIds = this.syncUpgradeTargets(body);
 		// A target that stays upgraded keeps its model too (a probe's fit
 		// center focused, then unfocused back to the probe).
@@ -413,18 +401,10 @@ export class FocusController {
 
 		if (body.data.id !== prev?.data.id) this.pendingInitialView = null;
 		this.focusedBody = body;
-		// Retire the synthetic feature body so getBody stops resolving a stale id.
-		if (!isSurfaceFeature(body)) ctx.bodies.focusFeature = null;
-		// System/attribution follow the host (a crater has no ephemeris); camera
-		// still orbits the feature body.
-		const featureHost = isSurfaceFeature(body)
-			? ctx.getBody(body.featureAnchor!.hostId)
-			: undefined;
-		ctx.visibility.setFocused(featureHost ?? body);
+		ctx.visibility.setFocused(body);
 		callbacks.onFocusChange(body);
-		// The feature body has no detail bundle of its own; its host loads below.
 		if (drawsItself) loadTexture(body);
-		// Landed probe / surface feature: also load the host for its nomenclature/terrain.
+		// Landed probe: also load the host for its nomenclature/terrain.
 		if (newNomBodyId && newNomBodyId !== body.data.id) {
 			const landingBody = ctx.getBody(newNomBodyId);
 			if (landingBody) loadTexture(landingBody);
@@ -674,12 +654,6 @@ function framesInBodyAxes(b: PositionedBody): boolean {
  *  OSIRIS-REx — which needs its mesh/model to read the orbit against). */
 function upgradeTargets(focus: PositionedBody | undefined, ctx: ContextManager): PositionedBody[] {
 	if (!focus) return [];
-	// A surface feature renders no mesh; its host must so the camera has terrain
-	// to orbit (catches halo-only hosts like small moons/asteroids).
-	if (isSurfaceFeature(focus)) {
-		const host = ctx.getBody(focus.featureAnchor!.hostId);
-		return host && isMeshUpgradable(host) ? [host] : [];
-	}
 	const out: PositionedBody[] = [];
 	if (isMeshUpgradable(focus)) out.push(focus);
 	const wantsParent =

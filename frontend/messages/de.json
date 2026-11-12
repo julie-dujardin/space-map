@@ -1185,7 +1185,6 @@
 	"north_system_desc": "Bahnebene",
 	"north_body_desc": "Rotationsachse des Körpers",
 	"north_probe_desc": "Hochachse des Raumfahrzeugs",
-	"north_feature_desc": "Lokale Vertikale",
 	"north_galactic": "Galaktisch",
 	"north_galactic_desc": "Nordpol der Milchstraße",
 	"layers_title": "Ebenen",

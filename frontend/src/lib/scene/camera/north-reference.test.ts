@@ -22,7 +22,6 @@ function scene(bodies: PositionedBody[], planes: Record<string, number[]> = {}):
 	const byId = new Map(bodies.map((b) => [b.data.id, b]));
 	return {
 		getBody: (id: string) => byId.get(id),
-		bodies: { focusFeature: null },
 		exoplanets: { planeNormal: (id: string) => planes[id] ?? null }
 	} as unknown as ContextManager;
 }
@@ -78,35 +77,30 @@ describe('resolveNorthChoice', () => {
 
 describe('northRefHolds', () => {
 	it('keeps a step the focus has, drops one past the root', () => {
-		expect(northRefHolds('parent-2', lander, false, solar)).toBe(true);
-		expect(northRefHolds('parent-2', moon, false, solar)).toBe(false);
-		expect(northRefHolds('parent', moon, false, solar)).toBe(true);
+		expect(northRefHolds('parent-2', lander, solar)).toBe(true);
+		expect(northRefHolds('parent-2', moon, solar)).toBe(false);
+		expect(northRefHolds('parent', moon, solar)).toBe(true);
 	});
 
 	it('gives Earth no parent: its barycentre stands for Earth itself', () => {
-		expect(northRefHolds('parent', earth, false, solar)).toBe(false);
+		expect(northRefHolds('parent', earth, solar)).toBe(false);
 	});
 
 	it('ends on a parent chain that loops, however far up the URL asks', () => {
 		const a = body('s-1', 's-2', true);
 		const looped = scene([a, body('s-2', 's-1', true)]);
-		expect(northRefHolds('parent', a, false, looped)).toBe(true);
-		expect(northRefHolds('parent-99999999999', a, false, looped)).toBe(false);
+		expect(northRefHolds('parent', a, looped)).toBe(true);
+		expect(northRefHolds('parent-99999999999', a, looped)).toBe(false);
 	});
 
 	it('leaves a step open while an ancestor on the way is not loaded', () => {
 		const partial = scene([moon]);
-		expect(northRefHolds('parent', moon, false, partial)).toBeNull();
-		expect(northRefHolds('parent-5', moon, false, partial)).toBeNull();
+		expect(northRefHolds('parent', moon, partial)).toBeNull();
+		expect(northRefHolds('parent-5', moon, partial)).toBeNull();
 	});
 
 	it('ends the chain at a star with no parent', () => {
 		const star = body('x-7', '', false);
-		expect(northRefHolds('parent', star, false, scene([star]))).toBe(false);
-	});
-
-	it('keeps a feature ref only with a feature in view', () => {
-		expect(northRefHolds('feature', moon, true, solar)).toBe(true);
-		expect(northRefHolds('feature', moon, false, solar)).toBe(false);
+		expect(northRefHolds('parent', star, scene([star]))).toBe(false);
 	});
 });

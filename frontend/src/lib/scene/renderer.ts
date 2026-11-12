@@ -41,12 +41,11 @@ import {
 } from './framing';
 import {
 	effectiveRadiusKm,
-	isSurfaceFeature,
 	ObjectType,
 	type FeatureAnchor,
 	type PositionedBody
 } from '$lib/types/objects';
-import { makeFeatureBody } from './focus/feature-focus';
+import { featureSeat } from './position/feature-seat';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import type { SimClock } from '$lib/scene/state/clock.svelte';
 import { AU_SCALE, kmToScene, sceneToKm } from '$lib/math/units';
@@ -170,12 +169,7 @@ import {
 	type InitialView
 } from './types';
 import type { Vec3 } from './animation/math';
-import {
-	type FocusState,
-	FOCUS_DURATION_MS,
-	prepareFlyToCamera,
-	stepFocusAnimation
-} from './animation/focus';
+import { type FocusState, FOCUS_DURATION_MS, stepFocusAnimation } from './animation/focus';
 import { FocusController } from './focus/controller';
 import {
 	ballVantage,
@@ -246,6 +240,8 @@ const SUN_PROXY_FAR_FRACTION = 0.9;
 const _sunLiftDir = new Vector3();
 /** Scratch for {@link SceneRenderer.motionGround}. */
 const _lookDir = new Vector3();
+/** Scratch for {@link SceneRenderer.focusOnFeature}. */
+const _featureUp = new Vector3();
 /** Scratch for {@link SceneRenderer.standingHeight}. */
 const _lookUp = new Vector3();
 
@@ -706,9 +702,7 @@ export class SceneRenderer {
 			this.invalidate();
 		});
 
-		this.cameraUp = new CameraUpController(this.camera, this.controls, ctx, (id) =>
-			this.isLanded(id)
-		);
+		this.cameraUp = new CameraUpController(this.camera, this.controls, ctx);
 
 		this.systemData = new SystemDataLoader(
 			this.scene,
@@ -1771,8 +1765,7 @@ export class SceneRenderer {
 		if (!focused) return undefined;
 		const parentId = collisionParentId(focused.data.parentId);
 		const parent = parentId ? this.ctx.getBody(parentId) : undefined;
-		const seated =
-			Boolean(this.bodyObjects.get(focused.data.id)?.isLanded) || isSurfaceFeature(focused);
+		const seated = Boolean(this.bodyObjects.get(focused.data.id)?.isLanded);
 		return { focused, parent, seated };
 	}
 
@@ -2653,7 +2646,6 @@ export class SceneRenderer {
 
 	/** The body a feature or a landed craft stands on. */
 	private standingOn(focused: PositionedBody): PositionedBody | undefined {
-		if (isSurfaceFeature(focused)) return this.ctx.getBody(focused.featureAnchor!.hostId);
 		if (!this.bodyObjects.get(focused.data.id)?.isLanded) return undefined;
 		const parentId = collisionParentId(focused.data.parentId);
 		return parentId ? this.ctx.getBody(parentId) : undefined;
@@ -2797,8 +2789,7 @@ export class SceneRenderer {
 	private focusedSeatConfigKey(): string | null {
 		const focused = this.focusController.current;
 		if (!focused) return null;
-		if (focused.data.objectType !== ObjectType.SPACECRAFT && !isSurfaceFeature(focused))
-			return null;
+		if (focused.data.objectType !== ObjectType.SPACECRAFT) return null;
 		const parentId = collisionParentId(focused.data.parentId);
 		const bo = parentId ? this.bodyObjects.get(parentId) : undefined;
 		if (!bo) return null;
@@ -3021,16 +3012,16 @@ export class SceneRenderer {
 	}
 
 	/**
-	 * Focus a surface feature as a real orbitable body seated on its host.
-	 * `mode`: `pan` re-aims in place (label click, feature already on screen);
-	 * `frame` moves to a `zoom`-unit standoff, arcing if already on this host
-	 * or flying in otherwise; `snap` settles instantly for URL deep-links,
-	 * with `view` overriding the standoff to restore an exact shared camera.
-	 * `updatePositions` re-seats the seat each frame. Returns duration (ms).
+	 * Move the camera over a surface feature of `anchor.hostId`. The host
+	 * stays the body the camera orbits; the feature is only where it looks.
+	 * `mode`: `pan` swings over it at the camera's distance (a label click,
+	 * the feature already on screen); `frame` goes to a `zoom`-unit standoff
+	 * above it, arcing round the host if already on it, flying in otherwise;
+	 * `snap` settles there at once for URL deep links, with `view` restoring
+	 * an exact shared camera instead. Returns the duration in ms.
 	 */
 	focusOnFeature(
 		anchor: FeatureAnchor,
-		name: string | null,
 		zoom: number,
 		mode: 'pan' | 'frame' | 'snap' = 'frame',
 		view?: CameraView | null
@@ -3047,107 +3038,39 @@ export class SceneRenderer {
 		// reapplyInitialViewIfPending) would otherwise re-frame the host and
 		// clobber a deep link's feature snap.
 		this.focusController.clearPendingInitialView();
-
-		// Capture whether we're already orbiting this host before the focus switch.
-		const alreadyOnHost =
-			nomenclatureBodyId(this.focusController.current, this.bodyObjects) === anchor.hostId;
-
-		const fb = makeFeatureBody(anchor, name);
-		this.ctx.bodies.focusFeature = fb;
-		// Tag the feature's label active now so the seat lands on its (ray-cast)
-		// surface point from the first frame. Otherwise the async texture/model
-		// reload re-tags it a few frames later, jerking the pivot from the ellipsoid
-		// fallback onto the real surface — very visible on shape models.
+		// Tag the feature's label active first, so the seat below is the
+		// labelled point once the label is placed.
 		const hostBo = this.bodyObjects.get(host.data.id);
 		this.selectedFeatureId = anchor.featureId;
 		if (hostBo) setActiveFeatureLabel(hostBo, anchor.featureId);
-		const seat = this.whereBody(fb);
-		if (!seat) return 0;
-		const quat = this.focusController.focusedBodyQuat(fb);
-
-		if (mode === 'pan') {
-			// No camPos → pure re-pivot: the camera keeps its world position and pans
-			// to re-centre on the seat. That destination is known now and no later
-			// settle emits it (the camera never "moves"), so sync the URL here —
-			// mirrors focusOnBody's emit-before-dispatch.
-			const s = cartesianToSpherical(this.focusController.cameraTruePos(), seat, quat);
-			this.callbacks.onCameraPosition?.(s.latitude, s.longitude, s.distance);
-			this.focusController.setFocusTarget(fb);
-			return this.focus.focusDurationMs;
-		}
-
-		// Camera along the local zenith above the seat; fall back to scene-up at a
-		// pole where the zenith is degenerate.
-		let zx = seat[0] - hostPos[0];
-		let zy = seat[1] - hostPos[1];
-		let zz = seat[2] - hostPos[2];
-		const len = Math.hypot(zx, zy, zz);
-		if (len > 1e-9) {
-			zx /= len;
-			zy /= len;
-			zz /= len;
-		} else {
-			zx = 0;
-			zy = 1;
-			zz = 0;
-		}
-		const camPos: Vec3 =
-			mode === 'snap' && view
-				? sphericalToCartesian(seat, view.latitude, view.longitude, view.zoom, quat)
-				: [seat[0] + zx * zoom, seat[1] + zy * zoom, seat[2] + zz * zoom];
-
-		// Emit the destination camera state before any dispatch (see focusOnBody)
-		// so at= reflects the feature framing immediately.
-		const s = cartesianToSpherical(camPos, seat, quat);
-		this.callbacks.onCameraPosition?.(s.latitude, s.longitude, s.distance);
-
-		if (mode === 'snap') {
-			this.focusController.setFocusTarget(fb, camPos);
-			// Deterministic settle on the seat (mirrors settleOnBodyInstant) so a
-			// URL deep-link opens framed on the feature instead of racing the fly.
-			const f = this.focus;
-			f.focusTruePos = [...seat];
-			f.focusOriginWorld = [...seat];
-			f.focusTargetWorld = [...seat];
-			f.focusStartTime = -FOCUS_DURATION_MS;
-			f.camOriginWorld = null;
-			f.camTargetWorld = null;
-			f.camTargetOffset = null;
-			f.camOriginOffset = null;
-			f.flyQ0 = null;
-			f.orbitFly = false;
-			f.arcOrbit = false;
-			f.cameraStaysOnBody = false;
-			this.repositionAll();
-			this.pointClouds.rebuildBasis();
-			this.camera.position.set(camPos[0] - seat[0], camPos[1] - seat[1], camPos[2] - seat[2]);
-			this.controls.update();
+		if (mode === 'snap' && view) {
+			this.focusController.snapToBody(host.data.id, view.latitude, view.longitude, view.zoom);
 			return 0;
 		}
 
-		if (alreadyOnHost) {
-			// Orbit around at constant radius. Reorigin onto the seat while holding
-			// the camera's world position (image unchanged — a pure coordinate
-			// re-base), then arc from there to the framing standoff.
-			const camWorld = this.focusController.cameraTruePos();
-			this.focusController.setFocusTarget(fb);
-			this.focus.focusTruePos = [...seat];
-			this.camera.position.set(camWorld[0] - seat[0], camWorld[1] - seat[1], camWorld[2] - seat[2]);
-			this.repositionAll();
-			this.pointClouds.rebuildBasis();
-			prepareFlyToCamera(
-				this.focus,
-				this.camera,
-				camWorld,
-				camPos,
-				sceneSettings().resolvedReducedMotion
-			);
-		} else {
-			// Different object: approach fly, orbit mode so the host stays centred.
-			this.focusController.setFocusTarget(fb, camPos);
-			this.focus.orbitFly = true;
+		const seat = featureSeat(anchor, host, hostPos, hostBo, this.sceneJd);
+		const up = _featureUp.set(seat[0] - hostPos[0], seat[1] - hostPos[1], seat[2] - hostPos[2]);
+		const ground = up.length();
+		// At the centre there is no above: look down the scene's up instead.
+		if (ground > 1e-12) up.divideScalar(ground);
+		else up.set(0, 1, 0);
+		const onHost = this.focusController.current?.data.id === host.data.id;
+		const camWorld = this.focusController.cameraTruePos();
+		const distance =
+			mode === 'pan' && onHost
+				? Math.hypot(camWorld[0] - hostPos[0], camWorld[1] - hostPos[1], camWorld[2] - hostPos[2])
+				: ground + zoom;
+		const camPos: Vec3 = [
+			hostPos[0] + up.x * distance,
+			hostPos[1] + up.y * distance,
+			hostPos[2] + up.z * distance
+		];
+		const s = cartesianToSpherical(camPos, hostPos, this.focusController.focusedBodyQuat(host));
+		if (mode === 'snap') {
+			this.focusController.snapToBody(host.data.id, s.latitude, s.longitude, s.distance);
+			return 0;
 		}
-		return this.focus.focusDurationMs;
+		return this.focusController.focusOnBody(host.data.id, s.distance, s.latitude, s.longitude);
 	}
 
 	/** Focused body when the NDC ray hits its overlay model, else null. Cast in
@@ -3191,10 +3114,7 @@ export class SceneRenderer {
 			const centerId = this.travelFocus?.centerId;
 			return withModel(centerId ? this.bodyObjects.get(centerId) : undefined);
 		}
-		const modelId = isSurfaceFeature(focusBody)
-			? focusBody.featureAnchor!.hostId
-			: focusBody.data.id;
-		const bo = this.bodyObjects.get(modelId);
+		const bo = this.bodyObjects.get(focusBody.data.id);
 		const own = withModel(bo);
 		if (own) return own;
 		if (focusBody.data.orbitalSource === OrbitalSource.SPICE_PROBE && !bo?.isLanded) {
