@@ -1,11 +1,5 @@
 import { MathUtils, Matrix4, Quaternion, Vector3, type PerspectiveCamera } from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import {
-	DOUBLE_TAP_GAP_MS,
-	TapZoomGesture,
-	type TapZoomAction,
-	type TouchSample
-} from './tap-zoom';
 import { TwoFingerGesture, type Point } from './two-finger';
 
 /** Steepest tilt off the vertical. Short of the horizon, so the ground still
@@ -45,16 +39,6 @@ const _was = new Quaternion();
 const _pivotGround = new Vector3();
 const _look = new Matrix4();
 
-/** Time constant of a tap's zoom, in ms: most of it is done in three. */
-const TAP_ZOOM_MS = 70;
-
-/** Log of the height still to zoom under which a tap's zoom is done. */
-const TAP_ZOOM_DONE = 1e-3;
-
-/** How far a finger goes down the screen, in CSS pixels, to halve the height
- *  in a double tap's drag. */
-const DRAG_ZOOM_HALVING_PX = 150;
-
 /** Turn still to come, in radians, under which a glide is done. */
 const GLIDE_DONE = 1e-5;
 
@@ -86,11 +70,6 @@ interface PointerHandlers {
 	_handleTouchMoveDollyPan(event: TouchPoint): void;
 	_handleMouseWheel(event: WheelEvent): void;
 }
-
-/** The dolly three keeps off its typings, applied at its next update. */
-interface DollyState {
-	_scale: number;
-}
 const orbitHandlers = OrbitControls.prototype as unknown as PointerHandlers;
 
 /** The touch state three keeps off its typings. */
@@ -108,10 +87,6 @@ interface TouchState {
  * while they pinch and pan. With damping on, a tilt or a turn glides on
  * after the gesture, as the orbit does. The wheel keeps the ground under the
  * pointer where it is.
- *
- * Taps zoom as a map app's do, by halving or doubling the height over the
- * ground: a double tap in, a two-finger tap out, and a double tap that stays
- * down zooms with the finger.
  *
  * The orbit underneath is unchanged, so a left drag and the wheel keep their
  * feel and carry the tilt along. Whatever else places the camera (a focus
@@ -152,20 +127,9 @@ export class LookOrbitControls extends OrbitControls {
 	private dragX = 0;
 	private dragY = 0;
 	private readonly twoFinger = new TwoFingerGesture();
-	private readonly taps = new TapZoomGesture();
 	/** Turn a gesture asked for that the damping has not given yet, in radians. */
 	private glideHeading = 0;
 	private glideTilt = 0;
-	/** Log of the factor a tap's zoom has still to take the height by. */
-	private zoomLeft = 0;
-	/** The pointer the zoom keeps its ground under, if it found ground there. */
-	private zoomX = 0;
-	private zoomY = 0;
-	private zoomAnchored = false;
-	private readonly zoomAnchor = new Vector3();
-	/** A double tap's drag is zooming. */
-	private zoomDragging = false;
-	private lastUpdateMs = 0;
 
 	constructor(
 		camera: PerspectiveCamera,
@@ -179,9 +143,7 @@ export class LookOrbitControls extends OrbitControls {
 		 *  ground, in radii of it. */
 		private readonly standingHeight: () => number | null = () => null,
 		/** The turn settled where nobody's gesture put it: the view to report. */
-		private readonly onTurnSettled: () => void = () => {},
-		/** Whether a tap may zoom now: nothing else is moving the camera. */
-		private readonly tapZoomAllowed: () => boolean = () => true
+		private readonly onTurnSettled: () => void = () => {}
 	) {
 		super(camera, canvas);
 		this.mouseButtons.MIDDLE = null;
@@ -189,22 +151,7 @@ export class LookOrbitControls extends OrbitControls {
 		canvas.addEventListener('pointerdown', this.onLookDown);
 		// Middle-button autoscroll and paste ride on mousedown.
 		canvas.addEventListener('mousedown', this.blockMiddle);
-		canvas.addEventListener('pointerdown', this.onTapDown);
-		const doc = canvas.ownerDocument;
-		doc.addEventListener('pointermove', this.onTapMove);
-		doc.addEventListener('pointerup', this.onTapUp);
-		doc.addEventListener('pointercancel', this.onTapCancel);
-	}
-
-	/** Whether this pointer's touch was a zoom, not a tap on what it hit. */
-	claimsTap(pointerId: number): boolean {
-		return this.taps.claims(pointerId);
-	}
-
-	/** How long a tap on what it hit should wait, in ms, for a second tap that
-	 *  would make the pair a zoom: a touch's, while taps zoom. */
-	tapPickDelay(event: PointerEvent): number {
-		return event.pointerType !== 'mouse' && this.tapsAllowed() ? DOUBLE_TAP_GAP_MS : 0;
+		canvas.addEventListener('pointerdown', this.onCatch);
 	}
 
 	/** Where the orbit holds the camera, under any tilt. */
@@ -276,11 +223,10 @@ export class LookOrbitControls extends OrbitControls {
 		this.stopGlide();
 	}
 
-	/** Drop the turn and the zoom still to come. */
+	/** Drop the turn still to come. */
 	private stopGlide(): void {
 		this.glideHeading = 0;
 		this.glideTilt = 0;
-		this.zoomLeft = 0;
 	}
 
 	/** Whether the target has ground the view could turn over: a drawn
@@ -345,53 +291,24 @@ export class LookOrbitControls extends OrbitControls {
 	}
 
 	override update(deltaTime: number | null = null): boolean {
-		const now = performance.now();
-		const frameMs = Math.min(now - this.lastUpdateMs, 100);
-		this.lastUpdateMs = now;
-		// Read as truthy: three's constructor updates before these fields are set.
-		const zooming = !!this.zoomLeft;
-		if (zooming) this.stepZoom(frameMs);
 		const changed = this.step(deltaTime);
-		if (zooming && this.zoomAnchored) this.holdUnder(this.zoomX, this.zoomY, this.zoomAnchor);
-		if (zooming && this.zoomLeft === 0) this.dispatchEvent({ type: 'end' });
 		this.glide();
 		return changed;
-	}
-
-	/** Take a share of the zoom left: all of it without damping. */
-	private stepZoom(frameMs: number): void {
-		const share = this.enableDamping
-			? Math.max(1 - Math.exp(-frameMs / TAP_ZOOM_MS), this.dampingFactor)
-			: 1;
-		let step = this.zoomLeft * share;
-		if (Math.abs(this.zoomLeft - step) < TAP_ZOOM_DONE) step = this.zoomLeft;
-		this.zoomLeft -= step;
-		this.scaleHeight(Math.exp(step));
 	}
 
 	/** Give a share of the turn a gesture asked for, as three's damping gives
 	 *  the orbit's. */
 	private glide(): void {
+		// Read as truthy: three's constructor updates before these fields are set.
 		if (!this.glideHeading && !this.glideTilt) return;
 		const f = this.dampingFactor;
 		this.turnNow(this.glideHeading * f, this.glideTilt * f);
 		this.glideHeading *= 1 - f;
 		this.glideTilt *= 1 - f;
 		if (Math.abs(this.glideHeading) < GLIDE_DONE && Math.abs(this.glideTilt) < GLIDE_DONE) {
-			this.glideHeading = 0;
-			this.glideTilt = 0;
+			this.stopGlide();
 			this.onTurnSettled();
 		}
-	}
-
-	/** Scale the camera's height over the ground below by `factor` at the next
-	 *  update: a zoom that never reaches the ground. */
-	private scaleHeight(factor: number): void {
-		_n.subVectors(this.orbitPosition, this.target);
-		const range = _n.length();
-		if (!(range > 0)) return;
-		const ground = Math.min(this.surfaceRadius(_n.divideScalar(range)) ?? 0, range);
-		(this as unknown as DollyState)._scale *= (ground + (range - ground) * factor) / range;
 	}
 
 	private step(deltaTime: number | null): boolean {
@@ -443,11 +360,7 @@ export class LookOrbitControls extends OrbitControls {
 		super.dispose();
 		this.canvas.removeEventListener('pointerdown', this.onLookDown);
 		this.canvas.removeEventListener('mousedown', this.blockMiddle);
-		this.canvas.removeEventListener('pointerdown', this.onTapDown);
-		const doc = this.canvas.ownerDocument;
-		doc.removeEventListener('pointermove', this.onTapMove);
-		doc.removeEventListener('pointerup', this.onTapUp);
-		doc.removeEventListener('pointercancel', this.onTapCancel);
+		this.canvas.removeEventListener('pointerdown', this.onCatch);
 		this.endLookDrag();
 	}
 
@@ -464,8 +377,6 @@ export class LookOrbitControls extends OrbitControls {
 	}
 
 	_handleTouchMoveRotate(event: TouchPoint): void {
-		// A double tap's second touch zooms; it does not turn the orbit.
-		if (this.taps.holds(event.pointerId)) return;
 		orbitHandlers._handleTouchMoveRotate.call(this, this.rotatedTouch(event));
 	}
 
@@ -499,97 +410,14 @@ export class LookOrbitControls extends OrbitControls {
 	}
 
 	_handleMouseWheel(event: WheelEvent): void {
-		const anchored = this.anchorAt(event.clientX, event.clientY, _anchor);
+		// Keeping the ground put swings the orbit, which a host may have barred;
+		// and ground seen at a graze would swing it far for a small zoom.
+		const anchored =
+			this.enableRotate &&
+			this.groundAt(event.clientX, event.clientY, _anchor) &&
+			-_ray.dot(_hit.copy(_anchor).normalize()) > SIN_MIN_ANCHOR_ELEVATION;
 		orbitHandlers._handleMouseWheel.call(this, event);
 		if (anchored) this.holdUnder(event.clientX, event.clientY, _anchor);
-	}
-
-	/** The ground under a pointer that a zoom may keep there. Keeping it put
-	 *  swings the orbit, which a host may have barred; and ground seen at a
-	 *  graze would swing it far for a small zoom. */
-	private anchorAt(x: number, y: number, out: Vector3): boolean {
-		return (
-			this.enableRotate &&
-			this.groundAt(x, y, out) &&
-			-_ray.dot(_hit.copy(out).normalize()) > SIN_MIN_ANCHOR_ELEVATION
-		);
-	}
-
-	/** Zoom the height over the ground by `factor`, keeping the ground under
-	 *  the pointer: over a few frames with damping, at once without. */
-	private zoomTo(factor: number, x: number, y: number): void {
-		this.dispatchEvent({ type: 'start' });
-		this.zoomLeft += Math.log(factor);
-		this.zoomX = x;
-		this.zoomY = y;
-		this.zoomAnchored = this.anchorAt(x, y, this.zoomAnchor);
-		this.lastUpdateMs = performance.now();
-		if (!this.enableDamping) this.update();
-	}
-
-	private tapsAllowed(): boolean {
-		return this.enabled && this.enableZoom && this.tapZoomAllowed();
-	}
-
-	private readonly onTapDown = (event: PointerEvent): void => {
-		// A new touch or click catches the camera: what was gliding stops.
-		if (this.glideHeading !== 0 || this.glideTilt !== 0) this.onTurnSettled();
-		this.glideHeading = 0;
-		this.glideTilt = 0;
-		if (this.zoomLeft !== 0) {
-			this.zoomLeft = 0;
-			this.dispatchEvent({ type: 'end' });
-		}
-		if (event.pointerType === 'mouse') return;
-		if (!this.tapsAllowed()) {
-			this.taps.reset();
-			return;
-		}
-		this.onTap(this.taps.down(tapSample(event)));
-	};
-
-	private readonly onTapMove = (event: PointerEvent): void => {
-		if (event.pointerType !== 'mouse') this.onTap(this.taps.move(tapSample(event)));
-	};
-
-	private readonly onTapUp = (event: PointerEvent): void => {
-		if (event.pointerType !== 'mouse') this.onTap(this.taps.up(tapSample(event)));
-	};
-
-	private readonly onTapCancel = (event: PointerEvent): void => {
-		if (event.pointerType !== 'mouse') this.onTap(this.taps.cancel(event.pointerId));
-	};
-
-	private onTap(action: TapZoomAction | null): void {
-		if (!action) return;
-		switch (action.type) {
-			case 'in':
-				if (this.tapsAllowed()) this.zoomTo(0.5, action.x, action.y);
-				return;
-			case 'out':
-				if (this.tapsAllowed()) this.zoomTo(2, action.x, action.y);
-				return;
-			case 'drag-start':
-				if (!this.tapsAllowed()) return;
-				this.zoomDragging = true;
-				this.zoomX = action.x;
-				this.zoomY = action.y;
-				this.zoomAnchored = this.anchorAt(action.x, action.y, this.zoomAnchor);
-				this.dispatchEvent({ type: 'start' });
-				return;
-			case 'drag':
-				if (!this.zoomDragging || !this.tapsAllowed()) return;
-				// Down the screen is in, as the finger pulls the ground closer.
-				this.scaleHeight(Math.pow(2, -action.down / DRAG_ZOOM_HALVING_PX));
-				this.step(null);
-				if (this.zoomAnchored) this.holdUnder(this.zoomX, this.zoomY, this.zoomAnchor);
-				return;
-			case 'drag-end':
-				if (!this.zoomDragging) return;
-				this.zoomDragging = false;
-				this.dispatchEvent({ type: 'end' });
-				return;
-		}
 	}
 
 	/** The ground under a pointer, from the target, on the sphere through the
@@ -811,6 +639,13 @@ export class LookOrbitControls extends OrbitControls {
 		this.placedQuat.copy(cam.quaternion);
 	}
 
+	/** A new touch or click catches the camera: what was gliding stops. */
+	private readonly onCatch = (): void => {
+		if (!this.glideHeading && !this.glideTilt) return;
+		this.stopGlide();
+		this.onTurnSettled();
+	};
+
 	private readonly blockMiddle = (event: MouseEvent): void => {
 		if (event.button === 1) event.preventDefault();
 	};
@@ -855,8 +690,4 @@ export class LookOrbitControls extends OrbitControls {
 		doc.removeEventListener('pointerup', this.onLookUp);
 		doc.removeEventListener('pointercancel', this.onLookUp);
 	}
-}
-
-function tapSample(event: PointerEvent): TouchSample {
-	return { id: event.pointerId, x: event.clientX, y: event.clientY, t: event.timeStamp };
 }

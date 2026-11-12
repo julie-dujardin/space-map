@@ -88,17 +88,8 @@ export class PointerInteraction {
 		/** The stars as the pick pass draws them; empty while none draw. */
 		private readonly getStars: () => PickDraw[],
 		/** Takes a star's pick-id; false when it names no star. */
-		private readonly onStarPick: (pickId: number) => boolean,
-		/** Whether the camera took this pointer's tap as a zoom: a double
-		 *  tap's second touch picks nothing. */
-		private readonly tapClaimed: (pointerId: number) => boolean = () => false,
-		/** How long a tap's pick waits, in ms, for a second tap that would make
-		 *  the pair a zoom instead. */
-		private readonly tapPickDelay: (e: PointerEvent) => number = () => 0
+		private readonly onStarPick: (pickId: number) => boolean
 	) {}
-
-	/** A tap's pick, waiting out the time a second tap could come. */
-	private pendingPick: ReturnType<typeof setTimeout> | null = null;
 
 	attach(): void {
 		this.canvas.addEventListener('pointerdown', this.onDown);
@@ -112,17 +103,9 @@ export class PointerInteraction {
 		this.canvas.removeEventListener('pointermove', this.onMove);
 		this.canvas.removeEventListener('pointerup', this.onUp);
 		this.canvas.removeEventListener('pointercancel', this.onCancel);
-		this.dropPendingPick();
-	}
-
-	private dropPendingPick(): void {
-		if (this.pendingPick !== null) clearTimeout(this.pendingPick);
-		this.pendingPick = null;
 	}
 
 	private onDown = (e: PointerEvent): void => {
-		// The second tap of a double tap: the pair was a zoom, not a pick.
-		if (this.tapClaimed(e.pointerId)) this.dropPendingPick();
 		// The first pointer starts a gesture, and drops any id whose up never came.
 		if (e.isPrimary) {
 			this.down.clear();
@@ -148,21 +131,6 @@ export class PointerInteraction {
 	private onUp = (e: PointerEvent): void => {
 		const known = this.down.delete(e.pointerId);
 		if (!known || this.gesture || movedTooFar(e, this.downPos)) return;
-		if (this.tapClaimed(e.pointerId)) return;
-		// Picked now, from what is under the finger now; taken up once no
-		// second tap has come to make this a double tap.
-		const wait = this.tapPickDelay(e);
-		const deliver = (pick: () => void): void => {
-			if (wait <= 0) {
-				pick();
-				return;
-			}
-			this.dropPendingPick();
-			this.pendingPick = setTimeout(() => {
-				this.pendingPick = null;
-				pick();
-			}, wait);
-		};
 
 		const rect = this.canvas.getBoundingClientRect();
 		this.pointer.set(
@@ -176,7 +144,7 @@ export class PointerInteraction {
 		// far-off dots behind it).
 		const modelBody = this.modelPick(this.pointer.x, this.pointer.y);
 		if (modelBody) {
-			deliver(() => this.onPick(modelBody));
+			this.onPick(modelBody);
 			return;
 		}
 
@@ -195,8 +163,7 @@ export class PointerInteraction {
 		// nearest to the cursor wins, depth breaking ties, so a clicked moon
 		// still outranks an asteroid dot drifting behind it.
 		const dots: DotPick = {
-			// Its own copy: a star pick that waits reads it after the next tap.
-			pointer: this.pointer.clone(),
+			pointer: this.pointer,
 			camera: this.camera,
 			ctx: this.ctx,
 			focusTruePos: this.focus.focusTruePos,
@@ -214,11 +181,10 @@ export class PointerInteraction {
 
 		const bestBody = pointHit?.body ?? meshBody;
 		if (bestBody) {
-			deliver(() => this.onPick(bestBody));
+			this.onPick(bestBody);
 			return;
 		}
-		// Stars resolve late anyway (their records load): the search waits too.
-		deliver(() => this.pickStar(e, rect, dots));
+		this.pickStar(e, rect, dots);
 	};
 
 	/** The stars are behind everything: they pick only where nothing of the

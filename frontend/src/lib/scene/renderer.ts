@@ -676,8 +676,7 @@ export class SceneRenderer {
 			canvas,
 			this.lookSurfaceRadius,
 			this.standingHeight,
-			() => (this.pendingUrlWrite = true),
-			() => !this.holdingCamera && !this.flying(performance.now())
+			() => (this.pendingUrlWrite = true)
 		);
 		this.controls.enableDamping = true;
 		this.orbitDampingFactor = orbitDamping(sceneSettings().resolvedReducedMotion);
@@ -849,9 +848,7 @@ export class SceneRenderer {
 				this.ctx.visibility.planetarySystemShare() === 0
 					? this.starfield.pickDraws()
 					: [],
-			(pickId) => this.pickStar(pickId),
-			(pointerId) => this.controls.claimsTap(pointerId),
-			(e) => this.controls.tapPickDelay(e)
+			(pickId) => this.pickStar(pickId)
 		);
 		this.pointerInteraction.attach();
 
@@ -2598,17 +2595,13 @@ export class SceneRenderer {
 		return true;
 	}
 
-	/** Whether a focus change is flying the camera. */
-	private flying(nowMs: number): boolean {
-		return nowMs - this.focus.focusStartTime < this.focus.focusDurationMs;
-	}
-
 	private shouldRender(nowMs: number): boolean {
 		// A held camera moves between frames for reasons the frame flags cannot
 		// see, and the host's next pose arrives from a frame that is drawn.
 		if (this.holdingCamera) return true;
+		const flying = nowMs - this.focus.focusStartTime < this.focus.focusDurationMs;
 		const loading =
-			this.flying(nowMs) ||
+			flying ||
 			this.focusKey() !== this.lastRenderedFocusKey ||
 			this.ctx.bodies.minorStreaming ||
 			this.pointClouds.hasPendingSceneAdds() ||
