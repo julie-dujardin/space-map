@@ -65,6 +65,7 @@ function scene(objectType: ObjectType, starPoint = false) {
 		)
 	} as unknown as BodyObjects;
 	const fades = new VisibilityThresholdFades();
+	let focused: string | undefined;
 	const ctx = {
 		layers: { isVisible: () => true },
 		visibility: {
@@ -74,6 +75,7 @@ function scene(objectType: ObjectType, starPoint = false) {
 			systemShares: new Map(),
 			systemCentres: new Map(),
 			isPinned: () => false,
+			inFocus: (id: string) => id === focused,
 			planetarySystemShare: () => 0,
 			focusedSystemId: null,
 			getPlanetVisibility: () => VISIBILITY.FULL,
@@ -97,6 +99,7 @@ function scene(objectType: ObjectType, starPoint = false) {
 			pos[1] = offset[1];
 			pos[2] = -500 / radiusPx + offset[2];
 			fades.beginFrame(dtMs);
+			focused = focusedId;
 			updateBodyVisibility(
 				new Map([['body', bo]]),
 				camera,

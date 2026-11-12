@@ -393,6 +393,9 @@ export class SpaceMap {
 	/** @internal What the renderer last settled on.
 	 *  `.raw`: the renderer mutates position/satrec internals every frame. */
 	focusedBody = $state.raw<PositionedBody | undefined>();
+	/** @internal The body the camera orbits: for a landed probe, the body it
+	 *  stands on. A focused point keeps the last one. */
+	cameraBody = $state.raw<PositionedBody | undefined>();
 	/** A move onto a surface feature is under way: the focus it hands the
 	 *  host is that move's. */
 	private movingToFeature = false;
@@ -882,10 +885,11 @@ export class SpaceMap {
 				notify: (notice) => this.emit('notice', notice),
 				dismiss: (topic) => this.emit('noticedismiss', topic)
 			},
-			onFocusChange: (body) => {
+			onFocusChange: (body, orbited) => {
 				const initial = this.initialFocusPending;
 				this.initialFocusPending = false;
 				this.focusedBody = body;
+				this.cameraBody = orbited;
 				const feature = this.movingToFeature;
 				this.emit('focuschange', { body: this.getFocusedBody(), initial, feature });
 			},
@@ -894,7 +898,7 @@ export class SpaceMap {
 			},
 			onIdle: () => this.emit('idle'),
 			onCameraPosition: (latitude, longitude, zoom, look = LEVEL_LOOK) => {
-				const body = this.renderer?.getFocusedBody()?.data.id;
+				const body = this.cameraBody?.data.id;
 				// Nothing focused means nothing to measure the camera against, and
 				// the renderer reports one such settle while the scene is still empty.
 				if (body === undefined) return;
@@ -1230,7 +1234,7 @@ export class SpaceMap {
 	 *  is focused. */
 	getCamera(): CameraState | null {
 		const renderer = this.renderer;
-		const body = renderer?.getFocusedBody()?.data.id;
+		const body = this.cameraBody?.data.id;
 		if (!renderer || body === undefined) return null;
 		const { latitude, longitude, distance } = renderer.getCameraState();
 		return {
@@ -1504,7 +1508,7 @@ export class SpaceMap {
 	 *  or while nothing is focused. */
 	getPose(): CameraPose | null {
 		const renderer = this.renderer;
-		const body = renderer?.getFocusedBody()?.data.id;
+		const body = this.cameraBody?.data.id;
 		if (!renderer || body === undefined) return null;
 		return {
 			position: { body, offsetKm: sceneToEcliptic(renderer.cameraOffsetFromFocus()) },

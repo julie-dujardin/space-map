@@ -178,6 +178,22 @@ describe('probe visibility — flyby vs captured', () => {
 		);
 	});
 
+	it('a probe in view on the focused body keeps the gate of a focused one', () => {
+		const { bodies, vis } = buildScene();
+		const mars = bodies.bodiesById.get('naif-499')!;
+		const probe = bodies.bodiesById.get(CAPTURED)!;
+		// 30 times the probe's height over Mars: past the plain gate, inside the focused one.
+		const camToProbe = 0.003 * AU_SCALE;
+		vis.setFocused(mars);
+		vis.updateCamera(camToProbe, 2451545);
+		expect(vname(vis.getPlanetVisibility(probe, camToProbe))).toBe(vname(VISIBILITY.HIDE));
+		vis.setFocused(mars, probe);
+		expect(vis.inFocus(CAPTURED)).toBe(true);
+		expect(vname(vis.getPlanetVisibility(probe, camToProbe))).toBe(vname(VISIBILITY.FULL));
+		vis.setFocused(mars);
+		expect(vis.inFocus(CAPTURED)).toBe(false);
+	});
+
 	it('a lunar orbiter stays hidden when the camera is close to Earth', () => {
 		const { bodies, vis } = buildScene();
 		vis.setFocused(bodies.bodiesById.get(EARTH)!);

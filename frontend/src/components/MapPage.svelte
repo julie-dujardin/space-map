@@ -367,6 +367,10 @@
 	// keeps tracking that body. Drives what belongs to the body on screen, not
 	// to the drawer: compass-north choices and the panorama traces.
 	let cameraFocus = $state.raw<PositionedBody | undefined>();
+	/** `cameraFocus` is a landed probe: the camera orbits the body it stands on. */
+	const cameraLanded = $derived(
+		!!cameraFocus && !!map.cameraBody && map.cameraBody.data.id !== cameraFocus.data.id
+	);
 	let drawerHeightDvh = $state(0);
 	let searchExpanded = $state(false);
 	let searchBar = $state<SearchBar>();
@@ -423,7 +427,7 @@
 	const northChoices = $derived.by(() => {
 		void ctx.bodies.orientationVersion; // re-run when system data lands orientation
 		void ctx.bodies.planeVersion; // and when an extrasolar system lands its plane
-		return getNorthChoices(cameraFocus, ctx);
+		return getNorthChoices(cameraFocus, ctx, cameraLanded);
 	});
 	// Primitives, so the view's clock ticks wake neither.
 	const northRef = $derived(appState.view.north);
@@ -874,7 +878,7 @@
 		const ref = northRef;
 		const focus = cameraFocus;
 		if (ref === null || !focus || focus.data.id !== viewId) return;
-		if (northRefHolds(ref, focus, ctx) === false) appState.setNorth(null);
+		if (northRefHolds(ref, focus, ctx, cameraLanded) === false) appState.setNorth(null);
 	});
 
 	// Repopulate selectedBody from ctx when a feature is picked on the body a

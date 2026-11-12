@@ -795,7 +795,7 @@ export class SceneRenderer {
 		// does not show the solar system, and loads none of its zones.
 		this.updateSystemShare(0);
 
-		callbacks.onFocusChange(focusBody);
+		callbacks.onFocusChange(focusBody, focusBody);
 
 		this.buildScene();
 

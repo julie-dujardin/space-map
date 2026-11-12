@@ -284,15 +284,14 @@ export class LookOrbitControls extends OrbitControls {
 
 	override update(deltaTime: number | null = null): boolean {
 		const changed = this.step(deltaTime);
-		this.glide();
-		return changed;
+		return this.glide() || changed;
 	}
 
 	/** Give a share of the turn a gesture asked for, as three's damping gives
-	 *  the orbit's. */
-	private glide(): void {
+	 *  the orbit's. True when that moved the camera. */
+	private glide(): boolean {
 		// Read as truthy: three's constructor updates before these fields are set.
-		if (!this.glideHeading && !this.glideTilt) return;
+		if (!this.glideHeading && !this.glideTilt) return false;
 		const f = this.dampingFactor;
 		this.turnNow(this.glideHeading * f, this.glideTilt * f);
 		this.glideHeading *= 1 - f;
@@ -301,6 +300,7 @@ export class LookOrbitControls extends OrbitControls {
 			this.stopGlide();
 			this.onTurnSettled();
 		}
+		return true;
 	}
 
 	private step(deltaTime: number | null): boolean {

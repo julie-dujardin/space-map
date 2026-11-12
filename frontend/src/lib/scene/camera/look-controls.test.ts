@@ -409,6 +409,16 @@ describe('LookOrbitControls glide', () => {
 		expect(controls.look.tilt).toBeCloseTo(full, 4);
 	});
 
+	it('reports a change while the glide moves the camera, and none once it ends', () => {
+		const { controls, middleDrag } = setup();
+		controls.enableDamping = true;
+		controls.dampingFactor = 0.1;
+		middleDrag(0, -200);
+		for (let i = 0; i < 5; i++) expect(controls.update()).toBe(true);
+		for (let i = 0; i < 300; i++) controls.update();
+		expect(controls.update()).toBe(false);
+	});
+
 	it('stops gliding when a finger comes down', () => {
 		const { controls, middleDrag, touch } = setup();
 		controls.enableDamping = true;

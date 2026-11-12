@@ -98,11 +98,13 @@ function* lineage(
  * The orientation-bearing bodies of `focused`'s {@link lineage} and the
  * planetary system of the place: the J2000 ecliptic in the solar system, else
  * the system's orbital plane when it has drawn orbits. The caller hides the
- * selector when length ≤ 1. A focused probe is its own ref.
+ * selector when length ≤ 1. A focused probe is its own ref. A `landed` probe
+ * is not: the camera orbits the body it stands on, not the probe.
  */
 export function getNorthChoices(
 	focused: PositionedBody | undefined,
-	ctx: ContextManager
+	ctx: ContextManager,
+	landed = false
 ): NorthChoice[] {
 	const choices: NorthChoice[] = [];
 	if (focused && isExtrasolarObjectId(focused.data.id)) {
@@ -121,6 +123,7 @@ export function getNorthChoices(
 	}
 	const firstAncestor = choices.length;
 	for (const { steps, body, north } of lineage(focused, ctx)) {
+		if (landed && steps === 0) continue;
 		const probeRef = steps === 0 && !north.orientation && isModelBearing(body);
 		if ((north.orientation || probeRef) && !choices.some((c) => c.id === north.data.id)) {
 			// Outermost-to-innermost: [system, …, parent, focused].
@@ -154,17 +157,20 @@ export function resolveNorthChoice(
 
 /**
  * Whether `ref` can name a choice for the view on `focused` once what it needs
- * has loaded, or null while that is not known yet. Galactic and the body's own
- * north always can, an ancestor's while the body has one that many steps up, other than a body
- * nearer: a barycentre stands for its planet, so Earth has no parent of its
- * own. An ancestor not loaded yet leaves it open, so a link keeps its north.
+ * has loaded, or null while that is not known yet. Galactic always can. The
+ * body's own north can, except on a `landed` probe. An ancestor's can while
+ * the body has one that many steps up, other than a body nearer: a barycentre
+ * stands for its planet, so Earth has no parent of its own. An ancestor not
+ * loaded yet leaves it open, so a link keeps its north.
  */
 export function northRefHolds(
 	ref: string,
 	focused: PositionedBody,
-	ctx: ContextManager
+	ctx: ContextManager,
+	landed = false
 ): boolean | null {
-	if (ref === GALACTIC_REF_ID || ref === BODY_REF) return true;
+	if (ref === GALACTIC_REF_ID) return true;
+	if (ref === BODY_REF) return !landed;
 	const steps = parentSteps(ref);
 	if (steps === null) return false;
 	const nearer = new Set<string>();

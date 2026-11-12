@@ -33,13 +33,17 @@ function cull(
 	const camera = new PerspectiveCamera(60, 1, 0.1, 1000);
 	camera.updateMatrixWorld();
 	const ctx = {
-		visibility: { isPinned: () => false, systemCentres: new Map(centres) }
+		visibility: {
+			isPinned: () => false,
+			inFocus: (id: string) => id === focused,
+			systemCentres: new Map(centres)
+		}
 	} as unknown as ContextManager;
 	const bos = new Map([
 		[CENTRE, centre],
 		[STAR, star]
 	]);
-	cullOverlappingLabels(bos, 1000, 1000, camera, focused, ctx, new Set(), []);
+	cullOverlappingLabels(bos, 1000, 1000, camera, ctx, new Set(), []);
 	return [centre, star];
 }
 

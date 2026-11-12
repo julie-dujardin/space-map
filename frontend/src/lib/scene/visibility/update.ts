@@ -370,7 +370,7 @@ export function updateBodyVisibility(
 		bo.root.visible = drawn;
 
 		let showLabel: boolean;
-		const isFocused = body.data.id === focusedBodyId;
+		const isFocused = ctx.visibility.inFocus(body.data.id);
 		const isSystemRoot = focusedSystemId !== null && body.data.id === focusedSystemId;
 		const centreShare = ctx.visibility.systemCentres.get(body.data.id);
 		// A star that the reader asked for keeps its halo and name in any sky, and
@@ -614,7 +614,7 @@ export function updateBodyVisibility(
 		for (const bo of bodyObjects.values()) {
 			const at = bo.body.position;
 			const id = bo.body.data.id;
-			if (!bo.label?.visible || !at || id === focusedBodyId) continue;
+			if (!bo.label?.visible || !at || ctx.visibility.inFocus(id)) continue;
 			if (behindGround(at[0] - ground[0], at[1] - ground[1], at[2] - ground[2], cx, cy, cz, top)) {
 				bo.label.visible = false;
 			}
@@ -632,7 +632,6 @@ export function updateBodyVisibility(
 			screenW,
 			screenH,
 			camera,
-			focusedBodyId,
 			ctx,
 			hoveredBodyIds,
 			screenOccluders,
@@ -677,7 +676,7 @@ export function updateBodyVisibility(
 			-camera.position.y,
 			-camera.position.z
 		);
-		const isFocused = bo.body.data.id === focusedBodyId;
+		const isFocused = ctx.visibility.inFocus(bo.body.data.id);
 		const isHovered = hoveredBodyIds.has(bo.body.data.id);
 		const share =
 			ctx.visibility.systemShareOf(bo.body) *

@@ -634,7 +634,7 @@ export class FocusController {
 		// A camera turned away from its body turns back to it.
 		const shown = this.subjectBody ?? this.focusedBody;
 		if (shown?.data.id === body.data.id && !this.deps.focus.aim) {
-			this.deps.callbacks.onFocusChange(body);
+			this.deps.callbacks.onFocusChange(body, this.focusedBody);
 			return;
 		}
 		const landed = this.landedSite(body);
@@ -680,8 +680,8 @@ export class FocusController {
 
 		if (body.data.id !== prev?.data.id) this.pendingInitialView = null;
 		this.focusedBody = body;
-		ctx.visibility.setFocused(body);
-		callbacks.onFocusChange(subject ?? body);
+		ctx.visibility.setFocused(body, subject);
+		callbacks.onFocusChange(subject ?? body, body);
 		if (drawsItself) loadTexture(body);
 		systemData.syncToFocus();
 		// A body with no place takes the focus, and the camera stays where the

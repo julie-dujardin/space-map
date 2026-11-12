@@ -110,6 +110,8 @@ export class VisibilityController {
 
 	private focusedBodyIdPlain: string = SUN_ID;
 	private focusedSystemIdPlain: string | null = null;
+	/** The landed probe in view on the focused body. */
+	private subjectIdPlain: string | undefined;
 	/** True while the trajectory scrubber drives the focused system (see
 	 *  {@link setTravelSystem}); cleared by any real focus. */
 	private travelSystemActive = false;
@@ -298,12 +300,19 @@ export class VisibilityController {
 		this.lastRecomputeDist = -1; // force fullMoons recompute against the new system
 	}
 
+	/** Whether the reader looks at this body: the focus, or the landed probe on it. */
+	inFocus(id: string): boolean {
+		return id === this.focusedBodyIdPlain || id === this.subjectIdPlain;
+	}
+
 	clearTravelSystem(): void {
 		this.travelSystemActive = false;
 	}
 
-	setFocused(body: PositionedBody): void {
+	/** `subject` is the landed probe in view on `body`. */
+	setFocused(body: PositionedBody, subject?: PositionedBody): void {
 		this.travelSystemActive = false;
+		this.subjectIdPlain = subject?.data.id;
 		if (body.data.id === this.focusedBodyIdPlain) return;
 		this.focusedBodyId = body.data.id;
 		this.focusedBodyIdPlain = body.data.id;
@@ -345,7 +354,7 @@ export class VisibilityController {
 			vis = VISIBILITY.HIDE;
 		} else {
 			const ratio = this.cameraDistThreeJS / AU_SCALE / moon.data.a; // Three.js units → AU
-			const isFocused = moon.data.id === this.focusedBodyIdPlain;
+			const isFocused = this.inFocus(moon.data.id);
 			vis = computeVisibilityFromRatio(
 				ratio,
 				this.scaledPlanetary,
@@ -459,7 +468,7 @@ export class VisibilityController {
 			if (!this.isInFocusedSystem(body.data.parentId)) return VISIBILITY.HIDE;
 			const refA = body.data.a;
 			if (!refA || refA <= 0) return VISIBILITY.FULL;
-			const isFocused = body.data.id === this.focusedBodyIdPlain;
+			const isFocused = this.inFocus(body.data.id);
 			return computeVisibilityFromRatio(
 				camDistThreeJS / AU_SCALE / refA,
 				this.scaledPlanetary,
@@ -484,7 +493,7 @@ export class VisibilityController {
 			}
 			return VISIBILITY.FULL;
 		}
-		const isFocused = body.data.id === this.focusedBodyIdPlain;
+		const isFocused = this.inFocus(body.data.id);
 		// A star on no orbit has no line to mark it: its halo is all there is.
 		const noLine = isExtrasolar(body) && !body.orbitElements;
 		const tier = computeVisibilityFromRatio(
@@ -516,7 +525,7 @@ export class VisibilityController {
 			return VISIBILITY.HIDE;
 		}
 
-		const isFocused = body.data.id === this.focusedBodyIdPlain;
+		const isFocused = this.inFocus(body.data.id);
 
 		// Flyby/cruise probes keep a heliocentric fit even mid-encounter; only a
 		// captured orbiter is bound and takes the moon-style hidden-in-solar gate.
@@ -636,7 +645,7 @@ export class VisibilityController {
 	private bodyUnclearedShare(body: PositionedBody): number {
 		if (this.clearing.share === 0) return 1;
 		const { id, objectType, parentId, orbitalSource } = body.data;
-		const looked = id === this.focusedBodyIdPlain || id === this.focusedSystemIdPlain;
+		const looked = this.inFocus(id) || id === this.focusedSystemIdPlain;
 		if (looked || this.pinned.has(id) || this.tripEnds.has(id)) return 1;
 		const layer = bodyLayer(objectType, parentId);
 		if (layer === 'spacecraft' || orbitalSource === OrbitalSource.SPICE_PROBE) {

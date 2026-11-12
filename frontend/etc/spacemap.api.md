@@ -1387,6 +1387,8 @@ export class SpaceMap {
 	// @internal
 	attribution: Control<SpaceMap> | null;
 	readonly bodySelect: GestureHandler;
+	// @internal
+	cameraBody: PositionedBody | undefined;
 	clearDrawings(): void;
 	// (undocumented)
 	clearUserPromoted(): void;

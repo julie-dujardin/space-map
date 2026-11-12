@@ -40,6 +40,12 @@ describe('getNorthChoices', () => {
 		expect(refs).toEqual(['galactic', null, 'parent-2', 'parent', 'body']);
 	});
 
+	it('leaves out the own north of a landed probe, which the camera does not orbit', () => {
+		const choices = getNorthChoices(lander, solar, true);
+		expect(choices.map((c) => c.ref)).toEqual(['galactic', null, 'parent-2', 'parent']);
+		expect(choices.find((c) => c.ref === 'parent')?.id).toBe('naif-301');
+	});
+
 	it('gives the barycentre one step up to the planet in it', () => {
 		const choices = getNorthChoices(moon, solar);
 		expect(choices.find((c) => c.ref === 'parent')?.id).toBe('naif-399');
@@ -80,6 +86,12 @@ describe('northRefHolds', () => {
 		expect(northRefHolds('parent-2', lander, solar)).toBe(true);
 		expect(northRefHolds('parent-2', moon, solar)).toBe(false);
 		expect(northRefHolds('parent', moon, solar)).toBe(true);
+	});
+
+	it('drops the own north of a landed probe and keeps its host', () => {
+		expect(northRefHolds('body', lander, solar, true)).toBe(false);
+		expect(northRefHolds('body', lander, solar)).toBe(true);
+		expect(northRefHolds('parent', lander, solar, true)).toBe(true);
 	});
 
 	it('gives Earth no parent: its barycentre stands for Earth itself', () => {

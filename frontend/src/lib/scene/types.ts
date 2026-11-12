@@ -289,7 +289,9 @@ export interface BodyObjects {
 export interface Callbacks {
 	/** Where data-coverage conditions are reported. */
 	notices: NoticeSink;
-	onFocusChange(body: PositionedBody | undefined): void;
+	/** `body` is in view. `orbited` is the body the camera orbits: for a landed
+	 *  probe, the body it stands on. */
+	onFocusChange(body: PositionedBody | undefined, orbited: PositionedBody | undefined): void;
 	/** Start of a drawn frame: the bodies hold this frame's positions and the
 	 *  camera has not been moved yet. `dtMs` is 0 on a frame that follows a
 	 *  skipped one. */

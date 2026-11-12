@@ -103,7 +103,7 @@ function harness({ spun }: { spun: boolean }) {
 		ctx: {
 			getBody: (id: string) => bodies.get(id),
 			place: (b: PositionedBody) => placed.get(b.data.id),
-			visibility: { setFocused: () => {} },
+			visibility: { setFocused: vi.fn() },
 			probeStore: {
 				probeWithCenter: (id: string) =>
 					id === rover.data.id ? { probe: { landed: { bodyNaifId: 499 } } } : undefined
@@ -173,7 +173,7 @@ describe('FocusController with a landed probe in view', () => {
 		fc.focusOnBody('naif-499', 4);
 		expect(fc.subject).toBeUndefined();
 		expect(fc.groundView).toBe(false);
-		expect(onFocusChange).toHaveBeenLastCalledWith(mars);
+		expect(onFocusChange).toHaveBeenLastCalledWith(mars, mars);
 	});
 
 	it('lets go of the probe for a point', () => {
@@ -182,6 +182,18 @@ describe('FocusController with a landed probe in view', () => {
 		fc.focusOnPoint([0, 5, 0]);
 		expect(fc.subject).toBeUndefined();
 		expect(fc.groundView).toBe(false);
+	});
+
+	it('gives visibility the probe as well as the body it stands on', () => {
+		const { deps, mars, rover, standOnMars } = harness({ spun: false });
+		standOnMars();
+		expect(deps.ctx.visibility.setFocused).toHaveBeenLastCalledWith(mars, rover);
+	});
+
+	it('reports the probe in view and the body the camera orbits', () => {
+		const { mars, rover, onFocusChange, standOnMars } = harness({ spun: false });
+		standOnMars();
+		expect(onFocusChange).toHaveBeenLastCalledWith(rover, mars);
 	});
 
 	it('hands the probe the focus on lift-off, the camera keeping its offset', () => {

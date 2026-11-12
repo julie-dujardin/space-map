@@ -378,7 +378,6 @@ export function cullOverlappingLabels(
 	screenWidth: number,
 	screenHeight: number,
 	camera: PerspectiveCamera,
-	focusedBodyId: string | undefined,
 	ctx: ContextManager,
 	hoveredBodyIds: Set<string>,
 	screenOccluders: ScreenOccluder[],
@@ -400,7 +399,7 @@ export function cullOverlappingLabels(
 			if (span && span.offsetWidth > 0) bo.labelTextWidth = span.offsetWidth;
 		}
 		if (!labelScreenRect(bo, camera, focusTruePos, screenWidth, screenHeight, _projRect)) continue;
-		const isFocused = body.data.id === focusedBodyId;
+		const isFocused = ctx.visibility.inFocus(body.data.id);
 		const isHovered = hoveredBodyIds.has(body.data.id);
 		const c = poolSlot(_candidates, _candidatesActive++, makeCandidate);
 		copyRect(c.rect, _projRect);
