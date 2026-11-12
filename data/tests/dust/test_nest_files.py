@@ -439,7 +439,10 @@ class TestExportLock:
         monkeypatch.setattr(dust_export, "TIERS", ("high",))
         return tmp_path / "root"
 
-    def test_a_dust_export_leaves_the_staging_of_a_running_export_alone(self, root):
+    def test_a_dust_export_leaves_the_staging_of_a_running_export_alone(
+        self, root, monkeypatch
+    ):
+        monkeypatch.setattr(dust_export, "_distribution", lambda _variant: "open")
         staging = root / "v1" / ".dust-staging"
         staging.mkdir(parents=True)
         (staging / "half").write_text("written by the first run")

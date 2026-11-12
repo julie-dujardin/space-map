@@ -14,6 +14,7 @@ from space_map_data.galaxy import (
     model,
     photometry,
     residual,
+    sources,
     volumes,
 )
 from space_map_data.galaxy.geometry import R0, Z0
@@ -123,7 +124,16 @@ class TestShapes:
         total = model.bar_planform(x.ravel(), y.ravel()).sum() * step * step
         assert total == pytest.approx(model.bar_planform_integral(), rel=0.01)
 
-    def test_lmc_integrates_to_one(self):
+    @pytest.fixture
+    def lmc(self, monkeypatch):
+        # The integral holds wherever the cloud sits, so the LVDB file is not needed.
+        row = sources.CloudRow(80.89, -69.76, 49_590.0, -18.1, 2700.0, "test")
+        monkeypatch.setattr(sources, "lvdb_cloud", lambda _key: row)
+        clouds.lmc_frame.cache_clear()
+        yield
+        clouds.lmc_frame.cache_clear()
+
+    def test_lmc_integrates_to_one(self, lmc):
         centre = clouds.lmc_frame()[0]
         step = 200.0
         axis = np.arange(-15000.0, 15000.0, step) + step / 2
