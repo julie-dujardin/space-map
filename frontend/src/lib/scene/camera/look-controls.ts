@@ -1,5 +1,6 @@
 import { MathUtils, Matrix4, Quaternion, Vector3, type PerspectiveCamera } from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { TwoFingerGesture, type Point } from './two-finger';
 
 /** Steepest tilt off the vertical. Short of the horizon, so the ground still
  *  fills the lower part of the view and the camera stays above it. */
@@ -21,7 +22,7 @@ export interface LookAngles {
 
 export const LEVEL_LOOK: Readonly<LookAngles> = { tilt: 0, heading: 0 };
 
-/** Middle-drag turn rate: half a turn per viewport height. */
+/** Middle-drag and two-finger turn rate: half a turn per viewport height. */
 const TURN_PER_HEIGHT = Math.PI;
 
 const _n = new Vector3();
@@ -62,6 +63,8 @@ interface PointerHandlers {
 	_handleMouseMoveRotate(event: { clientX: number; clientY: number }): void;
 	_handleTouchStartRotate(event: TouchPoint): void;
 	_handleTouchMoveRotate(event: TouchPoint): void;
+	_handleTouchStartDollyPan(event: TouchPoint): void;
+	_handleTouchMoveDollyPan(event: TouchPoint): void;
 	_handleMouseWheel(event: WheelEvent): void;
 }
 const orbitHandlers = OrbitControls.prototype as unknown as PointerHandlers;
@@ -69,14 +72,17 @@ const orbitHandlers = OrbitControls.prototype as unknown as PointerHandlers;
 /** The touch state three keeps off its typings. */
 interface TouchState {
 	_pointers: number[];
+	_pointerPositions: Record<number, Point>;
 	_getSecondPointerPosition(event: TouchPoint): { x: number; y: number };
 }
 
 /**
  * OrbitControls with a middle drag that tilts and turns the view about the
  * ground at its centre, the way a map does: up and down tilt it toward the
- * horizon, left and right turn the heading. The wheel keeps the ground under
- * the pointer where it is.
+ * horizon, left and right turn the heading. On a touch screen two fingers
+ * sliding up or down side by side tilt it, and a twist turns the heading
+ * while they pinch and pan. The wheel keeps the ground under the pointer
+ * where it is.
  *
  * The orbit underneath is unchanged, so a left drag and the wheel keep their
  * feel and carry the tilt along. Whatever else places the camera (a focus
@@ -116,6 +122,7 @@ export class LookOrbitControls extends OrbitControls {
 	private dragPointer: number | null = null;
 	private dragX = 0;
 	private dragY = 0;
+	private readonly twoFinger = new TwoFingerGesture();
 
 	constructor(
 		camera: PerspectiveCamera,
@@ -334,6 +341,35 @@ export class LookOrbitControls extends OrbitControls {
 		orbitHandlers._handleTouchMoveRotate.call(this, this.rotatedTouch(event));
 	}
 
+	_handleTouchStartDollyPan(event: TouchPoint): void {
+		orbitHandlers._handleTouchStartDollyPan.call(this, event);
+		const [a, b] = this.fingers();
+		this.twoFinger.begin(a, b, this.enableRotate && this.lookShare() > 0);
+	}
+
+	_handleTouchMoveDollyPan(event: TouchPoint): void {
+		const [a, b] = this.fingers();
+		const step = this.twoFinger.move(a, b);
+		// Held while undecided: three's pinch and pan read from where the
+		// fingers came down, and catch up once the gesture is the map's.
+		if (step.mode === 'undecided') return;
+		const rate = TURN_PER_HEIGHT / (this.canvas.clientHeight || 1);
+		if (step.mode === 'tilt') {
+			if (this.enableRotate) this.turn(0, -step.down * rate);
+			return;
+		}
+		orbitHandlers._handleTouchMoveDollyPan.call(this, event);
+		// The map turns with the fingers.
+		if (step.twist !== 0 && this.enableRotate) this.turn(step.twist, 0);
+	}
+
+	/** The two fingers on the canvas, in the order they came down. */
+	private fingers(): [Point, Point] {
+		const touch = this as unknown as TouchState;
+		const [a, b] = touch._pointers;
+		return [touch._pointerPositions[a], touch._pointerPositions[b]];
+	}
+
 	_handleMouseWheel(event: WheelEvent): void {
 		// Keeping the ground put swings the orbit, which a host may have barred;
 		// and ground seen at a graze would swing it far for a small zoom.
@@ -479,7 +515,8 @@ export class LookOrbitControls extends OrbitControls {
 		return { pointerId: event.pointerId, pageX: 2 * x - other.x, pageY: 2 * y - other.y };
 	}
 
-	private turn(dx: number, dy: number): void {
+	/** Turn the heading and tilt the view by these angles, in radians. */
+	private turn(heading: number, tilt: number): void {
 		const cam = this.object;
 		const share = this.lookShare();
 		if (share === 0) return;
@@ -493,10 +530,8 @@ export class LookOrbitControls extends OrbitControls {
 			this.lastUp.copy(cam.up);
 		}
 		this.holdsNorth = false;
-		const rate = TURN_PER_HEIGHT / (this.canvas.clientHeight || 1);
-		// Grabs the ground below the pivot, where a tilted view shows it.
-		this.heading -= dx * rate;
-		this.tilt = Math.max(0, this.tilt - dy * rate);
+		this.heading += heading;
+		this.tilt = Math.max(0, this.tilt + tilt);
 		this.holdAngles(share);
 		this.place();
 	}
@@ -581,7 +616,9 @@ export class LookOrbitControls extends OrbitControls {
 		const dy = event.clientY - this.dragY;
 		this.dragX = event.clientX;
 		this.dragY = event.clientY;
-		if (dx !== 0 || dy !== 0) this.turn(dx, dy);
+		const rate = TURN_PER_HEIGHT / (this.canvas.clientHeight || 1);
+		// Grabs the ground below the pivot, where a tilted view shows it.
+		if (dx !== 0 || dy !== 0) this.turn(-dx * rate, -dy * rate);
 	};
 
 	private readonly onLookUp = (event: PointerEvent): void => {
