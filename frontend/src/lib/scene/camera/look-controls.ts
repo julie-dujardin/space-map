@@ -53,6 +53,11 @@ const SIN_MIN_ANCHOR_ELEVATION = Math.sin(MathUtils.degToRad(20));
 /** Passes that find where a ray lands on relief, each from the last one's height. */
 const GROUND_PASSES = 3;
 
+/** Change in the ground under the orbit, as a share of its radius, below
+ *  which the swing point stays: a metre or so on a planet, not the rounding
+ *  of each frame's read. */
+const PIVOT_REFINE = 1e-7;
+
 /** A touch as three's handlers read it. */
 interface TouchPoint {
 	pointerId: number;
@@ -102,10 +107,12 @@ export class LookOrbitControls extends OrbitControls {
 	private looking = false;
 	private readonly orbitPos = new Vector3();
 	private readonly orbitQuat = new Quaternion();
-	/** Height of the ground the view turns about, from the target. Read when
-	 *  the orbit moves, not each frame: the drawn ground refines under a still
-	 *  camera, and the view would drift with it. */
+	/** Height of the ground the view turns about, from the target. */
 	private pivotRadius = 0;
+	/** The view stands where a placement named it (a link, a jump) and the
+	 *  reader has not moved since: as the ground under it refines, the camera
+	 *  follows, so the view opens the same however fast the ground loads. */
+	private placedByName = false;
 	/** The up the orbit pose was last built on. */
 	private readonly lastUp = new Vector3();
 	/** The heading was given off north, by a link or a jump: it stays off
@@ -142,7 +149,10 @@ export class LookOrbitControls extends OrbitControls {
 	) {
 		super(camera, canvas);
 		this.mouseButtons.MIDDLE = null;
-		this.addEventListener('start', () => (this.pendingLook = null));
+		this.addEventListener('start', () => {
+			this.pendingLook = null;
+			this.placedByName = false;
+		});
 		canvas.addEventListener('pointerdown', this.onLookDown);
 		// Middle-button autoscroll and paste ride on mousedown.
 		canvas.addEventListener('mousedown', this.blockMiddle);
@@ -171,6 +181,7 @@ export class LookOrbitControls extends OrbitControls {
 		const cam = this.object;
 		this.looking = false;
 		this.pendingLook = null;
+		this.placedByName = false;
 		this.stopGlide();
 		if (tilt === 0 && heading === 0) return;
 		if (!this.groundKnown()) {
@@ -189,6 +200,7 @@ export class LookOrbitControls extends OrbitControls {
 		this.heading = heading;
 		this.holdAngles(share);
 		this.looking = true;
+		this.placedByName = true;
 		this.place();
 	}
 
@@ -215,6 +227,7 @@ export class LookOrbitControls extends OrbitControls {
 	endLook(): void {
 		this.looking = false;
 		this.pendingLook = null;
+		this.placedByName = false;
 		this.stopGlide();
 	}
 
@@ -303,13 +316,17 @@ export class LookOrbitControls extends OrbitControls {
 			this.stopGlide();
 			return super.update(deltaTime);
 		}
+		if (!this.followGround()) return super.update(deltaTime);
 		cam.position.copy(this.orbitPos);
 		cam.quaternion.copy(this.orbitQuat);
 		_was.copy(this.orbitQuat);
 		const changed = super.update(deltaTime);
 		// Past rounding: three's own round trip moves the orbit by a few ulps.
 		const moved = cam.position.distanceToSquared(this.orbitPos) > this.orbitPos.lengthSq() * 1e-20;
-		if (moved) this.orbitMoved = true;
+		if (moved) {
+			this.orbitMoved = true;
+			this.placedByName = false;
+		}
 		this.orbitPos.copy(cam.position);
 		this.orbitQuat.copy(cam.quaternion);
 		if (moved) this.samplePivot();
@@ -486,6 +503,7 @@ export class LookOrbitControls extends OrbitControls {
 		const level = offset.addScaledVector(n, -offset.dot(n));
 		this.heading = Math.atan2(_ray.crossVectors(down, level).dot(n), down.dot(level));
 		this.holdsNorth = false;
+		this.placedByName = false;
 		this.looking = true;
 		if (!this.holdAngles(this.lookShare())) {
 			this.looking = false;
@@ -588,6 +606,29 @@ export class LookOrbitControls extends OrbitControls {
 		this.heading = MathUtils.euclideanModulo(this.heading + Math.PI, 2 * Math.PI) - Math.PI;
 		this.heading = MathUtils.clamp(this.heading, -Math.PI * share, Math.PI * share);
 		return share > 0;
+	}
+
+	/**
+	 * Take up a change in the ground under the orbit. A view placed by name
+	 * goes where its angles put it over the new ground. One the reader turned
+	 * keeps the camera where it stands and turns onto the new ground, rather
+	 * than jump as finer terrain loads. False when that leaves no turn.
+	 */
+	private followGround(): boolean {
+		_n.subVectors(this.orbitPos, this.target);
+		const range = _n.length();
+		const ground = range > 0 ? this.surfaceRadius(_n.divideScalar(range)) : null;
+		if (ground === null) return true;
+		const pivot = Math.min(ground, range);
+		if (Math.abs(pivot - this.pivotRadius) <= ground * PIVOT_REFINE) return true;
+		if (this.placedByName) {
+			this.pivotRadius = pivot;
+			return true;
+		}
+		const holds = this.holdsNorth;
+		this.lookToward(_pivotGround.copy(_n).multiplyScalar(ground));
+		this.holdsNorth = holds;
+		return this.looking;
 	}
 
 	/** Read the ground under the orbit. */

@@ -42,7 +42,9 @@ function setup(radius: number | null = RADIUS, orbit = ORBIT) {
 	const camera = new PerspectiveCamera(50, 1, 0.001, 100);
 	camera.position.set(0, 0, orbit);
 	const { canvas, fire } = fakeCanvas();
-	const controls = new LookOrbitControls(camera, canvas, () => radius);
+	/** The drawn ground, which a test can refine under the view. */
+	const ground = { radius };
+	const controls = new LookOrbitControls(camera, canvas, () => ground.radius);
 	controls.update();
 	const middleDrag = (dx: number, dy: number) => {
 		const base = { pointerId: 1, pointerType: 'mouse', button: 1, clientX: 500, clientY: 500 };
@@ -92,7 +94,7 @@ function setup(radius: number | null = RADIUS, orbit = ORBIT) {
 			clientY: y,
 			timeStamp: t
 		});
-	return { camera, controls, middleDrag, twoFingers, touch };
+	return { camera, controls, ground, middleDrag, twoFingers, touch };
 }
 
 /** The ground point the untilted camera looks straight down on. */
@@ -268,6 +270,44 @@ describe('LookOrbitControls', () => {
 		const [x, y] = controls.toOrbitAxes(1, 0);
 		expect(x).toBeCloseTo(0, 9);
 		expect(y).toBeCloseTo(-1, 9);
+	});
+});
+
+describe('LookOrbitControls refining ground', () => {
+	/** Coarse ground, 0.1% low, as before the detailed terrain loads. */
+	const COARSE = RADIUS * 0.999;
+	const LOOK = { tilt: 0.6, heading: 0.4 };
+
+	it('puts a placed view where its angles stand over the finer ground', () => {
+		const { camera, controls, ground } = setup(COARSE);
+		controls.setLook(LOOK);
+		ground.radius = RADIUS;
+		controls.update();
+		const fine = setup(RADIUS);
+		fine.controls.setLook(LOOK);
+		expect(camera.position.distanceTo(fine.camera.position)).toBeLessThan(1e-12);
+		expect(viewCentreOffset(camera, groundUnder(controls.orbitPosition))).toBeLessThan(1e-9);
+	});
+
+	it('keeps the camera where the reader left it, turned onto the finer ground', () => {
+		const { camera, controls, ground, middleDrag } = setup(COARSE);
+		middleDrag(0, -200);
+		const before = camera.position.clone();
+		ground.radius = RADIUS;
+		controls.update();
+		expect(controls.turned).toBe(true);
+		expect(camera.position.distanceTo(before)).toBeLessThan(1e-12);
+		expect(viewCentreOffset(camera, groundUnder(controls.orbitPosition))).toBeLessThan(1e-9);
+	});
+
+	it('stops following once the reader takes the placed view', () => {
+		const { camera, controls, ground, middleDrag } = setup(COARSE);
+		controls.setLook(LOOK);
+		middleDrag(0, 0);
+		const before = camera.position.clone();
+		ground.radius = RADIUS;
+		controls.update();
+		expect(camera.position.distanceTo(before)).toBeLessThan(1e-12);
 	});
 });
 
