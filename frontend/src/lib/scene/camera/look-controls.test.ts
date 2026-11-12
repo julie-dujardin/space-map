@@ -80,7 +80,19 @@ function setup(radius: number | null = RADIUS, orbit = ORBIT) {
 		fire('pointerup', at(2, to[1]));
 		controls.update();
 	};
-	return { camera, controls, middleDrag, twoFingers };
+	/** A touch event for finger `id` at (x, y), `t` ms in. */
+	const touch = (type: string, id: number, x: number, y: number, t: number) =>
+		fire(type, {
+			pointerId: id,
+			pointerType: 'touch',
+			button: 0,
+			pageX: x,
+			pageY: y,
+			clientX: x,
+			clientY: y,
+			timeStamp: t
+		});
+	return { camera, controls, middleDrag, twoFingers, touch };
 }
 
 /** The ground point the untilted camera looks straight down on. */
@@ -339,6 +351,46 @@ describe('LookOrbitControls two fingers', () => {
 			]
 		);
 		expect(camera.position.length()).toBeLessThan(range);
+	});
+});
+
+describe('LookOrbitControls glide', () => {
+	it('carries a tilt on after the drag, to the whole of it', () => {
+		const { controls, middleDrag } = setup();
+		controls.enableDamping = true;
+		controls.dampingFactor = 0.1;
+		middleDrag(0, -200);
+		controls.update();
+		const full = (200 * Math.PI) / 1000;
+		const soon = controls.look.tilt;
+		expect(soon).toBeGreaterThan(0);
+		expect(soon).toBeLessThan(full / 2);
+		for (let i = 0; i < 300; i++) controls.update();
+		expect(controls.look.tilt).toBeCloseTo(full, 4);
+	});
+
+	it('stops gliding when a finger comes down', () => {
+		const { controls, middleDrag, touch } = setup();
+		controls.enableDamping = true;
+		controls.dampingFactor = 0.1;
+		middleDrag(0, -200);
+		for (let i = 0; i < 3; i++) controls.update();
+		touch('pointerdown', 5, 500, 500, 0);
+		const caught = controls.look.tilt;
+		for (let i = 0; i < 50; i++) controls.update();
+		expect(controls.look.tilt).toBeCloseTo(caught, 12);
+	});
+
+	it('stops gliding when something else takes the camera', () => {
+		const { controls, middleDrag } = setup();
+		controls.enableDamping = true;
+		middleDrag(0, -200);
+		controls.update();
+		controls.endLook();
+		controls.update();
+		expect(controls.turned).toBe(false);
+		for (let i = 0; i < 20; i++) controls.update();
+		expect(controls.turned).toBe(false);
 	});
 });
 

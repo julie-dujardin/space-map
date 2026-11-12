@@ -39,6 +39,9 @@ const _was = new Quaternion();
 const _pivotGround = new Vector3();
 const _look = new Matrix4();
 
+/** Turn still to come, in radians, under which a glide is done. */
+const GLIDE_DONE = 1e-5;
+
 /** Passes that put the ground back under the pointer after a zoom. Each
  *  leaves the error of the roll the orbit's own up takes back out. */
 const ANCHOR_PASSES = 3;
@@ -81,8 +84,9 @@ interface TouchState {
  * ground at its centre, the way a map does: up and down tilt it toward the
  * horizon, left and right turn the heading. On a touch screen two fingers
  * sliding up or down side by side tilt it, and a twist turns the heading
- * while they pinch and pan. The wheel keeps the ground under the pointer
- * where it is.
+ * while they pinch and pan. With damping on, a tilt or a turn glides on
+ * after the gesture, as the orbit does. The wheel keeps the ground under the
+ * pointer where it is.
  *
  * The orbit underneath is unchanged, so a left drag and the wheel keep their
  * feel and carry the tilt along. Whatever else places the camera (a focus
@@ -123,6 +127,9 @@ export class LookOrbitControls extends OrbitControls {
 	private dragX = 0;
 	private dragY = 0;
 	private readonly twoFinger = new TwoFingerGesture();
+	/** Turn a gesture asked for that the damping has not given yet, in radians. */
+	private glideHeading = 0;
+	private glideTilt = 0;
 
 	constructor(
 		camera: PerspectiveCamera,
@@ -144,6 +151,7 @@ export class LookOrbitControls extends OrbitControls {
 		canvas.addEventListener('pointerdown', this.onLookDown);
 		// Middle-button autoscroll and paste ride on mousedown.
 		canvas.addEventListener('mousedown', this.blockMiddle);
+		canvas.addEventListener('pointerdown', this.onCatch);
 	}
 
 	/** Where the orbit holds the camera, under any tilt. */
@@ -168,6 +176,7 @@ export class LookOrbitControls extends OrbitControls {
 		const cam = this.object;
 		this.looking = false;
 		this.pendingLook = null;
+		this.stopGlide();
 		if (tilt === 0 && heading === 0) return;
 		if (!this.groundKnown()) {
 			this.pendingLook = { tilt, heading };
@@ -211,6 +220,13 @@ export class LookOrbitControls extends OrbitControls {
 	endLook(): void {
 		this.looking = false;
 		this.pendingLook = null;
+		this.stopGlide();
+	}
+
+	/** Drop the turn still to come. */
+	private stopGlide(): void {
+		this.glideHeading = 0;
+		this.glideTilt = 0;
 	}
 
 	/** Whether the target has ground the view could turn over: a drawn
@@ -275,6 +291,27 @@ export class LookOrbitControls extends OrbitControls {
 	}
 
 	override update(deltaTime: number | null = null): boolean {
+		const changed = this.step(deltaTime);
+		this.glide();
+		return changed;
+	}
+
+	/** Give a share of the turn a gesture asked for, as three's damping gives
+	 *  the orbit's. */
+	private glide(): void {
+		// Read as truthy: three's constructor updates before these fields are set.
+		if (!this.glideHeading && !this.glideTilt) return;
+		const f = this.dampingFactor;
+		this.turnNow(this.glideHeading * f, this.glideTilt * f);
+		this.glideHeading *= 1 - f;
+		this.glideTilt *= 1 - f;
+		if (Math.abs(this.glideHeading) < GLIDE_DONE && Math.abs(this.glideTilt) < GLIDE_DONE) {
+			this.stopGlide();
+			this.onTurnSettled();
+		}
+	}
+
+	private step(deltaTime: number | null): boolean {
 		if (!this.looking) {
 			const changed = super.update(deltaTime);
 			// The placement already reported this turn.
@@ -284,6 +321,7 @@ export class LookOrbitControls extends OrbitControls {
 		const cam = this.object;
 		if (!cam.position.equals(this.placedPos) || !cam.quaternion.equals(this.placedQuat)) {
 			this.looking = false;
+			this.stopGlide();
 			return super.update(deltaTime);
 		}
 		cam.position.copy(this.orbitPos);
@@ -322,6 +360,7 @@ export class LookOrbitControls extends OrbitControls {
 		super.dispose();
 		this.canvas.removeEventListener('pointerdown', this.onLookDown);
 		this.canvas.removeEventListener('mousedown', this.blockMiddle);
+		this.canvas.removeEventListener('pointerdown', this.onCatch);
 		this.endLookDrag();
 	}
 
@@ -515,8 +554,18 @@ export class LookOrbitControls extends OrbitControls {
 		return { pointerId: event.pointerId, pageX: 2 * x - other.x, pageY: 2 * y - other.y };
 	}
 
-	/** Turn the heading and tilt the view by these angles, in radians. */
+	/** Turn the heading and tilt the view by these angles, in radians: over
+	 *  the next frames with damping, as the orbit moves, and at once without. */
 	private turn(heading: number, tilt: number): void {
+		if (!this.enableDamping) {
+			this.turnNow(heading, tilt);
+			return;
+		}
+		this.glideHeading += heading;
+		this.glideTilt += tilt;
+	}
+
+	private turnNow(heading: number, tilt: number): void {
 		const cam = this.object;
 		const share = this.lookShare();
 		if (share === 0) return;
@@ -589,6 +638,13 @@ export class LookOrbitControls extends OrbitControls {
 		this.placedPos.copy(cam.position);
 		this.placedQuat.copy(cam.quaternion);
 	}
+
+	/** A new touch or click catches the camera: what was gliding stops. */
+	private readonly onCatch = (): void => {
+		if (!this.glideHeading && !this.glideTilt) return;
+		this.stopGlide();
+		this.onTurnSettled();
+	};
 
 	private readonly blockMiddle = (event: MouseEvent): void => {
 		if (event.button === 1) event.preventDefault();
