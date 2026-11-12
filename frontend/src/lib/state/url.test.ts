@@ -902,7 +902,7 @@ describe('the north ref', () => {
 	}
 
 	it('round-trips on a body page', () => {
-		for (const ref of ['body', 'feature', 'galactic', 'parent', 'parent-2']) {
+		for (const ref of ['body', 'galactic', 'parent', 'parent-2']) {
 			open(`http://x/b/301?at=now,1,2,3&north=${ref}`);
 			const view = parseUrl()!;
 			expect(view.north).toBe(ref);

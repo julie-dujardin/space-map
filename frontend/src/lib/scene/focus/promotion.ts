@@ -4,7 +4,6 @@ import {
 	isAsteroid,
 	isExoplanet,
 	isExtrasolar,
-	isSurfaceFeature,
 	type PositionedBody
 } from '$lib/types/objects';
 import { OrbitalSource } from '$lib/fetch/position/format';
@@ -478,7 +477,7 @@ export class PromotionRegistry {
 		for (const id of this.pinned) {
 			const body = this.deps.ctx.getBody(id);
 			// A moon outside the focused system is not placed, so not drawn.
-			if (!body || isSurfaceFeature(body) || body.data.objectType === ObjectType.MOON) continue;
+			if (!body || body.data.objectType === ObjectType.MOON) continue;
 			if (!this.buildBodyInstance(body)) continue;
 			built = true;
 			if (this.userPromoted.delete(id)) this.pinPromoted.add(id);

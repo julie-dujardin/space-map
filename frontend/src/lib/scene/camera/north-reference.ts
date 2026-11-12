@@ -6,13 +6,12 @@ import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { isModelBearing } from '$lib/scene/objects/body/model';
 import { SSB_ID, dominantPlanetId } from '$lib/constants';
 import { isExtrasolarObjectId } from '$lib/fetch/extrasolar/ids';
-import { BODY_REF, FEATURE_REF, GALACTIC_REF_ID, parentRef, parentSteps } from '$lib/state/north';
+import { BODY_REF, GALACTIC_REF_ID, parentRef, parentSteps } from '$lib/state/north';
 
 /**
  * Camera "north" reference. `id === null` → ecliptic Y; `GALACTIC_REF_ID` →
  * galactic pole; `plane` → the orbital plane of an extrasolar system; else a
- * body id (`name` its label). `probe`/`feature` pick model-up or local vertical
- * instead of the IAU pole. `ref` is how the URL names it (see `$lib/state/north`);
+ * body id (`name` its label). `probe` picks model-up instead of the IAU pole. `ref` is how the URL names it (see `$lib/state/north`);
  * null for the planetary system, the default.
  */
 export interface NorthChoice {
@@ -20,7 +19,6 @@ export interface NorthChoice {
 	name: string | null;
 	ref: string | null;
 	probe?: boolean;
-	feature?: boolean;
 	plane?: boolean;
 }
 
@@ -59,27 +57,13 @@ export function galacticNorthVector(out?: Vector3): Vector3 {
 }
 
 /**
- * Unit "north" for a body: IAU pole at `jd` when oriented; local zenith when
- * landed or a focused feature; else a probe's static model-up (base frame
- * only — attitude would tumble the camera on spinners). Falls back to scene Y.
+ * Unit "north" for a body: IAU pole at `jd` when oriented; else a probe's
+ * static model-up (base frame only — attitude would tumble the camera on
+ * spinners). Falls back to scene Y.
  */
-export function bodyNorthVector(
-	body: PositionedBody,
-	jd: number,
-	out?: Vector3,
-	landed = false
-): Vector3 {
+export function bodyNorthVector(body: PositionedBody, jd: number, out?: Vector3): Vector3 {
 	const target = out ?? new Vector3();
 	if (!body.orientation) {
-		if (landed && body.orbitCenter && body.position) {
-			// orbitCenter = host centre, so this resolves to the local zenith.
-			target.set(
-				body.position[0] - body.orbitCenter[0],
-				body.position[1] - body.orbitCenter[1],
-				body.position[2] - body.orbitCenter[2]
-			);
-			if (target.lengthSq() > 1e-20) return target.normalize();
-		}
 		target.copy(SCENE_UP);
 		if (body.modelBaseFrame) target.applyQuaternion(body.modelBaseFrame).normalize();
 		return target;
@@ -114,8 +98,7 @@ function* lineage(
  * The orientation-bearing bodies of `focused`'s {@link lineage} and the
  * planetary system of the place: the J2000 ecliptic in the solar system, else
  * the system's orbital plane when it has drawn orbits. The caller hides the
- * selector when length ≤ 1. A focused probe is its own ref; a focused feature
- * (reported via its host, see Scene.svelte) is appended innermost.
+ * selector when length ≤ 1. A focused probe is its own ref.
  */
 export function getNorthChoices(
 	focused: PositionedBody | undefined,
@@ -149,11 +132,6 @@ export function getNorthChoices(
 			});
 		}
 	}
-	// Innermost: focused surface feature (local vertical).
-	const feature = ctx.bodies.focusFeature;
-	if (feature?.featureAnchor && focused && feature.featureAnchor.hostId === focused.data.id) {
-		choices.push({ id: feature.data.id, name: feature.data.name, ref: FEATURE_REF, feature: true });
-	}
 	// galactic: always first
 	choices.splice(0, 0, { id: GALACTIC_REF_ID, name: null, ref: GALACTIC_REF_ID });
 	return choices;
@@ -177,19 +155,16 @@ export function resolveNorthChoice(
 /**
  * Whether `ref` can name a choice for the view on `focused` once what it needs
  * has loaded, or null while that is not known yet. Galactic and the body's own
- * north always can, a feature's only while a feature is in the view, an
- * ancestor's while the body has one that many steps up, other than a body
+ * north always can, an ancestor's while the body has one that many steps up, other than a body
  * nearer: a barycentre stands for its planet, so Earth has no parent of its
  * own. An ancestor not loaded yet leaves it open, so a link keeps its north.
  */
 export function northRefHolds(
 	ref: string,
 	focused: PositionedBody,
-	hasFeature: boolean,
 	ctx: ContextManager
 ): boolean | null {
 	if (ref === GALACTIC_REF_ID || ref === BODY_REF) return true;
-	if (ref === FEATURE_REF) return hasFeature;
 	const steps = parentSteps(ref);
 	if (steps === null) return false;
 	const nearer = new Set<string>();

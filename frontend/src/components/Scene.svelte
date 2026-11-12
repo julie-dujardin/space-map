@@ -88,10 +88,10 @@
 		// focus synchronously — a deep link's only `focuschange` fires in there.
 		const off = [
 			map.on('focuschange', ({ body, initial, feature }) => {
-				// The camera orbits the synthetic feature body, but the app focuses its
-				// host — the URL/drawer are set by the setFeature caller, so just report
-				// the host upward and skip the generic body auto-setFocus below. The
-				// map reports its own view of a body; the app works on the scene's.
+				// A move onto a feature focuses its host — the URL/drawer are set by
+				// the setFeature caller, so just report the host upward and skip the
+				// generic body auto-setFocus below. The map reports its own view of a
+				// body; the app works on the scene's.
 				onFocusChange?.(body && ctx.getBody(body.id));
 				if (feature || initial || isNavigatingBack || !body) return;
 				// Programmatic navigators (search, deep links) push their target state

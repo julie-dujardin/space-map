@@ -35,9 +35,7 @@ export class CameraUpController {
 	constructor(
 		private readonly camera: PerspectiveCamera,
 		private readonly controls: OrbitControls,
-		private readonly ctx: ContextManager,
-		/** Landed probes get zenith as north instead of the static model up. */
-		private readonly isLanded: (id: string) => boolean
+		private readonly ctx: ContextManager
 	) {}
 
 	/** `null` reverts to ecliptic Y; any other id triggers a slerp to its north:
@@ -62,10 +60,7 @@ export class CameraUpController {
 		} else {
 			const refBody = this.refId ? this.ctx.getBody(this.refId) : undefined;
 			if (refBody) {
-				// Feature has no orientation; `orbitCenter` (host centre) makes the
-				// landed path yield local zenith.
-				const landed = !!refBody.featureAnchor || this.isLanded(refBody.data.id);
-				bodyNorthVector(refBody, jd, this.targetVec, landed);
+				bodyNorthVector(refBody, jd, this.targetVec);
 			} else {
 				this.targetVec.copy(SCENE_UP);
 			}

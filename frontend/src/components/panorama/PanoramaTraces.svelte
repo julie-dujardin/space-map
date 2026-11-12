@@ -53,10 +53,9 @@
 	});
 
 	/** The body whose ground the focus is on: the focus itself, or its host
-	 *  for a surface feature or a landed probe. */
+	 *  for a landed probe. */
 	const bodyId = $derived.by(() => {
 		if (!focused) return null;
-		if (focused.featureAnchor) return focused.featureAnchor.hostId;
 		if (landed) return focused.data.parentId;
 		return focused.data.id;
 	});

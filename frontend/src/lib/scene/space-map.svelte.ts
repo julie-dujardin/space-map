@@ -49,12 +49,7 @@ import { loadProgress } from './state/load-progress.svelte';
 import type { Vec3 } from './animation/math';
 import type { OrbitPreview } from './objects/travel/orbit-preview';
 import type { ScreenInsets, TripVantage } from './focus/trip-view';
-import {
-	effectiveRadiusKm,
-	isSurfaceFeature,
-	type FeatureAnchor,
-	type PositionedBody
-} from '$lib/types/objects';
+import { effectiveRadiusKm, type FeatureAnchor, type PositionedBody } from '$lib/types/objects';
 import { kmToScene, sceneToKm } from '$lib/math/units';
 import type { TripBall } from '$lib/travel/trip-ball';
 import { minCameraDistance, type CameraBand } from './visibility/camera-limits';
@@ -214,7 +209,7 @@ export interface FocusChange {
 	body: Body | undefined;
 	/** The first settle after boot. */
 	initial: boolean;
-	/** The camera orbits a surface feature; `body` is its host. */
+	/** The camera moved onto a surface feature of `body`. */
 	feature: boolean;
 }
 
@@ -393,9 +388,12 @@ export class SpaceMap {
 	/** @internal The GPU context dropped mid-session (common on mobile) and has
 	 *  not come back. */
 	contextLost = $state(false);
-	/** @internal What the renderer last settled on, a surface feature included.
+	/** @internal What the renderer last settled on.
 	 *  `.raw`: the renderer mutates position/satrec internals every frame. */
 	focusedBody = $state.raw<PositionedBody | undefined>();
+	/** A move onto a surface feature is under way: the focus it hands the
+	 *  host is that move's. */
+	private movingToFeature = false;
 	/** @internal The credit line, which no host may take back off. */
 	attribution: Control<SpaceMap> | null = null;
 	/** Objects of the host's own: a spacecraft, a station, a body the export
@@ -540,14 +538,10 @@ export class SpaceMap {
 		return body && bodyView(body);
 	}
 
-	/** The object the camera orbits. A surface feature reports its host body. */
+	/** The object the camera orbits. */
 	getFocusedBody(): Body | undefined {
 		const focused = this.focusedBody;
-		if (!focused) return undefined;
-		const body = isSurfaceFeature(focused)
-			? this.ctx.getBody(focused.featureAnchor!.hostId)
-			: focused;
-		return body && bodyView(body);
+		return focused && bodyView(focused);
 	}
 
 	/** Ids of the objects orbiting `id` that this map has loaded. Loading is
@@ -889,7 +883,7 @@ export class SpaceMap {
 				const initial = this.initialFocusPending;
 				this.initialFocusPending = false;
 				this.focusedBody = body;
-				const feature = body !== undefined && isSurfaceFeature(body);
+				const feature = this.movingToFeature;
 				this.emit('focuschange', { body: this.getFocusedBody(), initial, feature });
 			},
 			onFrame: (jd, dtMs) => {
@@ -1215,7 +1209,7 @@ export class SpaceMap {
 		}
 		if (target.feature) {
 			const { featureId, lat, lon, diameterM } = target.feature;
-			this.focusOnFeature(body, featureId, lat, lon, diameterM, null, 'snap');
+			this.focusOnFeature(body, featureId, lat, lon, diameterM, 'snap');
 			this.renderer?.setLook(lookOf(target));
 			return;
 		}
@@ -1360,7 +1354,7 @@ export class SpaceMap {
 
 	private toFeature(body: string, feature: FeatureRef, mode: 'frame' | 'pan'): Promise<void> {
 		const { featureId, lat, lon, diameterM } = feature;
-		return this.settled(this.focusOnFeature(body, featureId, lat, lon, diameterM, null, mode));
+		return this.settled(this.focusOnFeature(body, featureId, lat, lon, diameterM, mode));
 	}
 
 	/** The focus controller reports how long its move takes. One frame past
@@ -1463,20 +1457,19 @@ export class SpaceMap {
 		return (body) => renderer.viewFrom(body.data.id, vantage.offset) ?? {};
 	}
 
-	/** @internal Focus a surface feature as a real orbitable body seated on its host.
-	 *  Standoff scales with feature size, floored and capped so it never
-	 *  collapses or overshoots.
+	/** @internal Move the camera over a surface feature, its host staying the
+	 *  body it orbits. Standoff scales with feature size, floored and capped
+	 *  so it never collapses or overshoots.
 	 *
-	 *  `mode`: `pan` re-aims in place (label click); `frame` flies to it
-	 *  (search/sidebar); `snap` places it instantly for deep links, where
-	 *  `view` overrides the diameter-based framing. */
+	 *  `mode`: `pan` swings over it at the camera's distance (label click);
+	 *  `frame` flies to it (search/sidebar); `snap` places it instantly for
+	 *  deep links, where `view` overrides the diameter-based framing. */
 	focusOnFeature(
 		bodyId: string,
 		featureId: number,
 		lat: number,
 		lon: number,
 		diameterM: number,
-		name: string | null,
 		mode: 'pan' | 'frame' | 'snap' = 'frame',
 		view: CameraView | null = null
 	): number {
@@ -1489,7 +1482,13 @@ export class SpaceMap {
 		const maxScene = kmToScene(effectiveRadiusKm(hostBody.data) * 5);
 		const zoom = Math.min(Math.max(idealScene, minScene), maxScene);
 		const anchor: FeatureAnchor = { hostId: bodyId, featureId, lat, lon, diameterM };
-		return this.renderer?.focusOnFeature(anchor, name, zoom, mode, view) ?? 0;
+		// The host takes the focus inside, and that is a move onto the feature.
+		this.movingToFeature = true;
+		try {
+			return this.renderer?.focusOnFeature(anchor, zoom, mode, view) ?? 0;
+		} finally {
+			this.movingToFeature = false;
+		}
 	}
 
 	/** @internal Re-aim at `body` without the focus handshake — for browser history. */

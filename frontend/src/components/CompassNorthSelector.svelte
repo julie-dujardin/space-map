@@ -4,7 +4,6 @@
 	import * as Popover from '$lib/components/ui/popover';
 	import CompassIcon from '@lucide/svelte/icons/compass';
 	import EarthIcon from '@lucide/svelte/icons/earth';
-	import MapPinIcon from '@lucide/svelte/icons/map-pin';
 	import OrbitIcon from '@lucide/svelte/icons/orbit';
 	import SatelliteIcon from '@lucide/svelte/icons/satellite';
 	import SparklesIcon from '@lucide/svelte/icons/sparkles';
@@ -47,8 +46,6 @@
 				<SparklesIcon class="size-3.5" />
 			{:else if selected?.probe}
 				<SatelliteIcon class="size-3.5" />
-			{:else if selected?.feature}
-				<MapPinIcon class="size-3.5" />
 			{:else}
 				<EarthIcon class="size-3.5" />
 			{/if}
@@ -92,8 +89,6 @@
 								{m.north_system_desc()}
 							{:else if choice.probe}
 								{m.north_probe_desc()}
-							{:else if choice.feature}
-								{m.north_feature_desc()}
 							{:else}
 								{m.north_body_desc()}
 							{/if}
