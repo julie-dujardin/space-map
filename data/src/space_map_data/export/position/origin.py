@@ -27,13 +27,22 @@ def _iso_date_to_jd(value: str) -> float | None:
 
 
 def origin_date(o: Object) -> str | None:
-    """Origin date as an ISO date or bare year: discovery for small bodies and
-    their moons, `discovery_year` of moons and planets, launch for Earth sats.
-    Gated on a scalar column first — a bare relation access would lazy-load in
+    """Origin date as an ISO date or bare year: for small bodies the earlier of
+    their Wikidata discovery and SBDB's first observation, the discovery year
+    of their moons, `discovery_year` of moons and planets, launch for Earth
+    sats. Gated on a scalar column first — a bare relation access would lazy-load in
     a worker thread.
     """
     if o.spkid is not None and o.sbdb is not None:
-        return o.sbdb.first_obs
+        # Seen before the Common Era (Halley): always visible.
+        if o.discovery_date is not None and o.discovery_date.startswith("-"):
+            return None
+        jds = {
+            d: jd
+            for d in (o.sbdb.first_obs, o.discovery_date)
+            if d is not None and (jd := _iso_date_to_jd(d)) is not None
+        }
+        return min(jds, key=jds.__getitem__, default=None)
     if o.satcat_norad_cat_id is not None and o.satcat is not None:
         return o.satcat.launch_date
     # AsterSat fits its own orbits but takes the discovery year from the same
