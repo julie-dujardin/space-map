@@ -68,6 +68,8 @@ function buildRegistry(jd: number) {
 			spacecraftByParent: new Map([[EARTH_ID, bucket]]),
 			asteroidBodiesByZone: new Map(),
 			dirtySpacecraftGroups: new Set<string>(),
+			dirtyAsteroidZones: new Set<string>(),
+			findAsteroidZone: () => undefined,
 			onBodiesAdded: () => () => {}
 		},
 		onEarthSatRollover: () => () => {},
@@ -89,7 +91,7 @@ function buildRegistry(jd: number) {
 		ctx,
 		clock,
 		pointClouds,
-		getFocusedId: () => undefined,
+		inFocus: () => false,
 		onUserPromotedChange: vi.fn(),
 		scene: { remove: vi.fn() },
 		renderer: { domElement: {} },
@@ -181,7 +183,7 @@ describe('asteroid-moon auto-promotion', () => {
 			renderer: { domElement: {} },
 			assignMapLayerToTrails: () => {},
 			repositionAll: () => {},
-			getFocusedId: () => undefined
+			inFocus: () => false
 		} as unknown as PromotionDeps);
 		// The only sweep runs once fetchLabels resolves.
 		await Promise.resolve();
@@ -198,7 +200,7 @@ describe('persistent star promotion', () => {
 		const { registry, deps } = buildRegistry(WINDOW_START + 1);
 		await Promise.resolve();
 		let focusedId: string | undefined;
-		deps.getFocusedId = () => focusedId;
+		deps.inFocus = (id) => id === focusedId;
 		const first = mkBody({ id: 'extrasolar-1', objectType: ObjectType.EXTRASOLAR });
 		const second = mkBody({ id: 'extrasolar-2', objectType: ObjectType.EXTRASOLAR });
 
@@ -228,6 +230,20 @@ describe('persistent star promotion', () => {
 		registry.ensureBodyObjects(first);
 		expect([...deps.bodyObjects.keys()]).toEqual([first.data.id]);
 		expect(deps.onUserPromotedChange).toHaveBeenLastCalledWith(1);
+	});
+
+	it('keeps a landed probe in view and the body it stands on', async () => {
+		const { registry, deps } = buildRegistry(WINDOW_START + 1);
+		await Promise.resolve();
+		const host = mkBody({ id: 'spkid-2000433', objectType: ObjectType.ASTEROID });
+		const probe = mkBody({ id: 'near-shoemaker', parentId: host.data.id });
+		const other = mkBody({ id: 'extrasolar-1', objectType: ObjectType.EXTRASOLAR });
+		deps.inFocus = (id) => id === host.data.id || id === probe.data.id;
+		for (const b of [host, probe, other]) registry.ensureBodyObjects(b);
+		registry.emitUserPromotedCount();
+		expect(deps.onUserPromotedChange).toHaveBeenLastCalledWith(1);
+		registry.clearUserPromoted();
+		expect(new Set(deps.bodyObjects.keys())).toEqual(new Set([host.data.id, probe.data.id]));
 	});
 });
 
@@ -277,7 +293,7 @@ describe('the bodies of a drawn planetary system', () => {
 			renderer: { domElement: {} },
 			assignMapLayerToTrails: () => {},
 			repositionAll: () => {},
-			getFocusedId: () => focused,
+			inFocus: (id: string) => id === focused,
 			onUserPromotedChange
 		} as unknown as PromotionDeps);
 		return {

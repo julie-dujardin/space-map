@@ -465,9 +465,6 @@ export class SceneRenderer {
 	/** Canvas CSS height, cached so the per-frame maths never reads layout. */
 	private viewportH = 1;
 	private tier: RenderTierPreset = currentRenderTier();
-	/** Landing body driven by the current landed focused probe; tracked so the
-	 *  attach fires only on transitions (URL-direct, land/launch mid-session). */
-
 	private rafId = 0;
 	private paused = false;
 	/** Something fullscreen hides the canvas; see shouldRender. */
@@ -1739,16 +1736,18 @@ export class SceneRenderer {
 
 	/** A focused probe that touches down hands the camera to the body it
 	 *  lands on, turned onto it; one that lifts off takes the camera back.
-	 *  While it stands there, the camera goes where it goes. */
+	 *  While it stands there, the camera goes where it goes. Not while the
+	 *  date is held: the clock is then at a date the scene does not show. */
 	private followLanding(nowMs: number): void {
 		const flying = nowMs - this.focus.focusStartTime < this.focus.focusDurationMs;
-		if (flying || this.holdingCamera) return;
+		if (flying || this.holdingCamera || this.dateHeld()) return;
 		const fc = this.focusController;
 		const subject = fc.subject;
 		if (subject) {
 			// Only its record says it lifted off: a frame without its data is not that.
-			if (fc.onGroundAt(subject) === false) fc.focusOnBody(subject.data.id);
-			else fc.followSubject(this.sceneJd);
+			const onGround = fc.onGroundAt(subject);
+			if (onGround === false) fc.leaveGround();
+			else if (onGround) fc.followSubject(this.sceneJd);
 			return;
 		}
 		const current = fc.current;

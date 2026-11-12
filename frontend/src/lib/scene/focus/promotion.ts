@@ -58,8 +58,9 @@ export interface PromotionDeps {
 	assignMapLayerToTrails: () => void;
 	/** Called to refresh all object positions after a new body is built. */
 	repositionAll: () => void;
-	/** Returns the focused body id (excluded from clear / count) — null if no focus. */
-	getFocusedId: () => string | undefined;
+	/** Whether `id` is in view: the focused body, or the landed probe on it.
+	 *  These stay out of clears, counts and teardowns. */
+	inFocus: (id: string) => boolean;
 	/** Optional callback fired when the clearable user-promoted count changes. */
 	onUserPromotedChange?: (count: number) => void;
 	/** Called with the bodies of the planetary systems of other stars, once built. */
@@ -224,9 +225,10 @@ export class PromotionRegistry {
 	 *  others built for a system. A focused body stays until it is cleared,
 	 *  as a focused star does, and a pinned body stays while its pin holds. */
 	syncSystemBodies(bodies: readonly PositionedBody[]): void {
-		const focusedId = this.deps.getFocusedId();
-		if (focusedId !== undefined && this.systemPromoted.delete(focusedId)) {
-			this.userPromoted.add(focusedId);
+		for (const id of this.systemPromoted) {
+			if (!this.deps.inFocus(id)) continue;
+			this.systemPromoted.delete(id);
+			this.userPromoted.add(id);
 		}
 		const wanted = new Set(bodies.map((b) => b.data.id));
 		const dropped = [...this.systemPromoted].filter(
@@ -437,11 +439,10 @@ export class PromotionRegistry {
 	 *  its mesh out mid-frame breaks the focus pipeline. */
 	private teardownAutoPromoted(forceAll: boolean): void {
 		if (this.autoPromoted.size === 0) return;
-		const focusedId = this.deps.getFocusedId();
 		const jd = this.deps.clock.jd;
 		const toRemove: string[] = [];
 		for (const id of this.autoPromoted) {
-			if (id === focusedId) continue;
+			if (this.deps.inFocus(id)) continue;
 			if (forceAll || (this.groupTargets && !this.groupTargets.has(id))) {
 				toRemove.push(id);
 				continue;
@@ -457,16 +458,16 @@ export class PromotionRegistry {
 	 *  load, and take down the ones built for a pin the host has let go of. */
 	setPinned(ids: readonly string[]): void {
 		this.pinned = new Set(ids);
-		const focusedId = this.deps.getFocusedId();
 		const dropped = [...this.pinPromoted].filter((id) => !this.pinned.has(id));
-		// The one being looked at stays, as the reader's own from here on.
-		if (focusedId && dropped.includes(focusedId)) {
-			this.pinPromoted.delete(focusedId);
-			this.userPromoted.add(focusedId);
-			this.emitUserPromotedCount();
+		// The ones being looked at stay, as the reader's own from here on.
+		const kept = dropped.filter(this.deps.inFocus);
+		for (const id of kept) {
+			this.pinPromoted.delete(id);
+			this.userPromoted.add(id);
 		}
+		if (kept.length > 0) this.emitUserPromotedCount();
 		this.tearDownBodies(
-			dropped.filter((id) => id !== focusedId),
+			dropped.filter((id) => !this.deps.inFocus(id)),
 			this.pinPromoted
 		);
 		this.buildPinned();
@@ -487,16 +488,15 @@ export class PromotionRegistry {
 		this.finalizeBuilds();
 	}
 
-	/** Tear down every user-promoted body except the focused one, reverting them to point-cloud dots. */
+	/** Tear down every user-promoted body not in focus, reverting them to point-cloud dots. */
 	clearUserPromoted(): void {
-		const focusedId = this.deps.getFocusedId();
-		const toRemove = [...this.userPromoted].filter((id) => id !== focusedId);
+		const toRemove = [...this.userPromoted].filter((id) => !this.deps.inFocus(id));
 		this.tearDownBodies(toRemove, this.userPromoted);
 		this.emitUserPromotedCount();
 	}
 
 	/** Reverse a batch of promotions: remove scene objects, dispose GPU resources,
-	 *  mark the parent point-cloud dirty. Caller skips the focused body; `tracker`
+	 *  mark the parent point-cloud dirty. Caller skips the bodies in focus; `tracker`
 	 *  drops bookkeeping alongside the scene objects. */
 	private tearDownBodies(ids: string[], tracker: Set<string>): void {
 		if (ids.length === 0) return;
@@ -562,13 +562,12 @@ export class PromotionRegistry {
 		}
 	}
 
-	/** Emit the clearable user-promoted count — the focused body is excluded,
-	 *  since clearing it would leave the camera pointed at a torn-down mesh. */
+	/** Emit the clearable user-promoted count. The bodies in focus are not
+	 *  clearable: the camera would look at a torn-down mesh. */
 	emitUserPromotedCount(): void {
 		if (!this.deps.onUserPromotedChange) return;
-		const focusedId = this.deps.getFocusedId();
-		let count = this.userPromoted.size;
-		if (focusedId && this.userPromoted.has(focusedId)) count--;
+		let count = 0;
+		for (const id of this.userPromoted) if (!this.deps.inFocus(id)) count++;
 		this.deps.onUserPromotedChange(count);
 	}
 }

@@ -540,7 +540,8 @@ export class SpaceMap {
 		return body && bodyView(body);
 	}
 
-	/** The object the camera orbits. */
+	/** The object in view. For a landed probe this is the probe, and the
+	 *  camera orbits the body it stands on. */
 	getFocusedBody(): Body | undefined {
 		const focused = this.focusedBody;
 		return focused && bodyView(focused);
