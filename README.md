@@ -6,7 +6,7 @@ Space Map is a real-time, real-scale, fully continuous map of the solar system, 
 
 | [![Artemis 2](docs/images/artemis-2.png)](https://spacemap.co/p/121737217/Artemis%20II?at=2026-04-06T22:22:33.709Z,1.5,-14.75,2.9412e-8) | [![Mars](docs/images/mars.png)](https://spacemap.co/b/499/Mars?at=2026-06-03T05:09:05.427Z,-9.72405,91.33456,0.00093713) |
 |:-:|:-:|
-| [![Saturn](docs/images/saturn.png)](https://spacemap.co/b/699/Saturn?at=2020-06-02T14:10:11.542Z,39.08590,-147.48087,0.06) | [![Curiosity](docs/images/curiosity.png)](https://spacemap.co/p/100265984/Mars%20Science%20Laboratory?at=2026-07-28T14:17:41.132Z,-52,-72.77,6.016e-10) |
+| [![Saturn](docs/images/saturn.png)](https://spacemap.co/b/699/Saturn?at=2020-06-02T14:10:11.542Z,39.08590,-147.48087,0.06) | [![Curiosity](docs/images/curiosity.png)](https://spacemap.co/p/100265984/Curiosity?at=2026-07-28T14:18:15.278Z,-4.78619,137.38158,0.000226772934&angle=71.4,-57.5) |
 
 Click the images to open. Everything is clickable, including each asteroid dot in the main asteroid belt.
 
@@ -38,10 +38,10 @@ Each of these is displayed at its current position, and shown at its real size (
 
 ### Natural bodies
 
-- [Data driven atmospheric rendering](https://spacemap.co/e/25544/International%20Space%20Station?at=2026-07-08T22:35:21.390Z,12.53355,29.96924,1.0570e-8) down to [ground level](https://spacemap.co/p/100265984/Mars%20Science%20Laboratory?at=2026-07-28T14:17:41.132Z,-42.90792,-107.14203,4.6896e-10).
+- [Data driven atmospheric rendering](https://spacemap.co/e/25544/International%20Space%20Station?at=2026-07-08T22:35:21.390Z,12.53355,29.96924,1.0570e-8) down to [ground level](https://spacemap.co/p/100265984/Curiosity?at=2026-07-28T14:18:15.278Z,-4.78619,137.38158,0.000226772934&angle=71.4,-57.5).
 - High-resolution streamed textures & topography for all planets, 28 moons, and 13 minor bodies. Mars: 5m per pixel, the Moon: 100m per pixel, Mercury: 166m per pixel, Lander areas: up to 0.25m per pixel.
 - 3D models for 10k [asteroids](https://spacemap.co/s/20101955/101955%20Bennu?at=now,-0.99190,142.87246,4.7560e-8), [comets](https://spacemap.co/s/1000012/67P%2FChuryumov%E2%80%93Gerasimenko?at=now,48.95132,65.96561,3.7911e-7), and [moons](https://spacemap.co/b/618/Pan?at=now,20.79260,41.75821,0.0000048744); colors for 138k small bodies from [TrueColorTools](https://github.com/Askaniy/TrueColorTools).
-- System-scale lighting with [sunsets](https://spacemap.co/b/499/f/2757/Ius%20Chasma?at=2026-09-04T13:54:43.410Z,-23.46737,133.08964,0.0000038200), [accurate eclipses](https://spacemap.co/b/399/Earth?at=2027-08-02T10:00:00.000Z,28.17996,30.91585,0.00082651), [self-shadowing](https://spacemap.co/b/301/f/6163/Tycho?at=2026-11-02T01:24:12.715Z,-88.15920,31.68708,0.000012024), [ringshine](https://spacemap.co/b/699/Saturn?at=2020-11-17T22:58:33.684Z,11.90051,-20.83658,0.010587), and [planetshine](https://spacemap.co/b/401/Phobos?at=2026-11-01T21:27:18.499Z,21.10221,-22.17875,0.0000022496).
+- System-scale lighting with [sunsets](https://spacemap.co/b/499/f/2757/Ius%20Chasma?at=2026-09-04T13:39:41.441Z,-7.24695,-84.38910,0.00022899629&angle=69.5,-129.6), [accurate eclipses](https://spacemap.co/b/399/Earth?at=2027-08-02T10:00:00.000Z,28.17996,30.91585,0.00082651), [self-shadowing](https://spacemap.co/b/301/f/6163/Tycho?at=2026-11-02T01:28:08.771Z,-43.41251,-11.30359,0.000116983752&angle=76.4,-26.4), [ringshine](https://spacemap.co/b/699/Saturn?at=2020-11-17T22:58:33.684Z,11.90051,-20.83658,0.010587), and [planetshine](https://spacemap.co/b/401/Phobos?at=2026-11-01T21:27:18.499Z,21.10221,-22.17875,0.0000022496).
 - Rich data on [planetary ring systems](https://spacemap.co/g/cat-ring-systems) from [NASA PDS](https://pds-rings.seti.org/saturn/saturn_rings_table.html), the [atmospheres & interiors](https://spacemap.co/g/cat-structure-activity) of 21 planets and moons from 100+ papers.
 
 ### Probes
