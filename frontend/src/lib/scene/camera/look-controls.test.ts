@@ -1,4 +1,4 @@
-import { PerspectiveCamera, Quaternion, Vector3 } from 'three';
+import { PerspectiveCamera, Quaternion, Ray, Sphere, Vector2, Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
 import { LookOrbitControls, MAX_TILT } from './look-controls';
 
@@ -38,11 +38,18 @@ const RADIUS = 1;
 /** Orbit radius of the camera: 0.4 radii up, where the view tilts freely. */
 const ORBIT = 1.4;
 
-function setup(radius: number | null = RADIUS, orbit = ORBIT) {
+function setup(radius: number | null = RADIUS, orbit = ORBIT, tapZoomAllowed = () => true) {
 	const camera = new PerspectiveCamera(50, 1, 0.001, 100);
 	camera.position.set(0, 0, orbit);
 	const { canvas, fire } = fakeCanvas();
-	const controls = new LookOrbitControls(camera, canvas, () => radius);
+	const controls = new LookOrbitControls(
+		camera,
+		canvas,
+		() => radius,
+		undefined,
+		undefined,
+		tapZoomAllowed
+	);
 	controls.update();
 	const middleDrag = (dx: number, dy: number) => {
 		const base = { pointerId: 1, pointerType: 'mouse', button: 1, clientX: 500, clientY: 500 };
@@ -80,7 +87,47 @@ function setup(radius: number | null = RADIUS, orbit = ORBIT) {
 		fire('pointerup', at(2, to[1]));
 		controls.update();
 	};
-	return { camera, controls, middleDrag, twoFingers };
+	/** A touch event for finger `id` at (x, y), `t` ms in. */
+	const touch = (type: string, id: number, x: number, y: number, t: number) =>
+		fire(type, {
+			pointerId: id,
+			pointerType: 'touch',
+			button: 0,
+			pageX: x,
+			pageY: y,
+			clientX: x,
+			clientY: y,
+			timeStamp: t
+		});
+	/** Two quick taps at (x, y), from `t` ms in. */
+	const doubleTap = (x: number, y: number, t = 0) => {
+		touch('pointerdown', 1, x, y, t);
+		touch('pointerup', 1, x, y, t + 60);
+		touch('pointerdown', 2, x, y, t + 150);
+		touch('pointerup', 2, x, y, t + 210);
+	};
+	return { camera, controls, middleDrag, twoFingers, touch, doubleTap };
+}
+
+/** Where the ray through the pointer at (x, y) on the 1000 px canvas meets
+ *  the ground sphere. */
+function groundUnderPointer(camera: PerspectiveCamera, x: number, y: number): Vector3 {
+	camera.updateMatrixWorld();
+	const ndc = new Vector2(x / 500 - 1, 1 - y / 500);
+	const dir = new Vector3(ndc.x, ndc.y, 0.5).unproject(camera).sub(camera.position).normalize();
+	const hit = new Ray(camera.position.clone(), dir).intersectSphere(
+		new Sphere(new Vector3(), RADIUS),
+		new Vector3()
+	);
+	if (!hit) throw new Error('the pointer is off the ground');
+	return hit;
+}
+
+/** Where `point` shows on the 1000 px canvas. */
+function onScreen(camera: PerspectiveCamera, point: Vector3): [number, number] {
+	camera.updateMatrixWorld();
+	const ndc = point.clone().project(camera);
+	return [(ndc.x + 1) * 500, (1 - ndc.y) * 500];
 }
 
 /** The ground point the untilted camera looks straight down on. */
@@ -339,6 +386,121 @@ describe('LookOrbitControls two fingers', () => {
 			]
 		);
 		expect(camera.position.length()).toBeLessThan(range);
+	});
+});
+
+describe('LookOrbitControls taps', () => {
+	it('halves the height over the ground on a double tap', () => {
+		const { camera, doubleTap } = setup();
+		doubleTap(500, 500);
+		expect(camera.position.length()).toBeCloseTo(RADIUS + (ORBIT - RADIUS) / 2, 9);
+	});
+
+	it('keeps the ground under a double tap where it was', () => {
+		const { camera, doubleTap } = setup();
+		const ground = groundUnderPointer(camera, 650, 420);
+		doubleTap(650, 420);
+		const [x, y] = onScreen(camera, ground);
+		expect(x).toBeCloseTo(650, 0);
+		expect(y).toBeCloseTo(420, 0);
+	});
+
+	it('claims the second tap of a double tap, not the first', () => {
+		const { controls, doubleTap } = setup();
+		doubleTap(500, 500);
+		expect(controls.claimsTap(1)).toBe(false);
+		expect(controls.claimsTap(2)).toBe(true);
+	});
+
+	it('doubles the height on a two-finger tap', () => {
+		const { camera, touch } = setup();
+		touch('pointerdown', 1, 400, 500, 0);
+		touch('pointerdown', 2, 600, 500, 10);
+		touch('pointerup', 1, 400, 500, 80);
+		touch('pointerup', 2, 600, 500, 90);
+		expect(camera.position.length()).toBeCloseTo(RADIUS + (ORBIT - RADIUS) * 2, 9);
+	});
+
+	it('zooms in as a double tap that stays down slides down', () => {
+		const { camera, touch } = setup();
+		const direction = camera.position.clone().normalize();
+		touch('pointerdown', 1, 500, 500, 0);
+		touch('pointerup', 1, 500, 500, 60);
+		touch('pointerdown', 2, 500, 500, 150);
+		for (let i = 1; i <= 15; i++) touch('pointermove', 2, 500, 500 + 10 * i, 150 + 16 * i);
+		touch('pointerup', 2, 500, 650, 500);
+		// Half the height for 150 px, the first step in the slop given up.
+		const height = camera.position.length() - RADIUS;
+		expect(height).toBeLessThan((ORBIT - RADIUS) * 0.55);
+		expect(height).toBeGreaterThan((ORBIT - RADIUS) * 0.5);
+		// The finger zooms; it does not drag the orbit round.
+		expect(camera.position.clone().normalize().angleTo(direction)).toBeLessThan(1e-6);
+	});
+
+	it('does not zoom on taps where zooming is off', () => {
+		const { camera, controls, doubleTap } = setup();
+		controls.enableZoom = false;
+		doubleTap(500, 500);
+		expect(camera.position.length()).toBeCloseTo(ORBIT, 12);
+		expect(controls.claimsTap(2)).toBe(false);
+	});
+
+	it('does not zoom on taps while something else moves the camera', () => {
+		const { camera, controls, doubleTap } = setup(RADIUS, ORBIT, () => false);
+		doubleTap(500, 500);
+		expect(camera.position.length()).toBeCloseTo(ORBIT, 12);
+		expect(controls.claimsTap(2)).toBe(false);
+	});
+
+	it('eases the zoom in over a few frames with damping', () => {
+		const { camera, controls, doubleTap } = setup();
+		controls.enableDamping = true;
+		doubleTap(500, 500);
+		controls.update();
+		const target = RADIUS + (ORBIT - RADIUS) / 2;
+		expect(camera.position.length()).toBeGreaterThan(target + 1e-3);
+		for (let i = 0; i < 200; i++) controls.update();
+		expect(camera.position.length()).toBeCloseTo(target, 3);
+	});
+});
+
+describe('LookOrbitControls glide', () => {
+	it('carries a tilt on after the drag, to the whole of it', () => {
+		const { controls, middleDrag } = setup();
+		controls.enableDamping = true;
+		controls.dampingFactor = 0.1;
+		middleDrag(0, -200);
+		controls.update();
+		const full = (200 * Math.PI) / 1000;
+		const soon = controls.look.tilt;
+		expect(soon).toBeGreaterThan(0);
+		expect(soon).toBeLessThan(full / 2);
+		for (let i = 0; i < 300; i++) controls.update();
+		expect(controls.look.tilt).toBeCloseTo(full, 4);
+	});
+
+	it('stops gliding when a finger comes down', () => {
+		const { controls, middleDrag, touch } = setup();
+		controls.enableDamping = true;
+		controls.dampingFactor = 0.1;
+		middleDrag(0, -200);
+		for (let i = 0; i < 3; i++) controls.update();
+		touch('pointerdown', 5, 500, 500, 0);
+		const caught = controls.look.tilt;
+		for (let i = 0; i < 50; i++) controls.update();
+		expect(controls.look.tilt).toBeCloseTo(caught, 12);
+	});
+
+	it('stops gliding when something else takes the camera', () => {
+		const { controls, middleDrag } = setup();
+		controls.enableDamping = true;
+		middleDrag(0, -200);
+		controls.update();
+		controls.endLook();
+		controls.update();
+		expect(controls.turned).toBe(false);
+		for (let i = 0; i < 20; i++) controls.update();
+		expect(controls.turned).toBe(false);
 	});
 });
 

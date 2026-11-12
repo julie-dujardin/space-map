@@ -409,7 +409,8 @@ export class SpaceMap {
 	 *  a right-drag go with it: they are the same gesture to a reader told the
 	 *  camera does not move. */
 	readonly dragRotate: GestureHandler;
-	/** The wheel and the pinch. */
+	/** The wheel, the pinch, and the taps that zoom: a double tap in, a
+	 *  two-finger tap out. */
 	readonly scrollZoom: GestureHandler;
 	/** Arrow keys to turn, +/− to zoom, on the focused canvas. */
 	readonly keyboard: GestureHandler;
