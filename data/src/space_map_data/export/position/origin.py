@@ -49,17 +49,16 @@ def origin_date(o: Object) -> str | None:
     return None
 
 
-def visible_from_days(o: Object, start_jd: float) -> float:
+def visible_from_days(o: Object) -> float:
     """Days from J2000 to when `o` first exists, or NaN ("always visible").
 
-    NaN means no gating: missing/unparseable date, or one at/before `start_jd`
-    (already existed when the chunk opens). The compare only bites bounded
-    chunks (Earth sats, moon zones); unbounded SBDB files pass -inf.
+    Every file a body is in carries the same gate: the frontend keeps a
+    body's header from whichever chunk it read first.
     """
     origin = origin_date(o)
     if origin is None:
         return MISSING_FLOAT32
     jd = _iso_date_to_jd(origin)
-    if jd is None or jd <= start_jd:
+    if jd is None:
         return MISSING_FLOAT32
     return jd - J2000_JD
