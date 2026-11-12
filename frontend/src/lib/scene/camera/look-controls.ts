@@ -135,13 +135,8 @@ export class LookOrbitControls extends OrbitControls {
 		camera: PerspectiveCamera,
 		private readonly canvas: HTMLElement,
 		/** Distance from the target to its ground along a unit direction, in
-		 *  scene units. 0 for a target standing on its ground, which the view
-		 *  then turns about; null for none, and no turn. The wheel zooms on the
-		 *  target in both cases. */
+		 *  scene units; null for none, and no turn. */
 		private readonly surfaceRadius: (direction: Vector3) => number | null,
-		/** For a target standing on its ground: the camera's height over that
-		 *  ground, in radii of it. */
-		private readonly standingHeight: () => number | null = () => null,
 		/** The turn settled where nobody's gesture put it: the view to report. */
 		private readonly onTurnSettled: () => void = () => {}
 	) {
@@ -266,22 +261,6 @@ export class LookOrbitControls extends OrbitControls {
 		if (!orbitMoved) {
 			this.placedPos.copy(cam.position);
 			this.placedQuat.copy(cam.quaternion);
-			return;
-		}
-		if (this.pivotRadius === 0) {
-			// Turned about the target itself: the orbit turns and stretches as
-			// the camera was pushed, about that target.
-			const was = _from.subVectors(this.placedPos, this.target);
-			const now = _hit.subVectors(cam.position, this.target);
-			const stretch = now.length() / was.length();
-			_turnBack.setFromUnitVectors(was.normalize(), now.normalize());
-			this.orbitPos
-				.sub(this.target)
-				.applyQuaternion(_turnBack)
-				.multiplyScalar(stretch)
-				.add(this.target);
-			this.orbitQuat.premultiply(_turnBack);
-			this.place();
 			return;
 		}
 		const holds = this.holdsNorth;
@@ -590,10 +569,7 @@ export class LookOrbitControls extends OrbitControls {
 		_n.subVectors(this.orbitPosition, this.target);
 		const range = _n.length();
 		const ground = range > 0 ? this.surfaceRadius(_n.divideScalar(range)) : null;
-		if (ground === null) return 0;
-		if (ground > 0) return this.shareAt((range - ground) / ground);
-		const height = this.standingHeight();
-		return height === null ? 0 : this.shareAt(height);
+		return ground ? this.shareAt((range - ground) / ground) : 0;
 	}
 
 	/** {@link lookShare} at a height over the ground, in radii of it. */

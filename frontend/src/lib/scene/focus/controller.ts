@@ -1,5 +1,12 @@
 import { Quaternion, Vector3, type Mesh, type PerspectiveCamera, type Scene } from 'three';
-import { ObjectType, isExoplanet, isExtrasolar, type PositionedBody } from '$lib/types/objects';
+import {
+	ObjectType,
+	effectiveRadiusKm,
+	isExoplanet,
+	isExtrasolar,
+	type PositionedBody
+} from '$lib/types/objects';
+import { kmToScene } from '$lib/math/units';
 import { OrbitalSource } from '$lib/fetch/position/format';
 import { cartesianToSpherical, offsetFacing, sphericalToCartesian } from '$lib/math/spherical';
 import type { BodyObjects, Callbacks, CameraView } from '$lib/scene/types';
@@ -16,10 +23,7 @@ import {
 	upgradeBodyMesh
 } from '$lib/scene/objects/body/lifecycle';
 import { isModelBearing, unloadBodyModel } from '$lib/scene/objects/body/model';
-import {
-	disposeNomenclatureLabels,
-	nomenclatureBodyId
-} from '$lib/scene/objects/surface/nomenclature';
+import { disposeNomenclatureLabels } from '$lib/scene/objects/surface/nomenclature';
 import { buildTrails } from '$lib/scene/objects/body/bulk';
 import { minCameraDistance } from '$lib/scene/visibility/camera-limits';
 import {
@@ -36,6 +40,30 @@ import type { SystemDataLoader } from '$lib/scene/system-data/loader';
 import { PromotionRegistry, type PromotionDeps } from './promotion';
 import { angularDuration, FOCUS_ROT_PACING } from '$lib/scene/animation/pacing';
 import { surfaceDataEpoch } from '$lib/scene/position/rendered-surface';
+import { isLandedAt } from '$lib/fetch/position/probes/propagate';
+import { bodyQuaternion } from '$lib/math/orientation';
+
+/** A point of a body's ground in its own axes: degrees, and its distance from
+ *  the body's centre in scene units. */
+export interface SurfaceSite {
+	latitude: number;
+	longitude: number;
+	radius: number;
+}
+
+/** The site of `point`, placed with `host` at `hostPos` turned as at `jd`. Read
+ *  off the drawn point, not the angles it was placed from: the ground is drawn
+ *  on the body's ellipsoid, which moves a latitude toward the equator. */
+export function surfaceSite(
+	host: PositionedBody,
+	point: Readonly<Vec3>,
+	hostPos: Readonly<Vec3>,
+	jd: number
+): SurfaceSite {
+	const q = host.orientation && bodyQuaternion(host.orientation, jd, host.nutPrec);
+	const s = cartesianToSpherical([...point], [...hostPos], q ? [q.x, q.y, q.z, q.w] : undefined);
+	return { latitude: s.latitude, longitude: s.longitude, radius: s.distance };
+}
 
 const _from = new Vector3();
 const _forward = new Vector3();
@@ -71,6 +99,17 @@ export class FocusController {
 	 *  that the focus moved after it. */
 	private focusSets = 0;
 	private focusedBody: PositionedBody | undefined;
+	/** A landed probe the camera is turned onto: the focus reported to the
+	 *  page, while the camera orbits the body it stands on. */
+	private subjectBody: PositionedBody | undefined;
+	/** The camera was turned onto a point of the focused body's ground, so it
+	 *  may come down to that ground. */
+	private onGround = false;
+	/** Where the subject stood when last followed. */
+	private subjectSite: SurfaceSite | null = null;
+	/** The camera was put where it is from the subject's seat, not from given
+	 *  angles: it goes with that seat as the ground under it loads too. */
+	private placedOffSubject = false;
 	private readonly _tmpV3 = new Vector3();
 	/** The opening view of the focused body, put back as its spin, maps and
 	 *  relief land. Dropped once the camera moves, and once the focus goes to
@@ -110,6 +149,169 @@ export class FocusController {
 
 	get current(): PositionedBody | undefined {
 		return this.focusedBody;
+	}
+
+	get subject(): PositionedBody | undefined {
+		return this.subjectBody;
+	}
+
+	get groundView(): boolean {
+		return this.onGround;
+	}
+
+	/** Whether `body` is a probe on the ground at `jd`; undefined while its
+	 *  record is not in. */
+	onGroundAt(body: PositionedBody, jd = this.deps.clock.jd): boolean | undefined {
+		if (body.data.objectType !== ObjectType.SPACECRAFT) return false;
+		const probe = this.deps.ctx.probeStore?.probeWithCenter(body.data.id, jd)?.probe;
+		return probe && isLandedAt(probe, jd);
+	}
+
+	/** Where `body` stands at `jd`, if it is a landed probe then. */
+	landedSite(
+		body: PositionedBody,
+		jd = this.deps.clock.jd
+	): { host: PositionedBody; site: SurfaceSite } | undefined {
+		if (!this.onGroundAt(body, jd)) return undefined;
+		const { ctx } = this.deps;
+		const probe = ctx.probeStore!.probeWithCenter(body.data.id, jd)!.probe;
+		if (!probe.landed) return undefined;
+		const host = ctx.getBody(`naif-${probe.landed.bodyNaifId}`);
+		const pos = ctx.place(body, jd);
+		const hostPos = host && ctx.place(host, jd);
+		if (!host || !pos || !hostPos) return undefined;
+		return { host, site: surfaceSite(host, pos, hostPos, jd) };
+	}
+
+	/** The landed probe in view moves on its ground, its seat refining as the
+	 *  ground loads or a rover driving: the camera goes with it, as it would
+	 *  with the probe at the centre of its orbit. */
+	followSubject(jd: number): void {
+		const subject = this.subjectBody;
+		const host = this.focusedBody;
+		const now = subject && this.landedSite(subject, jd);
+		if (!subject || !host || !now || now.host !== host) return;
+		const was = this.subjectSite;
+		this.subjectSite = now.site;
+		// A view put at given angles is held there until the reader moves: the
+		// seat those angles were read from is where the subject ends up.
+		if (!was || (!this.placedOffSubject && this.pendingInitialView)) return;
+		const q = this.focusedBodyQuat(host);
+		const a = sphericalToCartesian([0, 0, 0], was.latitude, was.longitude, was.radius, q);
+		const b = sphericalToCartesian(
+			[0, 0, 0],
+			now.site.latitude,
+			now.site.longitude,
+			now.site.radius,
+			q
+		);
+		const shift = new Vector3(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
+		// Below a millimetre is the rounding of the read itself.
+		if (shift.length() < kmToScene(1e-6)) return;
+		this.deps.controls.moveOrbit((orbit) => orbit.add(shift));
+		const held = this.pendingInitialView;
+		if (held) {
+			const at = sphericalToCartesian([0, 0, 0], held.latitude, held.longitude, held.zoom, q);
+			const moved = cartesianToSpherical(
+				[at[0] + shift.x, at[1] + shift.y, at[2] + shift.z],
+				[0, 0, 0],
+				q
+			);
+			this.pendingInitialView = {
+				...held,
+				latitude: moved.latitude,
+				longitude: moved.longitude,
+				zoom: moved.distance
+			};
+		}
+	}
+
+	/**
+	 * Turn the camera onto `site` on `host`'s ground, the host becoming the
+	 * body it orbits. Over the host the camera holds its place and turns, or
+	 * where a turned view can't reach, swings round the host at its distance
+	 * until the site is under it. From elsewhere it flies to `height` above
+	 * the site; without one it does as over the host. `subject` is the landed
+	 * probe there. Returns the duration in ms.
+	 */
+	panToSurfacePoint(
+		host: PositionedBody,
+		site: SurfaceSite,
+		height?: number,
+		subject?: PositionedBody,
+		instant = false
+	): number {
+		const { focus, camera, controls, callbacks, pointClouds } = this.deps;
+		const hostPos = this.place(host);
+		if (!hostPos) return 0;
+		const current = this.focusedBody;
+		const overHost =
+			current !== undefined &&
+			(current.data.id === host.data.id || this.landedSite(current)?.host.data.id === host.data.id);
+		if (!overHost && height !== undefined) {
+			return this.arriveAbove(host, site, height, subject, instant);
+		}
+
+		// The origin goes onto the host with the camera held where it is, so
+		// only the view turns.
+		const camWorld = this.cameraTruePos();
+		if (f64dist(focus.focusTruePos, hostPos) > 0) {
+			focus.focusTruePos = [...hostPos];
+			camera.position.set(
+				camWorld[0] - hostPos[0],
+				camWorld[1] - hostPos[1],
+				camWorld[2] - hostPos[2]
+			);
+			this.deps.repositionAll();
+			pointClouds.rebuildBasis();
+		}
+		this.setFocusTarget(host, undefined, subject);
+		this.onGround = true;
+		this.placedOffSubject = true;
+		// The ground the camera looked at before is not where it turns to, and
+		// an aim set reads no ground at all.
+		focus.aim = null;
+		focus.aimLooks = false;
+		focus.aimPose = null;
+		// In the axes the host is drawn in, which the camera shares.
+		const quat = this.focusedBodyQuat(host);
+		const ground = new Vector3(
+			...sphericalToCartesian([0, 0, 0], site.latitude, site.longitude, site.radius, quat)
+		);
+		const from = _from.set(
+			camWorld[0] - hostPos[0],
+			camWorld[1] - hostPos[1],
+			camWorld[2] - hostPos[2]
+		);
+		if (controls.looksOver(from, ground)) {
+			focus.aimPose = controls.lookPose(from, ground, new Quaternion());
+			focus.aim = [ground.x, ground.y, ground.z];
+			focus.aimLooks = true;
+			focus.focusDurationMs = instant
+				? 0
+				: angularDuration(camera.quaternion.angleTo(focus.aimPose), FOCUS_ROT_PACING);
+			return focus.focusDurationMs;
+		}
+		const distance = from.length();
+		if (instant) {
+			this.snapOntoGround(
+				host,
+				{ latitude: site.latitude, longitude: site.longitude, zoom: distance },
+				subject
+			);
+			this.placedOffSubject = true;
+			return 0;
+		}
+		callbacks.onCameraPosition?.(site.latitude, site.longitude, distance);
+		const camPos = sphericalToCartesian(
+			[...hostPos],
+			site.latitude,
+			site.longitude,
+			distance,
+			quat
+		);
+		prepareFlyToCamera(focus, camera, camWorld, camPos, sceneSettings().resolvedReducedMotion);
+		return focus.focusDurationMs;
 	}
 
 	get focusChanges(): number {
@@ -164,10 +366,14 @@ export class FocusController {
 		];
 	}
 
-	/** Whether the focus holds `id`'s mesh and model: the focused body, or
-	 *  another body the focus upgraded. */
+	/** Whether the focus holds `id`'s mesh and model: the focused body, the
+	 *  landed probe in view, or another body the focus upgraded. */
 	holdsModel(id: string): boolean {
-		return id === this.focusedBody?.data.id || this.upgradeTargetIds.has(id);
+		return (
+			id === this.focusedBody?.data.id ||
+			id === this.subjectBody?.data.id ||
+			this.upgradeTargetIds.has(id)
+		);
 	}
 
 	/**
@@ -194,6 +400,8 @@ export class FocusController {
 			assignMapLayerToTrails
 		} = this.deps;
 		const targets = upgradeTargets(body, ctx);
+		// A landed probe in view keeps its model, though the camera orbits its host.
+		if (this.subjectBody && !targets.includes(this.subjectBody)) targets.push(this.subjectBody);
 		const newIds = new Set(targets.map((t) => t.data.id));
 		for (const id of this.upgradeTargetIds) {
 			if (newIds.has(id)) continue;
@@ -356,8 +564,14 @@ export class FocusController {
 	handleFocus(body: PositionedBody): void {
 		if (this.readerFocusFilter && !this.readerFocusFilter(body)) return;
 		// A camera turned away from its body turns back to it.
-		if (this.focusedBody?.data.id === body.data.id && !this.deps.focus.aim) {
+		const shown = this.subjectBody ?? this.focusedBody;
+		if (shown?.data.id === body.data.id && !this.deps.focus.aim) {
 			this.deps.callbacks.onFocusChange(body);
+			return;
+		}
+		const landed = this.landedSite(body);
+		if (landed) {
+			this.panToSurfacePoint(landed.host, landed.site, undefined, body);
 			return;
 		}
 		this.setFocusTarget(body);
@@ -372,9 +586,13 @@ export class FocusController {
 		this.deps.callbacks.onCameraPosition?.(latitude, longitude, distance);
 	}
 
-	setFocusTarget(body: PositionedBody, camPos?: Vec3): void {
+	setFocusTarget(body: PositionedBody, camPos?: Vec3, subject?: PositionedBody): void {
 		const { ctx, bodyObjects, callbacks, focus, camera, systemData, loadTexture } = this.deps;
 		this.focusSets++;
+		this.subjectBody = subject;
+		this.subjectSite = (subject && this.landedSite(subject)?.site) ?? null;
+		this.placedOffSubject = false;
+		this.onGround = false;
 		// An extrasolar object takes only its halo and name: the starfield draws
 		// it. A planet of another star is a dot, a halo, a name and an orbit line.
 		const drawsItself = !isExtrasolar(body) && !isExoplanet(body);
@@ -382,33 +600,21 @@ export class FocusController {
 
 		// Unfocused bodies stay halo-only for cost.
 		const prev = this.focusedBody;
-		// Labels live on the landing body, not the probe — dispose only when it changes.
-		const prevNomBodyId = nomenclatureBodyId(prev, bodyObjects);
-		const newNomBodyId = nomenclatureBodyId(body, bodyObjects);
-		const prevModelId = prev?.data.id;
-		const newModelId = body.data.id;
+		const prevId = prev?.data.id;
 		const newTargetIds = this.syncUpgradeTargets(body);
-		// A target that stays upgraded keeps its model too (a probe's fit
-		// center focused, then unfocused back to the probe).
-		if (prevModelId && prevModelId !== newModelId && !newTargetIds.has(prevModelId)) {
-			const prevBo = bodyObjects.get(prevModelId);
-			if (prevBo) unloadBodyModel(prevBo);
-		}
-		if (prevNomBodyId && prevNomBodyId !== newNomBodyId) {
-			const prevNomBo = bodyObjects.get(prevNomBodyId);
-			if (prevNomBo) disposeNomenclatureLabels(prevNomBo);
+		if (prevId && prevId !== body.data.id) {
+			const prevBo = bodyObjects.get(prevId);
+			// A target that stays upgraded keeps its model too (a probe's fit
+			// center focused, then unfocused back to the probe).
+			if (prevBo && !newTargetIds.has(prevId)) unloadBodyModel(prevBo);
+			if (prevBo) disposeNomenclatureLabels(prevBo);
 		}
 
 		if (body.data.id !== prev?.data.id) this.pendingInitialView = null;
 		this.focusedBody = body;
 		ctx.visibility.setFocused(body);
-		callbacks.onFocusChange(body);
+		callbacks.onFocusChange(subject ?? body);
 		if (drawsItself) loadTexture(body);
-		// Landed probe: also load the host for its nomenclature/terrain.
-		if (newNomBodyId && newNomBodyId !== body.data.id) {
-			const landingBody = ctx.getBody(newNomBodyId);
-			if (landingBody) loadTexture(landingBody);
-		}
 		systemData.syncToFocus();
 		// A body with no place takes the focus, and the camera stays where the
 		// user left it. The frame loop then follows its nearest placed ancestor.
@@ -442,6 +648,8 @@ export class FocusController {
 			this.setFocusTarget(body);
 			return 0;
 		}
+		const landed = this.landedSite(body);
+		if (landed) return this.panToSurfacePoint(landed.host, landed.site, zoom, body);
 		let camPos: Vec3 | undefined;
 		if (zoom !== undefined) {
 			if (latitude !== undefined && longitude !== undefined) {
@@ -506,8 +714,64 @@ export class FocusController {
 		const body = this.deps.ctx.getBody(id);
 		const pos = body && this.place(body);
 		if (!body || !pos) return;
+		// A landed probe's view is read off the body it stands on. A distance
+		// no camera off that body's centre could have frames the probe instead.
+		const landed = this.landedSite(body);
+		if (landed) {
+			const { host, site } = landed;
+			if (zoom < kmToScene(effectiveRadiusKm(host.data)) / 2) {
+				this.arriveAbove(host, site, zoom, body, true);
+			} else {
+				this.snapOntoGround(host, { latitude, longitude, zoom, look }, body);
+			}
+			return;
+		}
 		this.settleOnBodyInstant(body, pos);
 		this.snapToBodyFrame(latitude, longitude, zoom, look);
+	}
+
+	/** Go to `height` above `site` on `host`'s ground, looking straight down
+	 *  at it: a flight, or at once with `instant`. */
+	private arriveAbove(
+		host: PositionedBody,
+		site: SurfaceSite,
+		height: number,
+		subject?: PositionedBody,
+		instant = false
+	): number {
+		const { focus, callbacks } = this.deps;
+		const view = { latitude: site.latitude, longitude: site.longitude, zoom: site.radius + height };
+		if (instant) {
+			this.snapOntoGround(host, view, subject);
+			this.placedOffSubject = true;
+			return 0;
+		}
+		const hostPos = this.place(host);
+		if (!hostPos) return 0;
+		const camPos = sphericalToCartesian(
+			[...hostPos],
+			view.latitude,
+			view.longitude,
+			view.zoom,
+			this.focusedBodyQuat(host)
+		);
+		callbacks.onCameraPosition?.(view.latitude, view.longitude, view.zoom);
+		this.pendingInitialView = null;
+		this.setFocusTarget(host, camPos, subject);
+		focus.orbitFly = true;
+		this.onGround = true;
+		this.placedOffSubject = true;
+		return focus.focusDurationMs;
+	}
+
+	/** Settle on `host` at `view` at once, looking down at its ground, with
+	 *  `subject` the landed probe in view. */
+	snapOntoGround(host: PositionedBody, view: CameraView, subject?: PositionedBody): void {
+		const pos = this.place(host);
+		if (!pos) return;
+		this.settleOnBodyInstant(host, pos, subject);
+		this.snapToBodyFrame(view.latitude, view.longitude, view.zoom, view.look);
+		this.onGround = true;
 	}
 
 	/** Snap focus onto a body, framed toward `towardId` (e.g. the Sun) at
@@ -556,9 +820,13 @@ export class FocusController {
 
 	/** Settle focus onto a resident body with no approach fly, nulling the cam-fly
 	 *  fields so stepFocusAnimation's settle branch leaves the snapped frame untouched. */
-	private settleOnBodyInstant(body: PositionedBody, pos: Readonly<Vec3>): void {
+	private settleOnBodyInstant(
+		body: PositionedBody,
+		pos: Readonly<Vec3>,
+		subject?: PositionedBody
+	): void {
 		const { focus, pointClouds } = this.deps;
-		this.setFocusTarget(body);
+		this.setFocusTarget(body, undefined, subject);
 		focus.focusTruePos = [...pos];
 		focus.focusOriginWorld = [...pos];
 		focus.focusTargetWorld = [...pos];
@@ -569,6 +837,12 @@ export class FocusController {
 		focus.orbitFly = false;
 		focus.arcOrbit = false;
 		focus.cameraStaysOnBody = false;
+		// The caller places the camera: a turn onto what it looked at before
+		// would undo that on the next frame.
+		focus.aim = null;
+		focus.aimLooks = false;
+		focus.aimPose = null;
+		focus.leavesAim = false;
 		this.deps.repositionAll();
 		pointClouds.rebuildBasis();
 	}

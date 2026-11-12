@@ -31,8 +31,7 @@ import { HALO_RADIUS_PX, isDrawn, type BodyObjects } from '../types';
 import { moonVisFlags, bodyVisFlags } from './flags';
 import {
 	updateNomenclatureVisibility,
-	cullOverlappingNomenclatureLabels,
-	nomenclatureBodyId
+	cullOverlappingNomenclatureLabels
 } from '../objects/surface/nomenclature';
 import { f64dist, type Vec3 } from '../animation/math';
 import { behindGround } from './horizon';
@@ -362,11 +361,6 @@ export function updateBodyVisibility(
 	// for the 1–2 frames until the throttled (every-3rd-frame) cull would run.
 	let newlyShownLabel = false;
 
-	// A focused landed probe or surface feature defers to its host body, so the
-	// host's surface labels (incl. the focused feature's own) stay visible.
-	const nomFocusedBodyId = focusedBodyId
-		? nomenclatureBodyId(ctx.getBody(focusedBodyId), bodyObjects)
-		: undefined;
 	for (const bo of bodyObjects.values()) {
 		const { body, group, trail } = bo;
 		const dist = bo.cachedDist;
@@ -575,7 +569,7 @@ export function updateBodyVisibility(
 		if (bo.planetDot) (bo.planetDot.material as PointsMaterial).opacity = labelShare;
 
 		const nomScreenR = bo.radiusScene > 0 ? (bo.radiusScene / dist) * projScale : 0;
-		const isNomFocused = showNomenclature && body.data.id === nomFocusedBodyId;
+		const isNomFocused = showNomenclature && body.data.id === focusedBodyId;
 		updateNomenclatureVisibility(bo, isNomFocused, nomScreenR, projScale, camera, screenW, screenH);
 	}
 
@@ -607,7 +601,7 @@ export function updateBodyVisibility(
 	// The ground the camera is over hides what lies past its curve. The screen
 	// cones above read the body as its reference ellipsoid, which a camera near
 	// the ground, or a lander kilometres under it, does not sit on.
-	const groundBo = nomFocusedBodyId ? bodyObjects.get(nomFocusedBodyId) : undefined;
+	const groundBo = focusedBodyId ? bodyObjects.get(focusedBodyId) : undefined;
 	const ground = groundBo?.body.position;
 	if (groundBo && ground) {
 		const relief = reliefRadiiKm(groundBo);
@@ -620,7 +614,7 @@ export function updateBodyVisibility(
 		for (const bo of bodyObjects.values()) {
 			const at = bo.body.position;
 			const id = bo.body.data.id;
-			if (!bo.label?.visible || !at || id === nomFocusedBodyId || id === focusedBodyId) continue;
+			if (!bo.label?.visible || !at || id === focusedBodyId) continue;
 			if (behindGround(at[0] - ground[0], at[1] - ground[1], at[2] - ground[2], cx, cy, cz, top)) {
 				bo.label.visible = false;
 			}
@@ -664,8 +658,8 @@ export function updateBodyVisibility(
 	// Running every frame keeps it in sync with the per-frame size-band pass,
 	// so labels that swap in/out of visibility don't flicker against a stale
 	// throttled cull result.
-	if (nomFocusedBodyId) {
-		const focusedBo = bodyObjects.get(nomFocusedBodyId);
+	if (focusedBodyId) {
+		const focusedBo = bodyObjects.get(focusedBodyId);
 		if (focusedBo) cullOverlappingNomenclatureLabels(focusedBo);
 	}
 

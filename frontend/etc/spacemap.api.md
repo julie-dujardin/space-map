@@ -147,7 +147,6 @@ export interface CameraPose {
 
 // @public
 export interface CameraState extends Required<CameraAngles> {
-	// (undocumented)
 	body: string;
 	// (undocumented)
 	distanceKm: number;
@@ -1413,8 +1412,7 @@ export class SpaceMap {
 		lat: number,
 		lon: number,
 		diameterM: number,
-		name: string | null,
-		mode?: 'pan' | 'frame' | 'snap',
+		snap?: boolean,
 		view?: CameraView | null
 	): number;
 	// @internal

@@ -35,8 +35,8 @@ export interface SurfaceClampContext {
 	/** Rendered-surface distance (km) from the body centre along a body-fixed
 	 *  unit direction; null while its data loads (fallback: the sphere). */
 	radialKm: (dir: [number, number, number]) => number | null;
-	/** Seated view (landed probe, surface feature): guard the whole near-plane
-	 *  rectangle and floor it on the terrain, instead of the eye alone. */
+	/** A view down at the ground: guard the whole near-plane rectangle and
+	 *  floor it on the terrain, instead of the eye alone. */
 	seated?: boolean;
 	/** Radius (km) of a sphere the surface certainly fits inside. Outside it the
 	 *  clamp returns without sampling — a shape model reaches past the body's
@@ -149,10 +149,10 @@ export function minCameraDistance(
  * one it follows the rendered surface along the camera's own radial, which is
  * what a shape model needs — its mesh reaches well past that sphere.
  *
- * A `seated` view (landed probe, surface feature) floors on the surface with
- * no orbiter cap, and guards the near-plane rectangle rather than the eye —
- * terrain crossing it near-clips into a see-through hole. Each corner is
- * checked against its own radial and the camera lifted by the worst deficit.
+ * A `seated` view floors on the surface with no orbiter cap, and guards the
+ * near-plane rectangle rather than the eye — terrain crossing it near-clips
+ * into a see-through hole. Each corner is checked against its own radial and
+ * the camera lifted by the worst deficit.
  */
 export function clampCameraOutsideBody(
 	camera: PerspectiveCamera,
@@ -169,8 +169,8 @@ export function clampCameraOutsideBody(
 	const bx = at[0] - focusTruePos[0];
 	const by = at[1] - focusTruePos[1];
 	const bz = at[2] - focusTruePos[2];
-	// Focus origin (0,0,0) is the focused object, so this is its distance to the
-	// parent center — i.e. the ground level right under a landed probe.
+	// The focused object's distance from this body's centre: an orbiter's,
+	// which the wall must not pass.
 	const focusDist = Math.hypot(bx, by, bz);
 
 	// Radii are measured — and the camera pushed — from where the surface is
@@ -189,7 +189,7 @@ export function clampCameraOutsideBody(
 	if (surface?.seated) {
 		if (dist < 1e-9) {
 			// Camera exactly at center: pick an arbitrary radial to escape along.
-			camera.position.set(cx, cy + focusDist + kmToScene(LANDED_KEEP_AWAY_KM), cz);
+			camera.position.set(cx, cy + kmToScene(radiusKm + LANDED_KEEP_AWAY_KM), cz);
 			return;
 		}
 		const hh = Math.tan((camera.fov * Math.PI) / 360) * camera.near;
@@ -210,7 +210,7 @@ export function clampCameraOutsideBody(
 			if (r < 1e-12) continue;
 			_dirBF.set(px / r, py / r, pz / r).applyQuaternion(surface.invQuat);
 			const sKm = surface.radialKm([_dirBF.x, _dirBF.y, _dirBF.z]);
-			const wall = (sKm !== null ? kmToScene(sKm) : focusDist) + kmToScene(LANDED_KEEP_AWAY_KM);
+			const wall = kmToScene((sKm ?? radiusKm) + LANDED_KEEP_AWAY_KM);
 			if (wall - r > lift) lift = wall - r;
 		}
 		if (lift <= 0) return;

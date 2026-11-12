@@ -153,6 +153,8 @@ export interface CameraAngles {
 /** The camera as it stands. `body` is what it orbits, which is also what the
  *  map draws in most detail. */
 export interface CameraState extends Required<CameraAngles> {
+	/** What `lat`, `lon` and `distanceKm` are measured from: the focused body,
+	 *  or the one a landed probe in focus stands on. */
 	body: string;
 	lat: number;
 	lon: number;
@@ -891,7 +893,7 @@ export class SpaceMap {
 			},
 			onIdle: () => this.emit('idle'),
 			onCameraPosition: (latitude, longitude, zoom, look = LEVEL_LOOK) => {
-				const body = this.focusedBody?.data.id;
+				const body = this.renderer?.getFocusedBody()?.data.id;
 				// Nothing focused means nothing to measure the camera against, and
 				// the renderer reports one such settle while the scene is still empty.
 				if (body === undefined) return;
@@ -985,7 +987,7 @@ export class SpaceMap {
 	 */
 	async flyTo(target: CameraTarget): Promise<void> {
 		const body = this.targetBody(target);
-		if (target.feature) return this.toFeature(body, target.feature, 'frame');
+		if (target.feature) return this.toFeature(body, target.feature);
 		// Always with a distance: told to fly to a body and nothing more, the
 		// focus controller re-aims without approaching, and the host asked to be
 		// taken there.
@@ -1157,7 +1159,7 @@ export class SpaceMap {
 	 *  the move a click on its label makes. Resolves when the camera comes
 	 *  round. */
 	panTo(target: FeatureTarget): Promise<void> {
-		return this.toFeature(this.targetBody(target), target.feature, 'pan');
+		return this.toFeature(this.targetBody(target), target.feature);
 	}
 
 	/**
@@ -1209,7 +1211,7 @@ export class SpaceMap {
 		}
 		if (target.feature) {
 			const { featureId, lat, lon, diameterM } = target.feature;
-			this.focusOnFeature(body, featureId, lat, lon, diameterM, 'snap');
+			this.focusOnFeature(body, featureId, lat, lon, diameterM, true);
 			this.renderer?.setLook(lookOf(target));
 			return;
 		}
@@ -1227,7 +1229,7 @@ export class SpaceMap {
 	 *  is focused. */
 	getCamera(): CameraState | null {
 		const renderer = this.renderer;
-		const body = this.focusedBody?.data.id;
+		const body = renderer?.getFocusedBody()?.data.id;
 		if (!renderer || body === undefined) return null;
 		const { latitude, longitude, distance } = renderer.getCameraState();
 		return {
@@ -1352,9 +1354,9 @@ export class SpaceMap {
 		this.cooperative?.allowsTouchDrag(e.touches.length);
 	};
 
-	private toFeature(body: string, feature: FeatureRef, mode: 'frame' | 'pan'): Promise<void> {
+	private toFeature(body: string, feature: FeatureRef): Promise<void> {
 		const { featureId, lat, lon, diameterM } = feature;
-		return this.settled(this.focusOnFeature(body, featureId, lat, lon, diameterM, mode));
+		return this.settled(this.focusOnFeature(body, featureId, lat, lon, diameterM));
 	}
 
 	/** The focus controller reports how long its move takes. One frame past
@@ -1457,20 +1459,18 @@ export class SpaceMap {
 		return (body) => renderer.viewFrom(body.data.id, vantage.offset) ?? {};
 	}
 
-	/** @internal Move the camera over a surface feature, its host staying the
-	 *  body it orbits. Standoff scales with feature size, floored and capped
-	 *  so it never collapses or overshoots.
-	 *
-	 *  `mode`: `pan` swings over it at the camera's distance (label click);
-	 *  `frame` flies to it (search/sidebar); `snap` places it instantly for
-	 *  deep links, where `view` overrides the diameter-based framing. */
+	/** @internal Turn the camera onto a surface feature, its host becoming the
+	 *  body it orbits. From another body it flies in to a standoff that scales
+	 *  with the feature, floored and capped so it never collapses or
+	 *  overshoots. `snap` places it at once for a deep link, at `view` when
+	 *  the link carries one. */
 	focusOnFeature(
 		bodyId: string,
 		featureId: number,
 		lat: number,
 		lon: number,
 		diameterM: number,
-		mode: 'pan' | 'frame' | 'snap' = 'frame',
+		snap = false,
 		view: CameraView | null = null
 	): number {
 		const hostBody = this.ctx.getBody(bodyId);
@@ -1485,7 +1485,7 @@ export class SpaceMap {
 		// The host takes the focus inside, and that is a move onto the feature.
 		this.movingToFeature = true;
 		try {
-			return this.renderer?.focusOnFeature(anchor, zoom, mode, view) ?? 0;
+			return this.renderer?.focusOnFeature(anchor, zoom, snap, view) ?? 0;
 		} finally {
 			this.movingToFeature = false;
 		}
@@ -1501,9 +1501,8 @@ export class SpaceMap {
 	 *  or while nothing is focused. */
 	getPose(): CameraPose | null {
 		const renderer = this.renderer;
-		const focused = this.focusedBody;
-		if (!renderer || !focused) return null;
-		const body = focused.data.id;
+		const body = renderer?.getFocusedBody()?.data.id;
+		if (!renderer || body === undefined) return null;
 		return {
 			position: { body, offsetKm: sceneToEcliptic(renderer.cameraOffsetFromFocus()) },
 			target: { body }

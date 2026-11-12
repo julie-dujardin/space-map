@@ -50,16 +50,14 @@ export function updateSphereLOD(
 	const screenH = renderer.domElement.clientHeight;
 	const projScale = screenH / (2 * Math.tan(fovRad / 2));
 	const activeSystem = ctx.visibility.activeSystemId;
-	// Resolved by the caller: a landed probe or surface feature defers to its host body.
-	const terrainId = focusedId;
 
 	for (const bo of bodyObjects.values()) {
 		if (!bo.mesh || !bo.radiusScene || !bo.group.visible) continue;
 		if (bo.cachedDist <= 0) continue;
 		const isStar = bo.body.data.objectType === ObjectType.STAR;
 		const id = bo.body.data.id;
-		if (id === terrainId || bo.terrainWindow) {
-			if (updateTerrainWindow(bo, camera, id === terrainId, invalidate)) continue;
+		if (id === focusedId || bo.terrainWindow) {
+			if (updateTerrainWindow(bo, camera, id === focusedId, invalidate)) continue;
 		}
 		const screenR = (bo.radiusScene / bo.cachedDist) * projScale;
 		const inSystem = activeSystem

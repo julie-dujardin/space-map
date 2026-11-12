@@ -56,9 +56,7 @@ export interface MotionScale {
  *
  * `translate` (pan, zoom) follows the clearance over the nearest drawn ground,
  * the focus's or its collision `parent`'s, so the zoom slows as the ground
- * nears. A `seated` focus stands on its parent's ground already: there the
- * orbit radius is the clearance, and the parent would read the camera's
- * altitude and starve the zoom off the local vertical.
+ * nears.
  *
  * `rotate` keeps the ground under a drag moving 1:1 with the pointer, up to
  * three's own rate: a body small on screen is swung round, not tracked.
@@ -74,7 +72,6 @@ export function cameraMotionScale(
 	focusTruePos: Vec3,
 	focused: PositionedBody,
 	parent: PositionedBody | undefined,
-	seated: boolean,
 	position: Vector3 = camera.position,
 	ground: MotionGround = SPHERE_GROUND
 ): MotionScale {
@@ -87,7 +84,7 @@ export function cameraMotionScale(
 
 	let clearance = orbitRadius;
 	let height = Math.max(orbitRadius - focusRadius, floor);
-	for (const body of [sized, seated ? undefined : parent]) {
+	for (const body of [sized, parent]) {
 		const at = body?.position;
 		if (!body || !at) continue;
 		if (!(effectiveRadiusKm(body.data) > 0)) continue;
