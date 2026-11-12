@@ -3,7 +3,7 @@
 	import { onDestroy, onMount, setContext, tick, untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import Scene from './Scene.svelte';
-	import { SpaceMap, type Arrival } from '$lib/scene/space-map.svelte';
+	import { SpaceMap, lookOf, type Arrival } from '$lib/scene/space-map.svelte';
 	import { formatJulianDate } from '$lib/format/date';
 	import { isDiscless, ObjectType, type PositionedBody } from '$lib/types/objects';
 	import { minCameraDistance } from '$lib/scene/visibility/camera-limits';
@@ -404,7 +404,8 @@
 			? {
 					latitude: appState.view.latitude,
 					longitude: appState.view.longitude,
-					zoom: appState.view.zoom
+					zoom: appState.view.zoom,
+					look: lookOf(appState.view)
 				}
 			: null;
 	// Feature whose camera a 3D label click already drove (a pan in place). The
