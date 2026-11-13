@@ -305,7 +305,8 @@ def _dwarf_planets(
         )
         .outerjoin(SBDB, SBDB.object_id == Object.id)
         .filter(Object.object_type == ObjectType.dwarf_planet)
-        .order_by(Object.naif_id)
+        # An unnumbered dwarf planet has no NAIF ID; it goes last.
+        .order_by(Object.naif_id.is_(None), Object.naif_id)
         .all()
     )
     out: list[MapObject] = []

@@ -42,6 +42,26 @@ class TestObjectType:
         row = _make_row(name="pluto")
         assert _object_type(row) == ObjectType.dwarf_planet
 
+    def test_unnamed_dwarf_planet_by_designation(self):
+        row = _make_row(
+            spkid="54667839",
+            full_name="       (2026 ED138)",
+            pdes="2026 ED138",
+            name="",
+        )
+        row["class"] = "TNO"
+        assert _object_type(row) == ObjectType.dwarf_planet
+
+    def test_numbered_dwarf_planet_by_designation(self):
+        row = _make_row(
+            spkid="20700000",
+            full_name="700000 (2026 ED138)",
+            pdes="700000",
+            name="",
+        )
+        row["class"] = "TNO"
+        assert _object_type(row) == ObjectType.dwarf_planet
+
     def test_main_belt_asteroid(self):
         row = _make_row(name="Juno")
         row["class"] = "MBA"

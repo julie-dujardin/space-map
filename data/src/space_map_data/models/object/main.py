@@ -27,8 +27,8 @@ if TYPE_CHECKING:
     from space_map_data.models.object.ssodnet import SsODNet
 
 
-# IAU-recognized dwarf planets
-# TODO: get from wikidata, P31
+# Lower-cased names; an unnamed body is listed by its provisional designation,
+# which still matches once it is numbered.
 DWARF_PLANETS = {
     "ceres",
     "orcus",
@@ -40,6 +40,7 @@ DWARF_PLANETS = {
     "gonggong",
     "eris",
     "sedna",
+    "2026 ed138",
 }
 
 

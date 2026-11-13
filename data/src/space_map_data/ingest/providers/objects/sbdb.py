@@ -221,8 +221,10 @@ def _object_type(row: dict[str, str]) -> ObjectType:
     cls = string_or_none(row["class"])
     prefix = string_or_none(row["prefix"])
     name = string_or_none(row["name"])
+    # The provisional designation, as SBDB keeps it in full_name once numbered.
+    designation = _provisional_designation(row["full_name"])
 
-    if name and name.lower() in DWARF_PLANETS:
+    if any(v and v.lower() in DWARF_PLANETS for v in (name, designation)):
         return ObjectType.dwarf_planet
 
     if cls in SBDB_CLASS_MAP:

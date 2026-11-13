@@ -112,8 +112,9 @@ def build_planetary_systems_map(
         .all()
     )
     out: list[SystemMap] = []
+    # An unnumbered dwarf planet has no NAIF ID; it goes last.
     for parent_id, host_id, host_naif, host_qid, host_type in sorted(
-        hosts, key=lambda r: r[2]
+        hosts, key=lambda r: (r[2] is None, r[2] or 0)
     ):
         host_size = radii.pick(host_id, host_naif, host_qid, host_type)
         if host_size is None:
