@@ -10,7 +10,7 @@ import {
 	Texture,
 	Vector3
 } from 'three';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { fetchObjectDetail, type ProbeEvent } from '$lib/fetch/objects/object-data';
 import { createAttitudeTrack } from '$lib/fetch/attitude/track';
@@ -55,8 +55,6 @@ export type ModelTier = 'low' | 'high';
 
 export interface ModelTierExport {
 	credit: ModelCredit;
-	/** GLB size on the CDN; what a small drawing weighs its tier choice against. */
-	size_bytes?: number;
 	/** Who may serve this mesh, on the textures' ladder (`textureAllowed` in
 	 *  `$lib/host`). Absent is anyone. */
 	distribution?: string;
@@ -65,13 +63,14 @@ export interface ModelTierExport {
 	scale_meters?: number;
 }
 
-/** Subset of `metadata.json` the scene needs: each tier's credit and span,
- *  beside the body-vs-deployed split that sizes the halo and seats the mesh.
- *  Other exporter fields are ignored. */
+/** Subset of the payload every GLB of a bundle carries in
+ *  `asset.extras.spacemap`: each tier's credit and span, beside the
+ *  body-vs-deployed split that sizes the halo and seats the mesh. Other
+ *  exporter fields are ignored. */
 export interface ModelBundleMeta {
 	/** `shape_model` for natural bodies; absent/other for spacecraft. */
 	kind?: string;
-	/** Available GLB tiers; DAMIT bundles ship `high` only. */
+	/** The GLB tiers the bundle ships. */
 	tiers?: string[];
 	exports: {
 		high: ModelTierExport;
@@ -103,29 +102,105 @@ export interface ModelBundleMeta {
 export const modelLoader = new GLTFLoader();
 modelLoader.setMeshoptDecoder(MeshoptDecoder);
 const _loader = modelLoader;
-const _bundleMetaCache = new Map<string, Promise<ModelBundleMeta>>();
 
-export function fetchBundleMeta(slug: string): Promise<ModelBundleMeta> {
-	let p = _bundleMetaCache.get(slug);
-	if (!p) {
-		p = fetch(versionedUrl(`/v1/models/${slug}/metadata.json`, 'models')).then((r) => r.json());
-		_bundleMetaCache.set(slug, p);
-		// A craft's mesh waits on this, so a failed fetch must not stick.
-		p.catch(() => _bundleMetaCache.delete(slug));
-	}
-	return p;
+export function modelUrl(slug: string, tier: ModelTier): string {
+	return versionedUrl(`/v1/models/${slug}/${tier}.glb`, 'models');
+}
+
+/** A loaded tier of a bundle, with the payload it carries. */
+export interface LoadedModel {
+	gltf: GLTF;
+	meta: ModelBundleMeta;
+	/** The tier drawn, which can be the other one than asked for. */
+	tier: ModelTier;
 }
 
 /**
- * The best tier of a craft bundle this embed may draw. The two tiers can come
- * from different authors under different licences (Mir's high is CC BY-NC,
- * its low NASA's), so an embed barred from one walks down to the other.
- * Undefined when both are out of reach.
+ * Load a tier of a bundle this embed may draw. The payload the GLB carries is
+ * the authority on its licence, whatever `tiers.json` said: a tier this page
+ * may not serve is put back for the other where that one is allowed. Null when
+ * neither is, or when the GLB carries no payload.
  */
-export function allowedTier(meta: ModelBundleMeta): ModelTier | undefined {
-	if (textureAllowed(meta.exports.high.distribution)) return 'high';
-	if (meta.exports.low && textureAllowed(meta.exports.low.distribution)) return 'low';
-	return undefined;
+export async function loadModelBundle(slug: string, tier: ModelTier): Promise<LoadedModel | null> {
+	const first = await loadTier(slug, tier);
+	if (!first || textureAllowed(first.meta.exports[tier]?.distribution)) return first;
+	disposeGltf(first.gltf.scene);
+	const other: ModelTier = tier === 'high' ? 'low' : 'high';
+	if (!first.meta.tiers?.includes(other)) return null;
+	if (!textureAllowed(first.meta.exports[other]?.distribution)) return null;
+	const second = await loadTier(slug, other);
+	if (!second || textureAllowed(second.meta.exports[other]?.distribution)) return second;
+	disposeGltf(second.gltf.scene);
+	return null;
+}
+
+async function loadTier(slug: string, tier: ModelTier): Promise<LoadedModel | null> {
+	const gltf = await _loader.loadAsync(modelUrl(slug, tier));
+	const extras = gltf.asset?.extras as { spacemap?: ModelBundleMeta } | undefined;
+	const meta = extras?.spacemap;
+	if (!meta?.exports?.high) {
+		disposeGltf(gltf.scene);
+		console.warn(`models/${slug}/${tier}.glb carries no payload`);
+		return null;
+	}
+	return { gltf, meta, tier };
+}
+
+/** What `tiers.json` says of one tier: who may serve it, and for `high` its
+ *  GLB size. */
+export interface TierInfo {
+	distribution?: string;
+	size_bytes?: number;
+}
+
+/** The tiers a bundle ships, by name. */
+export type BundleTiers = Partial<Record<ModelTier, TierInfo>>;
+
+let _tiers: Promise<Record<string, BundleTiers>> | undefined;
+
+/** `v1/models/tiers.json`, once per session: the tiers of each bundle that
+ *  ships a low tier or restricts one. A bundle it leaves out ships `high` to
+ *  anyone. A failed fetch reads as empty and is tried again on the next call;
+ *  the payload of the GLB still gates what is drawn. */
+export function fetchModelTiers(): Promise<Record<string, BundleTiers>> {
+	if (!_tiers) {
+		const p: Promise<Record<string, BundleTiers>> = fetch(
+			versionedUrl('/v1/models/tiers.json', 'models')
+		)
+			.then((r) => {
+				if (!r.ok) throw new Error(`models/tiers.json: ${r.status}`);
+				return r.json() as Promise<{ bundles?: Record<string, BundleTiers> }>;
+			})
+			.then((d) => d.bundles ?? {})
+			.catch((e) => {
+				console.warn('models/tiers.json did not load:', e);
+				if (_tiers === p) _tiers = undefined;
+				return {};
+			});
+		_tiers = p;
+	}
+	return _tiers;
+}
+
+/** One bundle's entry of `tiers.json`. */
+export async function bundleTiers(slug: string): Promise<BundleTiers | undefined> {
+	return (await fetchModelTiers())[slug];
+}
+
+function tierAllowed(tiers: BundleTiers, tier: ModelTier): boolean {
+	const info = tiers[tier];
+	return !!info && textureAllowed(info.distribution);
+}
+
+/**
+ * The best tier of a bundle this embed may draw. The two tiers can come from
+ * different authors under different licences (Mir's high is CC BY-NC, its low
+ * NASA's), so an embed barred from one walks down to the other. Undefined when
+ * both are out of reach.
+ */
+export function allowedTier(tiers: BundleTiers | undefined): ModelTier | undefined {
+	if (!tiers) return 'high';
+	return (['high', 'low'] as const).find((tier) => tierAllowed(tiers, tier));
 }
 
 /** Credit for a shape-model bundle: top-level credit if set, else the high-tier GLB's. */
@@ -133,11 +208,12 @@ export function shapeModelCredit(meta: ModelBundleMeta): ModelCredit {
 	return meta.credit ?? meta.exports.high.credit;
 }
 
-/** The cheap tier where a bundle ships one. A shape model's tiers are the same
- *  surface decimated (20k triangles against 400k), and a lineup disc is far too
- *  small to tell them apart, so it takes this one. */
-export function cheapTier(meta: ModelBundleMeta): ModelTier {
-	return meta.tiers?.includes('low') ? 'low' : 'high';
+/** The cheap tier where a bundle ships one this embed may draw. A shape
+ *  model's tiers are the same surface decimated (20k triangles against 400k),
+ *  and a lineup disc is far too small to tell them apart, so it takes this
+ *  one. */
+export function cheapTier(tiers: BundleTiers | undefined): ModelTier {
+	return tiers && tierAllowed(tiers, 'low') ? 'low' : 'high';
 }
 
 /** Bytes past which a small drawing gives up on a craft's best mesh. Three
@@ -149,15 +225,12 @@ const CRAFT_TIER_BUDGET = 4_000_000;
  *  models from different catalogues rather than one decimated (Cassini's low is
  *  NASA's, its high ESA's), so `low` is not simply a cheaper `high` — it can be
  *  a cruder machine. Prefer `high`, which is also what the main scene loads, so
- *  focusing the craft reuses the download. */
-export function craftTier(meta: ModelBundleMeta): ModelTier {
-	const size = meta.exports.high.size_bytes ?? 0;
-	return size > CRAFT_TIER_BUDGET ? cheapTier(meta) : 'high';
-}
-
-/** The mesh a craft lineup draws for a bundle. */
-export function craftModelUrl(slug: string, meta: ModelBundleMeta): string {
-	return versionedUrl(`/v1/models/${slug}/${craftTier(meta)}.glb`, 'models');
+ *  focusing the craft reuses the download. Undefined when this embed may draw
+ *  neither. */
+export function craftTier(tiers: BundleTiers | undefined): ModelTier | undefined {
+	const allowed = allowedTier(tiers);
+	if (allowed !== 'high') return allowed;
+	return (tiers?.high?.size_bytes ?? 0) > CRAFT_TIER_BUDGET ? cheapTier(tiers) : 'high';
 }
 
 const _prefetched = new Set<string>();
@@ -167,9 +240,11 @@ const _prefetched = new Set<string>();
 export function prefetchCraftModel(slug: string): void {
 	if (_prefetched.has(slug)) return;
 	_prefetched.add(slug);
-	fetchBundleMeta(slug)
-		.then((meta) => fetch(craftModelUrl(slug, meta)))
-		.then((r) => r.arrayBuffer())
+	bundleTiers(slug)
+		.then((tiers) => {
+			const tier = craftTier(tiers);
+			return tier ? fetch(modelUrl(slug, tier)).then((r) => r.arrayBuffer()) : undefined;
+		})
 		.catch(() => _prefetched.delete(slug));
 }
 
@@ -302,15 +377,14 @@ async function loadSpacecraftModel(
 		// owned exclusively here; per-frame culling must not touch it.
 		if (bo.mesh) bo.mesh.visible = false;
 		setHaloLoading(bo, true);
-		// The metadata lands before the mesh is asked for: it says which tier
-		// this embed may draw and whom to credit for it.
-		const meta = await fetchBundleMeta(slug);
-		const tier = allowedTier(meta);
-		if (!tier) {
+		// Which tier this embed may draw is known before the mesh is asked for.
+		const wanted = allowedTier(await bundleTiers(slug));
+		const loaded = wanted && (await loadModelBundle(slug, wanted));
+		if (!loaded) {
 			bo.noPhysical = 'model';
 			return;
 		}
-		const gltf = await _loader.loadAsync(versionedUrl(`/v1/models/${slug}/${tier}.glb`, 'models'));
+		const { gltf, meta, tier } = loaded;
 		if ((bo.modelLoadEpoch ?? 0) !== epoch || !bo.mesh) {
 			disposeGltf(gltf.scene);
 			return;
@@ -390,20 +464,9 @@ async function loadNaturalBodyModel(bo: BodyObjects, ctx?: ContextManager): Prom
 		if (detail.global?.orientation && !bo.body.orientation) {
 			applyBodyOrientation(bo.body, detail.global.orientation, detail.global.nut_prec, ctx);
 		}
-		const metaPromise = fetchBundleMeta(slug);
-		const gltf = await _loader.loadAsync(versionedUrl(`/v1/models/${slug}/high.glb`, 'models'));
-		if ((bo.modelLoadEpoch ?? 0) !== epoch) {
-			disposeGltf(gltf.scene);
-			return;
-		}
-		let meta: ModelBundleMeta;
-		try {
-			meta = await metaPromise;
-		} catch (e) {
-			disposeGltf(gltf.scene);
-			console.warn(`Failed to load shape-model metadata for ${slug}:`, e);
-			return;
-		}
+		const loaded = await loadModelBundle(slug, 'high');
+		if (!loaded) return;
+		const { gltf, meta } = loaded;
 		if ((bo.modelLoadEpoch ?? 0) !== epoch) {
 			disposeGltf(gltf.scene);
 			return;

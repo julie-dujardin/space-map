@@ -1,8 +1,6 @@
 import { SUN_ID, SUN_TEFF } from '$lib/constants';
 import { isExtrasolarObjectId, isStarObjectId, planetOfObjectId } from '$lib/fetch/extrasolar/ids';
 import type { NotableMemberEntry } from '$lib/fetch/groups/details';
-import type { ModelIndexEntry } from '$lib/fetch/models';
-import type { ModelBundleMeta } from '$lib/scene/objects/body/model';
 import { lunarWeightScaleOf } from '$lib/scene/exoplanets/photometry';
 import { teffFromBpRp } from '$lib/scene/starfield/colour';
 import type { LineupBody } from './BodyLineup.svelte';
@@ -133,28 +131,4 @@ export function buildLineup(
 		});
 	}
 	return out;
-}
-
-/** A model bundle's lineup geometry, for a set picked from the model index
- *  rather than from a group's members. A craft is sized by the manifest's
- *  hand-maintained span; a shape model by the measured extent of the mesh,
- *  which only its own sidecar carries — pass `meta` for those. `null` when the
- *  size is missing either way: a lineup with no scale says nothing. */
-export function geometryFromModelBundle(
-	entry: ModelIndexEntry,
-	meta?: ModelBundleMeta | null
-): LineupGeometry | null {
-	if (entry.kind === 'shape_model') {
-		const extent = meta?.true_scale?.max_extent_km;
-		if (!extent) return null;
-		return { radiusKm: extent / 2, model: entry.slug };
-	}
-	if (!entry.scale_meters) return null;
-	const body = entry.scale_meters * (entry.body_span_ratio ?? 1);
-	return {
-		radiusKm: body / 2000,
-		meshSpanRatio: entry.scale_meters / body,
-		model: entry.slug,
-		craft: true
-	};
 }

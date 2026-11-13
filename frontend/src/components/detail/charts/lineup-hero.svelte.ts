@@ -17,12 +17,7 @@ import { loadTextureCredits, type TextureSource } from '$lib/credits/texture-cre
 import { extrasolarBase } from '$lib/fetch/extrasolar/files';
 import { isExtrasolarObjectId, planetOfObjectId } from '$lib/fetch/extrasolar/ids';
 import { drawnPlanetIds } from '$lib/scene/exoplanets/drawn';
-import {
-	craftTier,
-	fetchBundleMeta,
-	modelTierCredit,
-	shapeModelCredit
-} from '$lib/scene/objects/body/model';
+import { lineupModelCredits } from './lineup-model-credits.svelte';
 import { lineupDrawsShapeModel } from '$lib/scene/objects/body/shape-model-policy';
 import type { NotableMemberEntry } from '$lib/fetch/objects/object-data';
 import type { CategoryConfig } from '$lib/state/category-config';
@@ -109,9 +104,6 @@ type ImageryCredit = { key: string; label: string; url: string };
 
 export class LineupHero {
 	#credits = $state<Map<string, TextureSource> | null>(null);
-	// Shape-model authors, keyed by body id — the mesh is what renders those
-	// members, so its catalogue credit belongs beside the texture credits.
-	#modelCredits = $state<Map<string, ImageryCredit>>(new Map());
 	// A launch-vehicle family's rockets, once their bundles have answered.
 	#rockets = $state<LineupBody[]>([]);
 	// The planets of other stars that draw, once their records have answered.
@@ -337,7 +329,6 @@ export class LineupHero {
 		const imageryFor = (bodies: LineupBody[] | null | undefined): ImageryCredit[] => {
 			if (!bodies) return [];
 			const textures = this.#credits;
-			const models = this.#modelCredits;
 			const out: ImageryCredit[] = [];
 			const seen = new Set<string>();
 			const add = (c: ImageryCredit | undefined) => {
@@ -352,7 +343,10 @@ export class LineupHero {
 					const label = note ? `${tex.organisation} (${note})` : tex.organisation;
 					add({ key: label, label, url: tex.source });
 				}
-				add(models.get(b.id));
+				// Off the GLB the row loaded, so a mesh that never drew is not credited.
+				const drawsMesh = b.model && (b.craft || lineupDrawsShapeModel(b));
+				const mesh = drawsMesh ? lineupModelCredits.get(b.model!) : undefined;
+				if (mesh) add({ key: mesh.name, label: mesh.name, url: mesh.url });
 			}
 			return out;
 		};
@@ -438,43 +432,6 @@ export class LineupHero {
 		$effect(() => {
 			if (lineupBodies.length === 0) return;
 			loadTextureCredits().then((c) => (this.#credits = c));
-		});
-
-		// Members drawn from a mesh rather than a texture credit the model bundle
-		// meta (cache-shared with BodyLineup's own load): a body's shape model
-		// against its catalogue, a craft against whoever built the tier drawn.
-		// Best-effort — a failed meta just omits that author.
-		$effect(() => {
-			const models = [...lineupBodies, ...(this.probeLineup?.bodies ?? [])].filter(
-				(b) => b.craft || lineupDrawsShapeModel(b)
-			);
-			if (models.length === 0) return;
-			let cancelled = false;
-			Promise.all(
-				models.map(async (b) => {
-					try {
-						const meta = await fetchBundleMeta(b.model!);
-						const c =
-							meta.kind === 'shape_model'
-								? shapeModelCredit(meta)
-								: b.craft
-									? modelTierCredit(meta, craftTier(meta))
-									: null;
-						if (!c) return null;
-						return [b.id, { key: c.name, label: c.name, url: c.url }] as const;
-					} catch {
-						return null;
-					}
-				})
-			).then((entries) => {
-				if (cancelled) return;
-				const next = new Map<string, ImageryCredit>();
-				for (const e of entries) if (e) next.set(e[0], e[1]);
-				this.#modelCredits = next;
-			});
-			return () => {
-				cancelled = true;
-			};
 		});
 	}
 }

@@ -63,26 +63,23 @@ function context(): ContextManager {
 	} as unknown as ContextManager;
 }
 
-/** A metadata.json and a GLB, each answered when the test says so. */
-function serve(meta: Record<string, unknown>) {
-	let sendMeta!: () => void;
+/** A GLB carrying `meta` as its payload, answered when the test says so. No
+ *  bundle is in the distribution list. */
+function serve(meta: Record<string, unknown> | null) {
 	let sendMesh!: () => void;
-	const metaSent = new Promise<void>((resolve) => (sendMeta = resolve));
 	const meshSent = new Promise<void>((resolve) => (sendMesh = resolve));
 	vi.stubGlobal(
 		'fetch',
-		vi.fn(async () => {
-			await metaSent;
-			return { json: async () => meta };
-		})
+		vi.fn(async () => ({ ok: true, json: async () => ({ bundles: {} }) }))
 	);
 	vi.spyOn(modelLoader, 'loadAsync').mockImplementation(async () => {
 		await meshSent;
 		const scene = new Group();
 		scene.add(new Mesh(new SphereGeometry(1, 8, 6), new MeshStandardMaterial()));
-		return { scene } as unknown as Awaited<ReturnType<typeof modelLoader.loadAsync>>;
+		const asset = { version: '2.0', ...(meta ? { extras: { spacemap: meta } } : {}) };
+		return { scene, asset } as unknown as Awaited<ReturnType<typeof modelLoader.loadAsync>>;
 	});
-	return { sendMeta, sendMesh };
+	return { sendMesh };
 }
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -105,12 +102,10 @@ afterEach(() => {
 	vi.restoreAllMocks();
 });
 
-// Each test names its own bundle: the module keeps a metadata.json per slug.
 describe('loadBodyModel', () => {
 	it('mounts a shape model turned as the sphere it replaces', async () => {
 		detail.global = { id: 'naif-601', model_name: 'mimas-turned', render_quality: 'high' };
-		const { sendMeta, sendMesh } = serve({ kind: 'shape_model', exports: { high: { credit } } });
-		sendMeta();
+		const { sendMesh } = serve({ kind: 'shape_model', exports: { high: { credit } } });
 		sendMesh();
 		const bo = (mounted = bodyObjects('naif-601', ObjectType.MOON));
 		// No date to turn it by: the sphere alone says how.
@@ -122,8 +117,7 @@ describe('loadBodyModel', () => {
 
 	it('turns a shape model with no sphere by its spin at the date the scene shows', async () => {
 		detail.global = { id: 'naif-601', model_name: 'mimas-no-sphere', render_quality: 'high' };
-		const { sendMeta, sendMesh } = serve({ kind: 'shape_model', exports: { high: { credit } } });
-		sendMeta();
+		const { sendMesh } = serve({ kind: 'shape_model', exports: { high: { credit } } });
 		sendMesh();
 		const bo = (mounted = bodyObjects('naif-601', ObjectType.MOON, false));
 		await loadBodyModel(bo, new Scene(), context());
@@ -134,8 +128,7 @@ describe('loadBodyModel', () => {
 
 	it('mounts nothing for a load given up while its mesh was on the way', async () => {
 		detail.global = { id: 'naif-601', model_name: 'mimas-mesh-late', render_quality: 'high' };
-		const { sendMeta, sendMesh } = serve({ kind: 'shape_model', exports: { high: { credit } } });
-		sendMeta();
+		const { sendMesh } = serve({ kind: 'shape_model', exports: { high: { credit } } });
 		const bo = (mounted = bodyObjects('naif-601', ObjectType.MOON));
 		const load = loadBodyModel(bo, new Scene(), context());
 		await flush();
@@ -146,24 +139,20 @@ describe('loadBodyModel', () => {
 		expect(bo.mesh!.visible).toBe(true);
 	});
 
-	it('mounts nothing for a load given up while its metadata was on the way', async () => {
-		detail.global = { id: 'naif-601', model_name: 'mimas-meta-late', render_quality: 'high' };
-		const { sendMeta, sendMesh } = serve({ kind: 'shape_model', exports: { high: { credit } } });
+	it('mounts nothing from a GLB that carries no payload', async () => {
+		detail.global = { id: 'naif-601', model_name: 'mimas-bare', render_quality: 'high' };
+		const { sendMesh } = serve(null);
 		sendMesh();
 		const bo = (mounted = bodyObjects('naif-601', ObjectType.MOON));
-		const load = loadBodyModel(bo, new Scene(), context());
-		await flush();
-		unloadBodyModel(bo);
-		sendMeta();
-		await load;
+		// Resolves, so the settle-time work chained off it still runs.
+		await loadBodyModel(bo, new Scene(), context());
 		expect(bo.model).toBeFalsy();
 		expect(bo.mesh!.visible).toBe(true);
 	});
 
 	it('runs the position pass again once a craft model mounts', async () => {
 		detail.global = { id: 'probe-88592384', model_name: 'cassini-pass' };
-		const { sendMeta, sendMesh } = serve({ exports: { high: { credit } } });
-		sendMeta();
+		const { sendMesh } = serve({ exports: { high: { credit } } });
 		sendMesh();
 		const bo = (mounted = bodyObjects('probe-88592384', ObjectType.SPACECRAFT));
 		const ctx = context();

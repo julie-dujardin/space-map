@@ -109,14 +109,16 @@
 		makeLineupStarMaterial
 	} from './lineup-star';
 	import {
+		bundleTiers,
 		cheapTier,
-		craftModelUrl,
 		craftTier,
 		disposeGltf,
-		fetchBundleMeta,
-		modelLoader,
+		loadModelBundle,
+		modelTierCredit,
+		shapeModelCredit,
 		tierSpanRatio
 	} from '$lib/scene/objects/body/model';
+	import { lineupModelCredits } from './lineup-model-credits.svelte';
 	import { lineupDrawsShapeModel } from '$lib/scene/objects/body/shape-model-policy';
 	import {
 		attachDisplacementMap,
@@ -1122,12 +1124,15 @@
 	async function loadCraftMesh(b: Body, token: number) {
 		if (!b.model) return;
 		try {
-			const meta = await fetchBundleMeta(b.model);
-			const gltf = await modelLoader.loadAsync(craftModelUrl(b.model, meta));
+			const wanted = craftTier(await bundleTiers(b.model));
+			const loaded = wanted && (await loadModelBundle(b.model, wanted));
+			if (!loaded) return;
+			const { gltf, meta, tier } = loaded;
 			if (token !== tokenFor(b.id) || !scene || !renderer) {
 				disposeGltf(gltf.scene);
 				return;
 			}
+			lineupModelCredits.set(b.model, modelTierCredit(meta, tier));
 			// The bundle's frame map is the model's own authoring convention, so it
 			// applies under the shared view pose — the order the scene uses too.
 			const baseFrame = meta.frame_map ? frameMapQuaternion(meta.frame_map) : null;
@@ -1138,7 +1143,7 @@
 			fitUnitRadius(
 				fitted,
 				anchor && baseFrame ? anchor.applyQuaternion(baseFrame) : anchor,
-				tierSpanRatio(meta, craftTier(meta))
+				tierSpanRatio(meta, tier)
 			);
 			const root = new Group();
 			root.quaternion.copy(baseQuats.get(b.id) ?? new Quaternion());
@@ -1176,16 +1181,16 @@
 	async function loadModelMesh(b: Body, color: string, token: number, loader: TextureLoader) {
 		if (!b.model) return;
 		try {
-			const meta = await fetchBundleMeta(b.model);
-			// Guard against a spacecraft slug slipping through; those aren't lineup bodies.
-			if (meta.kind !== 'shape_model' || !meta.true_scale) return;
-			const gltf = await modelLoader.loadAsync(
-				versionedUrl(`/v1/models/${b.model}/${cheapTier(meta)}.glb`, 'models')
-			);
-			if (token !== tokenFor(b.id) || !scene) {
+			const loaded = await loadModelBundle(b.model, cheapTier(await bundleTiers(b.model)));
+			if (!loaded) return;
+			const { gltf, meta } = loaded;
+			// Guard against a spacecraft slug slipping through; those aren't lineup
+			// bodies.
+			if (token !== tokenFor(b.id) || !scene || meta.kind !== 'shape_model' || !meta.true_scale) {
 				disposeGltf(gltf.scene);
 				return;
 			}
+			lineupModelCredits.set(b.model, shapeModelCredit(meta));
 			const root = gltf.scene;
 			const material = makeShapeModelMaterial(color);
 			attachPhotometry(material, b);

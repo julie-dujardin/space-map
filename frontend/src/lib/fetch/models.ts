@@ -4,8 +4,7 @@
  * the export, so this is the set a reader can be offered.
  *
  * A craft bundle carries its real span here; a shape model carries its true km
- * in its own sidecar (`fetchBundleMeta`) instead, so a size shown for one needs
- * that second fetch.
+ * only in the payload of its GLBs, so a size shown for one waits on the mesh.
  */
 
 import { fetchMetadata } from './metadata';
@@ -38,9 +37,16 @@ export interface ModelIndexEntry {
 
 let cached: Promise<ModelIndexEntry[]> | undefined;
 
-/** Every curated bundle, fetched once per session. */
+/** Every curated bundle, fetched once per session; a failed fetch is tried
+ *  again on the next call. */
 export function fetchModelIndex(): Promise<ModelIndexEntry[]> {
-	cached ??= load();
+	if (!cached) {
+		const p = load();
+		p.catch(() => {
+			if (cached === p) cached = undefined;
+		});
+		cached = p;
+	}
 	return cached;
 }
 

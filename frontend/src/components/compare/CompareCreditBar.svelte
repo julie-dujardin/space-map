@@ -10,13 +10,7 @@
 	import { fetchStarCatalogueCredits } from '$lib/credits/star-sources';
 	import { loadLayerCredits, type TextureSource } from '$lib/credits/texture-credits';
 	import { rowQualifier, type ImageryLayer } from '$lib/credits/imagery-layers';
-	import {
-		craftTier,
-		fetchBundleMeta,
-		modelTierCredit,
-		shapeModelCredit,
-		type ModelCredit
-	} from '$lib/scene/objects/body/model';
+	import { lineupModelCredits } from '../detail/charts/lineup-model-credits.svelte';
 	import { lineupDrawsShapeModel } from '$lib/scene/objects/body/shape-model-policy';
 	import { isStarObjectId } from '$lib/fetch/extrasolar/ids';
 	import { inSceneCredits, type ExtrasolarCredit } from '$lib/fetch/extrasolar/files';
@@ -36,37 +30,11 @@
 	let textures = $state<Map<string, TextureSource> | null>(null);
 	let relief = $state<Map<string, TextureSource> | null>(null);
 	let catalogues = $state.raw<ExtrasolarCredit[]>([]);
-	/** Mesh credits by bundle slug, kept across pages: a body that comes back
-	 *  is credited again without another fetch. */
-	let models = $state<Map<string, ModelCredit>>(new Map());
-	const asked = new Set<string>();
 
 	onMount(() => {
 		loadLayerCredits('textures').then((c) => (textures = c));
 		loadLayerCredits('displacement').then((c) => (relief = c));
 		fetchStarCatalogueCredits().then((c) => (catalogues = c.filter(inSceneCredits)));
-	});
-
-	// Same tier choice as the row, so the credit names the catalogue whose mesh
-	// is on screen — a craft's two tiers can come from different ones.
-	$effect(() => {
-		for (const b of bodies) {
-			const slug = b.model;
-			if (!slug || asked.has(slug) || !(b.craft || lineupDrawsShapeModel(b))) continue;
-			asked.add(slug);
-			const craft = !!b.craft;
-			fetchBundleMeta(slug)
-				.then((meta) => {
-					const credit =
-						meta.kind === 'shape_model'
-							? shapeModelCredit(meta)
-							: craft
-								? modelTierCredit(meta, craftTier(meta))
-								: null;
-					if (credit) models = new Map(models).set(slug, credit);
-				})
-				.catch(() => asked.delete(slug));
-		}
 	});
 
 	const imageryRows = $derived.by<CreditRow[]>(() => {
@@ -94,7 +62,9 @@
 	const modelRows = $derived.by<CreditRow[]>(() => {
 		const rows: CreditRow[] = [];
 		for (const b of bodies) {
-			const credit = b.model ? models.get(b.model) : undefined;
+			// The row records the credit of each mesh it drew, off the GLB itself.
+			const drawsMesh = b.model && (b.craft || lineupDrawsShapeModel(b));
+			const credit = drawsMesh ? lineupModelCredits.get(b.model!) : undefined;
 			if (credit)
 				rows.push({ href: credit.url, label: b.name, sub: credit.name, license: credit.license });
 		}

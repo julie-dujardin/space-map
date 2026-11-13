@@ -22,8 +22,7 @@
 	import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 	import {
 		disposeGltf,
-		fetchBundleMeta,
-		modelLoader,
+		loadModelBundle,
 		modelTierCredit,
 		shapeModelCredit,
 		type ModelBundleMeta,
@@ -48,7 +47,7 @@
 		body_span_ratio?: number | null;
 		objects: IndexObject[];
 	}
-	/** Sidecar fields the scene ignores but a credit line needs. */
+	/** Payload fields the scene ignores but a credit line needs. */
 	type TierExport = ModelTierExport & { catalog?: string };
 	interface BundleMeta extends ModelBundleMeta {
 		provenance?: string;
@@ -84,7 +83,8 @@
 	let onlySuspect = $state(false);
 	let selected = $state<Bundle | null>(null);
 	let spin = $state(true);
-	/** Per-bundle sidecars, keyed by slug — where the credits live. */
+	/** Per-bundle payloads off the loaded GLBs, keyed by slug — where the
+	 *  credits live. */
 	let metas = $state<Record<string, BundleMeta>>({});
 
 	/** index.json names only the exceptions, so anything unlabelled is a craft. */
@@ -127,14 +127,6 @@
 	}
 
 	// --- credits -------------------------------------------------------------
-
-	/** index.json carries no attribution, so a bundle can only be credited once
-	 *  its sidecar lands — fetched as the card scrolls in, beside the thumbnail. */
-	async function ensureMeta(slug: string): Promise<BundleMeta> {
-		const meta = (await fetchBundleMeta(slug)) as BundleMeta;
-		metas[slug] = meta;
-		return meta;
-	}
 
 	/** Who a tier's GLB belongs to, by the same rules the scene credits it under:
 	 *  a shape model's top-level credit covers the bundle, while a craft's tiers
@@ -190,10 +182,12 @@
 	/** Load a bundle's GLB, normalised to unit radius at the origin under the
 	 *  bundle's own frame map — the pose the main scene mounts it in. */
 	async function loadModel(slug: string, tier: string): Promise<Object3D> {
-		const meta = await ensureMeta(slug);
-		const gltf = await modelLoader.loadAsync(
-			versionedUrl(`/v1/models/${slug}/${tier}.glb`, 'models')
-		);
+		const loaded = await loadModelBundle(slug, tier as ModelTier);
+		if (!loaded) throw new Error(`${slug}/${tier}.glb: no payload, or not this page's to draw`);
+		const { gltf } = loaded;
+		// index.json carries no attribution: a card is credited once its mesh is in.
+		const meta = loaded.meta as BundleMeta;
+		metas[slug] = meta;
 		const frameQuat = meta.frame_map ? frameMapQuaternion(meta.frame_map) : null;
 		if (frameQuat) gltf.scene.quaternion.copy(frameQuat);
 		const root = new Group();
@@ -246,8 +240,6 @@
 		let job: (() => Promise<void>) | null = null;
 		const io = new IntersectionObserver((entries) => {
 			if (!entries.some((e) => e.isIntersecting) || job || node.dataset.drawn) return;
-			// Ahead of the draw queue: the credit shouldn't wait on a GLB.
-			void ensureMeta(b.slug);
 			job = () => drawThumb(b, node);
 			queue.push(job);
 			pump();
@@ -448,7 +440,7 @@
 							{/each}
 						</ul>
 					{:else if meta}
-						<p class="warn">no credit in metadata.json</p>
+						<p class="warn">no credit in the GLB</p>
 					{/if}
 					{#if b.objects.length === 0}
 						<!-- A comparable stands beside the catalog rather than in it. -->
@@ -518,7 +510,7 @@
 					{#if viewerMeta?.provenance}· {viewerMeta.provenance}{/if}
 					{#if viewerMeta?.archive}· {viewerMeta.archive}{/if}
 				{:else if viewerMeta}
-					<span class="warn">no credit in metadata.json</span>
+					<span class="warn">no credit in the GLB</span>
 				{/if}
 			</span>
 		</footer>
