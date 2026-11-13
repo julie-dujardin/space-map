@@ -87,7 +87,7 @@ get along, so we shut typescript up by casting `value` to `never`.
 		weekdayFormat={effectiveWeekdayFormat}
 		{disableDaysOutsideMonth}
 		class={cn(
-			'p-2 [--cell-radius:var(--radius-md)] [--cell-size:--spacing(7)] bg-background group/calendar in-data-[slot=card-content]:bg-transparent in-data-[slot=popover-content]:bg-transparent',
+			'p-2 [--cell-radius:var(--radius-md)] [--cell-size:--spacing(7)] bg-background group/calendar [&_td]:flex-1 [&_th]:flex-1 [&_[data-bits-day]]:mx-auto in-data-[slot=card-content]:bg-transparent in-data-[slot=popover-content]:bg-transparent',
 			className
 		)}
 		{locale}
@@ -103,7 +103,9 @@ get along, so we shut typescript up by casting `value` to `never`.
 				</Calendar.Nav>
 				{#each months as month, monthIndex (month)}
 					<Calendar.Month>
-						<Calendar.Header>
+						<!-- Room for the arrows each side: a caption as wide as "جمادى الآخرة" or
+						     "2026丙午年" would otherwise run under them. -->
+						<Calendar.Header class="px-[calc(var(--cell-size)+0.25rem)]">
 							<Calendar.Caption
 								{captionLayout}
 								months={monthsProp}
