@@ -636,6 +636,7 @@ class ModelProcessor:
                 cached=cached,
                 high_pick=None,
                 low_pick=None,
+                ship_low=False,
             )
             # And clear any stale prod bundle (slug used to ship, no longer does).
             _rm_export_bundle(slug)
@@ -679,23 +680,33 @@ class ModelProcessor:
         # _catalog_by_tier (e.g. rewriting non-catalog source → attribution)
         # then invalidate existing sidecars and force a re-emit.
         catalog_by_tier = self._catalog_by_tier(yaml_path, high_pick[0], low_pick[0])
+        low_source = low_pick[1].low_glb or low_pick[1].high_glb
+        # An open low behind a non-commercial high is what an embed barred from
+        # the high draws.
+        ship_low = (
+            catalog_by_tier["high"].get("distribution") is not None
+            and catalog_by_tier["low"].get("distribution") is None
+        ) or ships_low(high_pick[1].high_glb, low_source)
         out_dir = config.PROCESSED_DIR / slug
-        cap_hash = self._cap_hash(cached, high_pick, low_pick, catalog_by_tier, entry)
+        cap_hash = self._cap_hash(
+            cached, high_pick, low_pick, catalog_by_tier, entry, ship_low
+        )
         if not force and self._sidecar_says_unchanged(slug, cap_hash):
             return
 
         _link_into_export(high_pick[1].high_glb, out_dir / "high.glb")
-        low_source = low_pick[1].low_glb or low_pick[1].high_glb
-        _link_into_export(low_source, out_dir / "low.glb")
-
         exports = {
             "high": self._tier_record(
                 out_dir / "high.glb", high_pick, catalog_by_tier["high"]
             ),
-            "low": self._tier_record(
-                out_dir / "low.glb", low_pick, catalog_by_tier["low"]
-            ),
         }
+        if ship_low:
+            _link_into_export(low_source, out_dir / "low.glb")
+            exports["low"] = self._tier_record(
+                out_dir / "low.glb", low_pick, catalog_by_tier["low"]
+            )
+        else:
+            (out_dir / "low.glb").unlink(missing_ok=True)
         self._write_prod_metadata(
             out_dir=out_dir,
             slug=slug,
@@ -711,6 +722,7 @@ class ModelProcessor:
             high_pick=high_pick,
             low_pick=low_pick,
             catalog_by_tier=catalog_by_tier,
+            ship_low=ship_low,
         )
 
     def _body_geometry(self, entry: dict, glb: Path) -> dict:
@@ -738,6 +750,7 @@ class ModelProcessor:
         low_pick: tuple[dict, cache.Cached],
         catalog_by_tier: dict[str, dict],
         entry: dict,
+        ship_low: bool,
     ) -> dict:
         """Build the invalidation key the next run compares against the sidecar.
 
@@ -760,6 +773,7 @@ class ModelProcessor:
             ),
             "high": high_pick[1].file_id,
             "low": low_pick[1].file_id,
+            "ship_low": ship_low,
             "catalog": {
                 "high": sorted(catalog_by_tier["high"].items()),
                 "low": sorted(catalog_by_tier["low"].items()),
@@ -958,6 +972,7 @@ class ModelProcessor:
         high_pick: tuple[dict, cache.Cached] | None,
         low_pick: tuple[dict, cache.Cached] | None,
         catalog_by_tier: dict[str, dict] | None = None,
+        ship_low: bool,
     ) -> None:
         """Write the build-side debug sidecar under ``EXPORT_METADATA_DIR``.
 
@@ -1003,7 +1018,7 @@ class ModelProcessor:
             "picks": picks,
             "invalidation": (
                 self._cap_hash(
-                    cached, high_pick, low_pick, catalog_by_tier or {}, entry
+                    cached, high_pick, low_pick, catalog_by_tier or {}, entry, ship_low
                 )
                 if high_pick is not None
                 and low_pick is not None
@@ -1069,6 +1084,12 @@ def _link_into_export(src: Path, dst: Path) -> None:
         if exc.errno not in (18,):  # EXDEV = cross-device link not permitted
             raise
         shutil.copyfile(src, dst)
+
+
+def ships_low(high: Path, low: Path) -> bool:
+    """Whether a low tier is worth a deploy file: only at half the high's bytes
+    or less, since few clients ever load it."""
+    return low.stat().st_size * 2 <= high.stat().st_size
 
 
 def _rm_export_bundle(slug: str) -> None:

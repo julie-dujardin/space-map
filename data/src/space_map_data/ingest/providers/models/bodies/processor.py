@@ -22,7 +22,10 @@ from pathlib import Path
 from ruamel.yaml import YAML
 
 from space_map_data.ingest.providers.models import config, conversion, metadata
-from space_map_data.ingest.providers.models.processor import _link_into_export
+from space_map_data.ingest.providers.models.processor import (
+    _link_into_export,
+    ships_low,
+)
 from space_map_data.models.object import ModelProvenance, Object
 from space_map_data.utils.paths import SOURCES_MODELS_BODIES_DIR
 
@@ -147,7 +150,11 @@ class BodyModelProcessor:
 
         out_dir = config.PROCESSED_DIR / slug
         _link_into_export(high_glb, out_dir / "high.glb")
-        _link_into_export(low_glb, out_dir / "low.glb")
+        ship_low = ships_low(high_glb, low_glb)
+        if ship_low:
+            _link_into_export(low_glb, out_dir / "low.glb")
+        else:
+            (out_dir / "low.glb").unlink(missing_ok=True)
         self._write_metadata(
             out_dir=out_dir,
             slug=slug,
@@ -156,7 +163,7 @@ class BodyModelProcessor:
             object_id=object_id,
             source_file=source_file,
             high_glb=out_dir / "high.glb",
-            low_glb=out_dir / "low.glb",
+            low_glb=out_dir / "low.glb" if ship_low else None,
             bounds=bounds,
         )
         self._session.query(Object).filter(Object.id == object_id).update(
@@ -303,7 +310,7 @@ class BodyModelProcessor:
         object_id: str,
         source_file: dict,
         high_glb: Path,
-        low_glb: Path,
+        low_glb: Path | None,
         bounds: dict | None,
     ) -> None:
         catalog = _catalog_for(entry.get("archive"))
@@ -334,7 +341,8 @@ class BodyModelProcessor:
         if catalog_license:
             credit["license"] = catalog_license
         exports: dict = {}
-        for name, glb in (("high", high_glb), ("low", low_glb)):
+        tiers = {"high": high_glb, "low": low_glb} if low_glb else {"high": high_glb}
+        for name, glb in tiers.items():
             record: dict = {
                 "size_bytes": glb.stat().st_size,
                 "sha256": metadata.sha256_file(glb),
@@ -373,7 +381,7 @@ class BodyModelProcessor:
             "citation": _flatten(entry.get("citation")),
             "archive": entry.get("archive"),
             "archive_url": entry.get("archive_url"),
-            "tiers": ["high", "low"],
+            "tiers": list(exports),
             "exports": exports,
             "processed_at": datetime.now(UTC).isoformat(),
         }

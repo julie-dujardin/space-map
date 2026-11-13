@@ -9,7 +9,23 @@ from space_map_data.ingest.providers.models.metadata import convertible_files
 from space_map_data.ingest.providers.models.processor import (
     ModelProcessor,
     _validated_frame_map,
+    ships_low,
 )
+
+
+class TestShipsLow:
+    """A low tier ships only at half the high's bytes or less."""
+
+    def _pair(self, tmp_path, high: int, low: int) -> tuple[Path, Path]:
+        (tmp_path / "high.glb").write_bytes(b"x" * high)
+        (tmp_path / "low.glb").write_bytes(b"x" * low)
+        return tmp_path / "high.glb", tmp_path / "low.glb"
+
+    def test_half_ships(self, tmp_path):
+        assert ships_low(*self._pair(tmp_path, 100, 50))
+
+    def test_more_than_half_does_not(self, tmp_path):
+        assert not ships_low(*self._pair(tmp_path, 100, 51))
 
 
 class TestValidatedFrameMap:
@@ -183,6 +199,6 @@ class TestTierSpan:
         _, low = self._pick(tmp_path, "low.glb", scale_meters=9.4)
         _, relabelled = self._pick(tmp_path, "low.glb", scale_meters=9.5)
         catalog = {"high": {}, "low": {}}
-        before = p._cap_hash([high, low], high, low, catalog, {})
-        after = p._cap_hash([high, relabelled], high, relabelled, catalog, {})
+        before = p._cap_hash([high, low], high, low, catalog, {}, True)
+        after = p._cap_hash([high, relabelled], high, relabelled, catalog, {}, True)
         assert before != after
