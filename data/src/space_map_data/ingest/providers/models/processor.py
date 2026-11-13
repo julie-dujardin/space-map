@@ -3,10 +3,11 @@
 Pipeline: convert every source file to a compressed high+low GLB pair
 (cached in ``CONVERTED_DIR``); per entry pick the largest high and smallest
 low that fit ``MAX_FILE_BYTES`` (skip the slug with a warning if none fits);
-hardlink picks into ``EXPORT_DIR/v1/models/{slug}/`` with slim prod
-metadata; write a debug sidecar to ``EXPORT_METADATA_DIR`` with every
-candidate's size/sha + pick reasoning + invalidation key; point each
-mission's ``Object.model_name`` at its winning slug.
+write the picks into ``EXPORT_DIR/v1/models/{slug}/`` with the slim prod
+metadata embedded (see ``bundle``); write a debug sidecar to
+``EXPORT_METADATA_DIR`` with every candidate's size/sha + pick reasoning +
+invalidation key; point each mission's ``Object.model_name`` at its winning
+slug.
 
 Slugs are unique across all manifests (NASA + ESA + merged.yaml). Merged
 entries win for ``Object.model_name`` since their manifest loads first.
@@ -14,7 +15,6 @@ entries win for ``Object.model_name`` since their manifest loads first.
 
 import json
 import logging
-import os
 import shutil
 import subprocess
 from collections import defaultdict
@@ -26,6 +26,7 @@ from tqdm import tqdm
 
 from space_map_data.constants.earth_sats.satellite_models import SATELLITE_BUSES
 from space_map_data.ingest.providers.models import (
+    bundle,
     cache,
     config,
     conversion,
@@ -523,12 +524,17 @@ class ModelProcessor:
 
     def _write_bundle_index(self, session) -> None:
         """Publish ``v1/models/index.json``: every curated bundle and the Objects
-        that draw it.
+        that draw it; and ``v1/models/tiers.json``.
 
         Written after every pointer pass, so it states what the map actually
         renders rather than what a manifest asked for — the surface on which a
         mesh landing on the wrong craft is visible. DAMIT bundles are left out:
         11k lightcurve models are derived per-asteroid and swamp the file.
+
+        ``tiers.json`` holds what a client picks a tier by before it loads one:
+        for each bundle that ships a low tier or restricts one, every tier it
+        ships, with its distribution and the high tier's size. The index is too
+        big to wait on for that.
         """
         attached: dict[str, list[dict]] = defaultdict(list)
         rows = (
@@ -540,33 +546,43 @@ class ModelProcessor:
             attached[slug].append({"id": oid, "name": name, "type": str(object_type)})
 
         bundles: dict[str, dict] = {}
+        tiers: dict[str, dict[str, dict]] = {}
         for slug_dir in sorted(config.PROCESSED_DIR.iterdir()):
-            meta_file = slug_dir / "metadata.json"
-            if not slug_dir.is_dir() or not meta_file.exists():
+            meta = bundle.read_bundle(slug_dir) if slug_dir.is_dir() else None
+            if meta is None:
                 continue
-            meta = json.loads(meta_file.read_text())
+            exports = meta["exports"]
+            if "low" in exports or any(e.get("distribution") for e in exports.values()):
+                tiers[slug_dir.name] = {
+                    tier: {
+                        k: v
+                        for k, v in record.items()
+                        if k == "distribution" or (k == "size_bytes" and tier == "high")
+                    }
+                    for tier, record in exports.items()
+                }
             if meta.get("provenance") == "lightcurve":
                 continue
             bundles[slug_dir.name] = {
                 "kind": meta.get("kind"),
                 "tiers": meta.get("tiers") or [],
-                "scale_meters": meta["exports"]["high"].get("scale_meters"),
+                "scale_meters": exports["high"].get("scale_meters"),
                 "body_span_ratio": meta.get("body_span_ratio"),
                 "span_ratios": meta.get("span_ratios"),
                 "objects": sorted(attached[slug_dir.name], key=lambda o: o["id"]),
             }
 
+        generated_at = datetime.now(UTC).isoformat()
         path = config.PROCESSED_DIR / "index.json"
         path.write_text(
-            json.dumps(
-                {
-                    "schema": 1,
-                    "generated_at": datetime.now(UTC).isoformat(),
-                    "bundles": bundles,
-                }
-            )
+            json.dumps({"schema": 1, "generated_at": generated_at, "bundles": bundles})
         )
         log.info("model index: %d bundles → %s", len(bundles), path)
+        path = config.PROCESSED_DIR / "tiers.json"
+        path.write_text(
+            json.dumps({"schema": 1, "generated_at": generated_at, "bundles": tiers})
+        )
+        log.info("model tiers: %d bundles → %s", len(tiers), path)
 
     def _process_entry(self, entry: dict, yaml_path: Path, *, force: bool) -> None:
         slug = entry.get("slug")
@@ -676,7 +692,7 @@ class ModelProcessor:
             low_pick[1].size("low") > config.MAX_FILE_BYTES
             or low_pick[1].size("low") == 0
         ):
-            low_pick = high_pick  # share with high; .low.glb is what gets hardlinked
+            low_pick = high_pick  # share with high; its .low.glb is what ships
 
         # Resolve catalog metadata up-front so cap_hash sees it: tweaks to
         # _catalog_by_tier (e.g. rewriting non-catalog source → attribution)
@@ -696,26 +712,24 @@ class ModelProcessor:
         if not force and self._sidecar_says_unchanged(slug, cap_hash):
             return
 
-        _link_into_export(high_pick[1].high_glb, out_dir / "high.glb")
+        sources = {"high": high_pick[1].high_glb}
         exports = {
             "high": self._tier_record(
-                out_dir / "high.glb", high_pick, catalog_by_tier["high"]
+                sources["high"], high_pick, catalog_by_tier["high"]
             ),
         }
         if ship_low:
-            _link_into_export(low_source, out_dir / "low.glb")
+            sources["low"] = low_source
             exports["low"] = self._tier_record(
-                out_dir / "low.glb", low_pick, catalog_by_tier["low"]
+                low_source, low_pick, catalog_by_tier["low"]
             )
-        else:
-            (out_dir / "low.glb").unlink(missing_ok=True)
-        self._write_prod_metadata(
-            out_dir=out_dir,
+        payload = self._prod_payload(
             slug=slug,
             entry=entry,
             exports=exports,
-            body=self._body_geometry(entry, out_dir / "high.glb"),
+            body=self._body_geometry(entry, sources["high"]),
         )
+        bundle.write_bundle(out_dir, sources, payload)
         self._write_sidecar_metadata(
             slug=slug,
             entry=entry,
@@ -795,9 +809,9 @@ class ModelProcessor:
         sidecar_path = _sidecar_path(slug)
         if not sidecar_path.exists():
             return False
-        # Must also confirm the public bundle still exists — sidecar could
-        # outlive a manually-deleted EXPORT_DIR slug dir.
-        if not (config.PROCESSED_DIR / slug / "high.glb").exists():
+        # The sidecar can outlive the public bundle it describes.
+        tiers = ["high", "low"] if cap_hash["ship_low"] else ["high"]
+        if not bundle.is_intact(config.PROCESSED_DIR / slug, tiers):
             return False
         try:
             existing = json.loads(sidecar_path.read_text())
@@ -811,7 +825,7 @@ class ModelProcessor:
         pick: tuple[dict, cache.Cached],
         catalog: dict,
     ) -> dict:
-        """Per-tier prod metadata: file stats, catalog provenance and span.
+        """Per-tier prod metadata: mesh stats, catalog provenance and span.
 
         These live per-tier (not at the top level) because high and low may
         be different meshes from different catalogs. ``scale_meters`` is the
@@ -821,8 +835,6 @@ class ModelProcessor:
         """
         f, c = pick
         record: dict = {
-            "size_bytes": glb_path.stat().st_size,
-            "sha256": metadata.sha256_file(glb_path),
             "source_type": c.source_type,
             **catalog,
         }
@@ -921,22 +933,20 @@ class ModelProcessor:
             out.append(item)
         return out
 
-    def _write_prod_metadata(
+    def _prod_payload(
         self,
         *,
-        out_dir: Path,
         slug: str,
         entry: dict,
         exports: dict[str, dict],
         body: dict | None = None,
-    ) -> None:
-        """Write the public ``EXPORT_DIR/v1/models/{slug}/metadata.json``.
+    ) -> dict:
+        """The public payload every tier GLB carries.
 
         Slim: slug + schema + kind + missions + per-tier exports. No
         invalidation keys or candidate lists — those live in the sidecar so
-        the CDN page doesn't ship debug noise.
+        the CDN doesn't ship debug noise.
         """
-        out_dir.mkdir(parents=True, exist_ok=True)
         payload: dict = {
             "slug": slug,
             "schema": config.SCHEMA_VERSION,
@@ -946,10 +956,6 @@ class ModelProcessor:
             "exports": exports,
             "processed_at": datetime.now(UTC).isoformat(),
         }
-        # Published SDK 0.1.x builds and tabs on an older frontend size every
-        # tier by this one.
-        if exports["high"].get("scale_meters"):
-            payload["scale_meters"] = exports["high"]["scale_meters"]
         # The craft body inside the high tier's span: ``body_span_ratio`` is its
         # longest dimension as a fraction of the mesh's, ``model_anchor`` its
         # centre's offset from the bounding-box centre in post-fit units. The
@@ -962,7 +968,7 @@ class ModelProcessor:
         frame_map = _validated_frame_map(entry, slug)
         if frame_map:
             payload["frame_map"] = frame_map
-        (out_dir / "metadata.json").write_text(json.dumps(payload, indent=2))
+        return payload
 
     def _write_sidecar_metadata(
         self,
@@ -1075,19 +1081,6 @@ def _sidecar_path(slug: str) -> Path:
     return EXPORT_METADATA_DIR / "v1" / "models" / slug / "metadata.json"
 
 
-def _link_into_export(src: Path, dst: Path) -> None:
-    """Hardlink ``src`` → ``dst``; fall back to copy on cross-fs (EXDEV)."""
-    dst.parent.mkdir(parents=True, exist_ok=True)
-    if dst.exists() or dst.is_symlink():
-        dst.unlink()
-    try:
-        os.link(src, dst)
-    except OSError as exc:
-        if exc.errno not in (18,):  # EXDEV = cross-device link not permitted
-            raise
-        shutil.copyfile(src, dst)
-
-
 def ships_low(high: Path, low: Path) -> bool:
     """Whether a low tier is worth a deploy file: only at half the high's bytes
     or less, since few clients ever load it."""
@@ -1096,6 +1089,6 @@ def ships_low(high: Path, low: Path) -> bool:
 
 def _rm_export_bundle(slug: str) -> None:
     """Remove a prod bundle dir if it exists (skipped slugs shouldn't ship)."""
-    bundle = config.PROCESSED_DIR / slug
-    if bundle.exists():
-        shutil.rmtree(bundle)
+    out_dir = config.PROCESSED_DIR / slug
+    if out_dir.exists():
+        shutil.rmtree(out_dir)

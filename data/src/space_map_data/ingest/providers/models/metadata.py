@@ -5,11 +5,17 @@ import json
 import logging
 import struct
 from pathlib import Path
+from typing import BinaryIO
 
 from space_map_data.constants.providers import ID_TYPES, make_object_id
 from space_map_data.ingest.providers.models import config
 
 log = logging.getLogger(__name__)
+
+GLB_MAGIC = b"glTF"
+GLB_JSON_CHUNK = 0x4E4F534A  # "JSON", little-endian
+GLB_HEADER = struct.Struct("<4sII")
+GLB_CHUNK = struct.Struct("<II")
 
 
 def resolve_mission_object_id(
@@ -77,7 +83,7 @@ def gltf_bounds(glb_path: Path) -> dict | None:
     needed. Returns ``{min, max, max_extent, bounding_radius}`` or None when
     the file isn't a parseable glTF 2 binary with positioned meshes.
     """
-    gltf = _read_gltf_json(glb_path)
+    gltf = read_gltf_json(glb_path)
     if gltf is None:
         return None
     accessors = gltf.get("accessors") or []
@@ -111,27 +117,36 @@ def gltf_bounds(glb_path: Path) -> dict | None:
     }
 
 
-def _read_gltf_json(glb_path: Path) -> dict | None:
+def read_gltf_json(glb_path: Path) -> dict | None:
     """Return a .glb's parsed JSON chunk, or None if it isn't glTF 2 binary."""
     try:
         with glb_path.open("rb") as f:
-            header = f.read(12)
-            if len(header) < 12:
-                return None
-            magic, version, _length = struct.unpack("<4sII", header)
-            if magic != b"glTF" or version != 2:
-                return None
-            chunk_header = f.read(8)
-            if len(chunk_header) < 8:
-                return None
-            chunk_len, chunk_type = struct.unpack("<II", chunk_header)
-            if chunk_type != 0x4E4F534A:  # "JSON" little-endian
-                return None
-            json_bytes = f.read(chunk_len)
-        return json.loads(json_bytes)
-    except (OSError, struct.error, json.JSONDecodeError) as exc:
-        log.warning("failed to parse glTF JSON for %s: %s", glb_path, exc)
+            gltf = read_json_chunk(f)
+    except OSError as exc:
+        log.warning("failed to read %s: %s", glb_path, exc)
         return None
+    if gltf is None:
+        log.warning("not a glTF 2 binary with a JSON object: %s", glb_path)
+    return gltf
+
+
+def read_json_chunk(f: BinaryIO) -> dict | None:
+    """Parse the JSON chunk of the .glb ``f`` starts at, leaving ``f`` just
+    past it. None if it isn't glTF 2 binary or its JSON root isn't an object.
+    """
+    header = f.read(GLB_HEADER.size)
+    chunk = f.read(GLB_CHUNK.size)
+    if len(header) < GLB_HEADER.size or len(chunk) < GLB_CHUNK.size:
+        return None
+    magic, version, _length = GLB_HEADER.unpack(header)
+    chunk_len, chunk_type = GLB_CHUNK.unpack(chunk)
+    if magic != GLB_MAGIC or version != 2 or chunk_type != GLB_JSON_CHUNK:
+        return None
+    try:
+        gltf = json.loads(f.read(chunk_len))
+    except UnicodeDecodeError, json.JSONDecodeError:
+        return None
+    return gltf if isinstance(gltf, dict) else None
 
 
 def gltf_stats(glb_path: Path) -> dict[str, int]:
@@ -146,7 +161,7 @@ def gltf_stats(glb_path: Path) -> dict[str, int]:
     other topologies (lines, points, strips) are excluded — they wouldn't
     be triangle-rendered anyway.
     """
-    gltf = _read_gltf_json(glb_path)
+    gltf = read_gltf_json(glb_path)
     if gltf is None:
         return {}
 

@@ -21,11 +21,13 @@ from pathlib import Path
 
 from ruamel.yaml import YAML
 
-from space_map_data.ingest.providers.models import config, conversion, metadata
-from space_map_data.ingest.providers.models.processor import (
-    _link_into_export,
-    ships_low,
+from space_map_data.ingest.providers.models import (
+    bundle,
+    config,
+    conversion,
+    metadata,
 )
+from space_map_data.ingest.providers.models.processor import ships_low
 from space_map_data.models.object import ModelProvenance, Object
 from space_map_data.utils.paths import SOURCES_MODELS_BODIES_DIR
 
@@ -157,24 +159,19 @@ class BodyModelProcessor:
             return
         source_file, high_glb, low_glb, bounds = picked
 
-        out_dir = config.PROCESSED_DIR / slug
-        _link_into_export(high_glb, out_dir / "high.glb")
-        ship_low = ships_low(high_glb, low_glb)
-        if ship_low:
-            _link_into_export(low_glb, out_dir / "low.glb")
-        else:
-            (out_dir / "low.glb").unlink(missing_ok=True)
-        self._write_metadata(
-            out_dir=out_dir,
+        sources = {"high": high_glb}
+        if ships_low(high_glb, low_glb):
+            sources["low"] = low_glb
+        payload = self._payload(
             slug=slug,
             tier=tier,
             entry=entry,
             object_id=object_id,
             source_file=source_file,
-            high_glb=out_dir / "high.glb",
-            low_glb=out_dir / "low.glb" if ship_low else None,
+            sources=sources,
             bounds=bounds,
         )
+        bundle.write_bundle(config.PROCESSED_DIR / slug, sources, payload)
         self._session.query(Object).filter(Object.id == object_id).update(
             {Object.model_name: slug, Object.model_provenance: ModelProvenance(tier)}
         )
@@ -309,19 +306,18 @@ class BodyModelProcessor:
             return meta
         return None
 
-    def _write_metadata(
+    def _payload(
         self,
         *,
-        out_dir: Path,
         slug: str,
         tier: str,
         entry: dict,
         object_id: str,
         source_file: dict,
-        high_glb: Path,
-        low_glb: Path | None,
+        sources: dict[str, Path],
         bounds: dict | None,
-    ) -> None:
+    ) -> dict:
+        """The public payload every tier GLB of the bundle carries."""
         catalog = _catalog_for(entry.get("archive"))
         catalog_url = (
             config.MODEL_CATALOGS[catalog]["url"]
@@ -350,11 +346,8 @@ class BodyModelProcessor:
         if catalog_license:
             credit["license"] = catalog_license
         exports: dict = {}
-        tiers = {"high": high_glb, "low": low_glb} if low_glb else {"high": high_glb}
-        for name, glb in tiers.items():
+        for name, glb in sources.items():
             record: dict = {
-                "size_bytes": glb.stat().st_size,
-                "sha256": metadata.sha256_file(glb),
                 "source_type": source_file["format"],
                 "credit": credit,
             }
@@ -400,8 +393,7 @@ class BodyModelProcessor:
             payload["probe_id"] = int(entry["probe_id"])
         if true_scale:
             payload["true_scale"] = true_scale
-        out_dir.mkdir(parents=True, exist_ok=True)
-        (out_dir / "metadata.json").write_text(json.dumps(payload, indent=2))
+        return payload
 
 
 def _flatten(text: str | None) -> str | None:

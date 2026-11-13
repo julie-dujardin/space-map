@@ -9,8 +9,8 @@ becomes the public high/low tier.
 
 A separate cache layer (vs converting straight into ``PROCESSED_DIR``)
 lets us:
-- Skip already-converted files on subsequent runs without re-reading the
-  prod metadata.json.
+- Skip already-converted files on subsequent runs without reading the
+  exported bundle.
 - Know each source's compressed size before deciding tiers — necessary for
   picking by actual fidelity/size rather than source-format priority.
 """

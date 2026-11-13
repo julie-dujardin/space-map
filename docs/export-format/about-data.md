@@ -2,7 +2,7 @@
 
 The report that the `/about/data` page shows: each kind of object, with its count, its size, its text in each language and its sources, then each map, each ring bundle and each 3D model, how fine it is, and how many files and bytes it takes. It is one JSON file that is not gzipped. `export/about_data.py` writes it last on each full export, and `space-map-export --only about-data` writes it alone.
 
-The export makes the file from the metadata that ingest writes: `textures/{id}/metadata.json` for a [texture](textures.md) bundle, `tiles/{id}/metadata.json` for its [tile pyramid](tiles.md), `rings/{id}/{bundle}/metadata.json` for a [ring](rings.md) bundle and `models/{slug}/metadata.json` for a [model](models.md). It does not read the tiles or the meshes. A cloud overlay is the exception: its metadata does not state the size of its images, so the export reads them from the bundle.
+The export makes the file from the metadata that ingest writes: `textures/{id}/metadata.json` for a [texture](textures.md) bundle, `tiles/{id}/metadata.json` for its [tile pyramid](tiles.md), `rings/{id}/{bundle}/metadata.json` for a [ring](rings.md) bundle and the payload in `models/{slug}/high.glb` for a [model](models.md), with each tier's size from its file. It reads no tile, and of a mesh only its JSON chunk. A cloud overlay is the exception: its metadata does not state the size of its images, so the export reads them from the bundle.
 
 `export/about_objects.py` makes the `objects` rows from the files of the export: the [object](objects.md) bundles, the [position](position-binary.md) files and the [nomenclature](nomenclature.md). A phase that the export skipped as unchanged counts for the files it left there. This is why the file is written last.
 

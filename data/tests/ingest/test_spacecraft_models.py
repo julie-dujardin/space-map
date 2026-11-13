@@ -1,6 +1,5 @@
 """Manifest-field validation for the spacecraft model processor."""
 
-import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -175,23 +174,16 @@ class TestTierSpan:
             "high": p._tier_record(high_glb, high, {}),
             "low": p._tier_record(low_glb, low, {}),
         }
-        p._write_prod_metadata(
-            out_dir=tmp_path / "lm", slug="lm", entry={}, exports=exports
-        )
-        return json.loads((tmp_path / "lm" / "metadata.json").read_text())
+        return p._prod_payload(slug="lm", entry={}, exports=exports)
 
     def test_each_tier_carries_its_own_span(self, tmp_path):
         meta = self._metadata(tmp_path, 6.9, 9.4)
         assert meta["exports"]["high"]["scale_meters"] == 6.9
         assert meta["exports"]["low"]["scale_meters"] == 9.4
 
-    def test_the_top_level_span_is_the_high_tiers(self, tmp_path):
-        assert self._metadata(tmp_path, 6.9, 9.4)["scale_meters"] == 6.9
-
     def test_an_unmeasured_file_gives_its_tier_no_span(self, tmp_path):
         meta = self._metadata(tmp_path, None, 9.4)
         assert "scale_meters" not in meta["exports"]["high"]
-        assert "scale_meters" not in meta
 
     def test_a_picked_files_span_invalidates_the_bundle(self, tmp_path):
         p = self._processor()

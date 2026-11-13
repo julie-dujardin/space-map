@@ -6,14 +6,14 @@ import os
 
 import numpy as np
 
-from space_map_data.ingest.providers.models import config, metadata
+from space_map_data.ingest.providers.models import bundle, config, metadata
 from space_map_data.ingest.providers.models.bodies import glb_writer, mesh_formats
 from space_map_data.ingest.providers.models.bodies.damit import (
     Citation,
     DamitModel,
     DamitProcessor,
     _parse_shape,
-    _stamp_state,
+    _stamp_fresh,
     _write_stamp,
 )
 from space_map_data.ingest.providers.models.bodies.orientation import damit_to_iau
@@ -154,6 +154,14 @@ class TestGlbWriter:
         assert bounds["min"] == [0.0, 0.0, 0.0]
         stats = metadata.gltf_stats(dst)
         assert stats["triangles"] == 4
+
+    def test_payload_rides_in_the_asset(self, tmp_path):
+        verts = np.array([[0, 0, 0], [2, 0, 0], [0, 2, 0], [0, 0, 2]], dtype=np.float64)
+        faces = np.array([[0, 2, 1], [0, 1, 3], [0, 3, 2], [1, 2, 3]], dtype=np.int64)
+        dst = tmp_path / "t.glb"
+        glb_writer.write_glb(verts, faces, dst, bundle.asset_extras({"slug": "t"}))
+        assert bundle.read_payload(dst) == {"slug": "t"}
+        assert metadata.gltf_stats(dst)["triangles"] == 4
 
 
 class TestDamitOrientation:
@@ -349,7 +357,7 @@ class TestDamitTechnique:
 
 
 class TestDamitStamp:
-    """A metadata-schema bump must refresh the sidecars without rebuilding GLBs."""
+    """A model's GLB is rewritten when its shape, scale or payload changes."""
 
     def _stamp(self, tmp_path, diameter_km: float = 10.0):
         shape = tmp_path / "shape.txt"
@@ -357,36 +365,35 @@ class TestDamitStamp:
         out_dir = tmp_path / "out"
         out_dir.mkdir()
         (out_dir / "high.glb").write_bytes(b"glb")
-        (out_dir / "metadata.json").write_text("{}")
         stamp = tmp_path / "stamp.json"
         _write_stamp(stamp, shape, diameter_km)
         return stamp, out_dir, shape
 
-    def test_fresh_stamp_is_fresh_both_ways(self, tmp_path):
+    def test_fresh_stamp(self, tmp_path):
         stamp, out_dir, shape = self._stamp(tmp_path)
-        assert _stamp_state(stamp, out_dir, shape, 10.0) == (True, True)
+        assert _stamp_fresh(stamp, out_dir, shape, 10.0)
 
-    def test_metadata_version_bump_spares_the_glb(self, tmp_path):
+    def test_metadata_version_bump_rewrites(self, tmp_path):
         stamp, out_dir, shape = self._stamp(tmp_path)
         data = json.loads(stamp.read_text())
         data["metadata"] = "v1-stale"
         stamp.write_text(json.dumps(data))
-        assert _stamp_state(stamp, out_dir, shape, 10.0) == (True, False)
+        assert not _stamp_fresh(stamp, out_dir, shape, 10.0)
 
-    def test_changed_diameter_rebuilds_geometry(self, tmp_path):
+    def test_changed_diameter_rewrites(self, tmp_path):
         stamp, out_dir, shape = self._stamp(tmp_path)
-        assert _stamp_state(stamp, out_dir, shape, 11.0) == (False, True)
+        assert not _stamp_fresh(stamp, out_dir, shape, 11.0)
 
-    def test_missing_sidecar_is_stale(self, tmp_path):
+    def test_missing_glb_is_stale(self, tmp_path):
         stamp, out_dir, shape = self._stamp(tmp_path)
-        (out_dir / "metadata.json").unlink()
-        assert _stamp_state(stamp, out_dir, shape, 10.0) == (True, False)
+        (out_dir / "high.glb").unlink()
+        assert not _stamp_fresh(stamp, out_dir, shape, 10.0)
 
     def test_moved_shape_keeps_the_stamp(self, tmp_path):
         stamp, out_dir, shape = self._stamp(tmp_path)
         st = shape.stat()
         os.utime(shape, ns=(st.st_mtime_ns + 1, st.st_mtime_ns + 1))
-        assert _stamp_state(stamp, out_dir, shape, 10.0) == (True, True)
+        assert _stamp_fresh(stamp, out_dir, shape, 10.0)
 
 
 def _damit_prime_meridian_equatorial(

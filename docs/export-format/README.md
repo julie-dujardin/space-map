@@ -63,8 +63,9 @@ v1/
   glow/…                                          the catalogue light grid, the model light and the emission, published beside x/, see glow.md
   rings/{id}/{channel}.webp                       channel = backscattered | forwardscattered | unlitside | transparency | color
   rings/{id}/metadata.json                        ring source + geometry + per-channel files
-  models/{slug}/{tier}.glb                        tier = low | high — Meshopt geometry + WebP textures
-  models/{slug}/metadata.json                     model kind + missions + per-tier exports (incl. credit)
+  models/{slug}/{tier}.glb                        tier = high | low — Meshopt geometry + WebP textures; metadata (kind, missions, per-tier credit) in asset.extras.spacemap
+  models/index.json                               every non-DAMIT bundle with its tiers, span and the Objects that draw it
+  models/tiers.json                               per bundle with a low or a restricted tier: its tiers, their distribution, the high's size
   panoramas/{id}.webp                             equirectangular surface panorama; left edge north, transparent where unobserved
   panoramas/{id}-preview.webp                     the observed strip at thumbnail size
   systems/global.json                             (not gzipped) always-loaded: per-body GMs + IAU nutation angles

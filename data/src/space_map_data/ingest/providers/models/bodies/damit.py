@@ -11,7 +11,7 @@ estimated from absolute magnitude H — and Blender-free (see ``glb_writer``) so
 the ~11k-model pass is subprocess-free.
 
 Resumable: a per-model cache stamp (kept outside the export tree — the CDN
-has a 100k-file cap) skips already-converted GLBs across runs. No-ops with a
+has a 100k-file cap) skips already-written GLBs across runs. No-ops with a
 log line when the archive or tables are absent (dev without the 1.4 GB
 download).
 """
@@ -28,7 +28,7 @@ from typing import NamedTuple, cast
 
 import numpy as np
 
-from space_map_data.ingest.providers.models import config, metadata
+from space_map_data.ingest.providers.models import bundle, config
 from space_map_data.ingest.providers.models.bodies import glb_writer, orientation
 from space_map_data.models.object import ModelProvenance, Object
 from space_map_data.utils.content_stamp import content_stamp
@@ -67,10 +67,8 @@ _ASSUMED_ALBEDO = 0.14
 _TECHNIQUE_CONVEX = "lightcurve_convex"
 _TECHNIQUE_RESOLVED = "lightcurve_resolved"
 
-# Bump when the metadata.json payload changes shape. Refreshes the sidecar on
-# the next run without rebuilding the GLB (which only DAMIT_KNOBS_VERSION and
-# the geometry inputs invalidate).
-_METADATA_VERSION = "v3-model-author"
+# Bump when the embedded payload changes shape, to rewrite every GLB.
+_METADATA_VERSION = "v4-in-glb"
 
 
 class Citation(NamedTuple):
@@ -263,30 +261,19 @@ class DamitProcessor:
         # Stamp lives outside the export tree: every exported file counts
         # against the CDN's 100k-file cap.
         stamp = _STAMPS_DIR / f"{slug}.json"
-        geometry_fresh, metadata_fresh = _stamp_state(
-            stamp, out_dir, shape_path, diameter_km
-        )
-        rebuild = force or not geometry_fresh or not metadata_fresh
-        if rebuild:
+        if force or not _stamp_fresh(stamp, out_dir, shape_path, diameter_km):
             verts, faces = _parse_shape(shape_path)
             verts = _scale_to_diameter(verts, faces, diameter_km)
             verts = _body_z_up_to_gltf_y_up(verts)
-            if force or not geometry_fresh:
-                # Convex models are already tiny; ship a single "high" tier
-                # (a duplicate low.glb would double the exported file count).
-                glb_writer.write_glb(verts, faces, out_dir / "high.glb")
-            self._write_metadata(
-                out_dir,
-                slug,
-                m,
-                object_id,
-                naif_id,
-                scale_source,
-                citation,
-                verts,
-                faces,
+            payload = self._payload(
+                slug, m, object_id, naif_id, scale_source, citation, verts, faces
             )
-        if rebuild:
+            # Convex models are already tiny; one "high" tier is the bundle.
+            out_dir.mkdir(parents=True, exist_ok=True)
+            glb_writer.write_glb(
+                verts, faces, out_dir / "high.glb", bundle.asset_extras(payload)
+            )
+            bundle.prune_bundle_dir(out_dir, ["high"])
             _write_stamp(stamp, shape_path, diameter_km)
 
         if naif_id is not None:
@@ -321,9 +308,8 @@ class DamitProcessor:
             m.lambda_deg, m.beta_deg, m.period_h, m.phi0_deg, m.jd0
         )
 
-    def _write_metadata(
+    def _payload(
         self,
-        out_dir: Path,
         slug: str,
         m: DamitModel,
         object_id: str,
@@ -332,7 +318,8 @@ class DamitProcessor:
         citation: Citation | None,
         verts: np.ndarray,
         faces: np.ndarray,
-    ) -> None:
+    ) -> dict:
+        """The public payload the model's GLB carries."""
         permalink = (
             f"https://damit.cuni.cz/projects/damit/asteroids/view/{m.asteroid_id}"
         )
@@ -348,14 +335,12 @@ class DamitProcessor:
         half = [e / 2 for e in extent]
         record_stats = {"triangles": len(faces), "meshes": 1, "nodes": 1}
         tier = {
-            "size_bytes": (out_dir / "high.glb").stat().st_size,
-            "sha256": metadata.sha256_file(out_dir / "high.glb"),
             "source_type": "damit-convex",
             "credit": credit,
             "catalog": catalog,
             "stats": record_stats,
         }
-        payload = {
+        return {
             "slug": slug,
             "schema": config.BODY_SCHEMA_VERSION,
             "kind": "shape_model",
@@ -382,8 +367,6 @@ class DamitProcessor:
             },
             "processed_at": datetime.now(UTC).isoformat(),
         }
-        out_dir.mkdir(parents=True, exist_ok=True)
-        (out_dir / "metadata.json").write_text(json.dumps(payload, indent=2))
 
     # --- table + file loading ---------------------------------------------
 
@@ -639,30 +622,21 @@ def _mesh_volume(verts: np.ndarray, faces: np.ndarray) -> float:
     return float(abs(np.sum(np.einsum("ij,ij->i", v0, np.cross(v1, v2))) / 6.0))
 
 
-def _stamp_state(
-    stamp: Path, out_dir: Path, shape: Path, diameter_km: float
-) -> tuple[bool, bool]:
-    """``(geometry fresh, metadata fresh)`` for an already-converted model.
-
-    Split so a metadata-only schema bump rewrites the sidecars without paying
-    to rebuild ~11k GLBs that didn't change.
-    """
+def _stamp_fresh(stamp: Path, out_dir: Path, shape: Path, diameter_km: float) -> bool:
+    """Whether the model's GLB is current with its shape, scale and payload."""
     if not stamp.exists():
-        return False, False
+        return False
     try:
         data = json.loads(stamp.read_text())
     except OSError, json.JSONDecodeError:
-        return False, False
-    geometry = (
+        return False
+    return (
         (out_dir / "high.glb").exists()
         and data.get("knobs") == config.DAMIT_KNOBS_VERSION
+        and data.get("metadata") == _METADATA_VERSION
         and _shape_unchanged(data, shape)
         and data.get("diameter_km") == diameter_km
     )
-    meta_fresh = (out_dir / "metadata.json").exists() and data.get(
-        "metadata"
-    ) == _METADATA_VERSION
-    return geometry, meta_fresh
 
 
 def _shape_unchanged(data: dict, shape: Path) -> bool:

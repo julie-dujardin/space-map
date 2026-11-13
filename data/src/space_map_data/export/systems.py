@@ -34,6 +34,7 @@ from space_map_data.export.small_body_color import (
     resolve_small_body_color,
 )
 from space_map_data.export.wikidata import WikidataEntityCache
+from space_map_data.ingest.providers.models.bundle import read_bundle
 from space_map_data.models.object import Object, ObjectType
 from space_map_data.utils.paths import DOWNLOAD_DIR, EXPORT_DIR
 
@@ -633,20 +634,16 @@ def load_ring_metadata(out_dir: Path) -> dict[str, list[dict]]:
 
 
 def load_model_metadata(out_dir: Path) -> dict[str, dict]:
-    """{slug: metadata_dict} for 3D models. Unlike texture/ring/clouds metadata,
-    this lives in ``EXPORT_DIR`` itself (publicly served), not behind
-    ``mirror_path``.
+    """{slug: payload} for 3D models, read off each bundle's GLB (see
+    ``models.bundle``), with each tier's ``size_bytes``.
     """
     models_dir = out_dir / "models"
     result: dict[str, dict] = {}
     if not models_dir.exists():
         return result
     for slug_dir in models_dir.iterdir():
-        if not slug_dir.is_dir():
-            continue
-        meta_file = slug_dir / "metadata.json"
-        if meta_file.exists():
-            result[slug_dir.name] = orjson.loads(meta_file.read_bytes())
+        if slug_dir.is_dir() and (meta := read_bundle(slug_dir)) is not None:
+            result[slug_dir.name] = meta
     logger.info("Loaded model metadata for %d slugs", len(result))
     return result
 

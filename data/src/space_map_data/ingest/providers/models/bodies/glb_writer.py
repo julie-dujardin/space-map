@@ -14,7 +14,12 @@ from pathlib import Path
 import numpy as np
 
 
-def write_glb(vertices: np.ndarray, faces: np.ndarray, dst: Path) -> None:
+def write_glb(
+    vertices: np.ndarray,
+    faces: np.ndarray,
+    dst: Path,
+    asset_extras: dict | None = None,
+) -> None:
     """Write an indexed triangle mesh to ``dst`` as a .glb.
 
     ``vertices``: (N, 3) float km. ``faces``: (M, 3) int, 0-based.
@@ -41,8 +46,11 @@ def write_glb(vertices: np.ndarray, faces: np.ndarray, dst: Path) -> None:
     pos_min = vertices.min(axis=0).tolist()
     pos_max = vertices.max(axis=0).tolist()
 
+    asset: dict = {"version": "2.0", "generator": "space-map damit glb_writer"}
+    if asset_extras:
+        asset["extras"] = asset_extras
     gltf = {
-        "asset": {"version": "2.0", "generator": "space-map damit glb_writer"},
+        "asset": asset,
         "scenes": [{"nodes": [0]}],
         "scene": 0,
         "nodes": [{"mesh": 0}],

@@ -147,4 +147,4 @@ stays maintained.
 (Sketchfab, Thingiverse, one-off NASA pages), which carry per-model terms. It
 has one entry per author, sorted by name. The note on what was changed
 ("…, painted") is dropped from the name so one author's models share an entry;
-the per-model credit in `models/{slug}/metadata.json` keeps it.
+the per-model credit in the bundle's GLBs ([models.md](models.md)) keeps it.

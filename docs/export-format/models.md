@@ -5,11 +5,11 @@
 - **Spacecraft/satellites** — sourced from NASA-3D-Resources + ESA SciFleet, manifests under `sources/models/spacecraft/`. Authoring-unit meshes rendered at unit radius in a focus overlay. `kind` is a spacecraft category.
 - **Natural bodies** (`kind: "shape_model"`) — asteroid/comet/small-moon shapes from spacecraft photogrammetry/altimetry (`missions` tier), ground-based radar (`radar` tier), and DAMIT lightcurve convex inversion (`lightcurve` tier). Manifests under `sources/models/bodies/{missions,radar}/manifest.yaml`; DAMIT reads its extracted bulk archive + CSV tables. **km-unit meshes** rendered in the main scene at true scale, oriented by the body's IAU pole (see below).
 
-Bundles are keyed by a human-readable `slug`; each depicted Object carries the slug in its `model_name` field. Many objects may share one spacecraft slug (Cluster II constellation); each body resolves to exactly one Object by `naif_id`. DAMIT slugs are `damit-{model_id}` — every model is exported, and the newest (highest DAMIT model id) per asteroid drives the `model_name` pointer and the spin orientation.
+Bundles are keyed by a human-readable `slug`; each depicted Object carries the slug in its `model_name` field. Many objects may share one spacecraft slug (Cluster II constellation); each body resolves to exactly one Object by `naif_id`. DAMIT slugs are `damit-{model_id}` — one model ships per asteroid, the newest paper's (the higher DAMIT model id between models of one paper), and it drives the `model_name` pointer and the spin orientation.
 
 **Path:** `models/{slug}/{tier}.glb`
 
-Two tiers — `low` and `high` — both as glTF 2.0 binary (.glb). Optimised by [`@gltf-transform/cli optimize`](https://gltf-transform.dev/cli): geometry is Meshopt-compressed (faster decode than Draco, supports morph targets) and textures are re-encoded as WebP. Every convertible file in an entry is compressed twice, on high knobs and on low knobs (textures downsampled to 1024 px, geometry simplified to 50% of the triangle count); `high` is then the largest of those results and `low` the smallest, so an entry shipping several hand-authored variants can serve its two tiers from two different files.
+A bundle is its GLB files and nothing else: the deploy is capped at 100,000 files, so the bundle's metadata rides inside each GLB (see below). Two tiers — `high`, always, and `low` — both as glTF 2.0 binary (.glb). `low` ships only when it is at most half the bytes of `high`, since few clients load it, or when it is an open mesh behind a non-commercial `high` (what an embed barred from the `high` draws); `tiers` lists the ones a bundle ships. Optimised by [`@gltf-transform/cli optimize`](https://gltf-transform.dev/cli): geometry is Meshopt-compressed (faster decode than Draco, supports morph targets) and textures are re-encoded as WebP. Every convertible file in an entry is compressed twice, on high knobs and on low knobs (textures downsampled to 1024 px, geometry simplified to 50% of the triangle count); `high` is then the largest of those results and `low` the smallest, so an entry shipping several hand-authored variants can serve its two tiers from two different files.
 
 Source formats: pre-existing `.glb` is passed through; `.fbx`, `.blend`, `.obj`, `.3ds` are converted via Blender headless first. `.lwo` and `.7z` are skipped today.
 
@@ -21,9 +21,9 @@ Three manifest keys override the size-based pick, all set per file:
 
 Slugs are globally unique across catalogs — a duplicate slug raises `SlugConflictError` at ingest time. A single mission may have multiple candidate slugs (e.g. "cassini" and "cassini-with-huygens" both depict the Cassini probe); in that case the first slug encountered wins and a warning is logged. TODO: explicit per-mission canonical selection once the frontend's variant-picking rule is known.
 
-## Model metadata (`models/{slug}/metadata.json`)
+## Model metadata (`asset.extras.spacemap`)
 
-Shipped publicly (lives in `EXPORT_DIR`, not the build-only mirror) so clients can introspect a model's source catalog, mission list, and per-tier glTF stats without parsing the GLB header.
+Every tier GLB of a bundle carries the same payload in its JSON chunk, under `asset.extras.spacemap`, so a client reads the credit, the span and the frame of whatever tier it loaded off that tier (three's `GLTFLoader` exposes it as `gltf.asset.extras.spacemap`). The rest of the file is the converted mesh, byte for byte. A file can't state its own size or hash, so the payload has no `size_bytes` or `sha256`; the export's readers take each tier's size from the file.
 
 ```json
 {
@@ -36,8 +36,6 @@ Shipped publicly (lives in `EXPORT_DIR`, not the build-only mirror) so clients c
   "tiers": ["high", "low"],
   "exports": {
     "high": {
-      "size_bytes": 1057528,
-      "sha256": "abc123…",
       "source_type": "glb",
       "credit": {
         "name": "NASA",
@@ -47,8 +45,6 @@ Shipped publicly (lives in `EXPORT_DIR`, not the build-only mirror) so clients c
       "scale_meters": 2.9
     },
     "low": {
-      "size_bytes": 648820,
-      "sha256": "def456…",
       "source_type": "blend",
       "credit": {
         "name": "NASA",
@@ -62,7 +58,6 @@ Shipped publicly (lives in `EXPORT_DIR`, not the build-only mirror) so clients c
     }
   },
   "processed_at": "2026-06-04T12:37:45+00:00",
-  "scale_meters": 2.9,
   "body_span_ratio": 0.68,
   "model_anchor": [0.23, 0.05, -0.02]
 }
@@ -72,18 +67,17 @@ Shipped publicly (lives in `EXPORT_DIR`, not the build-only mirror) so clients c
 - `missions` — every Object whose `model_name` points at this slug; `name` is whatever the manifest entry supplied. Mission resolution priority: `probe_id` → `naif_id` → `norad_cat_id` → `spkid` (the last for asteroids).
 - `exports.{tier}.source_type` — the original file format the tier was converted from (`"glb"`, `"fbx"`, `"blend"`, `"obj"`, `"3ds"`). `"glb"` means pass-through, anything else means a Blender import happened.
 - `exports.{tier}.credit` — the display text and link target for the attribution bar/popover. `name` is always the attribution (`"NASA"`, `"ESA / scifleet.esa.int"`, `"NASA (via Google Arts & Culture)"`, …) so chips stay consistent across catalogs. `url` is the specific resource page when one was given inline in the manifest, else the catalog's landing page. `license` is a Wikimedia-style short string (`"Public domain"`, `"CC BY 4.0"`, …) — an inline manifest `license` overrides the catalog default; omitted when the source has no confirmed license.
-- `exports.{tier}.distribution` — who may serve the mesh, on the same ladder as a texture's `distribution` ([textures.md](textures.md)). Omitted for a mesh anyone may serve. `"non-commercial"` is a licence that forbids commercial reuse (CC BY-NC, CC BY-NC-SA); the ingest sets it from `credit.license`. It is per tier because the two tiers can have different authors: Mir's `high` is CC BY-NC and its `low` is NASA's. A renderer reads the metadata before it requests a mesh, draws the best tier its page may use, and credits that tier.
+- `exports.{tier}.distribution` — who may serve the mesh, on the same ladder as a texture's `distribution` ([textures.md](textures.md)). Omitted for a mesh anyone may serve. `"non-commercial"` is a licence that forbids commercial reuse (CC BY-NC, CC BY-NC-SA); the ingest sets it from `credit.license`. It is per tier because the two tiers can have different authors: Mir's `high` is CC BY-NC and its `low` is NASA's. A renderer picks the best tier its page may use from `models/tiers.json` (below) before it requests a mesh, then holds the loaded GLB's own `distribution` as the final word: a tier its page may not serve gives way to the other where that one is allowed. It credits the tier it drew.
 - `exports.{tier}.catalog` — present only when the file came from a key in `MODEL_CATALOGS` (`"NASA-3D-Resources"`, `"ESA SciFleet"`). The credits page uses the union across all tiers to pick which primary catalogs to surface; one-off resources (NASA Science pages, Google rehosts) omit this and credit through `credit.name` alone.
 - `exports.{tier}.downloaded_at` — when the source bytes were last fetched, when known. ESA's downloader stamps this when it writes the per-root `metadata.yaml`; NASA falls back to the git HEAD commit time of the `NASA-3D-Resources` checkout.
 - `exports.{tier}.stats` — content stats parsed from the .glb's JSON chunk: `triangles` counts only primitives with mode 4 (TRIANGLES); the rest are top-level array lengths. A handy LOD-impact sanity check (high vs low triangle counts) and a cheap "deployable parts?" hint via `animations > 0`.
 - `exports.{tier}.scale_meters` — optional, manifest-set (spacecraft only): the real length (metres) of that tier's mesh's longest dimension. Present only when the manifest file the tier came from supplies it; source models otherwise use arbitrary authoring units with no reliable auto-conversion. It is per tier because the two tiers can be different meshes with different proportions: the full Apollo LM's `high` spans its box between footpads on the diagonals (6.9 m), its NASA `low` runs pad to pad on the axes (9.4 m). The frontend normalises every spacecraft GLB to unit-radius and sizes it off the body's scene radius, so it uses the drawn tier's value to set that radius (`radius = scale_meters / 2`), making the mesh render to scale against the rest of the scene. Absent → the frontend falls back to a generic spacecraft size.
-- `scale_meters` — `exports.high.scale_meters` again, for readers that predate the per-tier field (SDK 0.1.x) and size every tier by it.
 - `body_span_ratio`, `model_anchor` — measured (spacecraft only), from the exported high tier, so they pair with `exports.high.scale_meters`. A model normally draws the craft deployed, so `scale_meters` can be set by a magnetometer boom or a wire dipole rather than the craft: Ulysses draws a 63 m dipole around a 2 m bus. `body_span_ratio` is the craft body's longest dimension as a fraction of the mesh's, and `model_anchor` is the body centre's offset from the bounding-box centre in post-fit units (the mesh spans 2 of them, so `1.0` is a full half-span). The frontend draws the mesh on the full span but sizes the halo, the label and the lineup slot on the body, and seats the mesh on the anchor so the craft — not the middle of what it deploys — sits where the orbit puts it. Body and appendage are told apart by cross-sectional perimeter: surface area per unit length along an axis, which is centimetres for a boom and metres for a wing or a bus. A manifest `body_span_ratio`/`model_anchor` overrides the measurement.
 - `frame_map` — optional, manifest-set (spacecraft only): model axis → spacecraft-body axis, 1–2 pairs, e.g. `{"+y": "+z"}` or `{"+y": "-z", "+z": "-y"}`. Corrects models authored in a different axis convention (usually Y-up) than the frame the CK attitude quaternions and `pointing` specs are expressed in. One pair = minimal rotation with free roll (fine for spinners); two perpendicular pairs pin the full frame, the third axis following right-handedness. The frontend bakes this rotation between the per-frame body-frame quaternion and the mesh.
 
 ## Natural-body shape models (`kind: "shape_model"`)
 
-Schema `5` — its own number, since these bundles share nothing with a spacecraft's but a directory. Same `models/{slug}/{high,low}.glb` layout, but the meshes are **already in km** (no `scale_meters` / unit-radius normalisation — the frontend scales vertices straight to scene units and never applies `fitToUnitRadius`). The `missions`/`radar` tiers convert through Blender (weld → smooth → decimate to a triangle budget → Meshopt, no textures); high = the densest source ≤ 24 MiB, low ≈ 20k tris. Sources arrive as OBJ/PLY/STL, Gaskell ICQ cube grids, PDS plate tables, lat/lon/radius grids, VRML, or binary SPICE DSKs (`format: dsk`) — NAIF ships Donaldjohanson, the Dawn SPC cubes and Cassini's Enceladus only as DSKs, read through `spiceypy` and rewritten as OBJ. DAMIT convex models skip Blender entirely — a direct GLB writer emits positions + smoothed normals (they're ~1-2k facets, so `low` aliases `high`).
+Schema `5` — its own number, since these bundles share nothing with a spacecraft's but a directory. Same `models/{slug}/{tier}.glb` layout and embedded payload, but the meshes are **already in km** (no `scale_meters` / unit-radius normalisation — the frontend scales vertices straight to scene units and never applies `fitToUnitRadius`). The `missions`/`radar` tiers convert through Blender (weld → smooth → decimate to a triangle budget → Meshopt, no textures); high = the densest source ≤ 24 MiB, low ≈ 20k tris. Sources arrive as OBJ/PLY/STL, Gaskell ICQ cube grids, PDS plate tables, lat/lon/radius grids, VRML, or binary SPICE DSKs (`format: dsk`) — NAIF ships Donaldjohanson, the Dawn SPC cubes and Cassini's Enceladus only as DSKs, read through `spiceypy` and rewritten as OBJ. DAMIT convex models skip Blender entirely — a direct GLB writer emits positions + smoothed normals and the payload (they're ~1-2k facets, so a DAMIT bundle ships `high` only).
 
 ```json
 {
@@ -110,10 +104,10 @@ Schema `5` — its own number, since these bundles share nothing with a spacecra
   },
   "tiers": ["high", "low"],
   "exports": {
-    "high": { "size_bytes": 729028, "sha256": "…", "source_type": "obj",
+    "high": { "source_type": "obj",
               "credit": { … }, "catalog": "PDS Small Bodies Node",
               "stats": { "triangles": 196608, "meshes": 1, "nodes": 1 } },
-    "low":  { "size_bytes": 87040, "…": "…" }
+    "low":  { "source_type": "obj", "…": "…" }
   },
   "processed_at": "…"
 }
@@ -127,3 +121,18 @@ Schema `5` — its own number, since these bundles share nothing with a spacecra
 - `true_scale` — axis-aligned mesh bounds in **km**, read from the raw pre-Meshopt POSITION accessor (Meshopt quantises positions, so the shipped GLB's min/max are quantisation range, not km). `max_extent_km` sizes the camera framing; the frontend renders the mesh at literal km so the shape is true-to-scale. `bounding_radius_km` is an upper bound (AABB corner distance, ≈ radius·√3 for round bodies), not the circumscribed-sphere radius — don't scale by it.
 - `scale_source` — DAMIT bundles only. Convex lightcurve models are dimensionless, so the mesh is scaled to a volume-equivalent diameter from: `"damit"` (DAMIT's own calibrated diameter), `"sbdb"` (SBDB measured diameter), or `"h-magnitude"` (estimated as `D = 1329/√p_V · 10^(−H/5)`, assumed albedo 0.14 when unmeasured — uncertain by roughly a factor of 2; the sidebar shows the matching estimate + range).
 - Orientation — the frontend applies the body's IAU pole/W rotation (the same `orientation` block textured spheres use) to the mesh. `missions`/`radar` bodies get PCK-derived constants; DAMIT bodies get spin constants converted from the lightcurve pole (λ, β), period, and phase — written to `derived/models/damit_orientation.csv` and merged into the export's orientation set (PCK wins on overlap). Bodies with no pole data hold a stable identity orientation (no spin).
+
+## Index files
+
+Two files sit beside the bundles, both written by the ingest after it has pointed every Object at its bundle.
+
+**`models/index.json`** — every bundle but DAMIT's (11k lightcurve models would swamp it), with the Objects that draw it: `{schema, generated_at, bundles: {slug: {kind, tiers, scale_meters, body_span_ratio, span_ratios, objects: [{id, name, type}]}}}`. `scale_meters` is `exports.high.scale_meters`. The compare page sizes craft by it, the search index marks what it can draw, and `/debug/models` lists it.
+
+**`models/tiers.json`** — what a client picks a tier by before it loads one, for each bundle that ships a `low` tier or restricts a tier: `{schema, generated_at, bundles: {slug: {tier: {distribution?, size_bytes?}}}}`, one key per tier the bundle ships. `distribution` is the tier's `exports.{tier}.distribution`, absent for anyone; `size_bytes` is the `high` GLB's, which a lineup weighs against its byte budget before it takes the cheaper `low`. A bundle it leaves out ships `high` alone, to anyone. Small on purpose: a renderer fetches it once per session before its first mesh.
+
+```json
+{ "schema": 1, "generated_at": "…", "bundles": {
+  "mir": { "high": { "distribution": "non-commercial", "size_bytes": 1338660 }, "low": {} },
+  "eros": { "high": { "size_bytes": 1535532 }, "low": {} }
+} }
+```

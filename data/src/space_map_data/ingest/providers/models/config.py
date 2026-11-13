@@ -22,8 +22,10 @@ PROCESSED_DIR = EXPORT_DIR / "v1" / "models"
 # keyed by source sha256 + compression-knobs version. Survives across runs.
 CONVERTED_DIR = DERIVED_MODELS_DIR / "converted"
 
-# Bump when the public per-slug metadata.json shape changes — _try_skip
-# treats older files as stale and reprocesses them.
+# The spacecraft payload's schema. It also keys the conversion cache, so a bump
+# reconverts every source through Blender; bump it only for a change the cached
+# GLBs need. A bundle is rewritten whenever its invalidation key changes or its
+# GLB carries no payload.
 SCHEMA_VERSION = 7
 # The same, for natural-body shape models. Split from the spacecraft number
 # because the two bundles share nothing but a directory: a spacecraft-only
@@ -33,7 +35,7 @@ BODY_SCHEMA_VERSION = 5
 # value reconvert from source.
 COMPRESSION_KNOBS_VERSION = "v3-meshopt-webp-doublesided-opaque"
 
-# Catalog metadata propagated into each model's metadata.json and into the
+# Catalog metadata propagated into each model's payload and into the
 # credits.json aggregate. Keyed by the manifest's top-level ``source.name``
 # (NASA) or ``source.catalog`` (ESA) value.
 # ``license`` is a Wikimedia-Commons-style short string, exported per model

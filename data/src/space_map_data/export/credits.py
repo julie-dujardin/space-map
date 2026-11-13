@@ -230,7 +230,7 @@ def _build_models_credits(model_metadata: dict[str, dict]) -> list[dict]:
 
     Per-body model lists aren't worth the noise on the credits page — only the
     catalog license matters. One-off sources (NASA resource pages, Google
-    rehosts, …) omit ``catalog`` and credit via the bundle's own metadata.json
+    rehosts, …) omit ``catalog`` and credit via the payload in the bundle's GLBs
     instead of rolling up here.
     """
     matched: set[str] = set()
