@@ -1,6 +1,7 @@
 import { getLocale } from '$lib/paraglide/runtime.js';
 import { getSettings } from '$lib/state/settings.svelte';
 import { jdToDate } from '$lib/time/jd';
+import { calendarDateFormat, type CalendarDateFormat } from '$lib/time/calendars';
 
 function pad(n: number, width = 2): string {
 	const s = String(Math.abs(n));
@@ -39,7 +40,7 @@ function formatLocaleDate(d: Date, month: 'long' | 'short' = 'long'): string {
 	const opts: Intl.DateTimeFormatOptions = { year: 'numeric', month, day: 'numeric' };
 	// JS Date has no year 0; getUTCFullYear() < 1 means BCE (proleptic Gregorian).
 	if (d.getUTCFullYear() < 1) opts.era = 'short';
-	return d.toLocaleDateString(getLocale(), opts);
+	return cachedDateTimeFormat(opts).format(d);
 }
 
 interface ParsedIsoDate {
@@ -97,32 +98,60 @@ export function parseIsoDate(raw: string): ParsedIsoDate | null {
 
 // Only a handful of option shapes exist, but the event lists call this per
 // row; constructing an Intl.DateTimeFormat each time is the expensive part.
-const dateTimeFormats = new Map<string, Intl.DateTimeFormat>();
-function cachedDateTimeFormat(locale: string, opts: Intl.DateTimeFormatOptions) {
-	const key = locale + JSON.stringify(opts);
+// Formats in the reader's locale and calendar.
+const dateTimeFormats = new Map<string, CalendarDateFormat>();
+function cachedDateTimeFormat(opts: Intl.DateTimeFormatOptions): CalendarDateFormat {
+	const locale = getLocale();
+	const calendar = getSettings().resolvedCalendar;
+	const key = `${locale}|${calendar}|${JSON.stringify(opts)}`;
 	let format = dateTimeFormats.get(key);
-	if (!format) dateTimeFormats.set(key, (format = new Intl.DateTimeFormat(locale, opts)));
+	if (!format) {
+		dateTimeFormats.set(key, (format = calendarDateFormat(locale, calendar, opts)));
+	}
 	return format;
 }
 
-/** Formatter per (options object, locale, hour12): the time bar formats on a
- *  fixed options object many times per second, so identity beats a JSON key. */
-const formatsByOpts = new WeakMap<Intl.DateTimeFormatOptions, Map<string, Intl.DateTimeFormat>>();
+/** Formatter per (options object, locale, calendar, hour12): the time bar
+ *  formats on a fixed options object many times per second, so identity beats
+ *  a JSON key. */
+const formatsByOpts = new WeakMap<Intl.DateTimeFormatOptions, Map<string, CalendarDateFormat>>();
 function formatterFor(
 	opts: Intl.DateTimeFormatOptions,
 	locale: string,
+	calendar: string,
 	hour12: boolean | undefined
-) {
+): CalendarDateFormat {
 	let byKey = formatsByOpts.get(opts);
 	if (!byKey) formatsByOpts.set(opts, (byKey = new Map()));
-	const key = `${locale}|${hour12}`;
+	const key = `${locale}|${calendar}|${hour12}`;
 	let format = byKey.get(key);
 	if (!format) {
 		const merged: Intl.DateTimeFormatOptions = { ...opts };
 		if (hour12 !== undefined) merged.hour12 = hour12;
-		byKey.set(key, (format = new Intl.DateTimeFormat(locale, merged)));
+		byKey.set(key, (format = calendarDateFormat(locale, calendar, merged)));
 	}
 	return format;
+}
+
+/**
+ * A Gregorian year or month given as a span of the reader's calendar. "2024"
+ * is not one Hijri year but the end of 1445 and most of 1446, so a date known
+ * only to the year or month is shown as the run of the calendar's years or
+ * months it covers; where they agree (the Buddhist year, a Julian month in
+ * mid-year) the range collapses to one.
+ */
+function formatReducedPrecision(
+	date: Date,
+	month: number,
+	opts: Intl.DateTimeFormatOptions
+): string {
+	const format = cachedDateTimeFormat(opts);
+	if (getSettings().resolvedCalendar === 'gregory') return format.format(date);
+	const end = new Date(date);
+	if (month > 0) end.setUTCMonth(end.getUTCMonth() + 1);
+	else end.setUTCFullYear(end.getUTCFullYear() + 1);
+	end.setUTCDate(end.getUTCDate() - 1);
+	return format.formatRange(date, end);
 }
 
 /**
@@ -150,8 +179,9 @@ export function formatIsoDate(raw: string, monthStyle: 'long' | 'short' = 'long'
 	// browser's offset. Time-bearing inputs are real instants and use local TZ.
 	if (!hasTime) opts.timeZone = 'UTC';
 
-	const dateStr = cachedDateTimeFormat(getLocale(), opts).format(date);
-	if (!hasTime || month === 0 || day === 0) return dateStr;
+	if (month === 0 || day === 0) return formatReducedPrecision(date, month, opts);
+	const dateStr = cachedDateTimeFormat(opts).format(date);
+	if (!hasTime) return dateStr;
 	const timeOpts: Intl.DateTimeFormatOptions = {
 		hour12: getSettings().resolvedHour12,
 		hour: 'numeric',
@@ -199,7 +229,7 @@ export function formatJulianDateTime(jd: number, opts: Intl.DateTimeFormatOption
 		return `${datePart} ${timePart}`;
 	}
 	const hour12 = opts.hour !== undefined ? settings.resolvedHour12 : undefined;
-	return formatterFor(opts, getLocale(), hour12).format(d);
+	return formatterFor(opts, getLocale(), settings.resolvedCalendar, hour12).format(d);
 }
 
 /** Format a Julian Date relative to a reference JD as a localized "X ago" / "in X" string. */

@@ -22,6 +22,7 @@
 	import { getSettings } from '$lib/state/settings.svelte';
 	import type { SimClock } from '$lib/scene/state/clock.svelte';
 	import { axisTicks, entryIndexAt, type AxisTick, type TimelineSpan } from '$lib/timeline/axis';
+	import { calendarDateFormat } from '$lib/time/calendars';
 	import type { StripItem } from '$lib/timeline/strip';
 
 	interface Props {
@@ -89,7 +90,8 @@
 		return named >= 0 ? named : entryIndexAt(items, clock.askedJd);
 	});
 	let clockLabel = $derived(formatClock(clock.askedJd));
-	let ticks = $derived(spanDays > 0 ? axisTicks(startJd, endJd, 7) : []);
+	const calendar = $derived(getSettings().resolvedCalendar);
+	let ticks = $derived(spanDays > 0 ? axisTicks(startJd, endJd, 7, calendar) : []);
 
 	const phases = $derived(items.filter((item) => item.isPhase));
 	/** Moment marks, one per bucket across the track: a mark is under two
@@ -231,8 +233,23 @@
 	 * straight off Intl rather than the app's date helpers, which answer with a
 	 * whole date — unreadable at this size.
 	 */
+	/** Another calendar's years carry their era ("1447 AH") and its months
+	 *  their own names, so those come from the calendar's formatter. */
+	const calendarTickFormats = $derived.by(() => {
+		if (calendar === 'gregory') return null;
+		const locale = getLocale();
+		return {
+			year: calendarDateFormat(locale, calendar, { year: 'numeric' }),
+			month: calendarDateFormat(locale, calendar, { month: 'short' }),
+			day: calendarDateFormat(locale, calendar, { month: 'short', day: 'numeric' })
+		};
+	});
+
 	function tickLabel(tick: AxisTick): string {
 		const date = tick.date;
+		if (calendarTickFormats && tick.unit !== 'hour') {
+			return calendarTickFormats[tick.unit].format(date);
+		}
 		switch (tick.unit) {
 			case 'year':
 				// Not through Intl: a year is a label here, not a quantity, and
