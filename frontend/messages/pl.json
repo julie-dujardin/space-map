@@ -1305,6 +1305,8 @@
 	"settings_clock": "Zegar",
 	"settings_clock_12h": "12 godz.",
 	"settings_clock_24h": "24 godz.",
+	"settings_clock_decimal": "Dziesiętny",
+	"settings_source_calendar": "z Twojego kalendarza",
 	"settings_reduced_motion": "Ograniczenie ruchu",
 	"settings_fullscreen": "Pełny ekran",
 	"settings_reduced_motion_on": "Wł.",

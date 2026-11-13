@@ -1284,6 +1284,8 @@
 	"settings_clock": "Orologio",
 	"settings_clock_12h": "12h",
 	"settings_clock_24h": "24h",
+	"settings_clock_decimal": "Decimale",
+	"settings_source_calendar": "dal tuo calendario",
 	"settings_reduced_motion": "Riduci movimento",
 	"settings_fullscreen": "Schermo intero",
 	"settings_reduced_motion_on": "Attivo",

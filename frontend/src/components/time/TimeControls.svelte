@@ -14,11 +14,13 @@
 	import { onMount, untrack } from 'svelte';
 	import { TIME_SCALES, TIME_DATE_OPTS } from '$lib/time/time-scales';
 	import { loadPickerRange, pickerRange } from '$lib/time/picker-range.svelte';
+	import { localeWithCalendar } from '$lib/time/calendars';
 	import {
 		applyDateToClock,
 		applyTimeToClock,
 		clockTimeValue,
-		jdToCalendarDate
+		jdToCalendarDate,
+		pickerBounds
 	} from './clock-pickers';
 	import { dateToJD } from '$lib/time/jd';
 
@@ -68,9 +70,12 @@
 	let pickerValue = $state<DateValue | undefined>(undefined);
 	let pickerPlaceholder = $state<DateValue | undefined>(undefined);
 
+	const calendar = $derived(getSettings().resolvedCalendar);
+	const bounds = $derived(pickerBounds(pickerRange(), calendar));
+
 	$effect(() => {
 		if (pickerOpen) {
-			const cd = untrack(() => jdToCalendarDate(clock.jd));
+			const cd = untrack(() => jdToCalendarDate(clock.jd, calendar));
 			pickerValue = cd;
 			pickerPlaceholder = cd;
 		}
@@ -205,10 +210,12 @@
 				bind:value={pickerValue}
 				bind:placeholder={pickerPlaceholder}
 				onValueChange={handleDateChange}
-				captionLayout="dropdown"
-				locale={getLocale()}
-				minValue={pickerRange()?.min}
-				maxValue={pickerRange()?.max}
+				captionLayout={calendar === 'gregory' ? 'dropdown' : 'dropdown-inline'}
+				locale={localeWithCalendar(getLocale(), calendar)}
+				{calendar}
+				minValue={bounds?.min}
+				maxValue={bounds?.max}
+				years={calendar === 'gregory' ? undefined : bounds?.years}
 			/>
 			<div class="border-t p-3">
 				<input

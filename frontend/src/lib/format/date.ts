@@ -1,7 +1,11 @@
 import { getLocale } from '$lib/paraglide/runtime.js';
 import { getSettings } from '$lib/state/settings.svelte';
 import { jdToDate } from '$lib/time/jd';
-import { calendarDateFormat, type CalendarDateFormat } from '$lib/time/calendars';
+import {
+	calendarDateFormat,
+	formatDecimalTime,
+	type CalendarDateFormat
+} from '$lib/time/calendars';
 
 function pad(n: number, width = 2): string {
 	const s = String(Math.abs(n));
@@ -119,16 +123,17 @@ function formatterFor(
 	opts: Intl.DateTimeFormatOptions,
 	locale: string,
 	calendar: string,
-	hour12: boolean | undefined
+	hour12: boolean | undefined,
+	decimalTime: boolean
 ): CalendarDateFormat {
 	let byKey = formatsByOpts.get(opts);
 	if (!byKey) formatsByOpts.set(opts, (byKey = new Map()));
-	const key = `${locale}|${calendar}|${hour12}`;
+	const key = `${locale}|${calendar}|${hour12}|${decimalTime}`;
 	let format = byKey.get(key);
 	if (!format) {
 		const merged: Intl.DateTimeFormatOptions = { ...opts };
 		if (hour12 !== undefined) merged.hour12 = hour12;
-		byKey.set(key, (format = calendarDateFormat(locale, calendar, merged)));
+		byKey.set(key, (format = calendarDateFormat(locale, calendar, merged, { decimalTime })));
 	}
 	return format;
 }
@@ -182,6 +187,9 @@ export function formatIsoDate(raw: string, monthStyle: 'long' | 'short' = 'long'
 	if (month === 0 || day === 0) return formatReducedPrecision(date, month, opts);
 	const dateStr = cachedDateTimeFormat(opts).format(date);
 	if (!hasTime) return dateStr;
+	if (getSettings().resolvedDecimalTime) {
+		return `${dateStr} ${formatDecimalTime(date, { seconds: hasSeconds })}`;
+	}
 	const timeOpts: Intl.DateTimeFormatOptions = {
 		hour12: getSettings().resolvedHour12,
 		hour: 'numeric',
@@ -229,7 +237,13 @@ export function formatJulianDateTime(jd: number, opts: Intl.DateTimeFormatOption
 		return `${datePart} ${timePart}`;
 	}
 	const hour12 = opts.hour !== undefined ? settings.resolvedHour12 : undefined;
-	return formatterFor(opts, getLocale(), settings.resolvedCalendar, hour12).format(d);
+	return formatterFor(
+		opts,
+		getLocale(),
+		settings.resolvedCalendar,
+		hour12,
+		settings.resolvedDecimalTime
+	).format(d);
 }
 
 /** Format a Julian Date relative to a reference JD as a localized "X ago" / "in X" string. */

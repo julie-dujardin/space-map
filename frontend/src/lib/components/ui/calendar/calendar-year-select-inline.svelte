@@ -2,6 +2,7 @@
 	import { DateFormatter, type DateValue } from '@internationalized/date';
 	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
 	import { cn } from '$lib/utils.js';
+	import { extendedYear, withExtendedYear, yearLabel } from '$lib/time/calendars/picker';
 	import { tick } from 'svelte';
 
 	type YearFormat = Intl.DateTimeFormatOptions['year'] | ((year: number) => string);
@@ -10,6 +11,9 @@
 		years?: number[];
 		yearFormat?: YearFormat;
 		locale: string;
+		/** The calendar `years` count in; numbered through its epoch, 0 and below
+		 *  before it. */
+		calendar?: string;
 		placeholder: DateValue | undefined;
 		onSelect: (newPlaceholder: DateValue) => void;
 		/** Names the field that narrows the list as a year is typed. */
@@ -21,6 +25,7 @@
 		years,
 		yearFormat = 'numeric',
 		locale,
+		calendar = 'gregory',
 		placeholder,
 		onSelect,
 		searchLabel,
@@ -44,13 +49,14 @@
 
 	function formatYear(yearValue: number): string {
 		if (typeof yearFormat === 'function') return yearFormat(yearValue);
+		if (yearFormat === 'numeric') return yearLabel(calendar, locale, yearValue);
 		const dt = new Date(yearValue, 0, 1);
 		return new DateFormatter(locale, { year: yearFormat }).format(dt);
 	}
 
 	let yearList = $derived(years ?? DEFAULT_YEARS);
 	let items = $derived(yearList.map((value) => ({ value, label: formatYear(value) })));
-	let selectedValue = $derived(placeholder ? placeholder.year : new Date().getFullYear());
+	let selectedValue = $derived(placeholder ? extendedYear(placeholder) : new Date().getFullYear());
 	let selectedLabel = $derived(items.find((i) => i.value === selectedValue)?.label ?? '');
 	// Centuries of years are too many to scroll through: typing the first
 	// digits narrows the list.
@@ -68,7 +74,7 @@
 			open = false;
 			return;
 		}
-		onSelect(placeholder.set({ year: value }));
+		onSelect(withExtendedYear(placeholder, value));
 		open = false;
 		triggerRef?.focus();
 	}

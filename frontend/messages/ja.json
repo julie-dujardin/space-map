@@ -1387,6 +1387,8 @@
 	"settings_clock": "時計表示",
 	"settings_clock_12h": "12時間",
 	"settings_clock_24h": "24時間",
+	"settings_clock_decimal": "十進",
+	"settings_source_calendar": "暦から",
 	"settings_reduced_motion": "動きを減らす",
 	"settings_fullscreen": "全画面表示",
 	"settings_reduced_motion_on": "オン",

@@ -1355,6 +1355,8 @@
 	"settings_clock": "الساعة",
 	"settings_clock_12h": "12 ساعة",
 	"settings_clock_24h": "24 ساعة",
+	"settings_clock_decimal": "عشري",
+	"settings_source_calendar": "من تقويمك",
 	"settings_reduced_motion": "تقليل الحركة",
 	"settings_fullscreen": "ملء الشاشة",
 	"settings_reduced_motion_on": "تشغيل",

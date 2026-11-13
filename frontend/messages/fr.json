@@ -1400,6 +1400,8 @@
 	"settings_clock": "Horloge",
 	"settings_clock_12h": "12h",
 	"settings_clock_24h": "24h",
+	"settings_clock_decimal": "Décimale",
+	"settings_source_calendar": "depuis votre calendrier",
 	"settings_reduced_motion": "Animations réduites",
 	"settings_fullscreen": "Plein écran",
 	"settings_reduced_motion_on": "Activé",

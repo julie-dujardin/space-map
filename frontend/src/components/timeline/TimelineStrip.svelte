@@ -22,7 +22,7 @@
 	import { getSettings } from '$lib/state/settings.svelte';
 	import type { SimClock } from '$lib/scene/state/clock.svelte';
 	import { axisTicks, entryIndexAt, type AxisTick, type TimelineSpan } from '$lib/timeline/axis';
-	import { calendarDateFormat } from '$lib/time/calendars';
+	import { calendarDateFormat, formatDecimalTime } from '$lib/time/calendars';
 	import type { StripItem } from '$lib/timeline/strip';
 
 	interface Props {
@@ -91,7 +91,8 @@
 	});
 	let clockLabel = $derived(formatClock(clock.askedJd));
 	const calendar = $derived(getSettings().resolvedCalendar);
-	let ticks = $derived(spanDays > 0 ? axisTicks(startJd, endJd, 7, calendar) : []);
+	const decimalTime = $derived(getSettings().resolvedDecimalTime);
+	let ticks = $derived(spanDays > 0 ? axisTicks(startJd, endJd, 7, calendar, decimalTime) : []);
 
 	const phases = $derived(items.filter((item) => item.isPhase));
 	/** Moment marks, one per bucket across the track: a mark is under two
@@ -247,6 +248,7 @@
 
 	function tickLabel(tick: AxisTick): string {
 		const date = tick.date;
+		if (decimalTime && tick.unit === 'hour') return formatDecimalTime(date);
 		if (calendarTickFormats && tick.unit !== 'hour') {
 			return calendarTickFormats[tick.unit].format(date);
 		}

@@ -22,6 +22,7 @@
 		day,
 		disableDaysOutsideMonth = false,
 		yearSearchLabel,
+		calendar = 'gregory',
 		...restProps
 	}: WithoutChildrenOrChild<CalendarPrimitive.RootProps> & {
 		buttonVariant?: ButtonVariant;
@@ -33,6 +34,10 @@
 		day?: Snippet<[{ day: DateValue; outsideMonth: boolean }]>;
 		/** Names the year field of the `dropdown-inline` caption. */
 		yearSearchLabel?: string;
+		/** The calendar the `dropdown-inline` caption names months and years in
+		 *  (an Intl id, or one of `$lib/time/calendars`'). The grid follows the
+		 *  value's own calendar. */
+		calendar?: string;
 	} = $props();
 
 	const monthFormat = $derived.by(() => {
@@ -94,6 +99,7 @@ get along, so we shut typescript up by casting `value` to `never`.
 							{locale}
 							{monthIndex}
 							{yearSearchLabel}
+							{calendar}
 						/>
 					</Calendar.Header>
 					<Calendar.Grid>

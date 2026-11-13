@@ -1310,6 +1310,8 @@
 	"settings_clock": "Часы",
 	"settings_clock_12h": "12 ч",
 	"settings_clock_24h": "24 ч",
+	"settings_clock_decimal": "Десятичное",
+	"settings_source_calendar": "из вашего календаря",
 	"settings_reduced_motion": "Уменьшение движения",
 	"settings_fullscreen": "Полноэкранный режим",
 	"settings_reduced_motion_on": "Вкл.",

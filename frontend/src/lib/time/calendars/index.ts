@@ -106,7 +106,10 @@ export function browserCalendar(): CalendarId {
 	return ownCalendar;
 }
 
-function localeWithCalendar(locale: string, calendar: CalendarId): string {
+/** `locale` asking Intl for `calendar`, where Intl has it; the two kept here
+ *  leave the locale as it is. */
+export function localeWithCalendar(locale: string, calendar: CalendarId): string {
+	if (calendar === JULIAN || calendar === FRENCH_REPUBLICAN) return locale;
 	try {
 		return new Intl.Locale(locale, { calendar }).toString();
 	} catch {
@@ -208,20 +211,60 @@ class JulianFormat implements CalendarDateFormat {
 	}
 }
 
+/**
+ * The Republic's decimal time: ten hours to the day from midnight, a hundred
+ * minutes to the hour, a hundred seconds to the minute. Decreed with the
+ * calendar in 1793, made optional in 1795, and on few clocks ever since.
+ * Read off the day as it is lived, so a day whose clocks change still has its
+ * ten hours.
+ */
+export function formatDecimalTime(
+	date: Date,
+	{ seconds = false, timeZone }: { seconds?: boolean; timeZone?: string } = {}
+): string {
+	const start = new Date(date);
+	const end = new Date(date);
+	if (timeZone === 'UTC') {
+		start.setUTCHours(0, 0, 0, 0);
+		end.setUTCHours(24, 0, 0, 0);
+	} else {
+		start.setHours(0, 0, 0, 0);
+		end.setTime(start.getTime());
+		end.setDate(end.getDate() + 1);
+	}
+	const fraction = (date.getTime() - start.getTime()) / (end.getTime() - start.getTime());
+	const units = Math.min(99_999, Math.floor(fraction * 100_000));
+	const pad = (n: number) => String(n).padStart(2, '0');
+	const hm = `${Math.floor(units / 10_000)}:${pad(Math.floor(units / 100) % 100)}`;
+	return seconds ? `${hm}:${pad(units % 100)}` : hm;
+}
+
+export interface CalendarFormatExtras {
+	/** Write the time of day in the Republic's decimal hours. Only the
+	 *  Republican calendar takes it. */
+	decimalTime?: boolean;
+}
+
 class RepublicanFormat implements CalendarDateFormat {
 	#locale: string;
 	#opts: Intl.DateTimeFormatOptions;
-	#time: Intl.DateTimeFormat | null;
+	#time: { format(date: Date): string } | null;
 	#hasDate: boolean;
-	constructor(locale: string, opts: Intl.DateTimeFormatOptions) {
+	constructor(locale: string, opts: Intl.DateTimeFormatOptions, decimalTime: boolean) {
 		this.#locale = locale;
 		this.#opts = opts;
 		const hasTime = hasAny(opts, TIME_FIELDS);
 		// Intl's own default when no field is named: the date, in full.
 		this.#hasDate = hasAny(opts, DATE_FIELDS) || !hasTime;
-		this.#time = hasTime
-			? new Intl.DateTimeFormat(locale, { ...pick(opts, TIME_FIELDS), timeZone: opts.timeZone })
-			: null;
+		const decimal = {
+			format: (date: Date) =>
+				formatDecimalTime(date, { seconds: opts.second !== undefined, timeZone: opts.timeZone })
+		};
+		this.#time = !hasTime
+			? null
+			: decimalTime
+				? decimal
+				: new Intl.DateTimeFormat(locale, { ...pick(opts, TIME_FIELDS), timeZone: opts.timeZone });
 	}
 	format(date: Date): string {
 		const out: string[] = [];
@@ -250,10 +293,11 @@ class RepublicanFormat implements CalendarDateFormat {
 export function calendarDateFormat(
 	locale: string,
 	calendar: CalendarId,
-	opts: Intl.DateTimeFormatOptions
+	opts: Intl.DateTimeFormatOptions,
+	{ decimalTime = false }: CalendarFormatExtras = {}
 ): CalendarDateFormat {
 	if (calendar === JULIAN) return new JulianFormat(locale, opts);
-	if (calendar === FRENCH_REPUBLICAN) return new RepublicanFormat(locale, opts);
+	if (calendar === FRENCH_REPUBLICAN) return new RepublicanFormat(locale, opts, decimalTime);
 	return new IntlCalendarFormat(locale, calendar, opts);
 }
 

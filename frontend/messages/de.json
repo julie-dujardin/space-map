@@ -1263,6 +1263,8 @@
 	"settings_clock": "Uhr",
 	"settings_clock_12h": "12 h",
 	"settings_clock_24h": "24 h",
+	"settings_clock_decimal": "Dezimal",
+	"settings_source_calendar": "aus deinem Kalender",
 	"settings_reduced_motion": "Bewegung reduzieren",
 	"settings_fullscreen": "Vollbild",
 	"settings_reduced_motion_on": "Ein",
