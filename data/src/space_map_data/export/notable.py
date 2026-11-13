@@ -200,16 +200,13 @@ def shape_model_slugs(model_metadata: dict[str, dict]) -> dict[str, str]:
     """Best shape-model bundle slug per object id.
 
     Gated on ``kind == "shape_model"`` so spacecraft bundles don't leak into body
-    lineups. Ties break to the newest DAMIT model.
+    lineups.
     """
     best: dict[str, tuple] = {}
     for slug, meta in model_metadata.items():
         if meta.get("kind") != "shape_model" or not meta.get("object_id"):
             continue
-        rank = (
-            _PROVENANCE_RANK.get(meta.get("provenance", ""), 3),
-            -(meta.get("damit_model_id") or 0),
-        )
+        rank = _PROVENANCE_RANK.get(meta.get("provenance", ""), 3)
         cur = best.get(meta["object_id"])
         if cur is None or rank < cur[0]:
             best[meta["object_id"]] = (rank, slug)

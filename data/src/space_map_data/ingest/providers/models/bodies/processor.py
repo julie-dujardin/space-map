@@ -85,6 +85,15 @@ class BodyModelProcessor:
                 out.append((tier, tier_dir, entry))
         return out
 
+    def claimed_naif_ids(self, entries: list[tuple[str, Path, dict]]) -> frozenset[int]:
+        """Bodies these entries draw, which DAMIT then leaves out."""
+        return frozenset(
+            int(entry["naif_id"])
+            for _tier, _dir, entry in entries
+            if entry.get("naif_id") is not None
+            and self._resolve_object_id(entry) is not None
+        )
+
     def wanted_slugs(self, entries: list[tuple[str, Path, dict]]) -> set[str]:
         """Slugs that resolve to a DB Object — the shippable set for pruning."""
         return {

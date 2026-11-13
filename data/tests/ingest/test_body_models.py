@@ -6,9 +6,10 @@ import os
 
 import numpy as np
 
-from space_map_data.ingest.providers.models import metadata
+from space_map_data.ingest.providers.models import config, metadata
 from space_map_data.ingest.providers.models.bodies import glb_writer, mesh_formats
 from space_map_data.ingest.providers.models.bodies.damit import (
+    Citation,
     DamitModel,
     DamitProcessor,
     _parse_shape,
@@ -191,6 +192,85 @@ class TestDamitOrientation:
         w = iau["w0"]
         prime = _frontend_prime_meridian(iau["pole_ra_0"], iau["pole_dec_0"], w)
         assert abs(float(np.dot(pole, prime))) < 1e-9
+
+
+class TestDamitPreferred:
+    """One buildable model ships per asteroid no mission or radar model draws."""
+
+    def _pick(
+        self, tmp_path, monkeypatch, models, citations, claimed=frozenset(), built=None
+    ) -> list[int]:
+        monkeypatch.setattr(config, "DAMIT_DIR", tmp_path)
+        for m in models:
+            if built is None or m.model_id in built:
+                m.dir.mkdir(parents=True, exist_ok=True)
+                (m.dir / "shape.txt").write_text("")
+        p = DamitProcessor(session=None, claimed_naif_ids=frozenset(claimed))
+        p._models = models
+        p._citations = citations
+        p._asteroids = {m.asteroid_id: {"number": str(m.asteroid_id)} for m in models}
+        return sorted(m.model_id for m in p._preferred())
+
+    def _model(
+        self, mid: int, aid: int = 1, *, dated: int = 0, nonconvex: bool = False
+    ) -> DamitModel:
+        return DamitModel(
+            mid,
+            aid,
+            35.0,
+            -60.0,
+            7.3,
+            2451800.5,
+            0.0,
+            None,
+            nonconvex=nonconvex,
+            dated=dated,
+        )
+
+    def test_the_newer_paper_beats_a_higher_id(self, tmp_path, monkeypatch):
+        citations = {5: Citation("old", None, 2010), 3: Citation("new", None, 2021)}
+        models = [self._model(5), self._model(3)]
+        assert self._pick(tmp_path, monkeypatch, models, citations) == [3]
+
+    def test_an_uncited_update_beats_an_older_paper(self, tmp_path, monkeypatch):
+        models = [self._model(119), self._model(16321, dated=2026)]
+        citations = {119: Citation("preliminary", None, 2002)}
+        assert self._pick(tmp_path, monkeypatch, models, citations) == [16321]
+
+    def test_a_resolved_shape_beats_a_newer_hull(self, tmp_path, monkeypatch):
+        models = [self._model(272, nonconvex=True), self._model(271)]
+        citations = {272: Citation("a", None, 2010), 271: Citation("b", None, 2015)}
+        assert self._pick(tmp_path, monkeypatch, models, citations) == [272]
+
+    def test_a_mirror_pair_takes_the_higher_id(self, tmp_path, monkeypatch):
+        same = Citation("one paper", None, 2016)
+        models = [self._model(7), self._model(8)]
+        assert self._pick(tmp_path, monkeypatch, models, {7: same, 8: same}) == [8]
+
+    def test_an_unbuildable_pick_falls_to_the_next(self, tmp_path, monkeypatch):
+        models = [self._model(7), self._model(8)]
+        picked = self._pick(tmp_path, monkeypatch, models, {}, built={7})
+        assert picked == [7]
+
+    def test_a_body_with_a_mission_model_gets_none(self, tmp_path, monkeypatch):
+        models = [self._model(1, 433), self._model(2, 21)]
+        claimed = {2_000_433}
+        assert self._pick(tmp_path, monkeypatch, models, {}, claimed) == [2]
+
+    def test_one_per_asteroid(self, tmp_path, monkeypatch):
+        models = [self._model(1, 1), self._model(2, 2), self._model(3, 2)]
+        assert self._pick(tmp_path, monkeypatch, models, {}) == [1, 3]
+
+    def test_wanted_slugs_are_the_picks(self, tmp_path, monkeypatch):
+        models = [self._model(1, 1), self._model(2, 1)]
+        self._pick(tmp_path, monkeypatch, models, {})
+        p = DamitProcessor(session=None)
+        p._models = models
+        p._citations = {}
+        p._asteroids = {1: {"number": "1"}}
+        monkeypatch.setattr(p, "available", lambda: True)
+        monkeypatch.setattr(p, "_resolve_object_id", lambda aid, asteroids: "spkid-1")
+        assert p.wanted_slugs() == {"damit-2"}
 
 
 class TestDamitParsers:

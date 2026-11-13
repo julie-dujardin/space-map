@@ -126,7 +126,9 @@ class ModelProcessor:
         session = get_session()
         body_processor = BodyModelProcessor(session)
         body_entries = body_processor.load_entries()
-        damit_processor = DamitProcessor(session)
+        damit_processor = DamitProcessor(
+            session, body_processor.claimed_naif_ids(body_entries)
+        )
 
         self._check_slug_uniqueness(
             extra=[e["slug"] for _t, _d, e in body_entries if e.get("slug")]

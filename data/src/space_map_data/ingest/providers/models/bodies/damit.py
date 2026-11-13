@@ -3,12 +3,12 @@
 Reads the extracted DAMIT bulk archive (``DAMIT_DIR``): per-model files under
 ``files/asteroid_<aid>/model_<mid>/`` plus the CSV tables (``asteroids``,
 ``asteroid_models`` — spin parameters inline — and the references join table).
-Every model is exported (the file cap is 100k; the full set fits); the
-preferred model per asteroid drives ``Object.model_name`` and the spin
-orientation the frontend applies. Meshes are dimensionless — scaled to
-DAMIT's own calibrated diameter when present, else SBDB's measured diameter,
-else a diameter estimated from absolute magnitude H — and Blender-free (see
-``glb_writer``) so the ~16k-model pass is subprocess-free.
+One model ships per asteroid without a mission or radar model (see
+``_preferred``): it drives ``Object.model_name`` and the spin orientation the
+frontend applies. Meshes are dimensionless — scaled to DAMIT's own calibrated
+diameter when present, else SBDB's measured diameter, else a diameter
+estimated from absolute magnitude H — and Blender-free (see ``glb_writer``) so
+the ~11k-model pass is subprocess-free.
 
 Resumable: a per-model cache stamp (kept outside the export tree — the CDN
 has a 100k-file cap) skips already-converted GLBs across runs. No-ops with a
@@ -20,6 +20,7 @@ import csv
 import json
 import logging
 import math
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -83,6 +84,7 @@ class Citation(NamedTuple):
 
     text: str
     byline: tuple[int, str] | None
+    year: int = 0
 
     @property
     def author(self) -> str | None:
@@ -100,6 +102,8 @@ class DamitModel:
     phi0_deg: float
     equiv_diameter_km: float | None
     nonconvex: bool
+    # Year of DAMIT's own `version` date, for a model no paper is cited for.
+    dated: int = 0
 
     @property
     def technique(self) -> str:
@@ -119,29 +123,55 @@ class DamitModel:
 class DamitProcessor:
     """Convert + export the DAMIT lightcurve-tier models."""
 
-    def __init__(self, session) -> None:
+    def __init__(self, session, claimed_naif_ids: frozenset[int] = frozenset()) -> None:
         self._session = session
+        # Asteroids a mission or radar model draws: a DAMIT one would never show.
+        self._claimed = claimed_naif_ids
         self._orientation_rows: dict[int, dict] = {}
         # Tables and the naif → Object.id map are shared by `wanted_slugs` and
         # `process`, which otherwise both reload the CSVs and query per model.
         self._models: list[DamitModel] | None = None
         self._asteroids: dict[int, dict] | None = None
+        self._citations: dict[int, Citation] | None = None
+        self._picks: list[DamitModel] | None = None
         self._object_ids: dict[int, str] | None = None
 
     def available(self) -> bool:
         return config.DAMIT_DIR.exists() and self._tables_dir() is not None
 
     def wanted_slugs(self) -> set[str]:
-        """Slugs for every model that resolves to a DB Object (for pruning)."""
+        """Slugs of the shipped models that resolve to a DB Object (for pruning)."""
         if not self.available():
             return set()
-        models = self._models_cached()
         asteroids = self._asteroids_cached()
-        out: set[str] = set()
-        for m in models:
-            if self._resolve_object_id(m.asteroid_id, asteroids) is not None:
-                out.add(_slug(m.model_id))
-        return out
+        return {
+            _slug(m.model_id)
+            for m in self._preferred()
+            if self._resolve_object_id(m.asteroid_id, asteroids) is not None
+        }
+
+    def _preferred(self) -> list[DamitModel]:
+        """One buildable model per asteroid a mission or radar model doesn't
+        draw: a resolved (non-convex) shape over a convex hull, then the newest
+        (its newest paper, else DAMIT's own date), then the higher DAMIT id,
+        since a mirror-pole pair from one paper has no better half."""
+        if self._picks is not None:
+            return self._picks
+        citations = self._citations_cached()
+        asteroids = self._asteroids_cached()
+        by_asteroid: dict[int, list[DamitModel]] = defaultdict(list)
+        for m in self._models_cached():
+            if self._naif_for(m.asteroid_id, asteroids) in self._claimed:
+                continue
+            if (m.dir / "shape.txt").exists():
+                by_asteroid[m.asteroid_id].append(m)
+
+        def rank(m: DamitModel) -> tuple[bool, int, int]:
+            c = citations.get(m.model_id)
+            return (m.nonconvex, max(c.year if c else 0, m.dated), m.model_id)
+
+        self._picks = [max(models, key=rank) for models in by_asteroid.values()]
+        return self._picks
 
     def process(self, *, force: bool) -> None:
         if not self.available():
@@ -150,27 +180,14 @@ class DamitProcessor:
                 config.DAMIT_DIR,
             )
             return
-        models = self._models_cached()
         asteroids = self._asteroids_cached()
-        citations = self._load_citations()
+        citations = self._citations_cached()
         diameters = self._load_diameters()
-
-        # Preferred model per asteroid = highest DAMIT model id (newest solution).
-        # Drives Object.model_name + the exported spin; all models still ship.
-        preferred: dict[int, int] = {}
-        for m in models:
-            if m.model_id > preferred.get(m.asteroid_id, -1):
-                preferred[m.asteroid_id] = m.model_id
-        log.info(
-            "DAMIT preferred-model policy: newest (max model id) per asteroid; "
-            "%d asteroids, %d models",
-            len(preferred),
-            len(models),
-        )
+        preferred = self._preferred()
 
         exported = 0
         resolved = 0
-        for m in models:
+        for m in preferred:
             object_id = self._resolve_object_id(m.asteroid_id, asteroids)
             if object_id is None:
                 continue
@@ -186,7 +203,6 @@ class DamitProcessor:
                     object_id,
                 )
                 continue
-            is_preferred = preferred.get(m.asteroid_id) == m.model_id
             try:
                 ok = self._process_model(
                     m,
@@ -195,7 +211,6 @@ class DamitProcessor:
                     diameter_km=diameter,
                     scale_source=scale_source,
                     citation=citations.get(m.model_id),
-                    is_preferred=is_preferred,
                     force=force,
                 )
             except Exception:
@@ -204,20 +219,20 @@ class DamitProcessor:
             if ok:
                 exported += 1
                 resolved += m.nonconvex
-                if is_preferred:
-                    # Mission/radar bundles (BodyModelProcessor, runs first)
-                    # outrank convex lightcurve models — never overwrite them.
-                    self._session.query(Object).filter(
-                        Object.id == object_id,
-                        Object.model_name.is_(None) | Object.model_name.like("damit-%"),
-                    ).update(
-                        {
-                            Object.model_name: _slug(m.model_id),
-                            Object.model_provenance: ModelProvenance.lightcurve,
-                        },
-                        synchronize_session=False,
-                    )
+                # Mission/radar bundles (BodyModelProcessor, runs first)
+                # outrank convex lightcurve models — never overwrite them.
+                self._session.query(Object).filter(
+                    Object.id == object_id,
+                    Object.model_name.is_(None) | Object.model_name.like("damit-%"),
+                ).update(
+                    {
+                        Object.model_name: _slug(m.model_id),
+                        Object.model_provenance: ModelProvenance.lightcurve,
+                    },
+                    synchronize_session=False,
+                )
         self._write_orientation_csv()
+        self._prune_stamps({_slug(m.model_id) for m in preferred})
         log.info(
             "DAMIT: exported %d model bundles (%d non-convex, credited as %s)",
             exported,
@@ -236,7 +251,6 @@ class DamitProcessor:
         diameter_km: float,
         scale_source: str,
         citation: Citation | None,
-        is_preferred: bool,
         force: bool,
     ) -> bool:
         slug = _slug(m.model_id)
@@ -275,7 +289,7 @@ class DamitProcessor:
         if rebuild:
             _write_stamp(stamp, shape_path, diameter_km)
 
-        if is_preferred and naif_id is not None:
+        if naif_id is not None:
             self._orientation_rows[naif_id] = {
                 "naif_id": naif_id,
                 **self._iau_orientation(m),
@@ -402,6 +416,8 @@ class DamitProcessor:
                     *cast("list[float]", spin),
                     equiv_diameter_km=_float(row.get("equiv_diameter")),
                     nonconvex=_int(row.get("nonconvex")) == 1,
+                    dated=_int((row.get("version") or row.get("created") or "")[:4])
+                    or 0,
                 )
             )
         return out
@@ -426,6 +442,7 @@ class DamitProcessor:
         texts: dict[int, str] = {}
         # (year, "Author et al. (year)") per reference, for the short credit.
         bylines: dict[int, tuple[int, str]] = {}
+        years: dict[int, int] = {}
         for row in _read_csv(path / "references.csv"):
             rid = _int(row.get("id"))
             if rid is None:
@@ -440,6 +457,7 @@ class DamitProcessor:
             text = " ".join(p.strip() for p in parts if p and p.strip())
             if text:
                 texts[rid] = text
+                years[rid] = _int(year) or 0
             author_short = (row.get("author_short") or "").strip()
             if author_short:
                 bylines[rid] = (
@@ -464,7 +482,8 @@ class DamitProcessor:
                 ),
                 default=None,
             )
-            out[mid] = Citation(text, byline)
+            year = max(years[rid], previous.year if previous else 0)
+            out[mid] = Citation(text, byline, year)
         missing = sum(1 for c in out.values() if c.byline is None)
         if missing:
             log.info(
@@ -498,6 +517,23 @@ class DamitProcessor:
         if self._models is None:
             self._models = self._load_models()
         return self._models
+
+    def _prune_stamps(self, kept: set[str]) -> None:
+        """Drop the stamps of models that no longer ship."""
+        if not _STAMPS_DIR.exists():
+            return
+        stale = [p for p in _STAMPS_DIR.glob("damit-*.json") if p.stem not in kept]
+        for path in stale:
+            path.unlink()
+        if stale:
+            log.info(
+                "DAMIT: pruned %d stamps of models that no longer ship", len(stale)
+            )
+
+    def _citations_cached(self) -> dict[int, Citation]:
+        if self._citations is None:
+            self._citations = self._load_citations()
+        return self._citations
 
     def _asteroids_cached(self) -> dict[int, dict]:
         if self._asteroids is None:
@@ -609,7 +645,7 @@ def _stamp_state(
     """``(geometry fresh, metadata fresh)`` for an already-converted model.
 
     Split so a metadata-only schema bump rewrites the sidecars without paying
-    to rebuild ~16k GLBs that didn't change.
+    to rebuild ~11k GLBs that didn't change.
     """
     if not stamp.exists():
         return False, False
