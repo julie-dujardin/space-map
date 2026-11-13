@@ -15,13 +15,8 @@
 	import { onMount, untrack } from 'svelte';
 	import { getSettings } from '$lib/state/settings.svelte';
 	import { localeWithCalendar } from '$lib/time/calendars';
-	import {
-		applyDateToClock,
-		applyTimeToClock,
-		clockTimeValue,
-		jdToCalendarDate,
-		pickerBounds
-	} from './clock-pickers';
+	import { applyDateToClock, jdToCalendarDate, pickerBounds } from './clock-pickers';
+	import ClockTimeInput from './ClockTimeInput.svelte';
 
 	/** The stacked time controls shared by the phone sheet and the narrow-desktop
 	 *  popover. Expects 1rem of horizontal padding around it: the scale strip
@@ -47,11 +42,9 @@
 	});
 
 	const handleDateChange = (v: DateValue | undefined) => applyDateToClock(clock, v);
-	const handleTimeChange = (e: Event) => applyTimeToClock(clock, e);
 	// The label shows minutes; quantising to the second stops the formatter
 	// running on every frame of a 1x clock.
 	const shownJd = $derived(Math.floor(clock.jd * 86400) / 86400);
-	let timeValue = $derived(clockTimeValue(shownJd));
 
 	let dateLabel = $derived(formatJulianDateTime(shownJd, TIME_DATE_OPTS));
 
@@ -101,15 +94,7 @@
 				yearSearchLabel={m.time_find_year()}
 			/>
 			<div class="border-t p-3">
-				<input
-					type="time"
-					value={timeValue}
-					onchange={handleTimeChange}
-					aria-label={m.time_pick_time()}
-					class="h-9 w-full rounded-md border bg-transparent px-2 font-mono tabular-nums text-base
-						scheme-light-dark
-						focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring"
-				/>
+				<ClockTimeInput {clock} class="h-9 text-base" />
 			</div>
 		</div>
 	{/if}

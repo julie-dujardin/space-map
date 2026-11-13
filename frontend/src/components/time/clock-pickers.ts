@@ -1,6 +1,6 @@
 import type { CalendarDate, DateValue } from '@internationalized/date';
 import type { SimClock } from '$lib/scene/state/clock.svelte';
-import type { CalendarId } from '$lib/time/calendars';
+import { formatDecimalTime, type CalendarId } from '$lib/time/calendars';
 import { extendedYear, fromPickerDate, toPickerDate } from '$lib/time/calendars/picker';
 import { dateToJD, jdToDate } from '$lib/time/jd';
 
@@ -55,4 +55,30 @@ export function applyTimeToClock(clock: SimClock, e: Event): void {
 export function clockTimeValue(jd: number): string {
 	const d = jdToDate(jd);
 	return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+/** "h:mm" in decimal time: the local day's ten hours of a hundred minutes. */
+export function decimalTimeValue(jd: number): string {
+	return formatDecimalTime(jdToDate(jd));
+}
+
+/**
+ * A decimal time typed as "7:83", "7h83" or a bare "7", read as hours of the
+ * local day the clock is on. Null when it is not one: ten hours, a hundred
+ * minutes.
+ */
+export function parseDecimalTime(text: string): number | null {
+	const match = text.trim().match(/^(\d)(?:\s*[:h.,]\s*(\d{1,2}))?$/i);
+	if (!match) return null;
+	const minutes = match[2] === undefined ? 0 : Number(match[2].padEnd(2, '0'));
+	return (Number(match[1]) * 100 + minutes) / 1000;
+}
+
+/** Move the clock to `fraction` of its local day, keeping the day. */
+export function applyDayFractionToClock(clock: SimClock, fraction: number): void {
+	const start = jdToDate(clock.jd);
+	start.setHours(0, 0, 0, 0);
+	const end = new Date(start);
+	end.setDate(end.getDate() + 1);
+	clock.jumpTo(dateToJD(new Date(start.getTime() + (end.getTime() - start.getTime()) * fraction)));
 }

@@ -21,12 +21,7 @@
 	} from '$lib/scene/objects/surface/atmosphere-quality';
 	import { recalibrateAtmosphere } from '$lib/scene/perf/atmosphere-calibration';
 	import { switchLanguage } from '$lib/state/language';
-	import {
-		calendarName,
-		FRENCH_REPUBLICAN,
-		offeredCalendars,
-		type CalendarId
-	} from '$lib/time/calendars';
+	import { calendarName, offeredCalendars, type CalendarId } from '$lib/time/calendars';
 
 	/** Graphics and the debug overlay only change what the 3D scene draws, so the
 	 *  map alone carries them; the date formatters are reached from anything that
@@ -49,7 +44,7 @@
 	const settings = getSettings();
 
 	/** Every segmented row selects one of these. */
-	type SegmentedValue = Theme | Clock | ReducedMotion | DateFormatChoice | PanoramaGyro;
+	type SegmentedValue = Theme | Clock | 'decimal' | ReducedMotion | DateFormatChoice | PanoramaGyro;
 	interface SegmentedOption {
 		value: SegmentedValue;
 		label: () => string;
@@ -73,15 +68,14 @@
 		{ value: 'light', label: () => m.settings_theme_light() }
 	];
 
-	/** Decimal hours are offered only beside the calendar that kept them. */
-	const decimalOffered = $derived(settings.resolvedCalendar === FRENCH_REPUBLICAN);
-	const clockOptions = $derived<{ value: Clock; label: () => string }[]>([
+	/** The Republican calendar comes with its decimal day, no choice offered:
+	 *  the row shows it, locked, as ISO shows its 24h. */
+	const republican = $derived(settings.resolvedDecimalTime);
+	const clockOptions = $derived<{ value: Clock | 'decimal'; label: () => string }[]>([
 		{ value: 'auto', label: () => m.settings_auto() },
 		{ value: '24h', label: () => m.settings_clock_24h() },
 		{ value: '12h', label: () => m.settings_clock_12h() },
-		...(decimalOffered
-			? [{ value: 'decimal' as const, label: () => m.settings_clock_decimal() }]
-			: [])
+		...(republican ? [{ value: 'decimal' as const, label: () => m.settings_clock_decimal() }] : [])
 	]);
 
 	const dateFormatOptions = [
@@ -173,11 +167,7 @@
 
 	// "auto" descriptions: what the resolved value is, and where it comes from.
 	let resolvedClockLabel = $derived(
-		settings.resolvedDecimalTime
-			? m.settings_clock_decimal()
-			: settings.resolvedHour12
-				? m.settings_clock_12h()
-				: m.settings_clock_24h()
+		settings.resolvedHour12 ? m.settings_clock_12h() : m.settings_clock_24h()
 	);
 	let resolvedThemeLabel = $derived(
 		settings.resolvedTheme === 'dark' ? m.settings_theme_dark() : m.settings_theme_light()
@@ -192,10 +182,9 @@
 	);
 	// ISO date format implies 24h; lock the clock toggle so the UI matches the
 	// behavior already enforced by the formatters.
-	let clockLocked = $derived(settings.dateFormat === 'iso');
-	// Decimal left behind by a calendar change reads as the 24h it falls back to.
-	let effectiveClock = $derived<Clock>(
-		clockLocked || (settings.clock === 'decimal' && !decimalOffered) ? '24h' : settings.clock
+	let clockLocked = $derived(settings.dateFormat === 'iso' || republican);
+	let effectiveClock = $derived<Clock | 'decimal'>(
+		republican ? 'decimal' : clockLocked ? '24h' : settings.clock
 	);
 </script>
 
@@ -452,15 +441,12 @@
 							(v) => settings.setClock(v as Clock),
 							clockLocked
 						)}
-						{#if clockLocked}
+						{#if republican}
+							{@render autoSource(m.settings_clock_decimal(), m.settings_source_calendar())}
+						{:else if clockLocked}
 							{@render autoSource(m.settings_clock_24h(), m.settings_source_iso())}
 						{:else if settings.clock === 'auto'}
-							{@render autoSource(
-								resolvedClockLabel,
-								settings.resolvedDecimalTime
-									? m.settings_source_calendar()
-									: m.settings_source_locale()
-							)}
+							{@render autoSource(resolvedClockLabel, m.settings_source_locale())}
 						{/if}
 					</div>
 				</section>

@@ -15,13 +15,8 @@
 	import { TIME_SCALES, TIME_DATE_OPTS } from '$lib/time/time-scales';
 	import { loadPickerRange, pickerRange } from '$lib/time/picker-range.svelte';
 	import { localeWithCalendar } from '$lib/time/calendars';
-	import {
-		applyDateToClock,
-		applyTimeToClock,
-		clockTimeValue,
-		jdToCalendarDate,
-		pickerBounds
-	} from './clock-pickers';
+	import { applyDateToClock, jdToCalendarDate, pickerBounds } from './clock-pickers';
+	import ClockTimeInput from './ClockTimeInput.svelte';
 	import { dateToJD } from '$lib/time/jd';
 
 	interface Props {
@@ -82,11 +77,9 @@
 	});
 
 	const handleDateChange = (v: DateValue | undefined) => applyDateToClock(clock, v);
-	const handleTimeChange = (e: Event) => applyTimeToClock(clock, e);
 	// The label shows minutes; quantising to the second stops the formatter
 	// running on every frame of a 1x clock.
 	const shownJd = $derived(Math.floor(clock.jd * 86400) / 86400);
-	let timeValue = $derived(clockTimeValue(shownJd));
 
 	// Fixtures covering the variants that change rendered length: month
 	// abbreviations, meridiem/hour boundaries, day digit count. Measured as
@@ -218,15 +211,7 @@
 				years={calendar === 'gregory' ? undefined : bounds?.years}
 			/>
 			<div class="border-t p-3">
-				<input
-					type="time"
-					value={timeValue}
-					onchange={handleTimeChange}
-					aria-label={m.time_pick_time()}
-					class="h-8 w-full rounded-md border bg-transparent px-2 font-mono tabular-nums text-sm
-						scheme-light-dark
-						focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring"
-				/>
+				<ClockTimeInput {clock} class="h-8 text-sm" />
 			</div>
 		</Popover.Content>
 	</Popover.Root>

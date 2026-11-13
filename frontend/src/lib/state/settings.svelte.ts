@@ -28,8 +28,7 @@ import type {
 const STORAGE_KEY = 'space-map-settings';
 
 export type Theme = 'auto' | 'light' | 'dark';
-/** 'decimal' is the Republic's ten-hour day, kept with its calendar. */
-export type Clock = 'auto' | '12h' | '24h' | 'decimal';
+export type Clock = 'auto' | '12h' | '24h';
 export type ReducedMotion = 'auto' | 'on' | 'off';
 export type DateFormatChoice = 'auto' | 'iso';
 /** 'auto' follows the browser's own calendar; see {@link browserCalendar}. */
@@ -415,15 +414,14 @@ class SettingsState implements SceneSettings, SettingValues {
 	/** Resolved hour-cycle preference: true for 12h, false for 24h. */
 	get resolvedHour12(): boolean {
 		if (this.clock === '12h') return true;
-		if (this.clock === '24h' || this.clock === 'decimal') return false;
+		if (this.clock === '24h') return false;
 		return localeUses12h(getLocale());
 	}
 
-	/** Whether times are written in decimal hours. Only the Republican calendar
-	 *  keeps them, and with it they are what 'auto' means. */
+	/** Whether times are written in the Republic's decimal hours: always with
+	 *  its calendar, which decreed them, and never without it. */
 	get resolvedDecimalTime(): boolean {
-		if (this.resolvedCalendar !== FRENCH_REPUBLICAN) return false;
-		return this.clock === 'decimal' || this.clock === 'auto';
+		return this.resolvedCalendar === FRENCH_REPUBLICAN;
 	}
 
 	/** Resolved date format. */
