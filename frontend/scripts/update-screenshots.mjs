@@ -103,7 +103,7 @@ const SHOTS = [
 	{
 		name: 'curiosity',
 		...TILE,
-		url: 'https://spacemap.co/p/100265984/Mars%20Science%20Laboratory?at=2026-07-28T14:17:41.132Z,-52,-72.77,6.016e-10',
+		url: 'https://spacemap.co/p/100265984/Curiosity?at=2026-07-28T14:18:15.278Z,-4.78619,137.38158,0.000226772934&angle=71.4,-57.5',
 		shift: [0, -120]
 	},
 	{
@@ -129,6 +129,7 @@ function mapOptions({ url, home, hide }) {
 	}
 	const [, type, id] = pathname.split('/');
 	const [date, lat, lon, zoom] = at.split(',');
+	const [pitch, bearing] = (searchParams.get('angle') ?? '0,0').split(',').map(Number);
 	return {
 		hide,
 		date: date === 'now' ? undefined : date,
@@ -136,7 +137,9 @@ function mapOptions({ url, home, hide }) {
 			body: `${ID_PREFIX[type]}-${id}`,
 			lat: +lat,
 			lon: +lon,
-			distanceKm: zoom * SCENE_UNIT_KM
+			distanceKm: zoom * SCENE_UNIT_KM,
+			pitch,
+			bearing
 		}
 	};
 }
@@ -177,18 +180,17 @@ const PAGE = `<!doctype html>
 		window.place = () => map.clock.setDate(map.clock.date);
 		// The map opens on its own framing of the body: it takes no view facing
 		// another body, and a satellite, a rover or a small body is known too
-		// late for one. The view is put back until it holds. The clock runs
-		// until then, as a rover is not placed under a stopped one, and goes
-		// back to the date of the view: a still scene is what lets two captures
-		// in a row be compared.
+		// late for one. The view is put back until it holds. The distance is
+		// what tells: a landed rover's camera is on the body it stands on. The
+		// clock runs until then, as a rover is not placed under a stopped one,
+		// and goes back to the date of the view: a still scene is what lets two
+		// captures in a row be compared.
 		let aimed = false;
 		let still = false;
 		window.aim = () => {
 			const camera = map.getCamera();
 			const there =
-				aimed &&
-				camera?.body === view.body &&
-				Math.abs(camera.distanceKm / view.distanceKm - 1) < 0.01;
+				aimed && !!camera && Math.abs(camera.distanceKm / view.distanceKm - 1) < 0.01;
 			if (!there && map.getBody(view.body)) {
 				map.jumpTo(view);
 				aimed = true;
