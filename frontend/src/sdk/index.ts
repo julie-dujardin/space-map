@@ -353,6 +353,7 @@ export type {
 	CameraState,
 	CameraTarget,
 	ClockState,
+	ClosestApproach,
 	FeatureRef,
 	FeatureSelect,
 	FeatureTarget,

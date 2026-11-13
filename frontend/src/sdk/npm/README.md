@@ -797,6 +797,7 @@ const map = await createMap({
 
 map.setLimits({ maxDistanceKm: 1e6 }); // replaced whole, not merged
 map.getLimits();
+map.getClosestApproach(); // { groundKm, clearanceKm }: the ground under the camera, and how near it may come
 ```
 
 On the flat map it is a zoom range and a band the middle of the frame stays in:

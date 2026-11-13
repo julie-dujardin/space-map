@@ -197,6 +197,12 @@ export interface ClockState {
 }
 
 // @public
+export interface ClosestApproach {
+	clearanceKm: number;
+	groundKm: number;
+}
+
+// @public
 export function configureHost(overrides: HostOverrides): void;
 
 // @public
@@ -1423,6 +1429,7 @@ export class SpaceMap {
 	getBody(id: string): Body_2 | undefined;
 	getCamera(): CameraState | null;
 	getChildren(id: string): string[];
+	getClosestApproach(): ClosestApproach | null;
 	getFocusedBody(): Body_2 | undefined;
 	getLayers(): MapLayerId[];
 	getLimits(): CameraLimits;

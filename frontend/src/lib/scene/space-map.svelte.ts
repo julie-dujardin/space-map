@@ -100,6 +100,15 @@ export interface SpaceMapOptions {
 /** The gestures the map hangs a handler off for. */
 export type MapGesture = 'dragRotate' | 'scrollZoom' | 'keyboard' | 'bodySelect' | 'featureSelect';
 
+/** The nearest the camera comes to a body, in km. Both change as the body's
+ *  relief and finer imagery load. */
+export interface ClosestApproach {
+	/** From the body's centre to its ground under the camera. */
+	groundKm: number;
+	/** How far over that ground the camera stops. */
+	clearanceKm: number;
+}
+
 /**
  * How far the reader may take the camera, and which objects they may put it
  * around. Everything left out is unrestricted.
@@ -1302,6 +1311,13 @@ export class SpaceMap {
 	/** The limits as they stand. */
 	getLimits(): CameraLimits {
 		return { ...this.limits };
+	}
+
+	/** How near the map lets the camera come to what it orbits, where the
+	 *  camera is now, whatever {@link SpaceMap.setLimits} adds. Null while
+	 *  nothing is focused. */
+	getClosestApproach(): ClosestApproach | null {
+		return this.renderer?.groundUnderCamera() ?? null;
 	}
 
 	private applyLimits(): void {

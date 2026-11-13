@@ -243,6 +243,8 @@ const SUN_PROXY_FAR_FRACTION = 0.9;
 const _sunLiftDir = new Vector3();
 /** Scratch for {@link SceneRenderer.motionGround}. */
 const _lookDir = new Vector3();
+/** Scratch for {@link SceneRenderer.groundUnderCamera}. */
+const _groundDir = new Vector3();
 
 /** Height over the ground, in radii of the body, under which the camera
  *  turns with the body's spin, and over which it holds still and watches it
@@ -2645,6 +2647,19 @@ export class SceneRenderer {
 			cam.position.distanceToSquared(pos) <= cam.position.lengthSq() * 1e-10 &&
 			8 * (1 - Math.abs(cam.quaternion.dot(quat))) <= 1e-8
 		);
+	}
+
+	/** @internal The drawn ground under the camera, in km from the focused
+	 *  body's centre, and the clearance the clamps keep over it. Null with
+	 *  nothing focused. */
+	groundUnderCamera(): { groundKm: number; clearanceKm: number } | null {
+		const body = this.focusController?.current;
+		if (!body) return null;
+		const down = _groundDir.copy(this.controls.orbitPosition).normalize();
+		return {
+			groundKm: this.motionGround.radiusKm(body, down) ?? effectiveRadiusKm(body.data),
+			clearanceKm: this.motionGround.clearanceKm(body)
+		};
 	}
 
 	/** The ground the tilt and the wheel work over: the focused body's drawn
