@@ -87,7 +87,6 @@ class WikidataDownloader(Downloader):
         ID_TYPES.NORAD_SATCAT,
         ID_TYPES.COSPAR,
         ID_TYPES.PROVISIONAL_DESIGNATION,
-        ID_TYPES.NAME,
     ]
 
     def download(self, limit: int | None = None, **kwargs: object) -> None:

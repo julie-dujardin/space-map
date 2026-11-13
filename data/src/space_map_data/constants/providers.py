@@ -104,7 +104,6 @@ class ID_TYPES(StrEnum):
     COSPAR = "cospar"
     PROVISIONAL_DESIGNATION = "provisional_designation"
     IAU_FEATURE_ID = "iau_feature_id"
-    NAME = "name"
     PROBE = "probe"  # synthetic ID for spacecraft (inception date + dedupe)
 
 

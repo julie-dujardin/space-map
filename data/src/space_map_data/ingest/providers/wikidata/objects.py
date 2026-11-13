@@ -87,23 +87,6 @@ def _build_mappings(
                         obj_to_qids[obj_id].add(qid)
                         qid_to_objs[qid].add(obj_id)
 
-    name_csv = matches_dir / "name.csv"
-    if name_csv.exists():
-        name_to_qids = read_ids_csv(name_csv)
-        names = [n for n, qids in name_to_qids.items() if qids]
-
-        for i in range(0, len(names), BATCH):
-            batch_names = names[i : i + BATCH]
-            rows = (
-                session.query(Object.id, Object.name)
-                .filter(Object.name.in_(batch_names))
-                .all()
-            )
-            for obj_id, name in rows:
-                for qid in name_to_qids.get(name, []):
-                    obj_to_qids[obj_id].add(qid)
-                    qid_to_objs[qid].add(obj_id)
-
     return dict(obj_to_qids), dict(qid_to_objs)
 
 

@@ -2,16 +2,14 @@
 
 import csv
 import io
+import json
 import logging
 import time
-from collections.abc import Iterator
-from datetime import date
 from pathlib import Path
 
 import httpx
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
-from tqdm import tqdm
 
 from space_map_data.constants.earth_sats.constellations import (
     CONSTELLATIONS,
@@ -22,8 +20,9 @@ from space_map_data.constants.minor_planet_moons import (
     UNLINKED_MINOR_PLANET_MOON_QIDS,
 )
 from space_map_data.constants.providers import ID_TYPE_TO_WIKIDATA_PID, ID_TYPES
+from space_map_data.ingest.providers.wikidata.csv_io import read_ids_csv
 from space_map_data.models.feature import Feature
-from space_map_data.models.object import SBDB, Object
+from space_map_data.models.object import Object
 from space_map_data.models.object.satcat import Satcat
 
 # Massive constellations only: individual members lack meaningful Wikidata
@@ -57,39 +56,55 @@ logger = logging.getLogger(__name__)
 
 SPARQL_URL = "https://query.wikidata.org/sparql"
 
-SPARQL_BATCH_SIZE = 1000
-NAME_BATCH_SIZE = 200
 AFTER_REQUEST_DELAY_SECONDS = 2  # pls don't ban me
+
+# Many Wikidata items keep an older SPK-ID series, which SBDB moved by a fixed
+# offset: numbered asteroids from 2,000,000 + n, unnumbered ones from 3,000,000.
+OLD_SPKID_SERIES = (
+    (range(2_000_000, 3_000_000), 18_000_000),
+    (range(3_000_000, 4_000_000), 47_000_023),
+)
+
+# Past this many lost matches, and this share of the file, a rewrite is held.
+MAX_GONE_MATCHES = 100
+MAX_GONE_SHARE = 0.1
 
 # "minor planet moon" — instance-of value shared by satellites of asteroids/TNOs.
 MINOR_PLANET_MOON_P31_QID = "Q657829"
 
-# Each source maps to: (id_type, db_query_func_name, label)
+# Each ID type with the method that lists the IDs we hold for it.
 SOURCES = (
-    # Very few matches (ID_TYPES.NAIF, "_query_naif_ids", "Natural bodies (NAIF)"),  TODO only do majors/moons of majors
-    # (ID_TYPES.SPKID, "_query_small_body_spkids", "Small bodies (SPK-ID)"),
-    # (  Too many IDs
-    #     ID_TYPES.MPC_DESIGNATION,
-    #     "_query_mpc_designations",
-    #     "Small bodies (MPC designation)",
-    # ),
-    (ID_TYPES.NORAD_SATCAT, "_query_norad_ids", "Satellites (NORAD)"),
-    (ID_TYPES.COSPAR, "_query_cospar_ids", "Satellites (COSPAR)"),
-    # (  Too many IDs
-    #     ID_TYPES.PROVISIONAL_DESIGNATION,
-    #     "_query_provisional_designations",
-    #     "Provisional designations",
-    # ),
-    (ID_TYPES.IAU_FEATURE_ID, "_query_iau_feature_ids", "IAU features"),
+    (ID_TYPES.NAIF, "_naif_ids"),
+    (ID_TYPES.SPKID, "_spkids"),
+    (ID_TYPES.MPC_DESIGNATION, "_mpc_designations"),
+    (ID_TYPES.NORAD_SATCAT, "_norad_ids"),
+    (ID_TYPES.COSPAR, "_cospar_ids"),
+    (ID_TYPES.PROVISIONAL_DESIGNATION, "_provisional_designations"),
+    (ID_TYPES.IAU_FEATURE_ID, "_iau_feature_ids"),
 )
 
 
-class WikidataIdResolver:
-    """Resolve space-map object IDs to Wikidata QIDs.
+def _our_forms(id_type: ID_TYPES, value: str) -> tuple[str, ...]:
+    """The IDs a Wikidata value can stand for, in the form we hold them."""
+    if id_type == ID_TYPES.NORAD_SATCAT and value.isdecimal():
+        return (value.zfill(5),)
+    if id_type == ID_TYPES.SPKID and value.isdecimal():
+        for series, offset in OLD_SPKID_SERIES:
+            if int(value) in series:
+                return (value, str(int(value) + offset))
+    return (value,)
 
-    Results are saved incrementally as CSV files under ``ids_dir``:
-    ``matches/<key>.csv`` for positive results, ``no_match/<key>.csv``
-    for IDs queried with no Wikidata match.
+
+def _is_constellation(name: str | None) -> bool:
+    return bool(name) and any(name.startswith(p) for p in CONSTELLATION_PREFIXES)
+
+
+class WikidataIdResolver:
+    """Match the IDs we hold to Wikidata QIDs, one ID type at a time.
+
+    Each type takes one query for every item with its property, and its
+    ``matches/<pid>.csv`` under ``ids_dir`` is rewritten whole, so items made
+    or removed on Wikidata since the last run are picked up.
     """
 
     def __init__(
@@ -102,60 +117,27 @@ class WikidataIdResolver:
         self.session = session
         self.ids_dir = ids_dir
         self._matches_dir = ids_dir / "matches"
-        self._no_match_dir = ids_dir / "no_match"
         self._conflicts_dir = ids_dir / "conflicts"
 
     # -- Public API --
 
     def resolve(self, id_types: list[ID_TYPES] | None = None) -> set[str]:
-        """Resolve ID sources and return all unique QIDs.
-
-        `id_types=None` resolves all, including name-based fallback (include
-        `ID_TYPES.NAME` explicitly to enable it otherwise). IDs already in
-        match/no-match CSVs are skipped, so partial runs resume where they
-        left off.
-        """
+        """Match the given ID types (default: all) and return their QIDs,
+        with the hand-resolved conflicts of those types."""
         self._matches_dir.mkdir(parents=True, exist_ok=True)
-        self._no_match_dir.mkdir(parents=True, exist_ok=True)
-
-        resolve_by_name = id_types is None or ID_TYPES.NAME in id_types
-
-        sources = SOURCES
-        if id_types is not None:
-            allowed = set(id_types)
-            sources = tuple(s for s in SOURCES if s[0] in allowed)
-
-        for id_type, query_method_name, label in sources:
-            pid = ID_TYPE_TO_WIKIDATA_PID[id_type]
-            self._resolve_source(pid, query_method_name, label)
-
-        # Name-based search for objects not resolved by ID
-        # Skipped for now - too many queries, not useful enough (plenty of matches as is)
-        # if resolve_by_name:
-        #     resolved_qids = set()
-        #     for csv_path in self._matches_dir.glob("*.csv"):
-        #         for qids in self._read_ids_csv(csv_path.stem).values():
-        #             resolved_qids.update(qids)
-        #     self._resolve_by_name(resolved_qids)
-
-        # Read every allowed PID's CSV — id_types whose SPARQL resolution is
-        # disabled in SOURCES still have valid matches from prior runs.
-        all_qids: set[str] = set()
-        allowed_pid_types = ID_TYPE_TO_WIKIDATA_PID.keys()
-        if id_types is not None:
-            allowed_pid_types = [t for t in allowed_pid_types if t in set(id_types)]
-        for id_type in allowed_pid_types:
-            pid = ID_TYPE_TO_WIKIDATA_PID[id_type]
-            for qids in self._read_ids_csv(pid).values():
-                all_qids.update(qids)
-        if resolve_by_name:
-            for qids in self._read_ids_csv("name").values():
-                all_qids.update(qids)
-
-        # Merge in manually-resolved QIDs from conflicts/resolved_conflicts.csv,
-        # filtered to entries whose object_id prefix matches the requested types.
-        all_qids.update(self._read_resolved_conflict_qids(id_types))
-        return all_qids
+        qids: set[str] = set()
+        for id_type, method in SOURCES:
+            if id_types is None or id_type in id_types:
+                pid = ID_TYPE_TO_WIKIDATA_PID[id_type]
+                try:
+                    mapping = self._resolve(id_type, getattr(self, method)())
+                except (httpx.HTTPError, RuntimeError) as exc:
+                    logger.error("  %s: query failed, kept the old file: %s", pid, exc)
+                    mapping = self._read_ids_csv(pid)
+                for matched in mapping.values():
+                    qids.update(matched)
+        qids.update(self._read_resolved_conflict_qids(id_types))
+        return qids
 
     def warn_minor_planet_moon_drift(self) -> None:
         """Warn when Wikidata's P31=Q657829 set diverges from our hardcoded table.
@@ -210,47 +192,25 @@ class WikidataIdResolver:
             len(stale_qids),
         )
 
-    # -- CSV helpers --
+    # -- Match CSV --
 
     def _ids_csv_path(self, key: str) -> Path:
-        """Path to the match CSV file for a property or 'name'."""
         return self._matches_dir / f"{key}.csv"
 
     def _read_ids_csv(self, key: str) -> dict[str, list[str]]:
-        """Read a property CSV back into a {search_term: [qids]} mapping."""
         csv_path = self._ids_csv_path(key)
-        if not csv_path.exists():
-            return {}
-        mapping: dict[str, list[str]] = {}
-        for row in csv.reader(io.StringIO(csv_path.read_text())):
-            if not row:
-                continue
-            search_term = row[0]
-            qids = row[1].split() if len(row) > 1 and row[1] else []
-            mapping[search_term] = qids
-        return mapping
+        return read_ids_csv(csv_path) if csv_path.exists() else {}
 
-    def _append_ids_csv(self, key: str, mapping: dict[str, list[str]]) -> None:
-        """Append resolved rows to a property CSV."""
-        if not mapping:
-            return
-        csv_path = self._ids_csv_path(key)
+    def _write_ids_csv(self, key: str, mapping: dict[str, list[str]]) -> None:
+        """Replace a property CSV with these rows."""
         buf = io.StringIO()
         writer = csv.writer(buf)
-        for search_term, qids in mapping.items():
-            writer.writerow([search_term, " ".join(qids)])
-        with open(csv_path, "a") as f:
-            f.write(buf.getvalue())
-
-    def _load_all_ids(self) -> dict[str, dict[str, list[str]]]:
-        """Read all match CSV files into the full id_map structure."""
-        id_map: dict[str, dict[str, list[str]]] = {}
-        for csv_path in self._matches_dir.glob("*.csv"):
-            key = csv_path.stem
-            mapping = self._read_ids_csv(key)
-            if mapping:
-                id_map[key] = mapping
-        return id_map
+        for id_, qids in mapping.items():
+            writer.writerow([id_, " ".join(qids)])
+        csv_path = self._ids_csv_path(key)
+        tmp = csv_path.with_suffix(".csv.tmp")
+        tmp.write_text(buf.getvalue())
+        tmp.replace(csv_path)
 
     # -- Resolved-conflict CSV --
 
@@ -298,413 +258,160 @@ class WikidataIdResolver:
             )
         return qids
 
-    # -- No-match CSV helpers --
-
-    def _no_match_csv_path(self, key: str) -> Path:
-        """Path to the no-match CSV for a property or 'name'."""
-        return self._no_match_dir / f"{key}.csv"
-
-    def _read_no_match_csv(self, key: str) -> set[str]:
-        """Read IDs previously queried with no match."""
-        csv_path = self._no_match_csv_path(key)
-        if not csv_path.exists():
-            return set()
-        ids: set[str] = set()
-        for row in csv.reader(io.StringIO(csv_path.read_text())):
-            if row:
-                ids.add(row[0])
-        return ids
-
-    def _append_no_match_csv(self, key: str, ids: list[str]) -> None:
-        """Append IDs that had no SPARQL match, with today's date."""
-        if not ids:
-            return
-        csv_path = self._no_match_csv_path(key)
-        today = date.today().isoformat()
-        buf = io.StringIO()
-        writer = csv.writer(buf)
-        for id_ in ids:
-            writer.writerow([id_, today])
-        with open(csv_path, "a") as f:
-            f.write(buf.getvalue())
-
     # -- Resolution --
 
-    def _resolve_source(
-        self,
-        pid: str,
-        query_method_name: str,
-        label: str,
-    ) -> None:
-        """Resolve a single source, appending to CSV after each batch."""
-        query_method = getattr(self, query_method_name)
+    def _resolve(self, id_type: ID_TYPES, ours: set[str]) -> dict[str, list[str]]:
+        """Match every Wikidata value of the type's property to the IDs we hold,
+        and rewrite its match CSV. A result that would empty the file or drop a
+        large share of it leaves the old file in place: it is rewritten whole,
+        so a partial DB or a short answer would otherwise strip the QIDs."""
+        pid = ID_TYPE_TO_WIKIDATA_PID[id_type]
+        rows = self._sparql_query(f"SELECT ?item ?id WHERE {{ ?item wdt:{pid} ?id . }}")
+        found: dict[str, set[str]] = {}
+        for row in rows:
+            forms = _our_forms(id_type, row["id"]["value"])
+            key = next((f for f in forms if f in ours), None)
+            if key is not None:
+                qid = row["item"]["value"].rsplit("/", 1)[-1]
+                found.setdefault(key, set()).add(qid)
+        mapping = {k: sorted(found[k]) for k in sorted(found)}
 
-        already_resolved = set(self._read_ids_csv(pid).keys())
-        already_queried_no_match = self._read_no_match_csv(pid)
-        already_known = already_resolved | already_queried_no_match
-        if already_known:
-            logger.info(
-                "Resuming %s — %d resolved, %d no-match",
-                pid,
-                len(already_resolved),
-                len(already_queried_no_match),
-            )
-
-        total = 0
-        count = query_method(count_only=True)
-        desc = f"SPARQL {pid} ({label})"
-
-        with tqdm(total=count, desc=desc, unit="id") as pbar:
-            for batch in query_method():
-                total += len(batch)
-                to_resolve = [id_ for id_ in batch if id_ not in already_known]
-                pbar.update(len(batch))
-                if not to_resolve:
-                    continue
-
-                resolved = self._sparql_resolve(pid, to_resolve)
-                self._append_ids_csv(pid, resolved)
-                no_match = [id_ for id_ in to_resolve if id_ not in resolved]
-                self._append_no_match_csv(pid, no_match)
-                already_known.update(to_resolve)
-
-        logger.info("  %s: %d / %d resolved", pid, len(already_resolved), total)
-
-    def _resolve_by_name(self, already_resolved_qids: set[str]) -> None:
-        """Search Wikidata by object name for entities not found by ID."""
-        already_resolved_names = set(self._read_ids_csv("name").keys())
-        already_queried_no_match = self._read_no_match_csv("name")
-        already_known = already_resolved_names | already_queried_no_match
-        if already_known:
-            logger.info(
-                "Resuming name search — %d resolved, %d no-match",
-                len(already_resolved_names),
-                len(already_queried_no_match),
-            )
-
-        resolved_count = 0
-        total = 0
-
-        for batch in self._query_names():
-            total += len(batch)
-            to_resolve = [n for n in batch if n not in already_known]
-            if not to_resolve:
-                continue
-            resolved = self._sparql_resolve_by_name(to_resolve)
-            batch_mapping: dict[str, list[str]] = {}
-            for name, qids in resolved.items():
-                new_qids = [q for q in qids if q not in already_resolved_qids]
-                if new_qids:
-                    batch_mapping[name] = new_qids
-            if batch_mapping:
-                self._append_ids_csv("name", batch_mapping)
-                resolved_count += len(batch_mapping)
-            # Record names that had no match (or only duplicate QIDs)
-            no_match = [n for n in to_resolve if n not in batch_mapping]
-            self._append_no_match_csv("name", no_match)
-            already_known.update(to_resolve)
+        old = self._read_ids_csv(pid)
+        gone = len(old.keys() - mapping.keys())
+        changed = sum(
+            1 for k in mapping.keys() & old.keys() if set(old[k]) != set(mapping[k])
+        )
         logger.info(
-            "  name: %d / %d resolved (excluding duplicates)", resolved_count, total
+            "  %s (%s): %d Wikidata values, %d of our %d IDs matched "
+            "(%d new, %d gone, %d changed, %d with several items)",
+            pid,
+            id_type,
+            len(rows),
+            len(mapping),
+            len(ours),
+            len(mapping.keys() - old.keys()),
+            gone,
+            changed,
+            sum(1 for q in mapping.values() if len(q) > 1),
         )
-
-    # -- DB query generators (yield batches of SPARQL_BATCH_SIZE) --
-
-    def _query_naif_ids(self, *, count_only: bool = False) -> int | Iterator[list[str]]:
-        """NAIF IDs for natural bodies → P2956."""
-        stmt = select(Object.naif_id).where(Object.naif_id.is_not(None))
-        if count_only:
-            return (
-                self.session.scalar(select(func.count()).select_from(stmt.subquery()))
-                or 0
+        if not mapping or gone > max(MAX_GONE_MATCHES, len(old) * MAX_GONE_SHARE):
+            logger.error(
+                "  %s: held %d of %d old rows that no longer match; delete "
+                "matches/%s.csv to let them go",
+                pid,
+                gone,
+                len(old),
+                pid,
             )
-        return self._batched_scalars(stmt, str)
+            mapping = {
+                k: old.get(k) or mapping[k] for k in sorted(old.keys() | mapping.keys())
+            }
+        self._write_ids_csv(pid, mapping)
+        return mapping
 
-    def _query_small_body_spkids(
-        self, *, count_only: bool = False
-    ) -> int | Iterator[list[str]]:
-        """SPK-IDs for named small bodies → P716."""
-        stmt = select(SBDB.spkid).where(SBDB.spkid.is_not(None))
-        if count_only:
-            return (
-                self.session.scalar(select(func.count()).select_from(stmt.subquery()))
-                or 0
+    # -- The IDs we hold --
+
+    def _naif_ids(self) -> set[str]:
+        # Natural bodies: NAIF reuses spacecraft IDs, so a negative one can
+        # name another craft on Wikidata.
+        stmt = select(Object.naif_id).where(Object.naif_id >= 0)
+        return {str(n) for n in self.session.scalars(stmt) if n is not None}
+
+    def _spkids(self) -> set[str]:
+        # Object.spkid, as the ingest matches P716: SBDB rows and the moons.
+        stmt = select(Object.spkid).where(Object.spkid.is_not(None))
+        return {str(n) for n in self.session.scalars(stmt) if n is not None}
+
+    def _mpc_designations(self) -> set[str]:
+        # The ingest matches P5736 on both columns.
+        rows = self.session.execute(
+            select(Object.mpc_designation, Object.provisional_designation).where(
+                Object.mpc_designation.is_not(None)
+                | Object.provisional_designation.is_not(None)
             )
-        return self._batched_scalars(stmt, str)
-
-    def _query_norad_ids(
-        self, *, count_only: bool = False
-    ) -> int | Iterator[list[str]]:
-        """NORAD catalog numbers for non-constellation satellites → P377."""
-        obj_stmt = select(Object.norad_cat_id, Object.name).where(
-            Object.norad_cat_id.is_not(None)
         )
-        # Satcat rows not claimed by any Object via the satcat FK.
-        claimed_subq = select(Object.satcat_norad_cat_id).where(
-            Object.satcat_norad_cat_id.is_not(None)
-        )
-        satcat_stmt = select(Satcat.NORAD_CAT_ID, Satcat.OBJECT_NAME).where(
-            Satcat.NORAD_CAT_ID.notin_(claimed_subq)
-        )
-        if count_only:
-            # Approximate — includes constellations, but close enough for progress
-            obj_count = (
-                self.session.scalar(
-                    select(func.count()).select_from(obj_stmt.subquery())
-                )
-                or 0
-            )
-            satcat_count = (
-                self.session.scalar(
-                    select(func.count()).select_from(satcat_stmt.subquery())
-                )
-                or 0
-            )
-            return obj_count + satcat_count
+        return {v for row in rows for v in row if v}
 
-        def _generate() -> Iterator[list[str]]:
-            seen: set[str] = set()
-            batch: list[str] = []
-            # Object-sourced NORAD IDs
-            for norad_id, name in self.session.execute(obj_stmt):
-                if name and any(
-                    name.startswith(prefix) for prefix in CONSTELLATION_PREFIXES
-                ):
-                    continue
-                norad_str = str(norad_id).zfill(5)
-                seen.add(norad_str)
-                batch.append(norad_str)
-                if len(batch) >= SPARQL_BATCH_SIZE:
-                    yield batch
-                    batch = []
-            # Satcat-only NORAD IDs (entries without Object rows)
-            for norad_id, name in self.session.execute(satcat_stmt):
-                norad_str = str(norad_id).zfill(5)
-                if norad_str in seen:
-                    continue
-                if name and any(
-                    name.startswith(prefix) for prefix in CONSTELLATION_PREFIXES
-                ):
-                    continue
-                batch.append(norad_str)
-                if len(batch) >= SPARQL_BATCH_SIZE:
-                    yield batch
-                    batch = []
-            if batch:
-                yield batch
-
-        return _generate()
-
-    def _query_mpc_designations(
-        self, *, count_only: bool = False
-    ) -> int | Iterator[list[str]]:
-        """MPC designations for small bodies → P5736."""
-        stmt = select(Object.mpc_designation).where(Object.mpc_designation.is_not(None))
-        if count_only:
-            return (
-                self.session.scalar(select(func.count()).select_from(stmt.subquery()))
-                or 0
-            )
-        return self._batched_scalars(stmt, str)
-
-    def _query_cospar_ids(
-        self, *, count_only: bool = False
-    ) -> int | Iterator[list[str]]:
-        """COSPAR IDs for non-constellation satellites → P247."""
-        obj_stmt = select(Object.cospar_id, Object.name).where(
-            Object.cospar_id.is_not(None)
-        )
-        claimed_subq = select(Object.satcat_norad_cat_id).where(
-            Object.satcat_norad_cat_id.is_not(None)
-        )
-        satcat_stmt = select(Satcat.COSPAR_ID, Satcat.OBJECT_NAME).where(
-            Satcat.NORAD_CAT_ID.notin_(claimed_subq),
-            Satcat.COSPAR_ID.is_not(None),
-        )
-        if count_only:
-            obj_count = (
-                self.session.scalar(
-                    select(func.count()).select_from(obj_stmt.subquery())
-                )
-                or 0
-            )
-            satcat_count = (
-                self.session.scalar(
-                    select(func.count()).select_from(satcat_stmt.subquery())
-                )
-                or 0
-            )
-            return obj_count + satcat_count
-
-        def _generate() -> Iterator[list[str]]:
-            seen: set[str] = set()
-            batch: list[str] = []
-            # Object-sourced COSPAR IDs
-            for cospar_id, name in self.session.execute(obj_stmt):
-                if name and any(
-                    name.startswith(prefix) for prefix in CONSTELLATION_PREFIXES
-                ):
-                    continue
-                cospar_str = str(cospar_id)
-                seen.add(cospar_str)
-                batch.append(cospar_str)
-                if len(batch) >= SPARQL_BATCH_SIZE:
-                    yield batch
-                    batch = []
-            # Satcat-only COSPAR IDs (entries without Object rows)
-            for cospar_id, name in self.session.execute(satcat_stmt):
-                cospar_str = str(cospar_id)
-                if cospar_str in seen:
-                    continue
-                if name and any(
-                    name.startswith(prefix) for prefix in CONSTELLATION_PREFIXES
-                ):
-                    continue
-                batch.append(cospar_str)
-                if len(batch) >= SPARQL_BATCH_SIZE:
-                    yield batch
-                    batch = []
-            if batch:
-                yield batch
-
-        return _generate()
-
-    def _query_provisional_designations(
-        self, *, count_only: bool = False
-    ) -> int | Iterator[list[str]]:
-        """Provisional designations → P490."""
+    def _provisional_designations(self) -> set[str]:
         stmt = select(Object.provisional_designation).where(
             Object.provisional_designation.is_not(None)
         )
-        if count_only:
-            return (
-                self.session.scalar(select(func.count()).select_from(stmt.subquery()))
-                or 0
-            )
-        return self._batched_scalars(stmt, str)
+        return {v for v in self.session.scalars(stmt) if v}
 
-    def _query_iau_feature_ids(
-        self, *, count_only: bool = False
-    ) -> int | Iterator[list[str]]:
-        """IAU planetary feature IDs → P2824."""
-        stmt = select(Feature.feature_id).where(Feature.feature_id.is_not(None))
-        if count_only:
-            return (
-                self.session.scalar(select(func.count()).select_from(stmt.subquery()))
-                or 0
-            )
-        return self._batched_scalars(stmt, str)
+    def _norad_ids(self) -> set[str]:
+        ids = self._satellite_ids(Object.norad_cat_id, Satcat.NORAD_CAT_ID)
+        return {str(n).zfill(5) for n in ids}
 
-    def _query_names(self) -> Iterator[list[str]]:
-        """Object names for label-based Wikidata search."""
-        stmt = select(Object.name).where(
-            Object.name.is_not(None),
-            Object.name != "",
+    def _cospar_ids(self) -> set[str]:
+        return {str(c) for c in self._satellite_ids(Object.cospar_id, Satcat.COSPAR_ID)}
+
+    def _satellite_ids(self, object_col, satcat_col) -> set:
+        """Satellites outside the big constellations, with the Satcat rows no
+        Object claims."""
+        claimed = select(Object.satcat_norad_cat_id).where(
+            Object.satcat_norad_cat_id.is_not(None)
         )
+        rows = [
+            *self.session.execute(
+                select(object_col, Object.name).where(object_col.is_not(None))
+            ),
+            *self.session.execute(
+                select(satcat_col, Satcat.OBJECT_NAME).where(
+                    satcat_col.is_not(None), Satcat.NORAD_CAT_ID.notin_(claimed)
+                )
+            ),
+        ]
+        return {v for v, name in rows if v is not None and not _is_constellation(name)}
 
-        def _generate() -> Iterator[list[str]]:
-            batch: list[str] = []
-            for name in self.session.scalars(stmt):
-                assert name is not None
-                if any(name.startswith(prefix) for prefix in CONSTELLATION_PREFIXES):
-                    continue
-                batch.append(name)
-                if len(batch) >= NAME_BATCH_SIZE:
-                    yield batch
-                    batch = []
-            if batch:
-                yield batch
-
-        return _generate()
-
-    def _batched_scalars(self, stmt, convert=None) -> Iterator[list[str]]:
-        """Yield batches of scalar results from a query."""
-        batch: list[str] = []
-        for value in self.session.scalars(stmt):
-            batch.append(convert(value) if convert else value)
-            if len(batch) >= SPARQL_BATCH_SIZE:
-                yield batch
-                batch = []
-        if batch:
-            yield batch
+    def _iau_feature_ids(self) -> set[str]:
+        stmt = select(Feature.feature_id).where(Feature.feature_id.is_not(None))
+        return {str(f) for f in self.session.scalars(stmt) if f is not None}
 
     # -- SPARQL --
 
-    def _sparql_resolve(self, prop: str, ids: list[str]) -> dict[str, list[str]]:
-        """SPARQL query to resolve a batch of IDs to QIDs.
-
-        Returns a dict mapping each ID to a list of QIDs (one ID may match
-        multiple Wikidata entities).
-        """
-        values = " ".join(f'"{v}"' for v in ids)
-        query = (
-            f"SELECT ?item ?id WHERE {{\n"
-            f"  VALUES ?id {{ {values} }}\n"
-            f"  ?item wdt:{prop} ?id .\n"
-            f"}}"
-        )
-        results = self._sparql_query(query)
-        mapping: dict[str, list[str]] = {}
-        for row in results:
-            qid = row["item"]["value"].rsplit("/", 1)[-1]
-            key = row["id"]["value"]
-            mapping.setdefault(key, []).append(qid)
-        for key, qids in mapping.items():
-            if len(qids) > 1:
-                logger.warning(
-                    "  %s %s → multiple entities: %s", prop, key, ", ".join(qids)
-                )
-        return mapping
-
-    def _sparql_resolve_by_name(self, names: list[str]) -> dict[str, list[str]]:
-        """SPARQL query to resolve names to QIDs via label matching.
-
-        Filters to entities that have at least one known astronomical property.
-        """
-        values = " ".join(f'"{n}"@en' for n in names)
-        pid_filters = " UNION ".join(
-            f"{{ ?item wdt:{pid} [] }}" for pid in ID_TYPE_TO_WIKIDATA_PID.values()
-        )
-        query = (
-            f"SELECT ?item ?name WHERE {{\n"
-            f"  VALUES ?name {{ {values} }}\n"
-            f"  ?item rdfs:label ?name .\n"
-            f"  {{ {pid_filters} }}\n"
-            f"}}"
-        )
-        results = self._sparql_query(query)
-        mapping: dict[str, list[str]] = {}
-        for row in results:
-            qid = row["item"]["value"].rsplit("/", 1)[-1]
-            key = row["name"]["value"]
-            mapping.setdefault(key, []).append(qid)
-        for key, qids in mapping.items():
-            if len(qids) > 1:
-                logger.warning(
-                    "  name '%s' → multiple entities: %s", key, ", ".join(qids)
-                )
-        return mapping
-
     def _sparql_query(self, query: str) -> list[dict]:
-        """Execute a SPARQL query with rate limiting and retry on 429."""
-        max_retries = 10
+        """Execute a SPARQL query, retrying on 429, a server error, a timeout
+        and a cut-off answer."""
+        max_retries = 6
         for attempt in range(max_retries + 1):
-            response = self.client.post(
-                SPARQL_URL,
-                data={"query": query},
-                headers={"Accept": "application/sparql-results+json"},
-                timeout=120.0,
-            )
+            backoff = min(2 ** (attempt + 1), 60)
+            try:
+                response = self.client.post(
+                    SPARQL_URL,
+                    data={"query": query},
+                    headers={"Accept": "application/sparql-results+json"},
+                    timeout=120.0,
+                )
+            except httpx.TimeoutException:
+                logger.warning("SPARQL timed out — retrying in %ds", backoff)
+                time.sleep(backoff)
+                continue
+            if response.status_code >= 500:
+                logger.warning(
+                    "SPARQL %d — retrying in %ds", response.status_code, backoff
+                )
+                time.sleep(backoff)
+                continue
             if response.status_code == 429:
                 retry_after_header = response.headers.get("retry-after")
                 if retry_after_header:
                     retry_after = int(retry_after_header)
                 else:
-                    retry_after = 2 ** (attempt + 1)
+                    retry_after = backoff
                 logger.warning("SPARQL 429 — retrying in %ds", retry_after)
                 time.sleep(retry_after)
                 continue
             response.raise_for_status()
             time.sleep(AFTER_REQUEST_DELAY_SECONDS)
-            return response.json()["results"]["bindings"]
+            try:
+                return response.json()["results"]["bindings"]
+            except json.JSONDecodeError:
+                # WDQS sends 200 and then stops a long answer at its time limit.
+                logger.warning(
+                    "SPARQL answer cut off at %d bytes — retrying in %ds",
+                    len(response.content),
+                    backoff,
+                )
+                time.sleep(backoff)
 
-        raise RuntimeError("SPARQL rate limited after retries")
+        raise RuntimeError("SPARQL failed after retries")
