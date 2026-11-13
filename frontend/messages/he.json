@@ -1316,6 +1316,8 @@
 	"settings_calendar": "לוח שנה",
 	"settings_calendar_julian": "הלוח היוליאני",
 	"settings_calendar_french_republican": "לוח השנה של המהפכה הצרפתית",
+	"calendar_prev_month": "החודש הקודם",
+	"calendar_next_month": "החודש הבא",
 	"settings_dateformat_iso": "ISO",
 	"settings_auto_source": "משתמש ב־{value} · {source}",
 	"settings_source_browser": "מהדפדפן שלך ({tag})",

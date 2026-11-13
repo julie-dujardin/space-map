@@ -531,6 +531,11 @@ function namesFor(locale: string): RepublicanNames {
 	return NAMES[locale.split('-')[0]] ?? ENGLISH;
 }
 
+/** The ten days of the décade, primidi to décadi, for a picker's columns. */
+export function decadeDayNames(locale: string): readonly string[] {
+	return namesFor(locale).weekdays ?? DECADE_DAYS;
+}
+
 const ROMAN: readonly [number, string][] = [
 	[1000, 'M'],
 	[900, 'CM'],

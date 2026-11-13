@@ -1274,6 +1274,8 @@
 	"settings_calendar": "Kalender",
 	"settings_calendar_julian": "Julianischer Kalender",
 	"settings_calendar_french_republican": "Französischer Revolutionskalender",
+	"calendar_prev_month": "Vorheriger Monat",
+	"calendar_next_month": "Nächster Monat",
 	"settings_dateformat_iso": "ISO",
 	"settings_auto_source": "Verwendet {value} · {source}",
 	"settings_source_browser": "aus deinem Browser ({tag})",

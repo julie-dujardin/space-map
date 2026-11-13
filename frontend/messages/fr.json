@@ -1411,6 +1411,8 @@
 	"settings_calendar": "Calendrier",
 	"settings_calendar_julian": "calendrier julien",
 	"settings_calendar_french_republican": "calendrier républicain français",
+	"calendar_prev_month": "Mois précédent",
+	"calendar_next_month": "Mois suivant",
 	"settings_auto_source": "Utilise {value} · {source}",
 	"settings_source_browser": "depuis votre navigateur ({tag})",
 	"settings_source_system": "depuis vos préférences système",
