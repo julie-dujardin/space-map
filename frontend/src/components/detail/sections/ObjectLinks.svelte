@@ -25,8 +25,16 @@
 	let nasaScienceUrl = $derived(global?.nasa_science_url);
 	let websites = $derived(global?.wikidata?.website ?? []);
 	let blogs = $derived(global?.wikidata?.blog ?? []);
-	// SBDB lookup key; Wikidata and the MPC database moved to the metadata-source credits.
+	// SBDB lookup key; falls back to the SPK-ID for bodies with no MPC designation.
 	let mpcDesignation = $derived(global?.cross_refs?.mpc_designation ?? global?.cross_refs?.spkid);
+	// An unnumbered asteroid or comet is filed at the MPC under its provisional
+	// designation; a moon's "S/…" one is not.
+	let mpcProvisional = $derived(
+		!global?.cross_refs?.mpc_designation &&
+			(global?.type.startsWith('asteroid') || global?.type === 'comet')
+			? global.provisional_designation
+			: undefined
+	);
 	let naifId = $derived(global?.cross_refs?.naif_id);
 	let noradCatId = $derived(global?.cross_refs?.norad_cat_id);
 
@@ -37,7 +45,12 @@
 	let identifiers = $derived.by(() => {
 		const x = global?.cross_refs;
 		const out: LinkIdentifier[] = [...extraIdentifiers];
-		if (x?.mpc_designation) out.push({ label: m.id_mpc(), value: String(x.mpc_designation) });
+		if (x?.mpc_designation)
+			out.push({
+				label: m.id_mpc(),
+				value: String(x.mpc_designation),
+				href: `https://www.minorplanetcenter.net/db_search/show_object?object_id=${encodeURIComponent(x.mpc_designation)}`
+			});
 		if (global?.provisional_designation)
 			out.push({ label: m.id_provisional(), value: global.provisional_designation });
 		if (x?.naif_id != null) out.push({ label: m.id_naif(), value: String(x.naif_id) });
@@ -76,6 +89,11 @@
 			result.push({
 				href: `https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=${encodeURIComponent(String(mpcDesignation))}`,
 				label: m.jpl_sbdb()
+			});
+		if (mpcProvisional)
+			result.push({
+				href: `https://www.minorplanetcenter.net/db_search/show_object?object_id=${encodeURIComponent(mpcProvisional)}`,
+				label: m.source_mpc_name()
 			});
 		if (noradCatId) {
 			result.push({

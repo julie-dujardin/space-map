@@ -154,7 +154,7 @@
 		if (mpc)
 			addProvider(
 				'mpc',
-				`https://www.minorplanetcenter.net/db_search/show_object?utf8=%E2%9C%93&object_id=${encodeURIComponent(mpc)}`
+				`https://www.minorplanetcenter.net/db_search/show_object?object_id=${encodeURIComponent(mpc)}`
 			);
 
 		// Rotational elements. The orientation table merges four disjoint sets,
