@@ -1449,6 +1449,8 @@
 	"settings_calendar": "Calendar",
 	"settings_calendar_julian": "Julian Calendar",
 	"settings_calendar_french_republican": "French Republican Calendar",
+	"calendar_prev_month": "Previous month",
+	"calendar_next_month": "Next month",
 	"settings_dateformat_iso": "ISO",
 	"settings_auto_source": "Using {value} · {source}",
 	"settings_source_browser": "from your browser ({tag})",

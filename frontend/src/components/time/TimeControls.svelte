@@ -14,13 +14,10 @@
 	import { onMount, untrack } from 'svelte';
 	import { TIME_SCALES, TIME_DATE_OPTS } from '$lib/time/time-scales';
 	import { loadPickerRange, pickerRange } from '$lib/time/picker-range.svelte';
-	import {
-		applyDateToClock,
-		applyTimeToClock,
-		clockTimeValue,
-		jdToCalendarDate
-	} from './clock-pickers';
-	import { dateToJD } from '$lib/time/jd';
+	import { localeWithCalendar } from '$lib/time/calendars';
+	import { applyDateToClock, jdToCalendarDate, pickerBounds } from './clock-pickers';
+	import ClockTimeInput from './ClockTimeInput.svelte';
+	import { dateToJD, jdToDate } from '$lib/time/jd';
 
 	interface Props {
 		clock: SimClock;
@@ -68,20 +65,21 @@
 	let pickerValue = $state<DateValue | undefined>(undefined);
 	let pickerPlaceholder = $state<DateValue | undefined>(undefined);
 
+	const calendar = $derived(getSettings().resolvedCalendar);
+	const bounds = $derived(pickerBounds(pickerRange(), calendar));
+
 	$effect(() => {
 		if (pickerOpen) {
-			const cd = untrack(() => jdToCalendarDate(clock.jd));
+			const cd = untrack(() => jdToCalendarDate(clock.jd, calendar));
 			pickerValue = cd;
 			pickerPlaceholder = cd;
 		}
 	});
 
 	const handleDateChange = (v: DateValue | undefined) => applyDateToClock(clock, v);
-	const handleTimeChange = (e: Event) => applyTimeToClock(clock, e);
 	// The label shows minutes; quantising to the second stops the formatter
 	// running on every frame of a 1x clock.
 	const shownJd = $derived(Math.floor(clock.jd * 86400) / 86400);
-	let timeValue = $derived(clockTimeValue(shownJd));
 
 	// Fixtures covering the variants that change rendered length: month
 	// abbreviations, meridiem/hour boundaries, day digit count. Measured as
@@ -100,6 +98,18 @@
 		new Date(Date.UTC(2026, 8, 9, 23, 59))
 	];
 
+	/** 23:59 on each of 366 days from the clock's New Year. */
+	function yearOfDays(): Date[] {
+		const first = jdToDate(untrack(() => clock.jd));
+		first.setMonth(0, 1);
+		first.setHours(23, 59, 0, 0);
+		return Array.from({ length: 366 }, (_, i) => {
+			const d = new Date(first);
+			d.setDate(d.getDate() + i);
+			return d;
+		});
+	}
+
 	const settings = getSettings();
 	let dateLabel = $derived(formatJulianDateTime(shownJd, TIME_DATE_OPTS));
 
@@ -113,6 +123,10 @@
 		// change the rendered width.
 		void settings.resolvedDateFormat;
 		void settings.resolvedHour12;
+		// The fixtures are Gregorian outliers; another calendar's widest day
+		// could be any day of the year.
+		const calendar = settings.resolvedCalendar;
+		const fixtures = calendar === 'gregory' ? WIDTH_FIXTURES : [...WIDTH_FIXTURES, ...yearOfDays()];
 		const el = document.createElement('span');
 		el.className = 'inline-block font-mono tabular-nums whitespace-nowrap text-xs';
 		el.style.cssText =
@@ -120,7 +134,7 @@
 		document.body.appendChild(el);
 		try {
 			let max = 0;
-			for (const d of WIDTH_FIXTURES) {
+			for (const d of fixtures) {
 				el.textContent = formatJulianDateTime(dateToJD(d), TIME_DATE_OPTS);
 				const w = el.getBoundingClientRect().width;
 				if (w > max) max = w;
@@ -205,21 +219,16 @@
 				bind:value={pickerValue}
 				bind:placeholder={pickerPlaceholder}
 				onValueChange={handleDateChange}
-				captionLayout="dropdown"
-				locale={getLocale()}
-				minValue={pickerRange()?.min}
-				maxValue={pickerRange()?.max}
+				captionLayout={calendar === 'gregory' ? 'dropdown' : 'dropdown-inline'}
+				locale={localeWithCalendar(getLocale(), calendar)}
+				{calendar}
+				minValue={bounds?.min}
+				maxValue={bounds?.max}
+				years={calendar === 'gregory' ? undefined : bounds?.years}
+				yearSearchLabel={m.time_find_year()}
 			/>
 			<div class="border-t p-3">
-				<input
-					type="time"
-					value={timeValue}
-					onchange={handleTimeChange}
-					aria-label={m.time_pick_time()}
-					class="h-8 w-full rounded-md border bg-transparent px-2 font-mono tabular-nums text-sm
-						scheme-light-dark
-						focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring"
-				/>
+				<ClockTimeInput {clock} class="h-8 text-sm" />
 			</div>
 		</Popover.Content>
 	</Popover.Root>

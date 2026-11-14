@@ -1398,6 +1398,8 @@
 	"settings_calendar": "暦",
 	"settings_calendar_julian": "ユリウス暦",
 	"settings_calendar_french_republican": "フランス革命暦",
+	"calendar_prev_month": "前の月",
+	"calendar_next_month": "次の月",
 	"settings_auto_source": "{value} を使用中 · {source}",
 	"settings_source_browser": "ブラウザから ({tag})",
 	"settings_source_system": "システム設定から",

@@ -5,8 +5,12 @@
 	let {
 		ref = $bindable(null),
 		class: className,
+		label,
 		...restProps
-	}: CalendarPrimitive.DayProps = $props();
+	}: CalendarPrimitive.DayProps & {
+		/** The day's screen-reader name, where bits-ui's is wrong. */
+		label?: string;
+	} = $props();
 </script>
 
 <CalendarPrimitive.Day
@@ -30,4 +34,8 @@
 		className
 	)}
 	{...restProps}
-/>
+>
+	{#snippet child({ props, day })}
+		<div {...props} aria-label={label ?? (props['aria-label'] as string | undefined)}>{day}</div>
+	{/snippet}
+</CalendarPrimitive.Day>

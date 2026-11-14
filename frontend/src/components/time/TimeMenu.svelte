@@ -13,12 +13,10 @@
 	import { loadPickerRange, pickerRange } from '$lib/time/picker-range.svelte';
 	import type { SimClock } from '$lib/scene/state/clock.svelte';
 	import { onMount, untrack } from 'svelte';
-	import {
-		applyDateToClock,
-		applyTimeToClock,
-		clockTimeValue,
-		jdToCalendarDate
-	} from './clock-pickers';
+	import { getSettings } from '$lib/state/settings.svelte';
+	import { localeWithCalendar } from '$lib/time/calendars';
+	import { applyDateToClock, jdToCalendarDate, pickerBounds } from './clock-pickers';
+	import ClockTimeInput from './ClockTimeInput.svelte';
 
 	/** The stacked time controls shared by the phone sheet and the narrow-desktop
 	 *  popover. Expects 1rem of horizontal padding around it: the scale strip
@@ -33,35 +31,27 @@
 	let pickerValue = $state<DateValue | undefined>(undefined);
 	let pickerPlaceholder = $state<DateValue | undefined>(undefined);
 
+	const calendar = $derived(getSettings().resolvedCalendar);
+
 	$effect(() => {
 		if (showCalendar) {
-			const cd = untrack(() => jdToCalendarDate(clock.jd));
+			const cd = untrack(() => jdToCalendarDate(clock.jd, calendar));
 			pickerValue = cd;
 			pickerPlaceholder = cd;
 		}
 	});
 
 	const handleDateChange = (v: DateValue | undefined) => applyDateToClock(clock, v);
-	const handleTimeChange = (e: Event) => applyTimeToClock(clock, e);
 	// The label shows minutes; quantising to the second stops the formatter
 	// running on every frame of a 1x clock.
 	const shownJd = $derived(Math.floor(clock.jd * 86400) / 86400);
-	let timeValue = $derived(clockTimeValue(shownJd));
 
 	let dateLabel = $derived(formatJulianDateTime(shownJd, TIME_DATE_OPTS));
 
 	onMount(loadPickerRange);
 
-	// The inline year-select doesn't see minValue/maxValue and would otherwise
-	// fall back to a hardcoded [currentYear-100, currentYear] window.
-	const pickerYears = $derived.by(() => {
-		const range = pickerRange();
-		if (!range) return undefined;
-		return Array.from(
-			{ length: range.max.year - range.min.year + 1 },
-			(_, i) => range.min.year + i
-		);
-	});
+	// The inline year-select doesn't see minValue/maxValue, so it gets the years.
+	const bounds = $derived(pickerBounds(pickerRange(), calendar));
 </script>
 
 <div class="flex flex-col gap-4">
@@ -94,22 +84,15 @@
 				bind:placeholder={pickerPlaceholder}
 				onValueChange={handleDateChange}
 				captionLayout="dropdown-inline"
-				locale={getLocale()}
-				minValue={pickerRange()?.min}
-				maxValue={pickerRange()?.max}
-				years={pickerYears}
+				locale={localeWithCalendar(getLocale(), calendar)}
+				{calendar}
+				minValue={bounds?.min}
+				maxValue={bounds?.max}
+				years={bounds?.years}
 				yearSearchLabel={m.time_find_year()}
 			/>
 			<div class="border-t p-3">
-				<input
-					type="time"
-					value={timeValue}
-					onchange={handleTimeChange}
-					aria-label={m.time_pick_time()}
-					class="h-9 w-full rounded-md border bg-transparent px-2 font-mono tabular-nums text-base
-						scheme-light-dark
-						focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring"
-				/>
+				<ClockTimeInput {clock} class="h-9 text-base" />
 			</div>
 		</div>
 	{/if}

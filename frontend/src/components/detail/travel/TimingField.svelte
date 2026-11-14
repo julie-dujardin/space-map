@@ -18,8 +18,11 @@
 	import { getLocale } from '$lib/paraglide/runtime.js';
 	import * as m from '$lib/paraglide/messages.js';
 	import type { TimeMode } from '$lib/travel/trip';
-	import { jdToCalendarDate } from '../../time/clock-pickers';
+	import { jdToCalendarDate, pickerBounds } from '../../time/clock-pickers';
 	import { dateToJD, jdToDate } from '$lib/time/jd';
+	import { getSettings } from '$lib/state/settings.svelte';
+	import { localeWithCalendar } from '$lib/time/calendars';
+	import { fromPickerDate } from '$lib/time/calendars/picker';
 
 	interface Props {
 		mode: TimeMode;
@@ -33,7 +36,10 @@
 	onMount(loadPickerRange);
 
 	let open = $state(false);
-	let value = $derived<DateValue | undefined>(jdToCalendarDate(jd));
+	// The grid is the reader's calendar's, as the label above it is.
+	const calendar = $derived(getSettings().resolvedCalendar);
+	const bounds = $derived(pickerBounds(pickerRange(), calendar));
+	let value = $derived<DateValue | undefined>(jdToCalendarDate(jd, calendar));
 	let placeholder = $state<DateValue | undefined>(undefined);
 
 	const TABS: { value: TimeMode; label: string }[] = [
@@ -60,8 +66,9 @@
 	function pick(next: DateValue | undefined) {
 		if (!next) return;
 		// Keep the time of day the trip already carries; only the date is picked.
+		const { year, month, day } = fromPickerDate(next);
 		const d = jdToDate(jd);
-		d.setFullYear(next.year, next.month - 1, next.day);
+		d.setFullYear(year, month - 1, day);
 		onDateChange(dateToJD(d));
 		open = false;
 	}
@@ -123,10 +130,13 @@
 				{value}
 				bind:placeholder
 				onValueChange={pick}
-				captionLayout="dropdown"
-				locale={getLocale()}
-				minValue={pickerRange()?.min}
-				maxValue={pickerRange()?.max}
+				captionLayout={calendar === 'gregory' ? 'dropdown' : 'dropdown-inline'}
+				locale={localeWithCalendar(getLocale(), calendar)}
+				{calendar}
+				minValue={bounds?.min}
+				maxValue={bounds?.max}
+				years={calendar === 'gregory' ? undefined : bounds?.years}
+				yearSearchLabel={m.time_find_year()}
 			/>
 		{/if}
 	</Popover.Content>

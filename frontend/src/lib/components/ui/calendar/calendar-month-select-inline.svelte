@@ -2,6 +2,8 @@
 	import { DateFormatter, type DateValue } from '@internationalized/date';
 	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
 	import { cn } from '$lib/utils.js';
+	import { calendarDateFormat } from '$lib/time/calendars';
+	import { pickerDateToUtcNoon } from '$lib/time/calendars/picker';
 
 	type MonthFormat = Intl.DateTimeFormatOptions['month'] | ((month: number) => string);
 
@@ -9,6 +11,9 @@
 		months?: number[];
 		monthFormat?: MonthFormat;
 		locale: string;
+		/** The calendar the names are in; the months themselves are the
+		 *  placeholder's calendar's. */
+		calendar?: string;
 		placeholder: DateValue | undefined;
 		monthIndex: number;
 		onSelect: (newPlaceholder: DateValue) => void;
@@ -16,9 +21,10 @@
 	}
 
 	let {
-		months = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+		months: monthsProp,
 		monthFormat = 'long',
 		locale,
+		calendar = 'gregory',
 		placeholder,
 		monthIndex,
 		onSelect,
@@ -29,8 +35,26 @@
 	let triggerRef = $state<HTMLButtonElement | null>(null);
 	let menuRef = $state<HTMLDivElement | null>(null);
 
+	// A Hebrew leap year has thirteen months, a Republican year twelve and its
+	// complementary days: the year on show says how many.
+	let months = $derived(
+		monthsProp ??
+			Array.from(
+				{ length: placeholder ? placeholder.calendar.getMonthsInYear(placeholder) : 12 },
+				(_, i) => i + 1
+			)
+	);
+	let nameFormat = $derived(
+		typeof monthFormat === 'function'
+			? null
+			: calendarDateFormat(locale, calendar, { month: monthFormat, timeZone: 'UTC' })
+	);
+
 	function formatMonth(monthValue: number): string {
 		if (typeof monthFormat === 'function') return monthFormat(monthValue);
+		if (placeholder && nameFormat) {
+			return nameFormat.format(pickerDateToUtcNoon(placeholder.set({ month: monthValue, day: 1 })));
+		}
 		const dt = new Date(2000, monthValue - 1, 1);
 		return new DateFormatter(locale, { month: monthFormat }).format(dt);
 	}

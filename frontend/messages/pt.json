@@ -1295,6 +1295,8 @@
 	"settings_calendar": "Calendário",
 	"settings_calendar_julian": "Calendário Juliano",
 	"settings_calendar_french_republican": "Calendário Republicano Francês",
+	"calendar_prev_month": "Mês anterior",
+	"calendar_next_month": "Próximo mês",
 	"settings_dateformat_iso": "ISO",
 	"settings_auto_source": "A usar {value} · {source}",
 	"settings_source_browser": "do seu navegador ({tag})",

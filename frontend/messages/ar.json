@@ -1366,6 +1366,8 @@
 	"settings_calendar": "التقويم",
 	"settings_calendar_julian": "التقويم اليولياني",
 	"settings_calendar_french_republican": "التقويم الجمهوري الفرنسي",
+	"calendar_prev_month": "الشهر السابق",
+	"calendar_next_month": "الشهر التالي",
 	"settings_auto_source": "يستخدم {value} · {source}",
 	"settings_source_browser": "من متصفّحك ({tag})",
 	"settings_source_system": "من تفضيلات نظامك",
