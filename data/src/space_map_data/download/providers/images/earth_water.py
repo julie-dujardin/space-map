@@ -1,9 +1,8 @@
 """Build Earth's water mask from OpenStreetMap coastlines and HydroSHEDS vectors.
 
-The mask feeds the ``cylindrical_specular`` texture entry, which the renderer
-uses as a roughness map. It replaces a GEBCO bathymetry threshold, which had
-no inland water at all and read every shallow bank — the Bahamas, the Florida
-shelf, the Persian Gulf — as land.
+The mask feeds the ``cylindrical_specular`` texture entry. The renderer uses
+it as a roughness map. A bathymetry threshold has no inland water and reads
+shallow banks (the Bahamas, the Florida shelf, the Persian Gulf) as land.
 
 Three archives are pulled and rasterised locally (see ``water_mask``). The
 HydroSHEDS pair is a frozen v1.0 release, so only the OSM extract expires.
@@ -15,7 +14,8 @@ both attributed through the manifest at
 On-disk layout::
 
     sources/textures/specular/earth/vectors/<archive>/…   extracted shapefiles
-    sources/textures/specular/earth/water-mask.png        rendered mask
+    sources/textures/specular/earth/water-mask.tif        full mask, for the tiles
+    sources/textures/specular/earth/water-mask.png        reduced mask, for the tiers
     sources/textures/specular/earth/metadata.json
 """
 
@@ -36,6 +36,7 @@ from .water_mask import render_water_mask
 logger = logging.getLogger(__name__)
 
 MASK_FILE = "water-mask.png"
+TILES_MASK_FILE = "water-mask.tif"
 ARCHIVE_TIMEOUT_S = 900.0
 MIN_ARCHIVE_BYTES = 10 * 1024 * 1024
 
@@ -81,8 +82,7 @@ class EarthWaterDownloader(Downloader):
     """Fetch the coastline/lake/river vectors and rasterise Earth's water mask."""
 
     name = PROVIDERS.EARTH_WATER
-    # OSM coastlines improve continuously but the mask costs ~2 minutes and
-    # 4 GiB to rebuild, so it is refreshed on a yearly sweep rather than daily.
+    # A rebuild of the mask takes about 12 minutes, so it runs once a year.
     max_age = timedelta(days=365)
 
     def __init__(self, client: httpx.Client) -> None:
@@ -144,7 +144,8 @@ class EarthWaterDownloader(Downloader):
             ocean=self._layer_path(OCEAN),
             lakes=self._layer_path(LAKES),
             rivers=self._layer_path(RIVERS),
-            out_path=self.out_dir / MASK_FILE,
+            tiles_path=self.out_dir / TILES_MASK_FILE,
+            tier_path=self.out_dir / MASK_FILE,
         )
         self._save_metadata(
             OCEAN.source_page,

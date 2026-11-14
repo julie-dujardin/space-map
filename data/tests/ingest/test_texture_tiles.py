@@ -25,12 +25,14 @@ def _small_tiles(monkeypatch):
     monkeypatch.setattr(config, "TILE_SIZE", TILE)
 
 
-def _stitch(root, level: int) -> np.ndarray:
-    """A whole level read back from its tiles."""
+def _stitch(root, level: int, mode: str | None = None) -> np.ndarray:
+    """A whole level read back from its tiles, in ``mode`` when given."""
     rows = []
     for y in range(1 << level):
         row = [
-            np.asarray(Image.open(root / str(level) / str(x) / f"{y}.webp"))
+            np.asarray(
+                Image.open(root / str(level) / str(x) / f"{y}.webp").convert(mode)
+            )
             for x in range(2 << level)
         ]
         rows.append(np.concatenate(row, axis=1))
@@ -105,6 +107,47 @@ class TestColourPyramid:
         tiles.PyramidBuilder("test", [layer], tmp_path / "out", 1).build()
         west = _stitch(tmp_path / "out", 1)[:, : TILE // 2]
         assert west[..., 0].mean() > 240
+
+
+class TestAlphaPyramid:
+    """A grey layer rides in the alpha of the colour tiles."""
+
+    @staticmethod
+    def _layers() -> tuple[tiles.Layer, tiles.Layer]:
+        """Green land with water over the eastern half."""
+        colour = np.zeros((4 * TILE, 8 * TILE, 3), dtype=np.uint8)
+        colour[..., 1] = 160
+        water = np.zeros((4 * TILE, 8 * TILE), dtype=np.uint8)
+        water[:, 4 * TILE :] = 255
+        return tiles.Layer(colour, tiles.Placement()), tiles.Layer(
+            water, tiles.Placement()
+        )
+
+    def test_tiles_hold_the_mask_and_keep_the_colour_under_it(self, tmp_path):
+        colour, water = self._layers()
+        tiles.PyramidBuilder("test", [colour], tmp_path / "out", 2, alpha=water).build()
+        fine = _stitch(tmp_path / "out", 2, "RGBA")
+        assert fine[:, : 3 * TILE, 3].max() == 0
+        assert fine[:, 5 * TILE :, 3].min() == 255
+        # Clear pixels keep their colour.
+        assert np.abs(fine[:, : 3 * TILE, 1].astype(int) - 160).max() < 8
+
+    def test_coarser_levels_average_the_mask(self, tmp_path):
+        colour, water = self._layers()
+        tiles.PyramidBuilder("test", [colour], tmp_path / "out", 2, alpha=water).build()
+        fine = _stitch(tmp_path / "out", 2, "RGBA")[..., 3].astype(float)
+        coarse = _stitch(tmp_path / "out", 1, "RGBA")[..., 3].astype(float)
+        mean = fine.reshape(2 * TILE, 2, 4 * TILE, 2).mean(axis=(1, 3))
+        assert np.abs(coarse - mean).max() <= 1
+
+    def test_caps_hold_the_mask(self, tmp_path):
+        colour, water = self._layers()
+        tiles.CapBuilder(
+            "test", True, [colour], tmp_path / "out", 2, alpha=water
+        ).build()
+        cap = _stitch_cap(tmp_path / "out", 2, "RGBA")
+        # East longitudes are water, west ones land: the cap holds both.
+        assert cap[..., 3].min() == 0 and cap[..., 3].max() == 255
 
 
 class TestMemmapPage:
@@ -978,12 +1021,14 @@ def _cap_lat_lon(cap: tiles.Cap) -> tuple[np.ndarray, np.ndarray]:
     return lats, lons if cap.north else -lons
 
 
-def _stitch_cap(root, level: int) -> np.ndarray:
+def _stitch_cap(root, level: int, mode: str | None = None) -> np.ndarray:
     side = 1 << (level - 1)
     rows = []
     for y in range(side):
         row = [
-            np.asarray(Image.open(root / str(level) / str(x) / f"{y}.webp"))
+            np.asarray(
+                Image.open(root / str(level) / str(x) / f"{y}.webp").convert(mode)
+            )
             for x in range(side)
         ]
         rows.append(np.concatenate(row, axis=1))
@@ -1704,6 +1749,46 @@ class TestProcessTiles:
         proc = self._processor(monkeypatch, tmp_path, [entry])
         proc.process_tiles()
         assert (tmp_path / "tiles" / pyramid_id / "0" / "0" / "0.webp").exists()
+
+    def test_mask_with_tiles_alpha_rides_in_the_colour_tiles(
+        self, tmp_path, monkeypatch
+    ):
+        colour = self._colour_entry(tmp_path)
+        water = np.zeros((2 * TILE, 4 * TILE), dtype=np.uint8)
+        water[:, 2 * TILE :] = 255
+        Image.fromarray(water).save(tmp_path / "raw" / "water.png")
+        tifffile.imwrite(
+            tmp_path / "raw" / "water.tif", water, tile=(16, 16), compression="zlib"
+        )
+        mask = {
+            **self._colour_entry(tmp_path),
+            "type": "cylindrical_specular",
+            "file": "water.png",
+            "tiles_alpha": "water.tif",
+        }
+        proc = self._processor(monkeypatch, tmp_path, [colour, mask])
+        proc.process_tiles()
+
+        assert not (tmp_path / "tiles" / "naif-499_specular").exists()
+        meta = json.loads(
+            (tmp_path / "meta" / "naif-499" / "metadata.json").read_text()
+        )
+        assert meta["alpha"] == "specular"
+        assert meta["layers"][-1]["role"] == "alpha"
+        fine = _stitch(tmp_path / "tiles" / "naif-499", 1, "RGBA")
+        assert fine[:, :TILE, 3].max() == 0 and fine[:, 3 * TILE :, 3].min() == 255
+
+    def test_patches_on_a_pyramid_with_alpha_are_refused(self, tmp_path, monkeypatch):
+        """A patch redraws its tiles as RGB, which would drop the mask."""
+        colour = self._colour_entry(tmp_path, patches=[{"id": "site"}])
+        mask = {
+            **self._colour_entry(tmp_path),
+            "type": "cylindrical_specular",
+            "tiles_alpha": "water.tif",
+        }
+        proc = self._processor(monkeypatch, tmp_path, [colour, mask])
+        with pytest.raises(ValueError, match="patches on a pyramid with alpha"):
+            proc.process_tiles()
 
     def test_skybox_is_not_tiled(self, tmp_path, monkeypatch):
         entry = {**self._colour_entry(tmp_path), "type": "cubemap_skybox"}

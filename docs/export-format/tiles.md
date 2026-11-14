@@ -2,7 +2,7 @@
 
 A tile pyramid holds one surface layer of a body at the full detail of its source. The renderer fetches only the tiles that its camera needs.
 
-Each surface layer of each body has a pyramid: the colour map (one pyramid for each month of a monthly map), the height map, the night-lights map and the specular mask. Cloud overlays and the star map do not have one.
+Each surface layer of each body has a pyramid: the colour map (one pyramid for each month of a monthly map), the height map, the night-lights map and the specular mask. Cloud overlays and the star map do not have one. A specular mask can instead be the alpha of the colour tiles of its body: see *Alpha*.
 
 Ingest builds the pyramids (`space-map-ingest --targets tiles`). They are not part of the export directory: a pyramid is thousands of files, and the host of the export has a file limit. They are written to `space-map-tiles/`, which has the same `v1/` layout as the export. The tile host (`infrastructure/tiles/`) serves that directory as it is, so a pyramid is public when its build ends.
 
@@ -66,7 +66,7 @@ A patch can also be on a polar cap. Its files are then in the polar stereographi
 
 ## Tile content
 
-- **Colour** (`cylindrical`, `cylindrical_monthly`, `cylindrical_night_lights`, `cylindrical_specular`): lossy WebP, quality 80, RGB.
+- **Colour** (`cylindrical`, `cylindrical_monthly`, `cylindrical_night_lights`, `cylindrical_specular`): lossy WebP, quality 80, RGB. A colour pyramid with `alpha` has RGBA tiles: see *Alpha*.
 - **Height** (`cylindrical_displacement`): lossless WebP that holds a 16-bit value. Red is the high byte and green is the low byte. Blue counts 256ths of one step of that value.
 
   ```
@@ -85,6 +85,14 @@ By default a pyramid comes from the same file as the tiers of its bundle. A mani
 - **Brightness layers** give a colour map the detail that it is too coarse to hold. The builder divides the brightness map by a copy of itself that is blurred to the resolution of the colour map. The result holds only the detail that the colour map cannot show. The builder then multiplies the colour map by this ratio in linear light. The tone and the colour stay those of the colour map, so the coarse levels agree with the tiers. Where the brightness map has no data, the colour map does not change. Where two brightness layers overlap, the later one is used where it has data. The lunar colour pyramid uses the 400 m colour map and the 100 m LROC wide-angle mosaic, which is normalised to one lighting and thus has no cast shadows.
 
 A brightness layer can be one file, a grid of adjacent files, or a polar stereographic image of one cap (PDS3 label), which the builder reprojects. The Mars colour pyramid uses the 925 m Viking colour map and the 3,960 quads of the 5 m CTX mosaic.
+
+## Alpha
+
+A specular entry with `tiles_alpha` gives no pyramid of its own. The file that `tiles_alpha` names becomes the alpha of each tile of the best colour pyramid of its body, in all frames. Its `file` still gives the tiers. Earth's water mask is such a file: 86400 × 43200 px, the grid of the colour map, as a tiled grey TIFF.
+
+The builder resamples the mask apart from the colour and adds it as a fourth channel. The alpha is lossy: it keeps 12 levels. The RGB under a clear pixel is kept as it is, so a decoder that does not premultiply gets the whole colour map. A tile that is opaque everywhere has no alpha in the file, and decodes with alpha 255.
+
+A renderer that draws the tiles as colour must ignore their alpha. A 2D canvas keeps no colour under a clear pixel: remove the `ALPH` chunk (and the `VP8X` header) before such a decode, which leaves a WebP in the simple format.
 
 ## Build
 
@@ -127,9 +135,10 @@ Build metadata. It is in the metadata mirror, not in the tile tree.
 ```
 
 - `version` — a digest of the inputs that decide the bytes of the tiles: source files, alignment, level limit and the build recipe. The renderer appends it to each tile URL as `?v=`, so tiles can be cached with no expiry.
-- `layers` — the source files. The first one covers the whole body. An entry with no `role` after it is an inset. An entry with `"role": "brightness"` is a brightness layer. `dimensions` is the size of the files in pixels. `full_width` is the width that a map of the whole body has at the pixel size of the layer: for an equirectangular layer it is the width of the files, and for a polar stereographic image it follows from the pixel size at the pole.
+- `layers` — the source files. The first one covers the whole body. An entry with no `role` after it is an inset. An entry with `"role": "brightness"` is a brightness layer. An entry with `"role": "alpha"` is the mask in the alpha of the tiles. `dimensions` is the size of the files in pixels. `full_width` is the width that a map of the whole body has at the pixel size of the layer: for an equirectangular layer it is the width of the files, and for a polar stereographic image it follows from the pixel size at the pole.
 - `levels` — the tiles of the map. `cap_levels` — the tiles of the two caps together, from level 1.
 - `frames` — monthly maps only: the number of frames. `levels` and `cap_levels` count the tiles of all frames.
+- `alpha` — the layer that the alpha of the tiles holds: `specular`. Absent when the tiles have no alpha.
 - `patches` — present when the pyramid has patches. Each has an `id`, a display `name`, its own credit fields (`source`, `organisation`, `license`, `attribution`), a `version`, its `max_level`, the tile ranges `x` and `y` at that level, its `map_levels`, its source `files` and its `levels`. `cap` is `north` or `south` for a patch on a cap, and is absent for a patch on the map. `full_width` is that of its finest file, as on a layer. `bounds` are the `west`, `east`, `south` and `north` edges of its files together, in degrees. For a file on a cap they are the edges of the ground along its border.
 - `displacement_bias_km`, `displacement_scale_km`, `absolute_radius` — height pyramids only. See *Tile content*.
 
@@ -177,7 +186,7 @@ A pyramid with patches has a `patches` array in the block. Each patch has `id`, 
 
 The tiles of a patch use the `version` of the patch in `?v=`, not that of the pyramid. A patch also changes tiles of the pyramid: the tiles of the map that are in its range at the last `map_levels` levels of the pyramid, with the range found as for the levels of the patch. Such a tile uses the versions of the patches that have it, in the order of the array, with a `.` between them. A patch on a cap changes the tiles of that cap in the same way.
 
-The `tiles` block has its own credit fields because a pyramid can come from a different source than the tiers. `scale_km` and `bias_km` are present for height pyramids only, and `frames` for monthly maps only. `distribution` is present when the source has a restricted licence, with the same meaning as on a texture.
+The `tiles` block has its own credit fields because a pyramid can come from a different source than the tiers. `scale_km` and `bias_km` are present for height pyramids only, `frames` for monthly maps only, and `alpha` for a colour pyramid whose tiles hold a mask in their alpha. `distribution` is present when the source has a restricted licence, with the same meaning as on a texture.
 
 ## Manifest fields
 
@@ -185,6 +194,7 @@ No field is necessary to get a pyramid. These fields change how it is built:
 
 - `tiles: only` — the entry is the source of the pyramid of its body, in place of the entry that the tiers come from. It makes no tiers.
 - `tiles_max_level` — limit on the finest level.
+- `tiles_alpha` — specular entries only: the file of the mask that goes in the alpha of the colour tiles of the body, in place of a pyramid of its own. See *Alpha*.
 - `sharpen_sigma` — width of the blur that separates the detail of the brightness layers from the colour map, in pixels of the colour map. The default is 0.7. Use a larger value when the colour map is much softer than its pixel size.
 - `soften_colour` — blurs the colour map by `sharpen_sigma` before the brightness layers go on it. Use it when the colour map and a brightness layer disagree on the position of features by some pixels of the colour map: the colour map then gives the tint only, and no feature shows twice. It has no effect on an entry without brightness layers.
 - `insets` — list of finer maps, each with `file`, `source` and `lat_range: [south, north]`.

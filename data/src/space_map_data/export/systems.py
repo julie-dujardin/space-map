@@ -230,7 +230,7 @@ def tiles_block(meta: dict) -> dict:
     if "displacement_scale_km" in meta:
         block["scale_km"] = meta["displacement_scale_km"]
         block["bias_km"] = meta["displacement_bias_km"]
-    for key in ("frames", "license", "distribution", "attribution"):
+    for key in ("frames", "alpha", "license", "distribution", "attribution"):
         if meta.get(key) is not None:
             block[key] = meta[key]
     if meta.get("artist_impression"):

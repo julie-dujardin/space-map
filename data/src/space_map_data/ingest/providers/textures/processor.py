@@ -32,6 +32,7 @@ from . import config, deshade, patches, skybox, tiles
 from .alignment import align_cylindrical, entry_alignment
 from .encoding import resize, save_webp, size_target, tier_for_size
 from .image_io import (
+    ChunkedTiff,
     mend_column,
     open_displacement_source,
     open_height_raster,
@@ -451,9 +452,13 @@ class TextureProcessor:
         """Build a tile pyramid for every map. Drop the pyramids of maps that
         are gone, and the ones that a new build replaced."""
         sources: dict[str, dict] = {}
+        # Masks that ride in the alpha of their body's colour tiles, by body.
+        alphas: dict[str, dict] = {}
         for entry in self._raw_meta:
             if entry.get("skip"):
                 continue
+            if entry.get("tiles_alpha"):
+                alphas[entry["body"]] = entry
             pyramid_id = self._pyramid_id(entry)
             if pyramid_id is None:
                 continue
@@ -467,8 +472,14 @@ class TextureProcessor:
                     entry.get("file", entry["body"]),
                     pyramid_id,
                 )
+        for body in alphas.keys() - sources.keys():
+            log.warning("%s: no colour pyramid takes its tiles_alpha mask", body)
         for pyramid_id, entry in sources.items():
-            self._process_tiles(entry, pyramid_id, force=force)
+            alpha = alphas.get(pyramid_id) if pyramid_id == entry["body"] else None
+            if alpha and entry.get("patches"):
+                # A patch redraws tiles as RGB and would drop the mask.
+                raise ValueError(f"{pyramid_id}: patches on a pyramid with alpha")
+            self._process_tiles(entry, pyramid_id, force=force, alpha=alpha)
             self._process_patches(entry, pyramid_id)
 
         for root in (
@@ -497,11 +508,18 @@ class TextureProcessor:
             if bundle is None and entry.get("tiles") == TILES_ONLY:
                 return entry["body"]
             return bundle
+        if entry.get("tiles_alpha"):
+            return None
         suffix = _TILED_SIBLINGS.get(type_)
         return None if suffix is None else f"{entry['body']}{suffix}"
 
-    def _process_tiles(self, entry: dict, pyramid_id: str, force: bool) -> None:
+    def _process_tiles(
+        self, entry: dict, pyramid_id: str, force: bool, alpha: dict | None = None
+    ) -> None:
+        """Build one pyramid. ``alpha`` is a mask entry whose ``tiles_alpha``
+        file becomes the alpha of the tiles."""
         source_dir = entry["_source_dir"]
+        alpha_path = alpha["_source_dir"] / alpha["tiles_alpha"] if alpha else None
         is_height = entry["type"] == "cylindrical_displacement"
         # One pyramid per frame; a single-frame map has one, unnamed.
         frames: dict[str, list[dict]]
@@ -521,6 +539,8 @@ class TextureProcessor:
             for name, _ in layer_files(spec)
             if not (source_dir / name).exists()
         ]
+        if alpha_path and not alpha_path.exists():
+            missing.append(alpha_path.name)
         if missing:
             log.warning(
                 "tile source missing for %s: %d files, first %s",
@@ -589,6 +609,15 @@ class TextureProcessor:
             }
             if entry.get("soften_colour"):
                 signature["brightness"]["soften_colour"] = True
+        if alpha_path:
+            assert alpha is not None
+            signature["alpha"] = {
+                "file": alpha_path.name,
+                "size": alpha_path.stat().st_size,
+                "type": alpha["type"],
+                "alignment": entry_alignment(alpha),
+                "quality": config.TILE_ALPHA_QUALITY,
+            }
         version = tiles.signature_version(signature)
         credit = {
             "id": pyramid_id,
@@ -643,6 +672,25 @@ class TextureProcessor:
             }
             for spec, layer in zip(brightness_specs, brightness)
         ]
+
+        alpha_layer = None
+        if alpha_path:
+            assert alpha is not None
+            alpha_layer = tiles.Layer(
+                ChunkedTiff(alpha_path),
+                tiles.Placement(
+                    lat_top=90.0, lat_bottom=-90.0, **entry_alignment(alpha)
+                ),
+            )
+            described.append(
+                {
+                    "file": alpha_path.name,
+                    "source": alpha["source"],
+                    "dimensions": alpha_layer.dimensions,
+                    "full_width": alpha_layer.width,
+                    "role": "alpha",
+                }
+            )
 
         if building.exists() and not pending:
             shutil.rmtree(building)
@@ -725,7 +773,9 @@ class TextureProcessor:
                 )
             name = f"{pyramid_id} {frame}".strip()
             shared = (layers, max_level, coding, brightness, sharpen_sigma, version)
-            builder = tiles.PyramidBuilder(name, layers, building / frame, *shared[1:])
+            builder = tiles.PyramidBuilder(
+                name, layers, building / frame, *shared[1:], alpha=alpha_layer
+            )
             stats.add(builder.build())
             parts.append(Path(frame))
             if max_level >= tiles.CapBuilder.min_level:
@@ -736,6 +786,7 @@ class TextureProcessor:
                         layers,
                         building / frame / folder,
                         *shared[1:],
+                        alpha=alpha_layer,
                     )
                     cap_stats.add(cap.build())
                     parts.append(Path(frame, folder))
@@ -765,6 +816,9 @@ class TextureProcessor:
         }
         if entry["type"] == "cylindrical_monthly":
             metadata["frames"] = len(frames)
+        if alpha is not None:
+            # The layer that the alpha of the tiles holds.
+            metadata["alpha"] = "specular"
         if coding is not None:
             metadata["displacement_bias_km"] = coding.bias_km
             metadata["displacement_scale_km"] = coding.step_km * tiles.HEIGHT_LEVELS

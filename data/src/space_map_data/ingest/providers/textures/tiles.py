@@ -12,7 +12,8 @@ A level too wide for that is built in square blocks instead, each one the
 footprint of a single tile a few levels down, and can resume after a stop.
 
 A colour pyramid can take its fine detail from sharper greyscale maps: see
-``PyramidBuilder._sharpen``.
+``PyramidBuilder._sharpen``. It can also hold a mask in the alpha of its
+tiles: see ``PyramidBuilder``.
 
 Each pyramid also has a cap over each pole, in a projection that does not
 stretch there: see ``Cap``.
@@ -1895,6 +1896,11 @@ def _over(under: np.ndarray, patch: np.ndarray, alpha: np.ndarray) -> np.ndarray
     return mixed.astype(under.dtype)
 
 
+def _with_alpha(colour: np.ndarray, alpha: np.ndarray) -> np.ndarray:
+    """RGB and a grey band as RGBA."""
+    return np.concatenate([colour, alpha[..., None]], axis=-1)
+
+
 def _halve(band: np.ndarray) -> np.ndarray:
     """2×2 box average."""
     if band.dtype == np.uint8:
@@ -1959,7 +1965,9 @@ class PyramidBuilder:
     ``layers`` is the base raster, then the insets that replace it over the
     band each one covers. ``brightness`` layers refine a colour base instead:
     they supply the detail finer than the base resolves, blended at
-    ``sharpen_sigma`` base pixels.
+    ``sharpen_sigma`` base pixels. ``alpha`` is a grey layer that becomes the
+    alpha of each colour tile. It is resampled apart from the colour, and the
+    RGB under a clear pixel stays as it is.
 
     ``checkpoint`` names the inputs. A block build saves its progress under
     that name after each row of blocks, and any build saves when it is done.
@@ -1983,9 +1991,11 @@ class PyramidBuilder:
         brightness: Sequence[Source] = (),
         sharpen_sigma: float | None = None,
         checkpoint: str = "",
+        alpha: Layer | None = None,
     ) -> None:
         self.name = name
         self.layers = layers
+        self.alpha = alpha
         self.brightness = brightness
         self.out_dir = out_dir
         self.max_level = max_level
@@ -1999,6 +2009,13 @@ class PyramidBuilder:
             if coding is None
             else config.TILE_LOSSLESS_KWARGS
         )
+        if alpha is not None:
+            # Without `exact` the encoder may change the RGB under a clear pixel.
+            self._save_kwargs = {
+                **self._save_kwargs,
+                "exact": True,
+                "alpha_quality": config.TILE_ALPHA_QUALITY,
+            }
         # One tile row per level, waiting for the row below it.
         self._held: dict[int, np.ndarray] = {}
         # Per level, the change time of each column folder when it was whole.
@@ -2139,7 +2156,7 @@ class PyramidBuilder:
     def _load(self, level: int, x: int, y: int) -> np.ndarray:
         """The values of a tile on disk."""
         with Image.open(self._tile_path(level, x, y)) as image:
-            rgb = np.asarray(image.convert("RGB"))
+            rgb = np.asarray(image.convert("RGB" if self.alpha is None else "RGBA"))
         return rgb if self.coding is None else self.coding.unpack(rgb)
 
     def _tile_path(self, level: int, x: int, y: int) -> Path:
@@ -2182,6 +2199,9 @@ class PyramidBuilder:
             )
             if self.brightness:
                 band = self._sharpen(band, y0, y1)
+            if self.alpha is not None:
+                alpha = self.alpha.window(width, self._lat_edges(y0, y1), 0, width)
+                band = _with_alpha(band, alpha)
             yield band
 
     def _build_blocks(self, pool: ThreadPoolExecutor, start: int) -> None:
@@ -2219,6 +2239,10 @@ class PyramidBuilder:
         )
         if self.brightness:
             values = self._sharpen_block(values, y0, y1, x0, x1)
+        if self.alpha is not None:
+            width = level_width(self.max_level)
+            alpha = self.alpha.window(width, self._lat_edges(y0, y1), x0, x1)
+            values = _with_alpha(values, alpha)
         return values
 
     def _composite(
@@ -2509,6 +2533,9 @@ class CapBuilder(PyramidBuilder):
             values = self._gather(self._composite_square, y0, y1, left, right)
             if self.brightness:
                 values = self._sharpen_block(values, y0, y1, left, right)
+            if self.alpha is not None:
+                alpha = self._gather(self._alpha_square, y0, y1, left, right)
+                values = _with_alpha(values, alpha)
             parts.append(values)
         return parts[0] if len(parts) == 1 else np.concatenate(parts, axis=1)
 
@@ -2549,6 +2576,10 @@ class CapBuilder(PyramidBuilder):
             alpha = weight.reshape(*weight.shape, *([1] * (values.ndim - 2)))
             values = _over(values, patch, alpha)
         return values
+
+    def _alpha_square(self, y0: int, y1: int, x0: int, x1: int) -> np.ndarray:
+        assert self.alpha is not None
+        return self.alpha.cap(self.cap, y0, y1, x0, x1)
 
     def _brightness_window(self, y0: int, y1: int, x0: int, x1: int) -> np.ndarray:
         """Brightness over rows ``y0:y1`` and columns ``x0:x1`` of the cap, NaN

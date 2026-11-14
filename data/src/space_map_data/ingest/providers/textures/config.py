@@ -152,3 +152,6 @@ DESHADED_DIR = CACHE_DIR / "deshaded"
 TILE_MAX_LOAD_BYTES = 4 << 30
 # Lossless effort. Higher settings take 15 times longer for under 2%.
 TILE_LOSSLESS_KWARGS = {"lossless": True, "method": 4, "quality": 75}
+# WebP alpha quality of a tile whose alpha holds a mask: 12 levels. A lake
+# shore at full precision takes several times the bytes of the colour.
+TILE_ALPHA_QUALITY = 50
