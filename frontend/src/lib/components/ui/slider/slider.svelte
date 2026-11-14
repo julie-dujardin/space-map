@@ -1,14 +1,24 @@
 <script lang="ts">
 	import { Slider as SliderPrimitive } from 'bits-ui';
 	import { cn, type WithoutChildrenOrChild } from '$lib/utils.js';
+	import { getLocale, getTextDirection } from '$lib/paraglide/runtime.js';
 
 	let {
 		ref = $bindable(null),
 		value = $bindable(),
 		orientation = 'horizontal',
+		// bits-ui defaults to dir="ltr": an RTL locale's range would fill from
+		// the left, against the page's reading direction. Vertical keeps "ltr",
+		// which bits-ui reads as bottom to top; "rtl" would turn it upside down.
+		dir = orientation === 'vertical' ? 'ltr' : getTextDirection(getLocale()),
 		class: className,
+		thumbProps,
 		...restProps
-	}: WithoutChildrenOrChild<SliderPrimitive.RootProps> = $props();
+	}: WithoutChildrenOrChild<SliderPrimitive.RootProps> & {
+		/** For each thumb: it carries `role="slider"`, so its accessible name and
+		 *  `aria-valuetext` go here, not on the root. */
+		thumbProps?: Omit<WithoutChildrenOrChild<SliderPrimitive.ThumbProps>, 'index'>;
+	} = $props();
 </script>
 
 <!--
@@ -20,6 +30,7 @@ get along, so we shut typescript up by casting `value` to `never`.
 	bind:value={value as never}
 	data-slot="slider"
 	{orientation}
+	{dir}
 	class={cn(
 		'data-vertical:min-h-40 relative flex w-full touch-none items-center select-none data-disabled:opacity-50 data-vertical:h-full data-vertical:w-auto data-vertical:flex-col',
 		className
@@ -43,6 +54,7 @@ get along, so we shut typescript up by casting `value` to `never`.
 			<SliderPrimitive.Thumb
 				data-slot="slider-thumb"
 				index={thumb.index}
+				{...thumbProps}
 				class="relative size-3 rounded-full border border-ring bg-white ring-ring transition-[color,box-shadow] after:absolute after:-inset-2 hover:ring-3 focus-visible:ring-3 focus-visible:outline-hidden active:ring-3 block shrink-0 select-none disabled:pointer-events-none disabled:opacity-50"
 			/>
 		{/each}

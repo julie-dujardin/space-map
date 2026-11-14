@@ -87,7 +87,7 @@
 			<span class="pointer-events-none absolute inset-0 block" aria-hidden="true">
 				{#each TORCH_PRESETS as preset (preset.profile)}
 					<span
-						class="absolute top-1/2 h-5 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-full {routeMark(
+						class="absolute top-1/2 h-5 w-0.5 -translate-x-1/2 -translate-y-1/2 rtl:translate-x-1/2 rounded-full {routeMark(
 							preset.profile
 						)}"
 						style="inset-inline-start: calc({THUMB_PX /
@@ -102,7 +102,7 @@
 				min={0}
 				max={1}
 				step={0.01}
-				aria-label={m.travel_cruise_time()}
+				thumbProps={{ 'aria-label': m.travel_cruise_time() }}
 			/>
 		</div>
 		{#if state.lateCrossing === 'torch'}

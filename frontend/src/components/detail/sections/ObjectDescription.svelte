@@ -38,6 +38,7 @@
 				{#if needsTruncation}
 					<button
 						class="flex items-center gap-1 hover:text-foreground"
+						aria-expanded={expanded}
 						onclick={() => (expanded = !expanded)}
 					>
 						{expanded ? m.show_less() : m.read_more()}

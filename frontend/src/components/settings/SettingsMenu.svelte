@@ -4,6 +4,7 @@
 	import type { Snippet } from 'svelte';
 	import * as m from '$lib/paraglide/messages.js';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
+	import { Switch } from '$lib/components/ui/switch/index.js';
 	import { getLocale, locales, type Locale } from '$lib/paraglide/runtime.js';
 	import { LOCALE_NAMES } from '$lib/format/locale-names';
 	import {
@@ -262,7 +263,7 @@
 				aria-label={m.back()}
 				onclick={onBack}
 			>
-				<ChevronLeftIcon class="size-5" />
+				<ChevronLeftIcon class="size-5 rtl:rotate-180" />
 			</button>
 		{/if}
 		<div class="min-w-0">
@@ -364,21 +365,10 @@
 						<div class="min-w-0">
 							<div class="text-sm font-medium">{m.settings_fullscreen()}</div>
 						</div>
-						<button
-							type="button"
-							role="switch"
-							aria-checked={fullscreen}
+						<Switch
+							bind:checked={() => fullscreen, () => void toggleFullscreen()}
 							aria-label={m.settings_fullscreen()}
-							class="relative inline-flex shrink-0 h-5 w-9 items-center rounded-full transition-colors cursor-pointer
-								focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring
-								{fullscreen ? 'bg-primary' : 'bg-muted'}"
-							onclick={() => void toggleFullscreen()}
-						>
-							<span
-								class="inline-block size-4 rounded-full bg-background shadow transition-transform
-									{fullscreen ? 'translate-x-4' : 'translate-x-0.5'}"
-							></span>
-						</button>
+						/>
 					</label>
 				{/if}
 			</section>
@@ -513,21 +503,10 @@
 							<div class="text-sm font-medium">{m.settings_debug_info()}</div>
 							<div class="text-xs text-muted-foreground mt-0.5">{m.settings_debug_info_desc()}</div>
 						</div>
-						<button
-							type="button"
-							role="switch"
-							aria-checked={settings.showDebugInfo}
+						<Switch
+							bind:checked={() => settings.showDebugInfo, (on) => settings.setShowDebugInfo(on)}
 							aria-label={m.settings_debug_info()}
-							class="relative inline-flex shrink-0 h-5 w-9 items-center rounded-full transition-colors cursor-pointer
-								focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring
-								{settings.showDebugInfo ? 'bg-primary' : 'bg-muted'}"
-							onclick={() => settings.setShowDebugInfo(!settings.showDebugInfo)}
-						>
-							<span
-								class="inline-block size-4 rounded-full bg-background shadow transition-transform
-									{settings.showDebugInfo ? 'translate-x-4' : 'translate-x-0.5'}"
-							></span>
-						</button>
+						/>
 					</label>
 				</section>
 			{/if}

@@ -801,11 +801,7 @@
 				{/if}
 				{#each path as entry, i (i)}
 					{@const href = i < path.length - 1 ? ringHref(entry) : undefined}
-					<!-- No `rtl:rotate-180`: the drawer body is inside a ScrollArea, which
-					     bits-ui renders `dir="ltr"` whatever the locale, so this row reads
-					     left to right in Hebrew too and a flipped chevron would point away
-					     from the crumb it separates. -->
-					<ChevronRightIcon class="size-3 shrink-0 text-muted-foreground" />
+					<ChevronRightIcon class="size-3 shrink-0 text-muted-foreground rtl:rotate-180" />
 					{#if href}
 						<a class={CRUMB_CLASS} {href} onclick={(e) => openLevel(e, path.slice(0, i + 1))}
 							>{levelLabel(entry)}</a
@@ -836,9 +832,8 @@
 
 	<!-- The plot is one left-to-right composition — moon dots, axis gutter,
 	     strip, then leader lines out to the labels — and the SVG's coordinates
-	     cannot follow the document direction. Stated rather than inherited: the
-	     drawer's ScrollArea happens to force LTR today, and if that is ever
-	     fixed the flex here must not reverse out from under the SVG. -->
+	     cannot follow the document direction, so the flex must not reverse in an
+	     RTL locale. -->
 	<div dir="ltr" class="relative flex gap-2 overflow-hidden rounded-md border bg-card/40 p-3">
 		<!-- Every moon the axis reaches, at its own mean orbit, widening to the
 		     left where several share one. No labels: forty names down the edge
@@ -1096,10 +1091,8 @@
 
 	<div class="flex items-center gap-2 px-1 text-xs text-muted-foreground">
 		<span>{m.rings_invisible()}</span>
-		<!-- Fixed left-to-right, like the labels either side of it: Tailwind's
-		     `rtl:` variant keys on an ancestor `dir`, so an RTL override here
-		     would flip the ramp under a row the ScrollArea keeps LTR. -->
-		<span class="h-1.5 grow rounded-full bg-[#05070e] bg-linear-to-r from-slate-400/6 to-slate-200"
+		<span
+			class="h-1.5 grow rounded-full bg-[#05070e] bg-linear-to-r from-slate-400/6 to-slate-200 rtl:bg-linear-to-l"
 		></span>
 		<span>{m.rings_opaque()}</span>
 		<span>· {m.rings_optical_depth()}</span>

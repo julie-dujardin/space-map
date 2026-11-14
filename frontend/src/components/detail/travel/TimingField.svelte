@@ -12,6 +12,7 @@
 	import { onMount } from 'svelte';
 	import { type DateValue } from '@internationalized/date';
 	import * as Popover from '$lib/components/ui/popover';
+	import * as Tabs from '$lib/components/ui/tabs';
 	import { Calendar } from '$lib/components/ui/calendar';
 	import { loadPickerRange, pickerRange } from '$lib/time/picker-range.svelte';
 	import { formatJulianDate } from '$lib/format/date';
@@ -98,26 +99,26 @@
 		sideOffset={6}
 		collisionPadding={8}
 	>
-		<div
-			class="bg-muted/40 flex rounded-md p-0.5 text-xs"
-			role="tablist"
-			aria-label={m.travel_when()}
+		<!-- Manual activation: arrowing onto "Now" would otherwise pick it and
+		     close the popover. -->
+		<Tabs.Root
+			value={mode}
+			onValueChange={(v) => chooseMode(v as TimeMode)}
+			activationMode="manual"
 		>
-			{#each TABS as tab (tab.value)}
-				{@const active = tab.value === mode}
-				<button
-					type="button"
-					role="tab"
-					aria-selected={active}
-					onclick={() => chooseMode(tab.value)}
-					class="flex-1 rounded px-2 py-1 whitespace-nowrap transition-colors {active
-						? 'bg-background text-foreground shadow-sm'
-						: 'text-muted-foreground hover:text-foreground'}"
-				>
-					{tab.label}
-				</button>
-			{/each}
-		</div>
+			<Tabs.List class="w-full" aria-label={m.travel_when()}>
+				{#each TABS as tab (tab.value)}
+					<!-- Tabs ignore a click on the active tab; "Now" must still close. -->
+					<Tabs.Trigger
+						value={tab.value}
+						class="text-xs"
+						onclick={() => {
+							if (tab.value === mode) chooseMode(tab.value);
+						}}>{tab.label}</Tabs.Trigger
+					>
+				{/each}
+			</Tabs.List>
+		</Tabs.Root>
 
 		{#if mode !== 'now'}
 			<!-- The columns share the width rather than each taking a fixed cell: the

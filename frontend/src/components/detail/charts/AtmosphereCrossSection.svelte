@@ -18,6 +18,7 @@
 		FRAME_H as H,
 		LABEL_MAX_Y,
 		SECOND_LINE_DY,
+		frameMirror,
 		remeasure,
 		spreadRows,
 		stackedRows
@@ -54,6 +55,8 @@
 	 *  it has to fade out, not against the text. */
 	const SCRIM_X = 92;
 	const LABEL_SPACING = 27;
+
+	const { x: fx, transform: mirror } = frameMirror();
 
 	const DATUM_LABEL: Record<string, () => string> = {
 		surface: m.atmosphere_datum_surface,
@@ -215,17 +218,24 @@
 	{@const widthKm =
 		topKm !== undefined && row.band.baseKm !== null ? topKm - row.band.baseKm : undefined}
 	<path
-		d="M {SCRIM_X - 26} {row.anchorY} L {GUTTER - 4} {row.labelY - 3} L {GUTTER} {row.labelY - 3}"
+		d="M {fx(SCRIM_X - 26)} {row.anchorY} L {fx(GUTTER - 4)} {row.labelY - 3} L {fx(
+			GUTTER
+		)} {row.labelY - 3}"
 		class="stroke-border fill-none"
 		stroke-width="1"
 	/>
-	<text bind:this={nameEls[i]} x={GUTTER + 4} y={row.labelY} class="fill-foreground text-[10px]">
+	<text
+		bind:this={nameEls[i]}
+		x={fx(GUTTER + 4)}
+		y={row.labelY}
+		class="fill-foreground text-[10px]"
+	>
 		{atmosphereLayerName(row.band.layer.role)}
 	</text>
 	{#if value}
 		<text
 			bind:this={readingEls[i]}
-			x={W - 2}
+			x={fx(W - 2)}
 			y={row.labelY + (stacked[i] ? SECOND_LINE_DY : 0)}
 			text-anchor="end"
 			class="fill-muted-foreground text-[10px]"
@@ -235,12 +245,16 @@
 	{/if}
 	<!-- The layer's thickness, not its top: the interior chart's second line
 	     says the same thing, so the two cross-sections read alike. -->
-	<text x={GUTTER + 4} y={row.labelY + SECOND_LINE_DY} class="fill-muted-foreground text-[10px]">
+	<text
+		x={fx(GUTTER + 4)}
+		y={row.labelY + SECOND_LINE_DY}
+		class="fill-muted-foreground text-[10px]"
+	>
 		{[widthKm !== undefined ? km(widthKm) : '', stacked[i] ? air : ''].filter(Boolean).join(' · ')}
 	</text>
 	{#if air && !stacked[i]}
 		<text
-			x={W - 2}
+			x={fx(W - 2)}
 			y={row.labelY + SECOND_LINE_DY}
 			text-anchor="end"
 			class="fill-muted-foreground text-[10px]"
@@ -264,43 +278,45 @@
 		role="img"
 		aria-label={m.structure_atmosphere_chart()}
 	>
-		{#each profile.bands as band, i (band.layer.role + i)}
-			<path d={bandPath(band.base, band.top)} fill={color} opacity={band.opacity}></path>
-		{/each}
+		<g transform={mirror}>
+			{#each profile.bands as band, i (band.layer.role + i)}
+				<path d={bandPath(band.base, band.top)} fill={color} opacity={band.opacity}></path>
+			{/each}
 
-		<!-- The labels sit over the limb, so the sky fades out under them
+			<!-- The labels sit over the limb, so the sky fades out under them
 		     rather than the text fighting the band it crosses. -->
-		<defs>
-			<linearGradient id="atmo-scrim" x1="0" x2="1" y1="0" y2="0">
-				<stop offset="0" stop-color="var(--background)" stop-opacity="0" />
-				<stop offset="0.55" stop-color="var(--background)" stop-opacity="0.9" />
-				<stop offset="1" stop-color="var(--background)" stop-opacity="0.9" />
-			</linearGradient>
-		</defs>
-		<!-- Every boundary draws its own line, so a layer too thin to render
+			<defs>
+				<linearGradient id="atmo-scrim" x1="0" x2="1" y1="0" y2="0">
+					<stop offset="0" stop-color="var(--background)" stop-opacity="0" />
+					<stop offset="0.55" stop-color="var(--background)" stop-opacity="0.9" />
+					<stop offset="1" stop-color="var(--background)" stop-opacity="0.9" />
+				</linearGradient>
+			</defs>
+			<!-- Every boundary draws its own line, so a layer too thin to render
 		     (Uranus's 50 km troposphere under a 4,000 km stratosphere) still shows. -->
-		{#each profile.bands as band, i (band.layer.role + i)}
+			{#each profile.bands as band, i (band.layer.role + i)}
+				<path
+					d={boundaryPath(band.top)}
+					fill="none"
+					stroke="rgb(255 255 255 / 0.35)"
+					stroke-dasharray={band.capped ? '3 3' : undefined}
+					stroke-width="0.75"
+				/>
+			{/each}
+
+			<!-- The body itself, so the air reads as sitting on something. -->
 			<path
-				d={boundaryPath(band.top)}
-				fill="none"
-				stroke="rgb(255 255 255 / 0.35)"
-				stroke-dasharray={band.capped ? '3 3' : undefined}
+				d={groundPath()}
+				fill="rgb(58 58 62)"
+				stroke="rgb(255 255 255 / 0.25)"
 				stroke-width="0.75"
 			/>
-		{/each}
 
-		<!-- The body itself, so the air reads as sitting on something. -->
-		<path
-			d={groundPath()}
-			fill="rgb(58 58 62)"
-			stroke="rgb(255 255 255 / 0.25)"
-			stroke-width="0.75"
-		/>
-		<text x="8" y={GROUND_Y + 13} class="fill-white/70 text-[10px]">
+			<rect x={SCRIM_X} y="0" width={W - SCRIM_X} height={H} fill="url(#atmo-scrim)" />
+		</g>
+		<text x={fx(8)} y={GROUND_Y + 13} class="fill-white/70 text-[10px]">
 			{(DATUM_LABEL[profile.datum] ?? DATUM_LABEL.surface)()}
 		</text>
-
-		<rect x={SCRIM_X} y="0" width={W - SCRIM_X} height={H} fill="url(#atmo-scrim)" />
 
 		{#each rows as row, i (row.index)}
 			{@const lines = tooltip(row.band)}

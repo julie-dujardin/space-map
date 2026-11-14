@@ -92,7 +92,7 @@
 			{#if Icon}<Icon class="size-5" />{/if}
 			{label}
 		</span>
-		<ChevronRightIcon class="size-4.5" />
+		<ChevronRightIcon class="size-4.5 rtl:rotate-180" />
 	</button>
 {/snippet}
 
@@ -124,7 +124,7 @@
 			aria-label={m.back()}
 			onclick={() => (view = 'pages')}
 		>
-			<ChevronLeftIcon class="size-5" />
+			<ChevronLeftIcon class="size-5 rtl:rotate-180" />
 		</button>
 		<h2 class="text-base font-semibold">{title}</h2>
 		{@render subviewClose()}

@@ -371,8 +371,8 @@
 			<span class={style}>{credit.organisation}</span>
 		{/if}
 		{#if credit.attribution}
-			<!-- A credit line is in its own language, whatever that of the page. -->
-			<div dir="auto" class="text-xs wrap-anywhere text-muted-subtle rtl:text-right">
+			<!-- A credit line keeps its own language but aligns with the page. -->
+			<div dir="auto" class="text-xs wrap-anywhere text-muted-subtle in-[[dir=rtl]]:text-right">
 				{credit.attribution}
 			</div>
 		{/if}

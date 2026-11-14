@@ -1824,8 +1824,10 @@
 			>
 				<ChevronRightIcon size={18} />
 			</button>
+			<!-- Left to right in every locale, like the lineup and its arrows. -->
 			<div
 				role="group"
+				dir="ltr"
 				aria-label={ariaLabel}
 				onpointerenter={() => (hoveredId = null)}
 				onpointermove={(e) => e.stopPropagation()}

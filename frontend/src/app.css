@@ -452,6 +452,11 @@ body {
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* The element's own direction, so a `dir="ltr"` island in an RTL page reads
+   as LTR. Tailwind's default also matches anything under a `[dir=rtl]`. */
+@custom-variant rtl (&:where(:dir(rtl)));
+@custom-variant ltr (&:where(:dir(ltr)));
+
 @custom-variant data-open {
 	&:where([data-state='open']),
 	&:where([data-open]:not([data-open='false'])) {

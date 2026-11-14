@@ -26,6 +26,7 @@
 		FRAME_H as H,
 		LABEL_MAX_Y,
 		SECOND_LINE_DY,
+		frameMirror,
 		remeasure,
 		spreadRows,
 		stackedRows
@@ -78,6 +79,8 @@
 	/** Where the labels begin, just clear of that edge. */
 	const GUTTER = CX + 9;
 	const LABEL_SPACING = 26;
+
+	const { x: fx, transform: mirror } = frameMirror();
 
 	// The body shrinks to leave room for the atmosphere strip outside it,
 	// rather than overflow the frame — Titan's is 19% of its radius, Earth's
@@ -196,65 +199,67 @@
 			</pattern>
 		</defs>
 
-		<!-- Mirrored about the vertical edge, so the quarter opens away from the
-		     labels instead of across them. -->
-		<g transform="matrix(-1,0,0,1,{2 * CX},0)">
-			{#if section.atmosphere}
-				<!-- A minimum of a pixel and a half: on Earth this is 1.7px to scale,
+		<g transform={mirror}>
+			<!-- Mirrored about the vertical edge, so the quarter opens away from the
+			     labels instead of across them. -->
+			<g transform="matrix(-1,0,0,1,{2 * CX},0)">
+				{#if section.atmosphere}
+					<!-- A minimum of a pixel and a half: on Earth this is 1.7px to scale,
 				     and rounding it away would drop the layer entirely. -->
-				{@const outer = Math.max(R, bodyR + 1.5)}
-				<path
-					d={bandPath({ outer: outer / bodyR, inner: 1 }, CX, CY, bodyR)}
-					fill={atmosphereColor}
-					opacity="0.8"
-				/>
-			{/if}
-
-			{#each section.bands as band, i (band.layer.role + i)}
-				<!-- A band under a fading one runs to the centre. If it stopped at
-				     its boundary, the fade would show a sharp edge there. -->
-				{@const next = section.bands[i + 1]}
-				{@const over = next ? fade(next, i + 1) !== null : false}
-				{@const fades = fade(band, i) !== null}
-				<path
-					d={bandPath(over ? { ...band, inner: 0 } : band, CX, CY, bodyR)}
-					fill={fades ? `url(#diffuse-${i})` : fill(band, i)}
-					class="transition-opacity"
-					opacity={active === null || active === i ? 1 : 0.4}
-					stroke={fades ? 'none' : 'rgb(0 0 0 / 0.45)'}
-					stroke-width="0.8"
-					stroke-dasharray={band.layer.standing ? '3 2' : undefined}
-					role="presentation"
-					onmouseenter={() => (active = i)}
-					onmouseleave={() => (active = null)}
-				/>
-			{/each}
-
-			<!-- Where a fit gives a boundary as a range, the range is hatched. The
-			     line is the fit's value. The boundary can lie anywhere in the hatch. -->
-			{#each section.bands as band, i (band.layer.role + i)}
-				{#if band.outerRange}
+					{@const outer = Math.max(R, bodyR + 1.5)}
 					<path
-						d={bandPath(
-							{ ...band, outer: band.outerRange[1], inner: band.outerRange[0] },
-							CX,
-							CY,
-							bodyR
-						)}
-						fill="url(#interior-spread)"
-						pointer-events="none"
+						d={bandPath({ outer: outer / bodyR, inner: 1 }, CX, CY, bodyR)}
+						fill={atmosphereColor}
+						opacity="0.8"
 					/>
 				{/if}
-			{/each}
+
+				{#each section.bands as band, i (band.layer.role + i)}
+					<!-- A band under a fading one runs to the centre. If it stopped at
+				     its boundary, the fade would show a sharp edge there. -->
+					{@const next = section.bands[i + 1]}
+					{@const over = next ? fade(next, i + 1) !== null : false}
+					{@const fades = fade(band, i) !== null}
+					<path
+						d={bandPath(over ? { ...band, inner: 0 } : band, CX, CY, bodyR)}
+						fill={fades ? `url(#diffuse-${i})` : fill(band, i)}
+						class="transition-opacity"
+						opacity={active === null || active === i ? 1 : 0.4}
+						stroke={fades ? 'none' : 'rgb(0 0 0 / 0.45)'}
+						stroke-width="0.8"
+						stroke-dasharray={band.layer.standing ? '3 2' : undefined}
+						role="presentation"
+						onmouseenter={() => (active = i)}
+						onmouseleave={() => (active = null)}
+					/>
+				{/each}
+
+				<!-- Where a fit gives a boundary as a range, the range is hatched. The
+			     line is the fit's value. The boundary can lie anywhere in the hatch. -->
+				{#each section.bands as band, i (band.layer.role + i)}
+					{#if band.outerRange}
+						<path
+							d={bandPath(
+								{ ...band, outer: band.outerRange[1], inner: band.outerRange[0] },
+								CX,
+								CY,
+								bodyR
+							)}
+							fill="url(#interior-spread)"
+							pointer-events="none"
+						/>
+					{/if}
+				{/each}
+			</g>
 		</g>
 
 		<!-- Outer end is labelled by what the radius is measured to, not
 		     "surface" — Jupiter has none, and the atmosphere chart above
 		     measures its own heights from the 1 bar level. -->
-		<text x={CX - 3} y={CY - R - 6} text-anchor="end" class="fill-muted-foreground text-[10px]">
+		<text x={fx(CX - 3)} y={CY - R - 6} text-anchor="end" class="fill-muted-foreground text-[10px]">
 			{(DATUM_LABEL[datum] ?? DATUM_LABEL.surface)()}
 		</text>
-		<text x={CX - 3} y={CY + 11} text-anchor="end" class="fill-muted-foreground text-[10px]">
+		<text x={fx(CX - 3)} y={CY + 11} text-anchor="end" class="fill-muted-foreground text-[10px]">
 			{m.structure_disc_centre()}
 		</text>
 
@@ -270,11 +275,16 @@
 				     the band. It only stretches where two labels had to be pushed
 				     apart to stop them overlapping. -->
 				<path
-					d="M {CX} {row.anchorY} L {GUTTER - 3} {row.labelY - 3}"
+					d="M {fx(CX)} {row.anchorY} L {fx(GUTTER - 3)} {row.labelY - 3}"
 					class="stroke-border fill-none"
 					stroke-width="1"
 				/>
-				<text bind:this={nameEls[i]} x={GUTTER} y={row.labelY} class="fill-foreground text-[10px]">
+				<text
+					bind:this={nameEls[i]}
+					x={fx(GUTTER)}
+					y={row.labelY}
+					class="fill-foreground text-[10px]"
+				>
 					{row.band
 						? layerName(row.band.layer.role, row.band.layer.note)
 						: m.structure_layer_atmosphere()}
@@ -284,7 +294,7 @@
 					{#if value}
 						<text
 							bind:this={readingEls[i]}
-							x={W - 2}
+							x={fx(W - 2)}
 							y={row.labelY + (stacked[i] ? SECOND_LINE_DY : 0)}
 							text-anchor="end"
 							class="fill-muted-foreground text-[10px]"
@@ -296,7 +306,7 @@
 				<!-- Hidden, so that the next pass measures it the same way. -->
 				<text
 					bind:this={widthEls[i]}
-					x={GUTTER}
+					x={fx(GUTTER)}
 					y={row.labelY + SECOND_LINE_DY}
 					visibility={stacked[i] && crowded[i] ? 'hidden' : undefined}
 					class="fill-muted-foreground text-[10px]"

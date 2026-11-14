@@ -16,6 +16,7 @@
 	import MapPinIcon from '@lucide/svelte/icons/map-pin';
 	import * as Popover from '$lib/components/ui/popover/index.js';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
+	import { Slider } from '$lib/components/ui/slider/index.js';
 	import { formatHeight } from '$lib/format/distance';
 	import { formatDuration } from '$lib/format/duration';
 	import { formatDvBrief } from '$lib/travel/format';
@@ -289,24 +290,28 @@
 	readout: string,
 	ariaText: string
 )}
-	<label class="flex flex-col gap-0.5">
-		<span class="text-muted-foreground text-2xs tracking-wide uppercase">{caption}</span>
+	<div class="flex flex-col gap-0.5">
+		<span class="text-muted-foreground text-2xs tracking-wide uppercase" aria-hidden="true"
+			>{caption}</span
+		>
 		<span class="flex items-center gap-2">
-			<input
-				type="range"
+			<!-- bits-ui puts the thumb at NaN% on an empty range. -->
+			<Slider
+				type="single"
 				{min}
-				{max}
+				max={Math.max(max, min + 1)}
+				disabled={max <= min}
 				step={1}
 				{value}
-				oninput={(e) => onInput(Number(e.currentTarget.value))}
-				class="accent-primary h-1 flex-1"
-				aria-valuetext={ariaText}
+				onValueChange={onInput}
+				class="flex-1"
+				thumbProps={{ 'aria-label': caption, 'aria-valuetext': ariaText }}
 			/>
 			<span class="text-muted-foreground w-24 shrink-0 text-end text-xs tabular-nums">
 				{readout}
 			</span>
 		</span>
-	</label>
+	</div>
 {/snippet}
 
 {#snippet panel()}
@@ -333,7 +338,7 @@
 							: m.travel_arrival_mode()}
 				</span>
 				<span class="text-foreground truncate">{subLine}</span>
-				<ChevronRightIcon class="ms-auto size-3.5 shrink-0" />
+				<ChevronRightIcon class="ms-auto size-3.5 shrink-0 rtl:rotate-180" />
 			</button>
 		{/if}
 	{:else}
@@ -343,7 +348,7 @@
 				onclick={() => (step = 'where')}
 				class="text-muted-foreground hover:text-foreground flex min-w-0 items-center gap-1 text-xs"
 			>
-				<ChevronLeftIcon class="size-3.5 shrink-0" />
+				<ChevronLeftIcon class="size-3.5 shrink-0 rtl:rotate-180" />
 				<span class="truncate">{bodyName}</span>
 			</button>
 			<span class="text-muted-foreground ms-auto shrink-0 text-2xs tracking-wide uppercase">

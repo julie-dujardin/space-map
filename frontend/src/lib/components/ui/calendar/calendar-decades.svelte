@@ -4,6 +4,7 @@
 	import type { DateValue } from '@internationalized/date';
 	import { tick } from 'svelte';
 	import * as m from '$lib/paraglide/messages.js';
+	import { getLocale, getTextDirection } from '$lib/paraglide/runtime.js';
 	import { buttonVariants } from '$lib/components/ui/button/index.js';
 	import type { ClassValue } from 'clsx';
 	import { cn } from '$lib/utils.js';
@@ -196,7 +197,10 @@
 	)}
 >
 	<div class="relative flex flex-col gap-4">
-		<div class="flex h-(--cell-size) w-full items-center justify-between gap-1">
+		<!-- The arrows are fixed left to right like the Gregorian grid's
+		     `Calendar.Nav`; the caption between them reads in the page's
+		     direction, as the Gregorian caption does. -->
+		<div dir="ltr" class="flex h-(--cell-size) w-full items-center justify-between gap-1">
 			<button
 				type="button"
 				class={cn(
@@ -207,9 +211,12 @@
 				disabled={prevDisabled}
 				onclick={() => showMonth(-1)}
 			>
-				<ChevronLeftIcon class="size-4 rtl:rotate-180" />
+				<ChevronLeftIcon class="size-4" />
 			</button>
-			<div class="flex items-center justify-center gap-1.5 text-sm font-medium">
+			<div
+				dir={getTextDirection(getLocale())}
+				class="flex items-center justify-center gap-1.5 text-sm font-medium"
+			>
 				<CalendarMonthSelectInline
 					monthFormat="long"
 					{locale}
@@ -237,7 +244,7 @@
 				disabled={nextDisabled}
 				onclick={() => showMonth(1)}
 			>
-				<ChevronRightIcon class="size-4 rtl:rotate-180" />
+				<ChevronRightIcon class="size-4" />
 			</button>
 		</div>
 

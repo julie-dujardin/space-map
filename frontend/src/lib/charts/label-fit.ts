@@ -1,12 +1,27 @@
 /**
  * Label layout shared by the cross-section charts: sliding stacked labels
- * apart, and whether a label's name and its reading can share a line.
+ * apart, whether a label's name and its reading can share a line, and the
+ * mirrored frame for an RTL reader.
  */
+import { getLocale, getTextDirection } from '$lib/paraglide/runtime.js';
 
 /** The cross-section frame. Its label sizes are viewBox units: narrower than
  *  the drawer's content width, so they never render smaller than they say. */
 export const FRAME_W = 264;
 export const FRAME_H = 198;
+
+/**
+ * An RTL reader gets the frame mirrored, so the labels still start beside the
+ * drawing. Text keeps its anchors because `start` and `end` follow the
+ * direction. Call it per component: the server sets the locale per request.
+ */
+export function frameMirror(): { x: (x: number) => number; transform: string | undefined } {
+	const rtl = getTextDirection(getLocale()) === 'rtl';
+	return {
+		x: (x) => (rtl ? FRAME_W - x : x),
+		transform: rtl ? `matrix(-1,0,0,1,${FRAME_W},0)` : undefined
+	};
+}
 
 /** A label is two lines: the name, and the layer's extent under it. */
 export const SECOND_LINE_DY = 12;
