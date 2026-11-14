@@ -92,9 +92,10 @@ export function updateTextureLOD(
 		else desired = 'high';
 
 		const currentRank = tierRank(bo.textureTier);
-		// Where tiles carry the detail, the largest tier is half a gigabyte of
-		// texture for nothing. It stays the fallback if the tile host fails.
-		const bodyCap = tilesServe(bo) ? Math.min(tierCap, tierRank('medium')) : tierCap;
+		// Where tiles carry the detail, the low tier is all that shows under
+		// them, and the rest are fallbacks for a tile host that fails.
+		const served = tilesServe(bo);
+		const bodyCap = served ? tierRank('low') : tierCap;
 		const desiredRank = Math.min(tierRank(desired), bodyCap);
 		const desiredFrame = textureFrameForJd(jd, bo.availableFrames);
 		const frameChanged = desiredFrame !== bo.textureFrame;
@@ -140,10 +141,18 @@ export function updateTextureLOD(
 			if (target && target !== current) void swapDisplacementTier(bo, target);
 		}
 
-		// Clamp to whatever the cloud bundle exports (may top out below the
-		// surface tier); frame slides separately with sim time.
+		// The surface's tier, as far as the cloud bundle goes; its frame follows
+		// sim time. Clouds have no tiles: under a surface drawn from tiles they
+		// take the tier the screen asks for, up to the medium one, and like the
+		// surface never go down one.
 		if (bo.clouds && bo.textureTier) {
-			const cloudTarget = highestAvailableTier(tierRank(bo.textureTier), bo.clouds.availableTiers);
+			const cloudRank = Math.max(
+				served
+					? Math.min(tierRank(desired), tierCap, tierRank('medium'))
+					: tierRank(bo.textureTier),
+				tierRank(bo.clouds.textureTier)
+			);
+			const cloudTarget = highestAvailableTier(cloudRank, bo.clouds.availableTiers);
 			const cloudFrame = cloudFrameForJd(
 				jd,
 				bo.clouds.availableFrames,

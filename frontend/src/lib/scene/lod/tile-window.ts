@@ -22,9 +22,12 @@ export type Chart = typeof MAP | typeof NORTH | typeof SOUTH;
 /** Folder of each chart's tiles inside a pyramid. */
 export const CHART_FOLDER = ['', 'north', 'south'] as const;
 
-/** First level with a window. The whole-globe tier that stays under the
- *  windows holds the level below it, and a cap of this level is one window. */
-export const FIRST_TILE_LEVEL = 3;
+/** First level with a window. The whole-globe tier under the windows of a
+ *  body with tiles is the low one, which holds the level below. */
+export const FIRST_TILE_LEVEL = 1;
+
+/** Coarsest level of a cap that fills a window: one window shows it all. */
+const WHOLE_CAP_LEVEL = 3;
 
 /** How far, in tiles, the camera may stray from a window's centre before the
  *  window follows. Below half a tile a hover on a tile edge would reload a
@@ -45,9 +48,21 @@ export const CAP_EDGE = Math.SQRT2 - 1;
 const CAP_ENTER_DEG = 62;
 const CAP_LEAVE_DEG = 58;
 
-/** Latitude past which the coarsest level is held on both charts: each
- *  covers ground there that the other cannot. */
-const BOTH_CHARTS_DEG = 45;
+/** How far past the horizon a pole may be and still have its cap held from
+ *  the map: closer than that, the ground past 70° shows, where the map's
+ *  columns close in. */
+const POLE_IN_VIEW_DEG = 20;
+
+/** The same for the side of the camera's cap and the map past it: the ground
+ *  there shows once the side is about at the horizon. */
+const SIDE_IN_VIEW_DEG = 5;
+
+/** More reach for a chart that already has a window, so that one does not
+ *  come and go while the camera stays near the line. */
+const OTHER_CHART_HOLD_DEG = 5;
+
+/** Latitude of a cap's sides, at their midpoints. */
+const CAP_SIDE_DEG = 45;
 
 export interface WindowPlacement {
 	chart: Chart;
@@ -63,6 +78,12 @@ export function chartColumns(chart: Chart, level: number): number {
 
 export function chartRows(chart: Chart, level: number): number {
 	return chart === MAP ? 1 << level : 1 << (level - 1);
+}
+
+/** Whether tile `(x, y)` is on its chart. A window of a coarse level is wider
+ *  than the chart, and its slots past the edge stay blank. */
+export function onChart(chart: Chart, level: number, x: number, y: number): boolean {
+	return y < chartRows(chart, level) && (chart === MAP || x < chartColumns(chart, level));
 }
 
 /**
@@ -115,9 +136,16 @@ export function cameraChart(y: number, previous?: Chart): Chart {
 
 /**
  * The windows a camera wants, finest first: one per level from `level` down,
- * as many as `count` allows, on the camera's chart. Where both charts reach
- * the camera and a place is left, the coarsest level comes on the other chart
- * too, last.
+ * as many as `count` allows, on the camera's chart.
+ *
+ * The other chart gets windows too where its ground is near enough to the
+ * horizon to show: from the map, the cap of each pole in view, which the map
+ * draws as a pinch; from a cap, the map past the cap's sides. They are at the
+ * camera's level, as coarse as a cap that one window shows whole, nearest
+ * first. `horizon` is the cosine of the angle from the point under the camera
+ * to the horizon, and `held` the charts the chain has windows on now. Those
+ * windows come before the coarse levels of the camera's chart, which the
+ * whole-globe map stands in for, and leave it one place at least.
  *
  * A level past `maxLevel`, the pyramid's finest, has tiles on a patch only.
  * The last places of the chain stay with the pyramid's own levels, which
@@ -129,7 +157,10 @@ export function cameraChart(y: number, previous?: Chart): Chart {
  * level of the patch to the pyramid in one step. Its levels are then at even
  * steps from `level` down to `maxLevel`. With two places the first takes the
  * level half-way: at `level` it would hold only the ground at the camera's
- * feet, and the pyramid's own level all the rest of the patch.
+ * feet, and the pyramid's own level all the rest of the patch. Such a reader
+ * goes on from a window to a coarser one on another chart when its own has
+ * none, so a cap, which holds only its pole, comes only in the places left
+ * once the map's levels are all in.
  */
 export function windowChain(
 	level: number,
@@ -137,7 +168,9 @@ export function windowChain(
 	chart: Chart,
 	y: number,
 	maxLevel: number,
-	spread = false
+	spread = false,
+	horizon = 1,
+	held: readonly Chart[] = []
 ): { chart: Chart; level: number }[] {
 	const chain: { chart: Chart; level: number }[] = [];
 	const deep = level - maxLevel;
@@ -148,18 +181,38 @@ export function windowChain(
 		}
 		return chain;
 	}
-	const own = Math.max(1, Math.floor(count / 3));
+	if (level < FIRST_TILE_LEVEL) return chain;
+
+	// The other chart's windows, with how far past the horizon each one's ground is.
+	const horizonAngle = (Math.acos(Math.min(horizon, 1)) * 180) / Math.PI;
+	const otherLevel = Math.min(level, maxLevel, WHOLE_CAP_LEVEL);
+	const latitude = (Math.asin(Math.min(Math.max(y, -1), 1)) * 180) / Math.PI;
+	const candidates: { chart: Chart; away: number; margin: number }[] =
+		chart === MAP
+			? [
+					{ chart: NORTH, away: 90 - latitude, margin: POLE_IN_VIEW_DEG },
+					{ chart: SOUTH, away: 90 + latitude, margin: POLE_IN_VIEW_DEG }
+				]
+			: [{ chart: MAP, away: Math.abs(latitude) - CAP_SIDE_DEG, margin: SIDE_IN_VIEW_DEG }];
+	const others = candidates
+		.filter((other) => {
+			const hold = held.includes(other.chart) ? OTHER_CHART_HOLD_DEG : 0;
+			return other.away < horizonAngle + other.margin + hold;
+		})
+		.sort((a, b) => a.away - b.away)
+		.map((other) => ({ chart: other.chart, level: otherLevel }));
+	const ahead = spread && chart === MAP ? [] : others.slice(0, count - 1);
+
+	const own = count - ahead.length;
+	const pyramid = Math.max(1, Math.floor(own / 3));
 	let z = level;
-	while (z >= FIRST_TILE_LEVEL && chain.length < count) {
+	while (z >= FIRST_TILE_LEVEL && chain.length < own) {
 		chain.push({ chart, level: z });
-		z = z > maxLevel && chain.length >= count - own ? Math.min(z - 1, maxLevel) : z - 1;
+		z = z > maxLevel && chain.length >= own - pyramid ? Math.min(z - 1, maxLevel) : z - 1;
 	}
+	if (ahead.length) return [...chain, ...ahead];
 	const reached = chain.length > 0 && chain[chain.length - 1].level === FIRST_TILE_LEVEL;
-	const both = Math.abs(y) > Math.sin((BOTH_CHARTS_DEG * Math.PI) / 180);
-	if (reached && both && chain.length < count) {
-		const cap = y >= 0 ? NORTH : SOUTH;
-		chain.push({ chart: chart === MAP ? cap : MAP, level: FIRST_TILE_LEVEL });
-	}
+	if (reached) for (const other of others) if (chain.length < count) chain.push(other);
 	return chain;
 }
 
@@ -333,5 +386,7 @@ export function slotTile(
 	const columns = chartColumns(placement.chart, placement.level);
 	const dx = (((sx - placement.tx0) % WINDOW_TILES) + WINDOW_TILES) % WINDOW_TILES;
 	const dy = (((sy - placement.ty0) % WINDOW_TILES) + WINDOW_TILES) % WINDOW_TILES;
-	return { x: (placement.tx0 + dx) % columns, y: placement.ty0 + dy };
+	// Only the map wraps. A cap narrower than a window leaves slots off it.
+	const x = placement.tx0 + dx;
+	return { x: placement.chart === MAP ? x % columns : x, y: placement.ty0 + dy };
 }

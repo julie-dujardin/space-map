@@ -22,9 +22,11 @@ import {
 	type LoadedTile,
 	type TileChain,
 	type TileKind,
+	chainLength,
 	createChain,
 	disposeChain,
 	finestLevelAt,
+	horizonOf,
 	pointUnderCamera,
 	restChain,
 	updateChain
@@ -34,7 +36,7 @@ import {
  * A body's height tiles, as the slope of the ground under each pixel and the
  * shadows that the ground casts on it.
  *
- * The whole-globe height map stays bound, for the far ground. Close up, a
+ * The whole-globe height map stays bound, for the ground no window covers. A
  * chain of tile windows (see `tile-chain.ts`) gives both at the full detail of
  * the pyramid, in 16 bits. The code here is one part of the self-shadow
  * shader. The terrain grid takes its heights from the same tiles (see
@@ -553,15 +555,14 @@ export function updateReliefTiles(
 	}
 	// Kept from then on: a change of kind loads every window again.
 	if (level > tiles.max_level) chain.kind = FINE_HEIGHT_TILES;
-	let finest = tiles.max_level;
-	if (deep) for (const patch of tiles.patches ?? []) finest = Math.max(finest, patch.max_level);
 	updateChain(
 		chain,
 		tiles,
-		Math.min(maxReliefWindows(), finest - FIRST_TILE_LEVEL + 1),
+		chainLength(tiles, maxReliefWindows(), deep),
 		level,
 		over,
 		bo.radiusScene,
+		horizonOf(bo),
 		undefined,
 		renderer,
 		invalidate

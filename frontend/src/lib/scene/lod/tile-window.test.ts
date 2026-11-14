@@ -16,6 +16,7 @@ import {
 	neededLevel,
 	patchOfTile,
 	placeWindow,
+	onChart,
 	slotTile,
 	tileVersion,
 	windowChain,
@@ -56,9 +57,10 @@ describe('chart grids', () => {
 		expect([chartColumns(MAP, 4), chartRows(MAP, 4)]).toEqual([32, 16]);
 	});
 
-	it('gives a cap a square that is one window at the first tile level', () => {
-		expect(chartColumns(NORTH, FIRST_TILE_LEVEL)).toBe(WINDOW_TILES);
-		expect(chartRows(SOUTH, FIRST_TILE_LEVEL)).toBe(WINDOW_TILES);
+	it('gives a cap a square that is one tile at the first tile level, one window at level 3', () => {
+		expect(chartColumns(NORTH, FIRST_TILE_LEVEL)).toBe(1);
+		expect(chartColumns(NORTH, 3)).toBe(WINDOW_TILES);
+		expect(chartRows(SOUTH, 3)).toBe(WINDOW_TILES);
 		expect(chartColumns(NORTH, 6)).toBe(32);
 	});
 });
@@ -132,27 +134,97 @@ describe('windowChain', () => {
 	});
 
 	it('stops at the first tile level', () => {
-		expect(windowChain(4, 6, MAP, 0, 6).map((link) => link.level)).toEqual([4, 3]);
+		expect(windowChain(4, 6, MAP, 0, 6).map((link) => link.level)).toEqual([4, 3, 2, 1]);
 	});
 
 	it('is empty below the first tile level', () => {
 		expect(windowChain(FIRST_TILE_LEVEL - 1, 6, MAP, 0, 6)).toEqual([]);
 	});
 
-	it('adds the coarsest level on the other chart where both reach the camera', () => {
-		expect(windowChain(4, 6, MAP, sinDeg(50), 6)).toEqual([
-			{ chart: MAP, level: 4 },
-			{ chart: MAP, level: 3 },
-			{ chart: NORTH, level: 3 }
+	it('holds the map past the side of the camera cap where it shows', () => {
+		const horizon = Math.cos((42 * Math.PI) / 180);
+		expect(windowChain(6, 6, NORTH, sinDeg(60), 6, false, horizon)).toEqual([
+			{ chart: NORTH, level: 6 },
+			{ chart: NORTH, level: 5 },
+			{ chart: NORTH, level: 4 },
+			{ chart: NORTH, level: 3 },
+			{ chart: NORTH, level: 2 },
+			{ chart: MAP, level: 3 }
 		]);
-		expect(windowChain(4, 6, SOUTH, sinDeg(-70), 6).at(-1)).toEqual({ chart: MAP, level: 3 });
+		// Near the pole and close, the side is well past the horizon.
+		const close = Math.cos((13 * Math.PI) / 180);
+		const charts = windowChain(8, 6, NORTH, sinDeg(85), 8, false, close).map((l) => l.chart);
+		expect(charts).not.toContain(MAP);
+	});
+
+	it('gives a place left for one cap to the nearer pole', () => {
+		const far = Math.cos((85 * Math.PI) / 180);
+		expect(windowChain(2, 2, MAP, sinDeg(-10), 6, false, far)).toEqual([
+			{ chart: MAP, level: 2 },
+			{ chart: SOUTH, level: 2 }
+		]);
+	});
+
+	it('keeps a cap it holds a little past where it would take one', () => {
+		// The pole is 90° away, the horizon 68°: 2° past the reach.
+		const horizon = Math.cos((68 * Math.PI) / 180);
+		expect(windowChain(3, 6, MAP, 0, 6, false, horizon)).toHaveLength(3);
+		expect(windowChain(3, 6, MAP, 0, 6, false, horizon, [MAP, NORTH])).toContainEqual({
+			chart: NORTH,
+			level: 3
+		});
+	});
+
+	it('gives a reader of one window after another its caps only in the places left', () => {
+		const far = Math.cos((85 * Math.PI) / 180);
+		const levels = (count: number) =>
+			windowChain(2, count, MAP, 0, 6, true, far).map((l) => `${l.chart}:${l.level}`);
+		expect(levels(2)).toEqual(['0:2', '0:1']);
+		expect(levels(4)).toEqual(['0:2', '0:1', '1:2', '2:2']);
 	});
 
 	it('does not add it far from the caps, or with no place left', () => {
-		expect(windowChain(4, 6, MAP, sinDeg(30), 6)).toHaveLength(2);
+		expect(windowChain(4, 6, MAP, sinDeg(30), 6)).toHaveLength(4);
 		expect(windowChain(4, 2, MAP, sinDeg(50), 6)).toHaveLength(2);
 		// The chain did not reach the coarsest level.
 		expect(windowChain(6, 3, NORTH, sinDeg(80), 6)).toHaveLength(3);
+	});
+
+	it('gives each pole in view from the map a cap at the camera level', () => {
+		// Far off: the horizon is nearly a quarter turn from the point under the camera.
+		const far = Math.cos((85 * Math.PI) / 180);
+		expect(windowChain(2, 6, MAP, 0, 6, false, far)).toEqual([
+			{ chart: MAP, level: 2 },
+			{ chart: MAP, level: 1 },
+			{ chart: NORTH, level: 2 },
+			{ chart: SOUTH, level: 2 }
+		]);
+		// A cap of this level is one window, and shows the whole cap.
+		expect(windowChain(5, 6, MAP, sinDeg(40), 6, false, far).at(-1)).toEqual({
+			chart: NORTH,
+			level: 3
+		});
+	});
+
+	it('gives the caps their places before the coarse levels of the map', () => {
+		const far = Math.cos((85 * Math.PI) / 180);
+		expect(windowChain(3, 3, MAP, 0, 6, false, far)).toEqual([
+			{ chart: MAP, level: 3 },
+			{ chart: NORTH, level: 3 },
+			{ chart: SOUTH, level: 3 }
+		]);
+		// One place stays on the map.
+		expect(windowChain(3, 2, MAP, 0, 6, false, far)).toEqual([
+			{ chart: MAP, level: 3 },
+			{ chart: NORTH, level: 3 }
+		]);
+	});
+
+	it('gives no cap to a pole well past the horizon', () => {
+		const near = Math.cos((30 * Math.PI) / 180);
+		const charts = windowChain(4, 6, MAP, sinDeg(20), 6, false, near).map((link) => link.chart);
+		expect(charts).not.toContain(NORTH);
+		expect(charts).not.toContain(SOUTH);
 	});
 
 	it('keeps its last places for the levels of the pyramid, past its finest', () => {
@@ -209,8 +281,8 @@ describe('placeWindow', () => {
 		expect(placeWindow(NORTH, 5, 1.4, -0.3)).toEqual({ chart: NORTH, level: 5, tx0: last, ty0: 0 });
 	});
 
-	it('covers the whole cap at the first tile level', () => {
-		expect(placeWindow(SOUTH, FIRST_TILE_LEVEL, 0.9, 0.1)).toMatchObject({ tx0: 0, ty0: 0 });
+	it('covers the whole cap at level 3', () => {
+		expect(placeWindow(SOUTH, 3, 0.9, 0.1)).toMatchObject({ tx0: 0, ty0: 0 });
 	});
 
 	it('holds still while the camera stays near its middle', () => {
@@ -239,6 +311,26 @@ describe('placeWindow', () => {
 		const first = placeWindow(MAP, 5, 0.5, 0.5);
 		expect(placeWindow(NORTH, 5, 0.5, 0.5, first).chart).toBe(NORTH);
 		expect(placeWindow(MAP, 4, 0.5, 0.5, first).level).toBe(4);
+	});
+});
+
+describe('onChart', () => {
+	it('leaves out what lies past a chart narrower than a window', () => {
+		expect(onChart(NORTH, 1, 0, 0)).toBe(true);
+		expect(onChart(NORTH, 1, 1, 0)).toBe(false);
+		expect(onChart(SOUTH, 2, 1, 2)).toBe(false);
+		expect(onChart(MAP, 1, 3, 1)).toBe(true);
+		expect(onChart(MAP, 1, 3, 2)).toBe(false);
+	});
+
+	it('keeps every slot of a cap one window wide', () => {
+		const placement = placeWindow(NORTH, 1, 0.5, 0.5);
+		const tiles = [];
+		for (let slot = 0; slot < WINDOW_TILES * WINDOW_TILES; slot++) {
+			const { x, y } = slotTile(placement, slot % WINDOW_TILES, Math.floor(slot / WINDOW_TILES));
+			if (onChart(NORTH, 1, x, y)) tiles.push(`${x}/${y}`);
+		}
+		expect(tiles).toEqual(['0/0']);
 	});
 });
 

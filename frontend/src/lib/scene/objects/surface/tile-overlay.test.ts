@@ -21,9 +21,9 @@ describe('tilesServe', () => {
 		expect(tilesServe(body())).toBe(true);
 	});
 
-	it('is false for a pyramid that adds no level to the tiers', () => {
+	it('is false for a pyramid that adds no level to the low tier', () => {
 		configureHost({ tilesUrl: 'https://tiles.example.org' });
-		expect(tilesServe(body({ max_level: 2 }))).toBe(false);
+		expect(tilesServe(body({ max_level: 0 }))).toBe(false);
 	});
 
 	it('is false for a body drawn as a shape model, which takes the largest tier', () => {

@@ -24,13 +24,15 @@ import {
 	createChain,
 	disposeChain,
 	finestLevelAt,
+	horizonOf,
 	pointUnderCamera,
 	restChain,
 	updateChain
 } from './tile-chain';
 
 /**
- * Surface tiles drawn over a body's whole-globe map while the camera is close.
+ * Surface tiles drawn over a body's whole-globe map, from the first distance
+ * at which the screen needs more than its low tier.
  *
  * The map stays bound as it is. On top of it sits a chain of tile windows
  * (see `tile-chain.ts`). A fragment blends the two windows on either side of
@@ -222,6 +224,7 @@ export function updateTileOverlay(
 		level,
 		over,
 		bo.radiusScene,
+		horizonOf(bo),
 		tiles.frames ? bo.textureFrame : undefined,
 		renderer,
 		invalidate

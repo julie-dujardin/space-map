@@ -1,5 +1,6 @@
 import {
 	type AnyPixelFormat,
+	Box3,
 	type ColorSpace,
 	DataArrayTexture,
 	LinearFilter,
@@ -7,6 +8,7 @@ import {
 	Matrix4,
 	type Object3D,
 	type PerspectiveCamera,
+	FloatType,
 	RedFormat,
 	RepeatWrapping,
 	type Texture,
@@ -33,6 +35,7 @@ import {
 	chartPoint,
 	chartRows,
 	deepestLevel,
+	onChart,
 	patchOfTile,
 	placeWindow,
 	slotTile,
@@ -273,22 +276,28 @@ float tileWindowWeight( mat3x2 map, mat3x2 cap, float side, vec4 window, vec4 gr
 	float rows = ${WINDOW_TILES.toFixed(1)};
 	// Offset from the window's north-west corner, in tiles.
 	vec2 rel = home + chart[ 0 ] * grid.xy;
+	// A cap of a coarse level is narrower than the window: its edge is the window's.
+	vec2 size = onMap ? vec2( rows ) : min( vec2( rows ), grid.xy - grid.zw );
 	if ( onMap ) {
 		// Half a pixel in from a pole of the map: past it the filter would
 		// read the far row. The map's longitude wraps.
 		rel.y = clamp( rel.y, 0.0005 - grid.w, grid.y - 0.0005 - grid.w );
 		rel.x = mod( rel.x, grid.x );
 	}
-	if ( rel.x < 0.0 || rel.x > rows || rel.y < 0.0 || rel.y > rows ) return 0.0;
+	if ( rel.x < 0.0 || rel.x > size.x || rel.y < 0.0 || rel.y > size.y ) return 0.0;
 	// Distance to the window's edge, in tiles. A pole of the map is no
-	// edge: nothing lies past it.
-	vec2 near = min( rel, rows - rel );
+	// edge: nothing lies past it. Nor is the 180° meridian of a window that
+	// goes all the way round.
+	vec2 near = min( rel, size - rel );
 	if ( onMap && grid.w < 0.5 ) near.y = rows - rel.y;
 	if ( onMap && grid.w + rows > grid.y - 0.5 ) near.y = grid.w < 0.5 ? rows : rel.y;
+	if ( onMap && grid.x < rows + 0.5 ) near.x = rows;
 	// The texture repeats every window: a tile sits in the slot its own
 	// column and row pick, north up.
 	spot = rel + mod( grid.zw, rows );
-	return weight * smoothstep( 0.0, ${FEATHER_TILES.toFixed(2)}, min( near.x, near.y ) );
+	// A cap narrower than a window fades over as much of its own width.
+	float feather = min( ${FEATHER_TILES.toFixed(2)}, min( size.x, size.y ) * ${(FEATHER_TILES / WINDOW_TILES).toFixed(4)} );
+	return weight * smoothstep( 0.0, feather, min( near.x, near.y ) );
 }
 
 #endif
@@ -316,12 +325,12 @@ export function createChain(kind: TileKind, spread = false): TileChain {
 	};
 }
 
-function createStore(
+function createTextures(
 	kind: TileKind,
 	tileSize: number,
 	layers: number,
 	renderer: WebGLRenderer
-): WindowStore {
+): { texture: DataArrayTexture; mask: DataArrayTexture } {
 	const size = tileSize * WINDOW_TILES;
 	const texture = new DataArrayTexture(null, size, size, layers);
 	// Storage only: the tiles are copied in as they arrive.
@@ -351,9 +360,42 @@ function createStore(
 	mask.wrapS = mask.wrapT = RepeatWrapping;
 	mask.unpackAlignment = 1;
 	mask.needsUpdate = true;
+	return { texture, mask };
+}
 
+function createStore(
+	kind: TileKind,
+	tileSize: number,
+	layers: number,
+	renderer: WebGLRenderer
+): WindowStore {
 	const free = Array.from({ length: layers }, (_, layer) => layer);
-	return { kind, texture, mask, windows: [], free, tileSize };
+	return { kind, ...createTextures(kind, tileSize, layers, renderer), windows: [], free, tileSize };
+}
+
+const whole = new Box3();
+const copyAt = new Vector3();
+
+/** Give a store more layers, its windows kept where they are. False where
+ *  the renderer cannot copy them: the store must then start over. */
+function growStore(store: WindowStore, layers: number, renderer: WebGLRenderer): boolean {
+	const old = store.texture;
+	const depth = old.image.depth;
+	const uploaded = renderer.properties.has(old);
+	const renderable =
+		store.kind.type !== FloatType || renderer.extensions.has('EXT_color_buffer_float');
+	if (!uploaded || !renderable) return false;
+	const { texture, mask } = createTextures(store.kind, store.tileSize, layers, renderer);
+	whole.min.set(0, 0, 0);
+	whole.max.set(old.image.width, old.image.height, depth);
+	renderer.copyTextureToTexture(old, texture, whole, copyAt.set(0, 0, 0));
+	(mask.image.data as Uint8Array).set(store.mask.image.data as Uint8Array);
+	old.dispose();
+	store.mask.dispose();
+	store.texture = texture;
+	store.mask = mask;
+	for (let layer = depth; layer < layers; layer++) store.free.push(layer);
+	return true;
 }
 
 function setLoaded(store: WindowStore, layer: number, slot: number, loaded: boolean): void {
@@ -406,10 +448,10 @@ function patchOf(tiles: TilesBlock, win: TileWindow, tile: { x: number; y: numbe
 
 /** Whether the tile of a slot exists at all. */
 function exists(tiles: TilesBlock, win: TileWindow, slot: number): boolean {
-	if (win.level <= tiles.max_level) return true;
 	if (!win.placement) return false;
 	const tile = slotTile(win.placement, slot % WINDOW_TILES, Math.floor(slot / WINDOW_TILES));
-	return patchOf(tiles, win, tile) !== undefined;
+	if (!onChart(win.chart, win.level, tile.x, tile.y)) return false;
+	return win.level <= tiles.max_level || patchOf(tiles, win, tile) !== undefined;
 }
 
 /** Whether every tile of the window is in, or will not come. */
@@ -428,7 +470,6 @@ function settled(
 	return true;
 }
 
-const copyAt = new Vector3();
 const queue: { slot: number; far: number }[] = [];
 
 /** Start fetches for the blank slots of one window, those nearest the chart
@@ -543,6 +584,11 @@ const inverse = new Matrix4();
 const over = new Vector3();
 const anchor = new Vector3();
 
+/** Cosine of the angle from the point under the camera to the horizon of `bo`. */
+export function horizonOf(bo: { radiusScene: number; cachedDist: number }): number {
+	return Math.min(bo.radiusScene / bo.cachedDist, 1);
+}
+
 /** The point straight under the camera, as a direction in the frame of `mesh`. */
 export function pointUnderCamera(mesh: Object3D, camera: PerspectiveCamera): Vector3 {
 	return over
@@ -564,22 +610,25 @@ export function finestLevelAt(
 	return deepestLevel(tiles.max_level, tiles.patches, chart, point.x, point.y);
 }
 
-/** Windows a chain of `tiles` holds on a device that affords `limit`. One
- *  place more than the pyramid has levels, patches included: for the coarsest
- *  level on a second chart. */
-export function chainLength(tiles: TilesBlock, limit: number): number {
+/** Windows a chain of `tiles` holds on a device that affords `limit`. Two
+ *  places more than the pyramid has levels, patches included: for the caps
+ *  that the map's windows do not show. */
+export function chainLength(tiles: TilesBlock, limit: number, deep = true): number {
 	let finest = tiles.max_level;
-	if (tiles.patches) for (const patch of tiles.patches) finest = Math.max(finest, patch.max_level);
+	if (deep && tiles.patches) {
+		for (const patch of tiles.patches) finest = Math.max(finest, patch.max_level);
+	}
 	const levels = finest - FIRST_TILE_LEVEL + 1;
-	return Math.min(limit, MAX_WINDOWS, levels + 1);
+	return Math.min(limit, MAX_WINDOWS, levels + 2);
 }
 
 /**
  * Per-frame: keep the chain's windows on the ground under the camera. `over`
  * is the point straight under it, as a direction in the body's frame, and
- * `level` the level the screen needs there. `count` windows are held, and one
- * layer more for a window that changes chart. `radius` is that of the mesh, in
- * its own frame. `frame` is the month of a monthly map.
+ * `level` the level the screen needs there. Up to `count` windows are held,
+ * and one layer more for a window that changes chart. `radius` is that of the
+ * mesh, in its own frame, and `horizon` the cosine of the angle from `over`
+ * to the horizon. `frame` is the month of a monthly map.
  */
 export function updateChain(
 	chain: TileChain,
@@ -588,23 +637,41 @@ export function updateChain(
 	level: number,
 	over: Vector3,
 	radius: number,
+	horizon: number,
 	frame: number | undefined,
 	renderer: WebGLRenderer,
 	invalidate: () => void
 ): void {
+	const cap = over.y >= 0 ? NORTH : SOUTH;
+	chain.chart = cameraChart(over.y, chain.chart);
+	const links = windowChain(
+		level,
+		count,
+		chain.chart,
+		over.y,
+		tiles.max_level,
+		chain.spread,
+		horizon,
+		chain.store?.windows.map((win) => win.chart)
+	);
 	chain.lastUsed = performance.now();
+
+	// A layer is as large at every level, so a far body, which wants few
+	// windows, starts with layers for those and a spare. Once it wants more,
+	// the store takes all that `count` may want at once: a growth holds both
+	// stores for a moment, and should come once.
 	const held = chain.store;
-	if (held && (held.texture.image.depth !== count + 1 || held.kind !== chain.kind)) {
+	const full = count + 1;
+	let layers = links.length + 1;
+	if (held && (held.kind !== chain.kind || held.texture.image.depth > full)) disposeChain(chain);
+	else if (held && held.texture.image.depth < layers && !growStore(held, full, renderer)) {
 		disposeChain(chain);
+		layers = full;
 	}
-	const store = (chain.store ??= createStore(chain.kind, tiles.tile_size, count + 1, renderer));
+	const store = (chain.store ??= createStore(chain.kind, tiles.tile_size, layers, renderer));
 	chain.uniforms.map.value = store.texture;
 	chain.uniforms.mask.value = store.mask;
 	chain.uniforms.filter.value.set(store.texture.anisotropy, tiles.tile_size);
-
-	const cap = over.y >= 0 ? NORTH : SOUTH;
-	chain.chart = cameraChart(over.y, chain.chart);
-	const links = windowChain(level, count, chain.chart, over.y, tiles.max_level, chain.spread);
 	// The same point near the mesh, with the digits the shader has: the place
 	// of each window is counted from where the shader takes it to be.
 	anchor.set(
