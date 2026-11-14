@@ -24,13 +24,29 @@
 	const decimal = $derived(getSettings().resolvedDecimalTime);
 	// Minutes are what both fields show; quantise so they don't re-render per frame.
 	const shownJd = $derived(Math.floor(clock.jd * 86400) / 86400);
-	const value = $derived(decimal ? decimalTimeValue(shownJd) : clockTimeValue(shownJd));
+	const live = $derived(decimal ? decimalTimeValue(shownJd) : clockTimeValue(shownJd));
+	// While the reader is in the field, it holds what they are typing: a running
+	// clock moves a decimal minute every 1.4 s at 60×, and would write over it.
+	let editing = $state(false);
+	let draft = $state('');
+	const value = $derived(editing ? draft : live);
+
+	function onfocus(e: FocusEvent): void {
+		draft = (e.currentTarget as HTMLInputElement).value;
+		editing = true;
+	}
+	function oninput(e: Event): void {
+		draft = (e.currentTarget as HTMLInputElement).value;
+	}
+	function onblur(): void {
+		editing = false;
+	}
 
 	function onDecimalChange(e: Event): void {
 		const input = e.currentTarget as HTMLInputElement;
 		const fraction = parseDecimalTime(input.value);
 		if (fraction === null) {
-			input.value = value;
+			draft = input.value = live;
 			return;
 		}
 		applyDayFractionToClock(clock, fraction);
@@ -47,6 +63,9 @@
 		autocomplete="off"
 		spellcheck="false"
 		{value}
+		{onfocus}
+		{oninput}
+		{onblur}
 		onchange={onDecimalChange}
 		aria-label={m.time_pick_time()}
 		placeholder="0:00"
@@ -56,6 +75,9 @@
 	<input
 		type="time"
 		{value}
+		{onfocus}
+		{oninput}
+		{onblur}
 		onchange={(e) => applyTimeToClock(clock, e)}
 		aria-label={m.time_pick_time()}
 		class={cn(base, className)}

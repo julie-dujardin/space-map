@@ -10,7 +10,8 @@
  * (III, VII, XI), and the year a reader scrolls to in 2400 starts on the day
  * the decree says it would.
  *
- * Romme's arithmetic rule, proposed in 1795 and never adopted, is not used.
+ * Romme's arithmetic rule, proposed in 1795 and never adopted, takes over only
+ * where the equinox can no longer be computed: tens of millennia out.
  */
 
 import { tdbToUtc } from '$lib/time/jd';
@@ -55,9 +56,9 @@ const PERIODIC_TERMS: readonly (readonly [number, number, number])[] = [
 
 /**
  * The September equinox of a Gregorian year, as a JDE (TT), after Meeus ch.
- * 27: good to a minute or so across −1000…3000. Outside that the polynomials
- * are extrapolated; they drift by days over millennia, which is still a year
- * of 365 or 366 days, so the calendar stays a calendar.
+ * 27: good to a minute or so across −1000…3000. Extrapolated past that, it
+ * stays within a day or so for a few millennia; {@link newYearJdn} stops
+ * asking it beyond those.
  */
 export function septemberEquinoxJde(year: number): number {
 	let jde0: number;
@@ -95,11 +96,19 @@ function equationOfTime(jd: number): number {
 	return radians / (2 * Math.PI);
 }
 
+/**
+ * The Gregorian years the equinox is computed for. Meeus's polynomials hold to
+ * minutes across −1000…3000 and stay within a day well past that; by ±25 000
+ * years their quartic terms move the equinox by years. Beyond this window the
+ * years run on by Romme's rule (below), from the equinox at its edge.
+ */
+const EQUINOX_FIRST_YEAR = -4000;
+const EQUINOX_LAST_YEAR = 8000;
+
 const newYearCache = new Map<number, number>();
 
-/** JDN of 1 vendémiaire of the Republican year that begins in Gregorian
- *  `gregorianYear`: the Paris apparent-time day holding the true equinox. */
-function newYearJdn(gregorianYear: number): number {
+/** The equinox day itself, in Paris apparent time. */
+function equinoxNewYearJdn(gregorianYear: number): number {
 	let jdn = newYearCache.get(gregorianYear);
 	if (jdn === undefined) {
 		const ut = tdbToUtc(septemberEquinoxJde(gregorianYear));
@@ -108,6 +117,34 @@ function newYearJdn(gregorianYear: number): number {
 		newYearCache.set(gregorianYear, jdn);
 	}
 	return jdn;
+}
+
+/** Sextile years among Republican years 1…n (or down to n, below 1) by
+ *  Romme's rule: every fourth year, not every hundredth, every four-hundredth,
+ *  not every four-thousandth. */
+function rommeSextiles(n: number): number {
+	return Math.floor(n / 4) - Math.floor(n / 100) + Math.floor(n / 400) - Math.floor(n / 4000);
+}
+
+/** Days from the start of Republican year `a` to the start of year `b`. */
+function rommeDays(a: number, b: number): number {
+	return 365 * (b - a) + rommeSextiles(b - 1) - rommeSextiles(a - 1);
+}
+
+/** JDN of 1 vendémiaire of the Republican year that begins in Gregorian
+ *  `gregorianYear`: the Paris apparent-time day holding the true equinox,
+ *  where that can be computed. */
+function newYearJdn(gregorianYear: number): number {
+	const year = gregorianYear - EPOCH_GREGORIAN_YEAR + 1;
+	if (gregorianYear > EQUINOX_LAST_YEAR) {
+		const edge = EQUINOX_LAST_YEAR - EPOCH_GREGORIAN_YEAR + 1;
+		return equinoxNewYearJdn(EQUINOX_LAST_YEAR) + rommeDays(edge, year);
+	}
+	if (gregorianYear < EQUINOX_FIRST_YEAR) {
+		const edge = EQUINOX_FIRST_YEAR - EPOCH_GREGORIAN_YEAR + 1;
+		return equinoxNewYearJdn(EQUINOX_FIRST_YEAR) - rommeDays(year, edge);
+	}
+	return equinoxNewYearJdn(gregorianYear);
 }
 
 export interface RepublicanDate {
@@ -126,7 +163,10 @@ export interface RepublicanDate {
 export function jdnToRepublican(jdn: number): RepublicanDate {
 	let gYear = jdnToGregorian(jdn).year;
 	let start = newYearJdn(gYear);
-	if (jdn < start) start = newYearJdn(--gYear);
+	// Romme's year is about 22 s shorter than the Gregorian, so hundreds of
+	// millennia out its new year has drifted by weeks: step whichever way.
+	while (jdn < start) start = newYearJdn(--gYear);
+	while (jdn >= newYearJdn(gYear + 1)) start = newYearJdn(++gYear);
 	const dayOfYear = jdn - start;
 	const month = Math.floor(dayOfYear / 30) + 1;
 	const day = (dayOfYear % 30) + 1;

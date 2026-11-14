@@ -60,3 +60,29 @@ describe('axisTicks in other calendars', () => {
 		}
 	});
 });
+
+describe('axisTicks across a few years', () => {
+	it.each(['gregory', 'islamic-umalqura', 'hebrew', FRENCH_REPUBLICAN])(
+		'ticks %s years, not a month name every five years',
+		(calendar) => {
+			const ticks = axisTicks(jd(2020, 1, 1), jd(2026, 1, 1), 7, calendar);
+			expect(ticks.length).toBeGreaterThanOrEqual(4);
+			expect(ticks.every((t) => t.unit === 'year')).toBe(true);
+		}
+	);
+});
+
+describe('axisTicks round years across an era', () => {
+	it('rounds Minguo years before 1912 in their own count', () => {
+		const ticks = axisTicks(jd(1800, 1, 1), jd(1860, 1, 1), 6, 'roc');
+		expect(ticks.length).toBeGreaterThan(0);
+		for (const tick of ticks) expect((1912 - tick.date.getFullYear()) % 10).toBe(0);
+	});
+
+	it('rounds BC years as they are written', () => {
+		const ticks = axisTicks(jd(-600, 1, 1), jd(-300, 1, 1), 6, 'gregory');
+		expect(ticks.length).toBeGreaterThan(0);
+		// Astronomical −499 is 500 BC.
+		for (const tick of ticks) expect((1 - tick.date.getFullYear()) % 50).toBe(0);
+	});
+});

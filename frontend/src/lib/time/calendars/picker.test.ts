@@ -7,8 +7,10 @@ import {
 	fromPickerDate,
 	pickerCalendar,
 	toPickerDate,
-	withExtendedYear
+	withExtendedYear,
+	yearLabel
 } from './picker';
+import { scannerFor } from './scan';
 
 describe('the picker’s calendars', () => {
 	it('lays out the Republican year: twelve months of thirty, then the complementary days', () => {
@@ -73,5 +75,32 @@ describe('formatDecimalTime', () => {
 
 	it('drops the seconds unless asked', () => {
 		expect(formatDecimalTime(at(18, 0), { timeZone: 'UTC' })).toBe('7:50');
+	});
+});
+
+describe('the picker before a calendar’s epoch', () => {
+	it.each([
+		['coptic', 100, 6, 1],
+		['ethiopic', -3000, 6, 1],
+		['islamic-civil', 300, 3, 10],
+		['hebrew', -4000, 9, 9]
+	])('keeps %s on the day it was given (%i-%i-%i)', (calendar, y, m, d) => {
+		expect(fromPickerDate(toPickerDate(y, m, d, calendar))).toEqual({ year: y, month: m, day: d });
+	});
+});
+
+describe('yearLabel', () => {
+	it.each(['chinese', 'dangi'])(
+		'names every %s year in the picker’s range by its own number',
+		(calendar) => {
+			for (let year = 1400; year <= 2800; year += 7) {
+				expect(yearLabel(calendar, 'en', year).startsWith(String(year))).toBe(true);
+			}
+		}
+	);
+
+	it('finds a Chinese year far from the anchor', () => {
+		const scan = scannerFor('chinese');
+		expect(scan.fields(scan.startOfYear(-3000)).year).toBe(-3000);
 	});
 });

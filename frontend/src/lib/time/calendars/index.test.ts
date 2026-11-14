@@ -1,7 +1,14 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 
 import { calendarDateFormat, calendarFields, FRENCH_REPUBLICAN, JULIAN } from './index';
-import { gregorianToJdn, jdnToJulian, julianToJdn } from './day-number';
+import {
+	gregorianToJdn,
+	jdnToGregorian,
+	jdnToJulian,
+	jdnToUtcNoon,
+	julianToJdn
+} from './day-number';
+import { FIRST_DATE_JD, jdToDate } from '$lib/time/jd';
 
 const utc = (y: number, m: number, d: number, h = 12) => {
 	const date = new Date(Date.UTC(2000, 0, 1, h));
@@ -92,5 +99,66 @@ describe('calendarFields', () => {
 		expect(after.day).toBe(1);
 		expect(after.monthKey).not.toBe(before.monthKey);
 		expect(after.year).toBe(2025);
+	});
+});
+
+describe('the Gregorian day count', () => {
+	it('agrees with Date wherever Date reaches', () => {
+		for (const [y, m, d] of [
+			[1970, 1, 1],
+			[2000, 2, 29],
+			[1582, 10, 15],
+			[-4713, 11, 24],
+			[-271_820, 1, 1],
+			[275_000, 6, 30]
+		]) {
+			const date = new Date(0);
+			date.setUTCFullYear(y, m - 1, d);
+			expect(gregorianToJdn(y, m, d)).toBe(Math.floor(date.getTime() / 86_400_000) + 2_440_588);
+			expect(jdnToGregorian(gregorianToJdn(y, m, d))).toEqual({ year: y, month: m, day: d });
+		}
+	});
+});
+
+describe('the Julian calendar at the first instant Date holds', () => {
+	const zone = process.env.TZ;
+	afterEach(() => {
+		process.env.TZ = zone;
+	});
+
+	it('formats it west of Greenwich, where its local day is outside Date', () => {
+		process.env.TZ = 'America/New_York';
+		const format = calendarDateFormat('en', JULIAN, {
+			year: 'numeric',
+			month: 'short',
+			day: 'numeric',
+			hour: '2-digit',
+			minute: '2-digit'
+		});
+		expect(() => format.format(jdToDate(FIRST_DATE_JD))).not.toThrow();
+	});
+});
+
+describe('the Coptic and Ethiopic counts', () => {
+	it('match Intl where Intl numbers the years straight', () => {
+		for (const calendar of ['coptic', 'ethiopic']) {
+			const intl = new Intl.DateTimeFormat(`en-u-ca-${calendar}`, {
+				year: 'numeric',
+				month: 'numeric',
+				day: 'numeric',
+				timeZone: 'UTC'
+			});
+			for (let jdn = gregorianToJdn(1990, 1, 1); jdn < gregorianToJdn(2030, 1, 1); jdn += 17) {
+				const parts = Object.fromEntries(
+					intl.formatToParts(jdnToUtcNoon(jdn)).map((p) => [p.type, p.value])
+				);
+				const f = calendarFields(calendar, jdn);
+				expect([f.year, Number(f.monthKey), f.day]).toEqual([
+					Number(parts.year),
+					Number(parts.month),
+					Number(parts.day)
+				]);
+			}
+		}
 	});
 });

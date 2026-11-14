@@ -58,6 +58,9 @@ export interface AxisTick {
 
 const YEAR_STEPS = [1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500] as const;
 const MONTH_STEPS = [1, 2, 3, 6] as const;
+/** Past this many months to a tick, ticks go to years: a tick every five
+ *  years labelled with the month it falls in says nothing. */
+const MAX_MONTHS_PER_TICK = MONTH_STEPS[MONTH_STEPS.length - 1];
 const DAY_STEPS = [1, 2, 5, 10, 15, 20, 25] as const;
 const HOUR_STEPS = [1, 2, 3, 6, 12] as const;
 const DECIMAL_HOUR_STEPS = [1, 2, 5] as const;
@@ -114,8 +117,8 @@ export function axisTicks(
 ): AxisTick[] {
 	const spanDays = endJd - startJd;
 	if (!(spanDays > 0) || !Number.isFinite(spanDays) || maxTicks < 1) return [];
-	const yearOffset = GREGORIAN_STRUCTURED.get(calendar);
-	if (yearOffset === undefined) {
+	const eraStart = GREGORIAN_STRUCTURED.get(calendar);
+	if (eraStart === undefined) {
 		return calendarTicks(startJd, endJd, maxTicks, calendar, decimalTime);
 	}
 
@@ -132,12 +135,11 @@ export function axisTicks(
 	// six ticks a 150-day run wants a 25-day step, which is a month rather than
 	// a clumsy multiple of a day.
 	const stepDays = spanDays / maxTicks;
-	if (stepDays >= DAYS_PER_MONTH * 11) {
+	if (stepDays > MAX_MONTHS_PER_TICK * DAYS_PER_MONTH) {
 		const step = stepFor(YEAR_STEPS, spanDays / DAYS_PER_YEAR, maxTicks);
-		// Round in the calendar's own numbering: 2570 BE, not 2030 CE.
-		const offset = yearOffset ?? 0;
-		const first = Math.ceil((start.getFullYear() + offset) / step) * step - offset;
-		for (let year = first; ; year += step) {
+		// Round in the calendar's own numbering: 2570 BE and 100 BC, not 2030
+		// CE and 101 BC. The Japanese has no numbering to round across eras.
+		for (const year of roundYears(start.getFullYear(), end.getFullYear(), step, eraStart ?? null)) {
 			const date = atYear(year);
 			// An invalid date compares false, so this also stops at the end of the range.
 			if (!(date <= end)) break;
@@ -214,7 +216,7 @@ function calendarTicks(
 	const firstJdn = dateToJdn(jdToDate(startJd));
 	const lastJdn = dateToJdn(jdToDate(Math.min(endJd, LAST_DATE_JD)));
 
-	if (stepDays >= DAYS_PER_MONTH * 11) {
+	if (stepDays > MAX_MONTHS_PER_TICK * DAYS_PER_MONTH) {
 		const step = stepFor(YEAR_STEPS, spanDays / DAYS_PER_YEAR, maxTicks);
 		let year = Math.ceil(scan.fields(firstJdn).year / step) * step;
 		for (let n = 0; n <= maxTicks * 2; n++, year += step) {
@@ -236,4 +238,36 @@ function calendarTicks(
 		}
 	}
 	return ticks;
+}
+
+/**
+ * The Gregorian years from `first` to `last` whose number, as the calendar
+ * writes it, is a multiple of `step`. `eraStart` is the year the count reaches
+ * 1 in (see {@link GREGORIAN_STRUCTURED}); the years before it count back
+ * down, so rounding there runs the other way. Null rounds the Gregorian year.
+ */
+function roundYears(first: number, last: number, step: number, eraStart: number | null): number[] {
+	if (eraStart === null) {
+		const out: number[] = [];
+		for (let year = Math.ceil(first / step) * step; year <= last; year += step) out.push(year);
+		return out;
+	}
+	const out: number[] = [];
+	// Before the era: the year written n is eraStart − n, counting down.
+	const before = Math.min(last, eraStart - 1);
+	if (first <= before) {
+		for (let n = Math.floor((eraStart - first) / step) * step; n >= 1; n -= step) {
+			const year = eraStart - n;
+			if (year > before) break;
+			out.push(year);
+		}
+	}
+	// From the era on: the year written n is eraStart + n − 1.
+	const from = Math.max(first, eraStart);
+	for (let n = Math.ceil((from - eraStart + 1) / step) * step; ; n += step) {
+		const year = eraStart + n - 1;
+		if (year > last) break;
+		out.push(year);
+	}
+	return out;
 }

@@ -8,7 +8,7 @@
  * and holds everywhere. ISO 8601 is Gregorian by definition and bypasses this.
  */
 
-import { dateToJdn, jdnToJulian, jdnToUtcNoon } from './day-number';
+import { dateToJdn, jdnToJulian, jdnToUtcNoon, julianToJdn } from './day-number';
 import { formatRepublican, jdnToRepublican } from './republican';
 
 /** A calendar Intl names (`gregory`, `hebrew`, `islamic-umalqura`, …), or one
@@ -43,15 +43,17 @@ const OFFERED_INTL = [
 
 /**
  * Calendars whose months and days are the Gregorian's, renamed or renumbered:
- * a boundary in one is a boundary in the other. Their year numbers sit this
- * far from the Gregorian, where they do so evenly (the Japanese restarts with
- * each era).
+ * a boundary in one is a boundary in the other. Each maps to the Gregorian
+ * (astronomical) year its count reaches 1 in, counting up from there and back
+ * down before it with no year 0: 1 for the Gregorian (1 BC is before AD 1),
+ * 1912 for the Minguo (1911 is 1 before the Republic). The Japanese restarts
+ * with each era and has none.
  */
 export const GREGORIAN_STRUCTURED: ReadonlyMap<CalendarId, number | null> = new Map([
-	['gregory', 0],
-	['iso8601', 0],
-	['buddhist', 543],
-	['roc', -1911],
+	['gregory', 1],
+	['iso8601', 1],
+	['buddhist', -542],
+	['roc', 1912],
 	['japanese', null]
 ]);
 
@@ -193,9 +195,13 @@ class JulianFormat implements CalendarDateFormat {
 	}
 	format(date: Date): string {
 		const { year, month, day } = jdnToJulian(dateToJdn(date, this.#timeZone));
+		// Noon first, so a day at the very edge of `Date`'s range is still one.
 		const shown = new Date(0);
-		shown.setUTCFullYear(year, month - 1, day);
 		shown.setUTCHours(12);
+		shown.setUTCFullYear(year, month - 1, day);
+		// Out past `Date`'s range there is no Julian day to show; the instant itself
+		// still formats.
+		if (Number.isNaN(shown.getTime())) return this.#real.format(date);
 		const swapped = new Map(
 			this.#dateOnly.formatToParts(shown).map((part) => [part.type, part.value] as const)
 		);
@@ -334,8 +340,33 @@ export interface CalendarFields {
 
 const fieldFormats = new Map<CalendarId, Intl.DateTimeFormat>();
 
+/**
+ * JDN of the first day of the Coptic and Ethiopic eras: 29 August 284 and
+ * 29 August 8 (Julian). Both run twelve months of thirty days and five or six
+ * more, a sixth every fourth year, so they are counted here: before its epoch
+ * Intl numbers either calendar's years backwards, in an era it does not always
+ * name, which no count of years can run through.
+ */
+const ALEXANDRIAN_EPOCHS: ReadonlyMap<CalendarId, number> = new Map([
+	['coptic', julianToJdn(284, 8, 29)],
+	['ethiopic', julianToJdn(8, 8, 29)]
+]);
+
+function alexandrianFields(epoch: number, jdn: number): CalendarFields {
+	const year = Math.floor((4 * (jdn - epoch) + 1463) / 1461);
+	const dayOfYear = jdn - (epoch + 365 * (year - 1) + Math.floor(year / 4));
+	return {
+		year,
+		yearKey: String(year),
+		monthKey: String(Math.floor(dayOfYear / 30) + 1),
+		day: (dayOfYear % 30) + 1
+	};
+}
+
 /** The calendar's year, month and day for the day `jdn`. */
 export function calendarFields(calendar: CalendarId, jdn: number): CalendarFields {
+	const epoch = ALEXANDRIAN_EPOCHS.get(calendar);
+	if (epoch !== undefined) return alexandrianFields(epoch, jdn);
 	if (calendar === JULIAN) {
 		const { year, month, day } = jdnToJulian(jdn);
 		return { year, yearKey: String(year), monthKey: String(month), day };

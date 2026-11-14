@@ -16,6 +16,9 @@ const MONTH_SEARCH_DAYS = 4;
 export const MAX_MONTHS_PER_YEAR = 14;
 /** 1 January 2000: where year guesses are measured from. */
 const ANCHOR_JDN = 2_451_545;
+/** Mean years, in days: the tabular Hijri, and the Gregorian. */
+const LUNAR_YEAR = 354.36667;
+const SOLAR_YEAR = 365.2425;
 /** Fields remembered per calendar before the memo starts over. */
 const MEMO_LIMIT = 50_000;
 
@@ -75,31 +78,43 @@ export class CalendarScanner {
 		return start;
 	}
 
-	/** The calendar's mean year, measured over twenty of them: 354 days for a
-	 *  lunar calendar, about 365 for the rest. One whose count jumps there (an
-	 *  era change) gets the solar year. */
+	/**
+	 * The calendar's mean year: the lunar 354.367 days for a Hijri calendar,
+	 * the solar year for every other, the lunisolar ones included. Which one is
+	 * read off twenty years of the calendar; the length itself is the known
+	 * one, since twenty lunisolar years can run a fortnight off their mean and
+	 * a guess built on that drifts a year in a few centuries.
+	 */
 	meanYear(): number {
 		if (this.#meanYear === undefined) {
 			const anchor = this.yearStart(ANCHOR_JDN);
 			const probe = this.yearStart(anchor + 20 * 365);
 			const years = this.fields(probe).year - this.fields(anchor).year;
-			const mean = (probe - anchor) / years;
-			this.#meanYear = years >= 15 && years <= 25 && mean > 300 && mean < 400 ? mean : 365.2425;
+			this.#meanYear = years > 0 && (probe - anchor) / years < 360 ? LUNAR_YEAR : SOLAR_YEAR;
 		}
 		return this.#meanYear;
 	}
 
-	/** The first day of the year numbered `year`, from a guess off the mean
-	 *  year snapped onto it: a guess millennia out may land a year off. */
-	startOfYear(year: number, near = ANCHOR_JDN): number {
+	/** A day inside the year numbered `year`, found without laying out any year
+	 *  but this calendar's first: half a mean year past where the year should
+	 *  start is well inside it either way. Cheap enough for a list of a
+	 *  thousand year names. */
+	dayInYear(year: number, near = ANCHOR_JDN): number {
 		const anchor = this.yearStart(near);
+		return Math.round(anchor + (year - this.fields(anchor).year + 0.5) * this.meanYear());
+	}
+
+	/** The first day of the year numbered `year`: a guess off the mean year,
+	 *  corrected by however many years it lands off. */
+	startOfYear(year: number, near = ANCHOR_JDN): number {
 		const mean = this.meanYear();
-		let jdn = this.yearStart(Math.round(anchor + (year - this.fields(anchor).year + 0.5) * mean));
-		for (let i = 0; i < 3 && this.fields(jdn).year !== year; i++) {
-			jdn =
-				this.fields(jdn).year < year
-					? this.yearStart(jdn + Math.round(mean * 1.5))
-					: this.yearStart(jdn - 1);
+		let guess = this.dayInYear(year, near);
+		let jdn = this.yearStart(guess);
+		for (let i = 0; i < 8; i++) {
+			const found = this.fields(jdn).year;
+			if (found === year || !Number.isFinite(found)) break;
+			guess += Math.round((year - found) * mean);
+			jdn = this.yearStart(guess);
 		}
 		return jdn;
 	}

@@ -101,9 +101,17 @@
 
 	/** The day the keys move from: the chosen one where it is on show. */
 	let focused = $state<DateValue | undefined>(undefined);
+	/** Whether `d` is in the month on show. The era counts: an VIII and the
+	 *  eighth year before the Republic share a number. */
+	const inShownMonth = (d: DateValue | undefined) =>
+		!!d &&
+		!!monthStart &&
+		d.era === monthStart.era &&
+		d.year === monthStart.year &&
+		d.month === monthStart.month;
+
 	const anchor = $derived.by(() => {
-		const inMonth = (d: DateValue | undefined) =>
-			!!d && !!monthStart && d.month === monthStart.month && d.year === monthStart.year;
+		const inMonth = inShownMonth;
 		if (inMonth(focused)) return focused;
 		if (inMonth(value)) return value;
 		return monthStart;
@@ -139,7 +147,7 @@
 	async function moveFocus(to: DateValue): Promise<void> {
 		const next = clamp(to);
 		focused = next;
-		if (monthStart && (next.month !== monthStart.month || next.year !== monthStart.year)) {
+		if (monthStart && !inShownMonth(next)) {
 			placeholder = next;
 		}
 		await tick();

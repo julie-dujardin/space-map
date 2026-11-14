@@ -21,7 +21,12 @@ import {
 	type CalendarIdentifier,
 	type DateValue
 } from '@internationalized/date';
-import { GREGORIAN_STRUCTURED, calendarDateFormat, type CalendarId } from './index';
+import {
+	GREGORIAN_STRUCTURED,
+	calendarDateFormat,
+	type CalendarDateFormat,
+	type CalendarId
+} from './index';
 import { jdnToUtcNoon } from './day-number';
 import { scannerFor, type CalendarScanner, type YearTable } from './scan';
 
@@ -176,21 +181,23 @@ export function pickerDateToUtcNoon(date: AnyCalendarDate): Date {
 	return jdnToUtcNoon(date.calendar.toJulianDay(date));
 }
 
+const yearFormats = new Map<string, CalendarDateFormat>();
+
 /**
  * A year's name for the year list, without laying the year out: a list of a
- * thousand years cannot afford to find each one's months. A day half a mean
- * year past where the year should start is inside it either way.
+ * thousand years cannot afford to find each one's months, nor a formatter each.
  */
 export function yearLabel(calendar: CalendarId, locale: string, year: number): string {
-	const format = calendarDateFormat(locale, calendar, { year: 'numeric', timeZone: 'UTC' });
+	const key = `${calendar}|${locale}`;
+	let format = yearFormats.get(key);
+	if (!format) {
+		format = calendarDateFormat(locale, calendar, { year: 'numeric', timeZone: 'UTC' });
+		yearFormats.set(key, format);
+	}
 	if (GREGORIAN_STRUCTURED.has(calendar)) {
 		const mid = new Date(Date.UTC(2000, 6, 1, 12));
 		mid.setUTCFullYear(year);
 		return format.format(mid);
 	}
-	const scan = scannerFor(calendar);
-	const anchor = scan.yearStart(2_451_545);
-	const mean = scan.meanYear();
-	const jdn = Math.round(anchor + (year - scan.fields(anchor).year + 0.5) * mean);
-	return format.format(jdnToUtcNoon(jdn));
+	return format.format(jdnToUtcNoon(scannerFor(calendar).dayInYear(year)));
 }

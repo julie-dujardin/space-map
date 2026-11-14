@@ -5,7 +5,8 @@
 	import type { ButtonVariant } from '../button/button.svelte';
 	import { isEqualMonth, type DateValue } from '@internationalized/date';
 	import type { Snippet } from 'svelte';
-	import { FRENCH_REPUBLICAN } from '$lib/time/calendars';
+	import { calendarDateFormat, FRENCH_REPUBLICAN, JULIAN } from '$lib/time/calendars';
+	import { pickerDateToUtcNoon } from '$lib/time/calendars/picker';
 	import CalendarDecades from './calendar-decades.svelte';
 
 	let {
@@ -41,6 +42,21 @@
 		 *  value's own calendar. */
 		calendar?: string;
 	} = $props();
+
+	/** Day names for screen readers where bits-ui's are wrong: it formats
+	 *  through Intl, which has no Julian calendar, and would name each Julian
+	 *  day by its Gregorian date. */
+	const dayLabel = $derived(
+		calendar === JULIAN
+			? calendarDateFormat(locale, JULIAN, {
+					weekday: 'long',
+					year: 'numeric',
+					month: 'long',
+					day: 'numeric',
+					timeZone: 'UTC'
+				})
+			: null
+	);
 
 	const monthFormat = $derived.by(() => {
 		if (monthFormatProp) return monthFormatProp;
@@ -141,7 +157,7 @@ get along, so we shut typescript up by casting `value` to `never`.
 														outsideMonth: !isEqualMonth(date, month.value)
 													})}
 												{:else}
-													<Calendar.Day />
+													<Calendar.Day label={dayLabel?.format(pickerDateToUtcNoon(date))} />
 												{/if}
 											</Calendar.Cell>
 										{/each}

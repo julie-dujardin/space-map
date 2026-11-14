@@ -167,3 +167,28 @@ describe('formatRepublican', () => {
 		});
 	});
 });
+
+describe('jdnToRepublican, past where the equinox can be computed', () => {
+	it.each([-271_000, -30_000, -5000, 9000, 30_000, 271_000])(
+		'still gives a real date in %i',
+		(gYear) => {
+			for (const month of [1, 6, 9, 12]) {
+				const r = on(gYear, month, 15);
+				expect(r.month).toBeGreaterThanOrEqual(1);
+				expect(r.month).toBeLessThanOrEqual(13);
+				expect(r.day).toBeGreaterThanOrEqual(1);
+				expect(r.day).toBeLessThanOrEqual(r.month === 13 ? r.complementaryDays : 30);
+				expect(formatRepublican(r, 'en', { year: true, month: true, day: true })).not.toMatch(
+					/undefined|NaN/
+				);
+			}
+		}
+	);
+
+	it('runs on from the equinox years without a gap or an overlap', () => {
+		for (const gYear of [-4002, -4001, -4000, 7999, 8000, 8001]) {
+			const start = republicanToJdn(gYear - 1791, 1, 1);
+			expect([365, 366]).toContain(republicanToJdn(gYear - 1790, 1, 1) - start);
+		}
+	});
+});

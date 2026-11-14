@@ -17,7 +17,7 @@
 	import { localeWithCalendar } from '$lib/time/calendars';
 	import { applyDateToClock, jdToCalendarDate, pickerBounds } from './clock-pickers';
 	import ClockTimeInput from './ClockTimeInput.svelte';
-	import { dateToJD } from '$lib/time/jd';
+	import { dateToJD, jdToDate } from '$lib/time/jd';
 
 	interface Props {
 		clock: SimClock;
@@ -98,6 +98,19 @@
 		new Date(Date.UTC(2026, 8, 9, 23, 59))
 	];
 
+	/** 23:59 on each day of the clock's year, give or take: 366 days from New
+	 *  Year, so every month and complementary day of any calendar is in it. */
+	function yearOfDays(): Date[] {
+		const first = jdToDate(untrack(() => clock.jd));
+		first.setMonth(0, 1);
+		first.setHours(23, 59, 0, 0);
+		return Array.from({ length: 366 }, (_, i) => {
+			const d = new Date(first);
+			d.setDate(d.getDate() + i);
+			return d;
+		});
+	}
+
 	const settings = getSettings();
 	let dateLabel = $derived(formatJulianDateTime(shownJd, TIME_DATE_OPTS));
 
@@ -111,6 +124,11 @@
 		// change the rendered width.
 		void settings.resolvedDateFormat;
 		void settings.resolvedHour12;
+		// The fixtures above are Gregorian outliers. Another calendar's widest
+		// day could be any: a Republican feast, a long Hijri month. So every day
+		// of the year on the clock is measured, once per calendar.
+		const calendar = settings.resolvedCalendar;
+		const fixtures = calendar === 'gregory' ? WIDTH_FIXTURES : [...WIDTH_FIXTURES, ...yearOfDays()];
 		const el = document.createElement('span');
 		el.className = 'inline-block font-mono tabular-nums whitespace-nowrap text-xs';
 		el.style.cssText =
@@ -118,7 +136,7 @@
 		document.body.appendChild(el);
 		try {
 			let max = 0;
-			for (const d of WIDTH_FIXTURES) {
+			for (const d of fixtures) {
 				el.textContent = formatJulianDateTime(dateToJD(d), TIME_DATE_OPTS);
 				const w = el.getBoundingClientRect().width;
 				if (w > max) max = w;
@@ -209,6 +227,7 @@
 				minValue={bounds?.min}
 				maxValue={bounds?.max}
 				years={calendar === 'gregory' ? undefined : bounds?.years}
+				yearSearchLabel={m.time_find_year()}
 			/>
 			<div class="border-t p-3">
 				<ClockTimeInput {clock} class="h-8 text-sm" />

@@ -5,8 +5,13 @@
 	let {
 		ref = $bindable(null),
 		class: className,
+		label,
 		...restProps
-	}: CalendarPrimitive.DayProps = $props();
+	}: CalendarPrimitive.DayProps & {
+		/** What a screen reader names the day, where bits-ui's own name is wrong:
+		 *  it can only say the date in a calendar Intl has, not the Julian. */
+		label?: string;
+	} = $props();
 </script>
 
 <CalendarPrimitive.Day
@@ -30,4 +35,8 @@
 		className
 	)}
 	{...restProps}
-/>
+>
+	{#snippet child({ props, day })}
+		<div {...props} aria-label={label ?? (props['aria-label'] as string | undefined)}>{day}</div>
+	{/snippet}
+</CalendarPrimitive.Day>

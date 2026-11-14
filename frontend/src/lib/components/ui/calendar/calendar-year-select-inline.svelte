@@ -54,7 +54,15 @@
 		return new DateFormatter(locale, { year: yearFormat }).format(dt);
 	}
 
-	let yearList = $derived(years ?? DEFAULT_YEARS);
+	// Without bounds, a calendar other than the Gregorian takes the century
+	// either side of the year on show, in its own numbering: the Gregorian
+	// defaults read as Hebrew or Republican years are millennia away.
+	let yearList = $derived.by(() => {
+		if (years) return years;
+		if (!placeholder || placeholder.calendar.identifier === 'gregory') return DEFAULT_YEARS;
+		const here = extendedYear(placeholder);
+		return Array.from({ length: 201 }, (_, i) => here - 100 + i);
+	});
 	let items = $derived(yearList.map((value) => ({ value, label: formatYear(value) })));
 	let selectedValue = $derived(placeholder ? extendedYear(placeholder) : new Date().getFullYear());
 	let selectedLabel = $derived(items.find((i) => i.value === selectedValue)?.label ?? '');
