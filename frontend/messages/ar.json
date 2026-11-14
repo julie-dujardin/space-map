@@ -1268,6 +1268,7 @@
 		}
 	],
 	"north_reference": "مرجع الشمال",
+	"north_compass": "تدوير الشمال إلى الأعلى. انقر بزر الفأرة الأيمن لاختيار مرجع الشمال.",
 	"north_solar_system": "النظام الشمسي",
 	"north_solar_system_desc": "مستوى مسار الشمس J2000",
 	"north_system_desc": "المستوى المداري",

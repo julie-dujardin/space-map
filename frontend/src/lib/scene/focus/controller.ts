@@ -403,6 +403,13 @@ export class FocusController {
 		this.pendingInitialView = null;
 	}
 
+	/** The held opening view keeps its place and tilt, north up: a reset to
+	 *  north is not undone when it is placed again. */
+	turnHeldViewNorth(): void {
+		const held = this.pendingInitialView;
+		if (held?.look) this.pendingInitialView = { ...held, look: { ...held.look, heading: 0 } };
+	}
+
 	/** The camera is set from body-fixed angles whose body has no spin yet:
 	 *  it turns when the spin lands. */
 	get awaitsSpin(): boolean {
@@ -867,6 +874,7 @@ export class FocusController {
 		const offset = offsetFacing(pos, toward, elevationDeg, distance);
 		camera.position.set(offset[0], offset[1], offset[2]);
 		controls.update();
+		controls.setLook(LEVEL_LOOK);
 		const settled = cartesianToSpherical(offset, [0, 0, 0]);
 		callbacks.onCameraPosition?.(settled.latitude, settled.longitude, settled.distance);
 		this.pendingInitialView = null; // scene-frame placement is final; skip the body-fixed replay
@@ -892,6 +900,7 @@ export class FocusController {
 		];
 		camera.position.set(offset[0], offset[1], offset[2]);
 		controls.update();
+		controls.setLook(LEVEL_LOOK);
 		const settled = cartesianToSpherical(offset, [0, 0, 0]);
 		callbacks.onCameraPosition?.(settled.latitude, settled.longitude, settled.distance);
 		this.pendingInitialView = null;

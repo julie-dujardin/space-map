@@ -96,6 +96,16 @@ describe('prepareAim', () => {
 		expect(focus.leavesAim).toBe(false);
 	});
 
+	it('eases a flight round the focus in from a view turned off north', () => {
+		const focus = state();
+		const cam = new PerspectiveCamera();
+		cam.position.set(0, 0, 5);
+		cam.lookAt(0, 0, 0);
+		cam.quaternion.premultiply(new Quaternion().setFromAxisAngle(new Vector3(0, 0, 1), 1));
+		prepareFlyToCamera(focus, cam, [0, 0, 5], [0, 5, 0]);
+		expect(focus.leavesAim).toBe(true);
+	});
+
 	it('ends at the next focus', () => {
 		const focus = state();
 		prepareAim(focus, [5, 0, 5], camera(), [0, 0, 5], true);

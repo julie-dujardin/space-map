@@ -6,15 +6,15 @@ import { TwoFingerGesture, type Point } from './two-finger';
  *  fills the lower part of the view and the camera stays above it. */
 export const MAX_TILT = MathUtils.degToRad(80);
 
-/** Height over the ground, in radii, under which the view tilts and turns
- *  freely, and from which it does not at all: out in space a tilt only gets
- *  in the way of finding things. In between, the angles allowed shrink, and
- *  zooming back in does not give back what they lost. */
+/** Height over the ground, in radii, under which the view tilts freely, and
+ *  from which it does not at all: out in space a tilt only gets in the way of
+ *  finding things. In between, the tilt allowed shrinks, and zooming back in
+ *  does not give back what it lost. */
 export const LOOK_FULL_HEIGHT = 0.5;
 export const LOOK_NONE_HEIGHT = 1;
 
-/** The view's turn off the orbit pose, in radians: `tilt` off the vertical
- *  toward the horizon, `heading` round the vertical. */
+/** The view's turn, in radians: `tilt` off the vertical toward the horizon,
+ *  `heading` round the vertical off north, counterclockwise as seen from above. */
 export interface LookAngles {
 	tilt: number;
 	heading: number;
@@ -25,25 +25,59 @@ export const LEVEL_LOOK: Readonly<LookAngles> = { tilt: 0, heading: 0 };
 /** Middle-drag and two-finger turn rate: half a turn per viewport height. */
 const TURN_PER_HEIGHT = Math.PI;
 
+/** Turn back toward north per radian the orbit travels, against the drift a
+ *  sideways drag makes: tan(latitude) per radian, which this outpulls
+ *  wherever it acts in full. */
+const NORTH_PULL = 1.5;
+
+/** Heading off north inside which a drag pulls the view back to it, and
+ *  outside which it lets the view be: one turned well away, as over a pole,
+ *  stays where it went. */
+const NORTH_HOLD_FULL = MathUtils.degToRad(15);
+const NORTH_HOLD_NONE = MathUtils.degToRad(30);
+
+/** Angle of the view off the pole, as its sine, inside which the pull
+ *  weakens, and inside which it stops: a drag near a pole goes round or over
+ *  it freely. */
+const NORTH_PULL_FULL = Math.sin(MathUtils.degToRad(25));
+const NORTH_PULL_NONE = Math.sin(MathUtils.degToRad(10));
+
+/** Share of what is left that a reset to north turns per frame, against the
+ *  orbit's damping. */
+const SEEK_PER_DAMPING = 2;
+
+/** Heading error, in radians, under which a reset to north is done. */
+const SEEK_DONE = 1e-4;
+
+/** Turn, in radians, under which keeping the heading is not reported as a
+ *  change: no pixel moves for it, as for three's own. */
+const TURN_SEEN = 1e-3;
+
+/** Sine of the view's angle off the north axis under which north says
+ *  nothing about the heading: straight over a pole. */
+const MIN_NORTH_CLARITY = 1e-3;
+
+const _y = new Vector3(0, 1, 0);
 const _n = new Vector3();
 const _right = new Vector3();
+const _up = new Vector3();
+const _north = new Vector3();
 const _pivot = new Vector3();
-const _qHeading = new Quaternion();
+const _qRoll = new Quaternion();
 const _qTilt = new Quaternion();
 const _ray = new Vector3();
 const _from = new Vector3();
+const _to = new Vector3();
 const _anchor = new Vector3();
 const _hit = new Vector3();
 const _turnBack = new Quaternion();
-const _was = new Quaternion();
 const _pivotGround = new Vector3();
 const _look = new Matrix4();
 
 /** Turn still to come, in radians, under which a glide is done. */
 const GLIDE_DONE = 1e-5;
 
-/** Passes that put the ground back under the pointer after a zoom. Each
- *  leaves the error of the roll the orbit's own up takes back out. */
+/** Passes that put the ground back under the pointer after a zoom. */
 const ANCHOR_PASSES = 3;
 
 /** Least elevation of the pointer's ray over the ground for the wheel to keep
@@ -67,10 +101,6 @@ interface TouchPoint {
 
 /** The handlers three keeps off its typings. */
 interface PointerHandlers {
-	_handleMouseDownRotate(event: { clientX: number; clientY: number }): void;
-	_handleMouseMoveRotate(event: { clientX: number; clientY: number }): void;
-	_handleTouchStartRotate(event: TouchPoint): void;
-	_handleTouchMoveRotate(event: TouchPoint): void;
 	_handleTouchStartDollyPan(event: TouchPoint): void;
 	_handleTouchMoveDollyPan(event: TouchPoint): void;
 	_handleMouseWheel(event: WheelEvent): void;
@@ -81,29 +111,41 @@ const orbitHandlers = OrbitControls.prototype as unknown as PointerHandlers;
 interface TouchState {
 	_pointers: number[];
 	_pointerPositions: Record<number, Point>;
-	_getSecondPointerPosition(event: TouchPoint): { x: number; y: number };
+}
+
+/** The up→Y frame three caches at construction and orbits in. */
+interface OrbitFrame {
+	_quat: Quaternion;
+	_quatInverse: Quaternion;
 }
 
 /**
- * OrbitControls with a middle drag that tilts and turns the view about the
- * ground at its centre, the way a map does: up and down tilt it toward the
- * horizon, left and right turn the heading. On a touch screen two fingers
- * sliding up or down side by side tilt it, and a twist turns the heading
- * while they pinch and pan. With damping on, a tilt or a turn glides on
- * after the gesture, as the orbit does. The wheel keeps the ground under the
- * pointer where it is.
+ * How the heading is kept: `soft` pulls a drag's drift back to north when
+ * the view is near it; `exact` keeps a placed heading off north while north turns, until
+ * the reader moves; `seek` turns the view to north.
+ */
+type HeadingHold = 'soft' | 'exact' | 'seek';
+
+/**
+ * OrbitControls that orbit about the view's own up rather than north, as a
+ * globe does: there is no pole to stop at or spin round. `camera.up` is north,
+ * which the heading is read off and a drag's drift is pulled back toward.
  *
- * The orbit underneath is unchanged, so a left drag and the wheel keep their
- * feel and carry the tilt along. Whatever else places the camera (a focus
- * change, a fly, a snap, a held pose) ends the tilt where it stands, so a
- * transition starts from the view on screen. A limit that holds the camera
- * holds the orbit with it.
+ * A middle drag tilts and turns the view about the ground at its centre, the
+ * way a map does: up and down tilt it toward the horizon, left and right turn
+ * the heading. On a touch screen two fingers sliding up or down side by side
+ * tilt it, and a twist turns the heading while they pinch and pan. With
+ * damping on, a tilt or a turn glides on after the gesture. The wheel keeps
+ * the ground under the pointer where it is.
+ *
+ * Whatever else places the camera (a focus change, a fly, a snap, a held
+ * pose) ends the tilt where it stands, so a transition starts from the view
+ * on screen. A limit that holds the camera holds the orbit with it.
  */
 export class LookOrbitControls extends OrbitControls {
 	declare object: PerspectiveCamera;
-	private heading = 0;
 	private tilt = 0;
-	/** Whether the camera stands off the orbit pose below. */
+	/** Whether the camera stands tilted off the orbit pose below. */
 	private looking = false;
 	private readonly orbitPos = new Vector3();
 	private readonly orbitQuat = new Quaternion();
@@ -113,14 +155,17 @@ export class LookOrbitControls extends OrbitControls {
 	 *  reader has not moved since: as the ground under it refines, the camera
 	 *  follows, so the view opens the same however fast the ground loads. */
 	private placedByName = false;
-	/** The up the orbit pose was last built on. */
-	private readonly lastUp = new Vector3();
-	/** The heading was given off north, by a link or a jump: it stays off
-	 *  north while north turns. A turn the reader made, or one carried over
-	 *  from another focus, holds its direction in space instead. */
-	private holdsNorth = false;
-	private northTurning = false;
-	/** A turn placed before there was ground to turn over (a link opening
+	private hold: HeadingHold = 'soft';
+	private heldHeading = 0;
+	/** The heading last read, standing in where north says nothing. */
+	private lastHeading = 0;
+	/** How square north lies to the view, read with the heading. */
+	private northClarity = 0;
+	/** North stands at its reference: it is not turning to a new one. */
+	northSettled = true;
+	/** How far, in radians, the last orbit step carried the camera round. */
+	private travel = 0;
+	/** A tilt placed before there was ground to tilt over (a link opening
 	 *  while its body loads): it applies once there is, unless the reader
 	 *  moves first. */
 	private pendingLook: LookAngles | null = null;
@@ -142,7 +187,7 @@ export class LookOrbitControls extends OrbitControls {
 		camera: PerspectiveCamera,
 		private readonly canvas: HTMLElement,
 		/** Distance from the target to its ground along a unit direction, in
-		 *  scene units; null for none, and no turn. */
+		 *  scene units; null for none, and no tilt. */
 		private readonly surfaceRadius: (direction: Vector3) => number | null,
 		/** The turn settled where nobody's gesture put it: the view to report. */
 		private readonly onTurnSettled: () => void = () => {}
@@ -152,6 +197,7 @@ export class LookOrbitControls extends OrbitControls {
 		this.addEventListener('start', () => {
 			this.pendingLook = null;
 			this.placedByName = false;
+			this.hold = 'soft';
 		});
 		canvas.addEventListener('pointerdown', this.onLookDown);
 		// Middle-button autoscroll and paste ride on mousedown.
@@ -164,26 +210,34 @@ export class LookOrbitControls extends OrbitControls {
 		return this.looking ? this.orbitPos : this.object.position;
 	}
 
-	/** Whether the view stands turned off the orbit pose. */
+	/** Whether the view stands tilted off the orbit pose. */
 	get turned(): boolean {
 		return this.looking;
 	}
 
-	/** The view's turn as it stands, or as placed while it waits for ground. */
-	get look(): LookAngles {
-		if (this.looking) return { tilt: this.tilt, heading: this.heading };
-		return { ...(this.pendingLook ?? LEVEL_LOOK) };
+	/** The view's heading off north, in radians, as {@link LookAngles} has it. */
+	get heading(): number {
+		return this.pendingLook?.heading ?? this.readHeading() ?? this.lastHeading;
 	}
 
-	/** Turn the view off the orbit pose the camera is on, as far as its height
-	 *  allows: a placement that names a view. */
+	/** The view's turn as it stands, or as placed while it waits for ground. */
+	get look(): LookAngles {
+		if (this.pendingLook) return { ...this.pendingLook };
+		return { tilt: this.looking ? this.tilt : 0, heading: this.heading };
+	}
+
+	/** Turn the view off the orbit pose the camera is on: the heading at once,
+	 *  the tilt as far as its height allows. A placement that names a view. */
 	setLook({ tilt, heading }: LookAngles): void {
 		const cam = this.object;
 		this.looking = false;
 		this.pendingLook = null;
 		this.placedByName = false;
 		this.stopGlide();
-		if (tilt === 0 && heading === 0) return;
+		this.faceHeading(heading);
+		this.heldHeading = heading;
+		this.hold = 'exact';
+		if (tilt === 0) return;
 		if (!this.groundKnown()) {
 			this.pendingLook = { tilt, heading };
 			return;
@@ -191,26 +245,22 @@ export class LookOrbitControls extends OrbitControls {
 		const share = this.lookShare();
 		if (share === 0) return;
 		this.orbitPos.copy(cam.position);
-		_look.lookAt(this.orbitPos, this.target, cam.up);
-		this.orbitQuat.setFromRotationMatrix(_look);
+		this.orbitQuat.copy(cam.quaternion);
 		this.samplePivot();
-		this.lastUp.copy(cam.up);
-		this.holdsNorth = true;
 		this.tilt = MathUtils.clamp(tilt, 0, MAX_TILT);
-		this.heading = heading;
 		this.holdAngles(share);
 		this.looking = true;
 		this.placedByName = true;
 		this.place();
 	}
 
-	/** Turn a drag on screen into the orbit's axes, which the heading has turned
-	 *  away from the screen's. */
-	toOrbitAxes(x: number, y: number): [number, number] {
-		if (!this.looking || this.heading === 0) return [x, y];
-		const c = Math.cos(this.heading);
-		const s = Math.sin(this.heading);
-		return [c * x + s * y, c * y - s * x];
+	/** Turn the view round the centre of the screen until north is up. The
+	 *  tilt stays. */
+	resetNorth(): void {
+		this.stopGlide();
+		if (this.pendingLook) this.pendingLook.heading = 0;
+		this.heldHeading = 0;
+		this.hold = 'seek';
 	}
 
 	/** Turn the orbit rigidly round the target, as a body's spin carries the
@@ -223,9 +273,11 @@ export class LookOrbitControls extends OrbitControls {
 		if (this.looking) this.place();
 	}
 
-	/** Something else has the camera: the turn ends where the view stands. */
+	/** Something else has the camera: the tilt ends where the view stands, and
+	 *  the heading it leaves is the one held. */
 	endLook(): void {
 		this.looking = false;
+		this.hold = 'soft';
 		this.pendingLook = null;
 		this.placedByName = false;
 		this.stopGlide();
@@ -237,14 +289,14 @@ export class LookOrbitControls extends OrbitControls {
 		this.glideTilt = 0;
 	}
 
-	/** Whether the target has ground the view could turn over: a drawn
+	/** Whether the target has ground the view could tilt over: a drawn
 	 *  surface, or one it stands on. */
 	private groundKnown(): boolean {
 		_n.subVectors(this.orbitPosition, this.target).normalize();
 		return this.surfaceRadius(_n) !== null;
 	}
 
-	/** Let `move` shift the orbit, the turn going along: a limit holds the
+	/** Let `move` shift the orbit, the tilt going along: a limit holds the
 	 *  place the camera orbits, not the view's. */
 	moveOrbit(move: (orbit: Vector3) => void): void {
 		if (!this.looking) {
@@ -254,8 +306,7 @@ export class LookOrbitControls extends OrbitControls {
 		_hit.copy(this.orbitPos);
 		move(this.orbitPos);
 		if (this.orbitPos.equals(_hit)) return;
-		_look.lookAt(this.orbitPos, this.target, this.object.up);
-		this.orbitQuat.setFromRotationMatrix(_look);
+		this.aimOrbit();
 		this.samplePivot();
 		this.place();
 	}
@@ -276,15 +327,14 @@ export class LookOrbitControls extends OrbitControls {
 			this.placedQuat.copy(cam.quaternion);
 			return;
 		}
-		const holds = this.holdsNorth;
 		_n.subVectors(this.orbitPos, this.target).normalize();
 		this.lookToward(_pivotGround.copy(_n).multiplyScalar(this.pivotRadius));
-		this.holdsNorth = holds;
 	}
 
 	override update(deltaTime: number | null = null): boolean {
 		const changed = this.step(deltaTime);
-		return this.glide() || changed;
+		const turned = this.keepHeading();
+		return this.glide() || turned || changed;
 	}
 
 	/** Give a share of the turn a gesture asked for, as three's damping gives
@@ -305,7 +355,7 @@ export class LookOrbitControls extends OrbitControls {
 
 	private step(deltaTime: number | null): boolean {
 		if (!this.looking) {
-			const changed = super.update(deltaTime);
+			const changed = this.orbit(deltaTime);
 			// The placement already reported this turn.
 			if (this.pendingLook && this.groundKnown()) this.setLook(this.pendingLook);
 			return changed;
@@ -314,13 +364,12 @@ export class LookOrbitControls extends OrbitControls {
 		if (!cam.position.equals(this.placedPos) || !cam.quaternion.equals(this.placedQuat)) {
 			this.looking = false;
 			this.stopGlide();
-			return super.update(deltaTime);
+			return this.orbit(deltaTime);
 		}
-		if (!this.followGround()) return super.update(deltaTime);
+		if (!this.followGround()) return this.orbit(deltaTime);
 		cam.position.copy(this.orbitPos);
 		cam.quaternion.copy(this.orbitQuat);
-		_was.copy(this.orbitQuat);
-		const changed = super.update(deltaTime);
+		const changed = this.orbit(deltaTime);
 		// Past rounding: three's own round trip moves the orbit by a few ulps.
 		const moved = cam.position.distanceToSquared(this.orbitPos) > this.orbitPos.lengthSq() * 1e-20;
 		if (moved) {
@@ -330,19 +379,6 @@ export class LookOrbitControls extends OrbitControls {
 		this.orbitPos.copy(cam.position);
 		this.orbitQuat.copy(cam.quaternion);
 		if (moved) this.samplePivot();
-		// A new north rolls the orbit pose under the view: the heading takes the
-		// roll back, so the view keeps its direction while the compass turns.
-		const northTurned = !cam.up.equals(this.lastUp);
-		this.lastUp.copy(cam.up);
-		// The bearing is read off north: once north rests, it is the view's again.
-		if (this.northTurning && !northTurned) this.onTurnSettled();
-		this.northTurning = northTurned;
-		if (northTurned && !this.holdsNorth) {
-			_n.subVectors(this.orbitPos, this.target).normalize();
-			const before = _right.set(0, -1, 0).applyQuaternion(_was);
-			const after = _hit.set(0, -1, 0).applyQuaternion(this.orbitQuat);
-			this.heading += Math.atan2(_ray.crossVectors(after, before).dot(_n), after.dot(before));
-		}
 		// Out of reach of the ground the camera is back on the orbit pose.
 		if (!this.holdAngles(this.lookShare())) {
 			this.looking = false;
@@ -352,28 +388,128 @@ export class LookOrbitControls extends OrbitControls {
 		return changed;
 	}
 
+	/** Three's orbit, about the camera's own up: the camera always stands on
+	 *  its orbit's equator, so it never reaches a pole. */
+	private orbit(deltaTime: number | null): boolean {
+		const cam = this.object;
+		// Read as truthy: three's constructor updates before these fields are set.
+		if (!this.orbitQuat) return super.update(deltaTime);
+		_north.copy(cam.up);
+		_from.subVectors(cam.position, this.target);
+		_up.copy(_y).applyQuaternion(cam.quaternion);
+		// Looking along its own up, the camera has no roll to keep: north stands in.
+		if (_right.crossVectors(_up, _from).lengthSq() < _from.lengthSq() * 1e-12) _up.copy(_north);
+		cam.up.copy(_up);
+		const frame = this as unknown as OrbitFrame;
+		frame._quat.setFromUnitVectors(_up, _y);
+		frame._quatInverse.copy(frame._quat).invert();
+		const changed = super.update(deltaTime);
+		cam.up.copy(_north);
+		// Not angleTo: its acos reads a still orbit as 1e-8 of travel.
+		_to.subVectors(cam.position, this.target);
+		this.travel = Math.atan2(_right.crossVectors(_from, _to).length(), _from.dot(_to));
+		return changed;
+	}
+
+	/**
+	 * Keep the heading as {@link hold} says, after the frame's orbit step.
+	 * Anything other than the orbit that turned the view (a twist, a fly, a
+	 * spin) sets the heading held. True when this turned the view.
+	 */
+	private keepHeading(): boolean {
+		// Read as truthy: three's constructor updates before these fields are set.
+		if (!this.orbitQuat || !this.enabled) return false;
+		const heading = this.readHeading();
+		if (heading === null) return false;
+		this.lastHeading = heading;
+		const error =
+			MathUtils.euclideanModulo(this.heldHeading - heading + Math.PI, 2 * Math.PI) - Math.PI;
+		let turn = 0;
+		switch (this.hold) {
+			case 'exact':
+				turn = error;
+				break;
+			case 'seek': {
+				const done = Math.abs(error) < SEEK_DONE;
+				turn = done ? error : error * Math.min(1, SEEK_PER_DAMPING * this.dampingFactor);
+				// North itself may still be turning to a new reference.
+				if (done && this.northSettled) {
+					this.hold = 'soft';
+					this.onTurnSettled();
+				}
+				break;
+			}
+			case 'soft': {
+				if (this.travel === 0) break;
+				const c = this.northClarity;
+				const offPole = MathUtils.smoothstep(c, NORTH_PULL_NONE, NORTH_PULL_FULL);
+				const nearNorth =
+					1 - MathUtils.smoothstep(Math.abs(heading), NORTH_HOLD_FULL, NORTH_HOLD_NONE);
+				const reach = ((NORTH_PULL * this.travel) / c) * offPole * nearNorth;
+				turn = MathUtils.clamp(-heading, -reach, reach);
+			}
+		}
+		if (Math.abs(turn) < 1e-12) return false;
+		this.roll(turn);
+		this.lastHeading = heading + turn;
+		return Math.abs(turn) > TURN_SEEN;
+	}
+
+	/** The heading off north, read about the line from the target to the
+	 *  orbit. Null straight over a pole. */
+	private readHeading(): number | null {
+		_n.subVectors(this.orbitPosition, this.target);
+		const range = _n.length();
+		if (!(range > 0)) return null;
+		_n.divideScalar(range);
+		_north.copy(this.object.up).addScaledVector(_n, -this.object.up.dot(_n));
+		this.northClarity = _north.length();
+		if (this.northClarity < MIN_NORTH_CLARITY) return null;
+		_up.copy(_y).applyQuaternion(this.looking ? this.orbitQuat : this.object.quaternion);
+		return Math.atan2(_ray.crossVectors(_north, _up).dot(_n), _north.dot(_up));
+	}
+
+	/** Turn the view about the line from the target to the orbit. */
+	private roll(angle: number): void {
+		_n.subVectors(this.orbitPosition, this.target).normalize();
+		_qRoll.setFromAxisAngle(_n, angle);
+		if (!this.looking) {
+			this.object.quaternion.premultiply(_qRoll);
+			return;
+		}
+		this.orbitQuat.premultiply(_qRoll);
+		this.place();
+	}
+
+	/** Aim the camera at the target, `heading` off north. Straight over a
+	 *  pole, where north gives none, the view keeps its roll. */
+	private faceHeading(heading: number): void {
+		const cam = this.object;
+		_n.subVectors(cam.position, this.target);
+		const range = _n.length();
+		if (!(range > 0)) return;
+		_n.divideScalar(range);
+		_north.copy(cam.up).addScaledVector(_n, -cam.up.dot(_n));
+		const clear = _north.length() >= MIN_NORTH_CLARITY;
+		if (!clear) _north.copy(_y).applyQuaternion(cam.quaternion);
+		_look.lookAt(cam.position, this.target, _north);
+		cam.quaternion.setFromRotationMatrix(_look);
+		if (clear) cam.quaternion.premultiply(_qRoll.setFromAxisAngle(_n, heading));
+	}
+
+	/** Aim the orbit pose at the target again, keeping its roll. */
+	private aimOrbit(): void {
+		_up.copy(_y).applyQuaternion(this.orbitQuat);
+		_look.lookAt(this.orbitPos, this.target, _up);
+		this.orbitQuat.setFromRotationMatrix(_look);
+	}
+
 	override dispose(): void {
 		super.dispose();
 		this.canvas.removeEventListener('pointerdown', this.onLookDown);
 		this.canvas.removeEventListener('mousedown', this.blockMiddle);
 		this.canvas.removeEventListener('pointerdown', this.onCatch);
 		this.endLookDrag();
-	}
-
-	_handleMouseDownRotate(event: PointerEvent): void {
-		orbitHandlers._handleMouseDownRotate.call(this, this.rotated(event));
-	}
-
-	_handleMouseMoveRotate(event: PointerEvent): void {
-		orbitHandlers._handleMouseMoveRotate.call(this, this.rotated(event));
-	}
-
-	_handleTouchStartRotate(event: TouchPoint): void {
-		orbitHandlers._handleTouchStartRotate.call(this, this.rotatedTouch(event));
-	}
-
-	_handleTouchMoveRotate(event: TouchPoint): void {
-		orbitHandlers._handleTouchMoveRotate.call(this, this.rotatedTouch(event));
 	}
 
 	_handleTouchStartDollyPan(event: TouchPoint): void {
@@ -447,8 +583,8 @@ export class LookOrbitControls extends OrbitControls {
 		return true;
 	}
 
-	/** Whether a camera at `from` may look on at `ground` as a turned view,
-	 *  both from the target: the turn is one its height allows. */
+	/** Whether a camera at `from` may look on at `ground` as a tilted view,
+	 *  both from the target: the tilt is one its height allows. */
 	looksOver(from: Vector3, ground: Vector3): boolean {
 		const n = _n.copy(ground).normalize();
 		const radius = this.surfaceRadius(n);
@@ -482,7 +618,7 @@ export class LookOrbitControls extends OrbitControls {
 	}
 
 	/** Turn the view so that the camera, where it stands, looks on at `ground`
-	 *  from the target: the orbit goes over that ground, turned off it. */
+	 *  from the target: the orbit goes over that ground, tilted off it. */
 	lookToward(ground: Vector3): void {
 		const cam = this.object;
 		const n = _n.copy(ground).normalize();
@@ -494,15 +630,14 @@ export class LookOrbitControls extends OrbitControls {
 		offset.divideScalar(range);
 		this.orbitPos.copy(this.target).addScaledVector(n, radius + range);
 		this.pivotRadius = radius;
-		this.lastUp.copy(cam.up);
-		_look.lookAt(this.orbitPos, this.target, cam.up);
-		this.orbitQuat.setFromRotationMatrix(_look);
 		this.tilt = Math.acos(MathUtils.clamp(offset.dot(n), -1, 1));
-		// A tilt swings the camera to the orbit's screen-down, then round n.
-		const down = _right.set(0, -1, 0).applyQuaternion(this.orbitQuat);
+		// A tilt swings the camera to the orbit's screen-down. Straight above
+		// the ground, the view keeps its roll.
 		const level = offset.addScaledVector(n, -offset.dot(n));
-		this.heading = Math.atan2(_ray.crossVectors(down, level).dot(n), down.dot(level));
-		this.holdsNorth = false;
+		if (level.lengthSq() > 1e-12) _up.copy(level).negate();
+		else _up.copy(_y).applyQuaternion(cam.quaternion);
+		_look.lookAt(this.orbitPos, this.target, _up);
+		this.orbitQuat.setFromRotationMatrix(_look);
 		this.placedByName = false;
 		this.looking = true;
 		if (!this.holdAngles(this.lookShare())) {
@@ -521,34 +656,12 @@ export class LookOrbitControls extends OrbitControls {
 			_turnBack.setFromUnitVectors(_hit.normalize(), _ray.copy(anchor).normalize());
 			const pos = this.looking ? this.orbitPos : cam.position;
 			pos.sub(this.target).applyQuaternion(_turnBack).add(this.target);
-			// The orbit's own pose, as its next update would set it.
-			_look.lookAt(pos, this.target, cam.up);
-			(this.looking ? this.orbitQuat : cam.quaternion).setFromRotationMatrix(_look);
+			(this.looking ? this.orbitQuat : cam.quaternion).premultiply(_turnBack);
 			if (!this.looking) continue;
 			this.orbitMoved = true;
 			this.samplePivot();
 			this.place();
 		}
-	}
-
-	/** A drag in the orbit's axes moves the ground the way the pointer goes. */
-	private rotated(event: PointerEvent): { clientX: number; clientY: number } {
-		const [clientX, clientY] = this.toOrbitAxes(event.clientX, event.clientY);
-		return { clientX, clientY };
-	}
-
-	/** The same for a touch. With two fingers three drags their midpoint, and
-	 *  reads the other finger itself: this one stands where it makes that
-	 *  midpoint the turned one. */
-	private rotatedTouch(event: TouchPoint): TouchPoint {
-		const touch = this as unknown as TouchState;
-		if (touch._pointers.length === 1) {
-			const [pageX, pageY] = this.toOrbitAxes(event.pageX, event.pageY);
-			return { pointerId: event.pointerId, pageX, pageY };
-		}
-		const other = touch._getSecondPointerPosition(event);
-		const [x, y] = this.toOrbitAxes((event.pageX + other.x) / 2, (event.pageY + other.y) / 2);
-		return { pointerId: event.pointerId, pageX: 2 * x - other.x, pageY: 2 * y - other.y };
 	}
 
 	/** Turn the heading and tilt the view by these angles, in radians: over
@@ -564,25 +677,26 @@ export class LookOrbitControls extends OrbitControls {
 
 	private turnNow(heading: number, tilt: number): void {
 		const cam = this.object;
+		if (heading !== 0) {
+			this.roll(heading);
+			this.heldHeading += heading;
+		}
+		if (tilt === 0) return;
 		const share = this.lookShare();
 		if (share === 0) return;
 		if (!this.looking) {
 			this.looking = true;
-			this.heading = 0;
 			this.tilt = 0;
 			this.orbitPos.copy(cam.position);
 			this.orbitQuat.copy(cam.quaternion);
 			this.samplePivot();
-			this.lastUp.copy(cam.up);
 		}
-		this.holdsNorth = false;
-		this.heading += heading;
 		this.tilt = Math.max(0, this.tilt + tilt);
 		this.holdAngles(share);
 		this.place();
 	}
 
-	/** Share of the full tilt and heading the orbit's height allows. */
+	/** Share of the full tilt the orbit's height allows. */
 	private lookShare(): number {
 		_n.subVectors(this.orbitPosition, this.target);
 		const range = _n.length();
@@ -600,11 +714,9 @@ export class LookOrbitControls extends OrbitControls {
 		return t * t * (3 - 2 * t);
 	}
 
-	/** Hold the angles within `share` of their range. False when none is left. */
+	/** Hold the tilt within `share` of its range. False when none is left. */
 	private holdAngles(share: number): boolean {
 		this.tilt = Math.min(this.tilt, MAX_TILT * share);
-		this.heading = MathUtils.euclideanModulo(this.heading + Math.PI, 2 * Math.PI) - Math.PI;
-		this.heading = MathUtils.clamp(this.heading, -Math.PI * share, Math.PI * share);
 		return share > 0;
 	}
 
@@ -612,7 +724,7 @@ export class LookOrbitControls extends OrbitControls {
 	 * Take up a change in the ground under the orbit. A view placed by name
 	 * goes where its angles put it over the new ground. One the reader turned
 	 * keeps the camera where it stands and turns onto the new ground, rather
-	 * than jump as finer terrain loads. False when that leaves no turn.
+	 * than jump as finer terrain loads. False when that leaves no tilt.
 	 */
 	private followGround(): boolean {
 		_n.subVectors(this.orbitPos, this.target);
@@ -625,9 +737,7 @@ export class LookOrbitControls extends OrbitControls {
 			this.pivotRadius = pivot;
 			return true;
 		}
-		const holds = this.holdsNorth;
 		this.lookToward(_pivotGround.copy(_n).multiplyScalar(ground));
-		this.holdsNorth = holds;
 		return this.looking;
 	}
 
@@ -647,11 +757,9 @@ export class LookOrbitControls extends OrbitControls {
 		if (range > 0) _n.divideScalar(range);
 		_pivot.copy(this.target).addScaledVector(_n, Math.min(this.pivotRadius, range));
 		_right.set(1, 0, 0).applyQuaternion(this.orbitQuat);
-		_qHeading.setFromAxisAngle(_n, this.heading);
 		_qTilt.setFromAxisAngle(_right, this.tilt);
-		_qHeading.multiply(_qTilt);
-		cam.position.copy(this.orbitPos).sub(_pivot).applyQuaternion(_qHeading).add(_pivot);
-		cam.quaternion.multiplyQuaternions(_qHeading, this.orbitQuat);
+		cam.position.copy(this.orbitPos).sub(_pivot).applyQuaternion(_qTilt).add(_pivot);
+		cam.quaternion.multiplyQuaternions(_qTilt, this.orbitQuat);
 		this.placedPos.copy(cam.position);
 		this.placedQuat.copy(cam.quaternion);
 	}
@@ -671,7 +779,6 @@ export class LookOrbitControls extends OrbitControls {
 		if (event.button !== 1 || event.pointerType !== 'mouse') return;
 		event.preventDefault();
 		if (!this.enabled || !this.enableRotate || this.dragPointer !== null) return;
-		if (this.lookShare() === 0) return;
 		this.dragPointer = event.pointerId;
 		this.dragX = event.clientX;
 		this.dragY = event.clientY;

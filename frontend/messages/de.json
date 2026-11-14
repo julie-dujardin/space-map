@@ -1180,6 +1180,7 @@
 		}
 	],
 	"north_reference": "Nordreferenz",
+	"north_compass": "Norden nach oben drehen. Rechtsklick, um die Nordreferenz zu wählen.",
 	"north_solar_system": "Sonnensystem",
 	"north_solar_system_desc": "J2000-Ekliptikebene",
 	"north_system_desc": "Bahnebene",

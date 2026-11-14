@@ -147,15 +147,14 @@ export interface CameraOptions {
 	distanceKm?: number;
 }
 
-/**
- * How the view is turned off looking straight down at the place, in degrees.
- * Close to a surface only: from half a radius up the turn the map allows
- * shrinks, and from one radius up the view is level.
- */
+/** How the view is turned off looking straight down at the place, north up,
+ *  in degrees. */
 export interface CameraAngles {
-	/** Off the vertical toward the horizon: 0 looks straight down. */
+	/** Off the vertical toward the horizon: 0 looks straight down. Close to a
+	 *  surface only: from half a radius up the pitch allowed shrinks, and from
+	 *  one radius up there is none. */
 	pitch?: number;
-	/** Clockwise from the north the map keeps up. */
+	/** Clockwise from the map's north, at any height. */
 	bearing?: number;
 }
 
@@ -405,6 +404,9 @@ export class SpaceMap {
 	/** @internal The body the camera orbits: for a landed probe, the body it
 	 *  stands on. A focused point keeps the last one. */
 	cameraBody = $state.raw<PositionedBody | undefined>();
+	/** @internal The view's heading off north, in radians, live: what the
+	 *  compass shows. */
+	heading = $state(0);
 	/** A move onto a surface feature is under way: the focus it hands the
 	 *  host is that move's. */
 	private movingToFeature = false;
@@ -906,6 +908,7 @@ export class SpaceMap {
 				if (this.listeners.frame.size > 0) this.emit('frame', { jd, dtMs });
 			},
 			onIdle: () => this.emit('idle'),
+			onHeading: (heading) => (this.heading = heading),
 			onCameraPosition: (latitude, longitude, zoom, look = LEVEL_LOOK) => {
 				const body = this.cameraBody?.data.id;
 				// Nothing focused means nothing to measure the camera against, and
@@ -1698,6 +1701,11 @@ export class SpaceMap {
 
 	setNorthReference(id: string | null): void {
 		this.renderer?.setNorthReference(id);
+	}
+
+	/** @internal Turn the view round the centre of the screen until north is up. */
+	resetNorth(): void {
+		this.renderer?.resetNorth();
 	}
 
 	setUserLocation(latitude: number, longitude: number): void {

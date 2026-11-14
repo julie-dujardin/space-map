@@ -1,5 +1,4 @@
 import { Quaternion, Vector3, type PerspectiveCamera } from 'three';
-import type { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import type { Vec3 } from '$lib/scene/animation/math';
 import { angularDuration, UP_PACING } from '$lib/scene/animation/pacing';
@@ -13,8 +12,7 @@ import {
 
 /**
  * Drives `camera.up` from a north reference, slerping across switches so the
- * scene doesn't snap. Also re-pokes `OrbitControls`'s cached up→Y quat —
- * without that, dragging after a switch rotates around the wrong axis.
+ * compass and a reset to north turn smoothly.
  */
 export class CameraUpController {
 	private refId: string | null = null;
@@ -31,10 +29,11 @@ export class CameraUpController {
 	private plane: Readonly<Vec3> | null = null;
 	private readonly _quatA = new Quaternion();
 	private readonly _quatB = new Quaternion();
+	/** North stood at its reference on the last `update()`: no switch was under way. */
+	settled = true;
 
 	constructor(
 		private readonly camera: PerspectiveCamera,
-		private readonly controls: OrbitControls,
 		private readonly ctx: ContextManager
 	) {}
 
@@ -73,7 +72,8 @@ export class CameraUpController {
 		}
 
 		const elapsed = performance.now() - this.animStartTime;
-		if (elapsed >= this.animDurationMs) {
+		this.settled = elapsed >= this.animDurationMs;
+		if (this.settled) {
 			this.currentVec.copy(this.targetVec);
 		} else {
 			const t = Math.max(0, elapsed / this.animDurationMs);
@@ -85,10 +85,5 @@ export class CameraUpController {
 			this.currentVec.copy(SCENE_UP).applyQuaternion(this._quatA);
 		}
 		this.camera.up.copy(this.currentVec);
-
-		// OrbitControls caches its up→Y quat at construction and never refreshes it.
-		const ctrls = this.controls as unknown as { _quat: Quaternion; _quatInverse: Quaternion };
-		ctrls._quat.setFromUnitVectors(this.currentVec, SCENE_UP);
-		ctrls._quatInverse.copy(ctrls._quat).invert();
 	}
 }

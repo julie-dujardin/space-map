@@ -1440,6 +1440,8 @@ export class SpaceMap {
 	// @internal
 	haloOnScreen(id: string): boolean;
 	hasTiles(id: string): Promise<boolean>;
+	// @internal
+	heading: number;
 	holdCamera(): CameraHold;
 	// @internal (undocumented)
 	readonly initialView: InitialView;
@@ -1464,6 +1466,8 @@ export class SpaceMap {
 	removeControl(control: Control<SpaceMap>): this;
 	// @internal
 	renderer: SceneRenderer | null;
+	// @internal
+	resetNorth(): void;
 	readonly scrollZoom: GestureHandler;
 	setBodyAppearance(id: string, appearance: BodyAppearance): this;
 	setCovered(covered: boolean): void;

@@ -1200,6 +1200,7 @@
 		}
 	],
 	"north_reference": "Referencia del norte",
+	"north_compass": "Girar con el norte arriba. Clic derecho para elegir la referencia del norte.",
 	"north_solar_system": "Sistema solar",
 	"north_solar_system_desc": "Plano de la eclíptica J2000",
 	"north_system_desc": "Plano orbital",

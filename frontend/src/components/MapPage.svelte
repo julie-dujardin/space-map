@@ -1503,16 +1503,18 @@
 						return map.focusOnBody('naif-399', zoom, lat, lng) ?? 0;
 					}}
 				/>
-				{#if northChoices.length > 1}
-					<CompassNorthSelector
-						choices={northChoices}
-						selectedId={northChoice.id}
-						onSelect={(choice) =>
-							appState.setNorth(
-								choice.id === defaultNorthChoice(northChoices).id ? null : choice.ref
-							)}
-					/>
-				{/if}
+				<CompassNorthSelector
+					choices={northChoices}
+					selectedId={northChoice.id}
+					heading={map.heading}
+					onSelect={(choice) => {
+						appState.setNorth(
+							choice.id === defaultNorthChoice(northChoices).id ? null : choice.ref
+						);
+						map.resetNorth();
+					}}
+					onResetNorth={() => map.resetNorth()}
+				/>
 				{#if userPromotedCount > 0}
 					<ClearPromoted count={userPromotedCount} onClear={() => map.clearUserPromoted()} />
 				{/if}

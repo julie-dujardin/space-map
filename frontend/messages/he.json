@@ -1220,6 +1220,7 @@
 		}
 	],
 	"north_reference": "ייחוס צפון",
+	"north_compass": "סיבוב הצפון למעלה. לחיצה ימנית לבחירת ייחוס צפון.",
 	"north_solar_system": "מערכת השמש",
 	"north_solar_system_desc": "מישור המילקה J2000",
 	"north_system_desc": "מישור המסלול",

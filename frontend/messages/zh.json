@@ -1175,6 +1175,7 @@
 		}
 	],
 	"north_reference": "北方参考",
+	"north_compass": "将北方转到上方。右键单击可选择北方参考。",
 	"north_solar_system": "太阳系",
 	"north_solar_system_desc": "J2000 黄道面",
 	"north_system_desc": "轨道面",

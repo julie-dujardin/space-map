@@ -262,14 +262,160 @@ describe('LookOrbitControls', () => {
 		expect(camera.position.toArray()).toEqual(before.toArray());
 	});
 
-	it('turns a screen drag into the orbit axes the heading turned from', () => {
-		const { controls, middleDrag } = setup();
-		expect(controls.toOrbitAxes(1, 0)).toEqual([1, 0]);
+	it('moves the ground the way a drag goes after a turn', () => {
+		const { camera, controls, middleDrag } = setup();
 		// Half a viewport height left is a quarter turn.
 		middleDrag(-500, 0);
-		const [x, y] = controls.toOrbitAxes(1, 0);
-		expect(x).toBeCloseTo(0, 9);
-		expect(y).toBeCloseTo(-1, 9);
+		camera.updateMatrixWorld();
+		const right = new Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+		const before = camera.position.clone();
+		controls.rotateLeft(0.1);
+		controls.update();
+		const moved = camera.position.clone().sub(before);
+		expect(moved.dot(right)).toBeLessThan(-0.1);
+		expect(moved.length()).toBeCloseTo(-moved.dot(right), 2);
+	});
+});
+
+describe('LookOrbitControls heading', () => {
+	/** A camera far enough out that the view does not tilt. */
+	const FAR = 3;
+
+	it('goes over the pole without spinning, south up past it and left there', () => {
+		const { camera, controls } = setup(RADIUS, FAR);
+		const step = 0.02;
+		let last = camera.quaternion.clone();
+		for (let i = 0; i < Math.PI / 2 / step + 20; i++) {
+			controls.rotateUp(step);
+			controls.update();
+			expect(camera.quaternion.angleTo(last)).toBeLessThan(step * 1.01);
+			last = camera.quaternion.clone();
+		}
+		expect(camera.position.y).toBeGreaterThan(0);
+		expect(camera.position.z).toBeLessThan(0);
+		expect(Math.abs(controls.look.heading)).toBeCloseTo(Math.PI, 9);
+		// Well off north, a drag leaves it be.
+		for (let i = 0; i < 20; i++) {
+			controls.rotateLeft(step);
+			controls.update();
+		}
+		expect(Math.abs(controls.look.heading)).toBeGreaterThan(Math.PI / 2);
+	});
+
+	it('pulls the drift of a sideways drag back to north', () => {
+		const { camera, controls } = setup(RADIUS, FAR);
+		controls.rotateUp(0.7);
+		controls.update();
+		for (let i = 0; i < 100; i++) {
+			controls.rotateLeft(0.02);
+			controls.update();
+		}
+		expect(camera.position.y).toBeGreaterThan(1.5);
+		expect(controls.look.heading).toBeCloseTo(0, 6);
+	});
+
+	it('lets a drag near the pole drift off north', () => {
+		const { controls } = setup(RADIUS, FAR);
+		controls.rotateUp(1.45);
+		controls.update();
+		for (let i = 0; i < 20; i++) {
+			controls.rotateLeft(0.02);
+			controls.update();
+		}
+		expect(Math.abs(controls.look.heading)).toBeGreaterThan(0.1);
+	});
+
+	it('pulls a heading turned near north back to it on a drag', () => {
+		const { controls, middleDrag } = setup(RADIUS, FAR);
+		controls.rotateUp(0.7);
+		controls.update();
+		middleDrag(-50, 0);
+		expect(controls.look.heading).toBeGreaterThan(0.1);
+		for (let i = 0; i < 50; i++) {
+			controls.rotateLeft(0.02);
+			controls.update();
+		}
+		expect(controls.look.heading).toBeCloseTo(0, 6);
+	});
+
+	it('leaves a heading turned well off north to a drag', () => {
+		const { controls, middleDrag } = setup(RADIUS, FAR);
+		controls.rotateUp(0.7);
+		controls.update();
+		middleDrag(-500, 0);
+		expect(controls.look.heading).toBeCloseTo(Math.PI / 2, 9);
+		// Sideways along the latitude: the screen's up now points along it.
+		for (let i = 0; i < 50; i++) {
+			controls.rotateUp(0.02);
+			controls.update();
+		}
+		expect(controls.look.heading).toBeGreaterThan(Math.PI / 2 + 0.3);
+	});
+
+	it('turns back to north on a reset, keeping the tilt', () => {
+		const { controls, middleDrag } = setup();
+		controls.enableDamping = true;
+		middleDrag(300, -200);
+		for (let i = 0; i < 300; i++) controls.update();
+		const { tilt, heading } = controls.look;
+		expect(Math.abs(heading)).toBeGreaterThan(0.5);
+		controls.resetNorth();
+		controls.update();
+		expect(Math.abs(controls.look.heading)).toBeLessThan(Math.abs(heading));
+		for (let i = 0; i < 300; i++) controls.update();
+		expect(controls.look.heading).toBeCloseTo(0, 9);
+		expect(controls.look.tilt).toBeCloseTo(tilt, 9);
+	});
+
+	it('points north up when placed level', () => {
+		const { camera, controls, middleDrag } = setup(RADIUS, FAR);
+		middleDrag(-300, 0);
+		camera.position.set(1, 2, 2);
+		controls.update();
+		controls.setLook({ tilt: 0, heading: 0 });
+		expect(controls.look.heading).toBeCloseTo(0, 12);
+		const up = new Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
+		expect(up.dot(new Vector3(1, 2, 2).normalize())).toBeCloseTo(0, 12);
+	});
+
+	it('keeps the roll when placed again straight over a pole', () => {
+		const { camera, controls } = setup(RADIUS, FAR);
+		camera.position.set(0, FAR, 0);
+		controls.update();
+		controls.setLook({ tilt: 0, heading: 0.5 });
+		const once = camera.quaternion.clone();
+		controls.setLook({ tilt: 0, heading: 0.5 });
+		expect(camera.quaternion.angleTo(once)).toBeLessThan(1e-6);
+	});
+
+	it('turns on with a reset while north still turns to a new reference', () => {
+		const { camera, controls } = setup(RADIUS, FAR);
+		controls.setLook({ tilt: 0, heading: 0 });
+		controls.resetNorth();
+		controls.northSettled = false;
+		const swing = new Vector3(0, 0, 1);
+		// The switch starts slowly: no turn of north to see on its first frame.
+		controls.update();
+		for (let i = 1; i <= 30; i++) {
+			camera.up.set(0, 1, 0).applyAxisAngle(swing, (0.4 * i) / 30);
+			controls.update();
+		}
+		controls.northSettled = true;
+		for (let i = 0; i < 300; i++) controls.update();
+		expect(controls.look.heading).toBeCloseTo(0, 6);
+	});
+
+	it('lets go of a placed heading once the reader moves', () => {
+		const { camera, controls } = setup(RADIUS, FAR);
+		controls.setLook({ tilt: 0, heading: 0.7 });
+		controls.dispatchEvent({ type: 'start' });
+		let last = camera.quaternion.clone();
+		for (let i = 0; i < 200; i++) {
+			controls.rotateUp(0.02);
+			controls.update();
+			expect(camera.quaternion.angleTo(last)).toBeLessThan(0.02 * 1.01);
+			last = camera.quaternion.clone();
+		}
 	});
 });
 
@@ -361,9 +507,8 @@ describe('LookOrbitControls two fingers', () => {
 		expect(controls.look.tilt).toBeCloseTo(0, 9);
 	});
 
-	it('leaves a twist alone out in space', () => {
-		const { camera, twoFingers } = setup(RADIUS, 3);
-		const before = camera.quaternion.clone();
+	it('turns the view with a twist out in space', () => {
+		const { controls, twoFingers } = setup(RADIUS, 3);
 		twoFingers(
 			[
 				[400, 500],
@@ -374,7 +519,8 @@ describe('LookOrbitControls two fingers', () => {
 				[500, 600]
 			]
 		);
-		expect(camera.quaternion.angleTo(before)).toBeLessThan(1e-9);
+		expect(controls.look.heading).toBeGreaterThan(1);
+		expect(controls.look.tilt).toBe(0);
 	});
 
 	it('still pinches to zoom', () => {

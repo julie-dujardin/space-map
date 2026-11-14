@@ -254,6 +254,8 @@ const SPIN_FOLLOW_NONE = 2;
 const _spinNow = new Quaternion();
 const _spinStep = new Quaternion();
 const _noTurn = new Quaternion();
+/** Change in heading, in radians, worth turning the compass for. */
+const HEADING_REPORT_STEP = MathUtils.degToRad(0.1);
 
 /** On-screen drift a trail may accumulate before it is rewritten. */
 const TRAIL_DRIFT_PX = 0.25;
@@ -378,6 +380,8 @@ export class SceneRenderer {
 	private pointingAxes: Group | null = null;
 
 	private cameraUp!: CameraUpController;
+	/** The heading last handed to {@link Callbacks.onHeading}. */
+	private reportedHeading = 0;
 	private skyboxAdjuster!: SkyboxAdjuster;
 	private skyDebugMarkers!: SkyDebugMarkers;
 	private haloDebug!: HaloDebugOverlay;
@@ -698,7 +702,7 @@ export class SceneRenderer {
 			this.invalidate();
 		});
 
-		this.cameraUp = new CameraUpController(this.camera, this.controls, ctx);
+		this.cameraUp = new CameraUpController(this.camera, ctx);
 
 		this.systemData = new SystemDataLoader(
 			this.scene,
@@ -1324,7 +1328,12 @@ export class SceneRenderer {
 		);
 
 		// The north reference writes camera.up, which a held pose owns instead.
-		if (!this.holdingCamera) this.cameraUp.update(this.sceneJd);
+		if (!this.holdingCamera) {
+			this.cameraUp.update(this.sceneJd);
+			// The bearing is read off north: a switch that ends changes it.
+			if (this.cameraUp.settled && !this.controls.northSettled) this.pendingUrlWrite = true;
+			this.controls.northSettled = this.cameraUp.settled;
+		}
 
 		if (this.firstFrame) {
 			this.firstFrame = false;
@@ -1775,6 +1784,11 @@ export class SceneRenderer {
 		this.settleLook();
 		this.focusController.holdInitialView();
 		this.camera.updateMatrixWorld();
+		const heading = this.controls.heading;
+		if (Math.abs(heading - this.reportedHeading) > HEADING_REPORT_STEP) {
+			this.reportedHeading = heading;
+			this.callbacks.onHeading?.(heading);
+		}
 	}
 
 	/** A flight or a held camera owns the camera, and ends a turn where the
@@ -2682,21 +2696,19 @@ export class SceneRenderer {
 	};
 
 	/** Keyboard camera step (canvas arrow keys / zoom keys). Angles in radians;
-	 *  `dolly` > 1 zooms in. Goes through OrbitControls so damping and
-	 *  min/maxDistance clamping apply, but fires no 'end' event — sync the URL
-	 *  here like a pointer drag would. */
+	 *  `dolly` > 1 zooms in. A step is a gesture, as a drag is: it lets go of a
+	 *  placed view and syncs the URL. */
 	nudgeCamera(azimuth: number, polar: number, dolly: number): void {
-		this.armLimits();
+		this.controls.dispatchEvent({ type: 'start' });
 		// These bypass rotateSpeed/zoomSpeed, so they take the ground-relative
 		// scale themselves — an arrow key over a surface must step as small as a
 		// drag does. Raising the dolly factor to it keeps the step multiplicative.
 		const { rotate, translate } = this.motionScale;
-		[azimuth, polar] = this.controls.toOrbitAxes(azimuth, polar);
 		if (azimuth !== 0) this.controls.rotateLeft(azimuth * rotate);
 		if (polar !== 0) this.controls.rotateUp(polar * rotate);
 		// dollyIn scales the orbit radius by its argument, so zooming in needs <1.
 		if (dolly !== 1) this.controls.dollyIn(1 / Math.pow(dolly, translate));
-		this.onControlsEnd();
+		this.controls.dispatchEvent({ type: 'end' });
 	}
 
 	private maybeLoadTexture(body: PositionedBody): void {
@@ -3199,6 +3211,13 @@ export class SceneRenderer {
 
 	setNorthReference(id: string | null): void {
 		this.cameraUp.setNorthReference(id);
+	}
+
+	/** Turn the view round the centre of the screen until north is up. */
+	resetNorth(): void {
+		this.controls.resetNorth();
+		this.focusController.turnHeldViewNorth();
+		this.invalidate();
 	}
 
 	/** Debug: the focused body's natural pointing (config or south-default,

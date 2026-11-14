@@ -260,6 +260,14 @@ describe('FocusController with a landed probe in view', () => {
 		expect(deps.controls.setLook).toHaveBeenLastCalledWith(look);
 	});
 
+	it('places a held view north up again after a reset to north', () => {
+		const { fc, deps } = harness({ spun: true });
+		fc.snapToBody('curiosity', 0, 0, 0.05, { tilt: 0.6, heading: 0.3 });
+		fc.turnHeldViewNorth();
+		fc.reapplyInitialViewIfPending();
+		expect(deps.controls.setLook).toHaveBeenLastCalledWith({ tilt: 0.6, heading: 0 });
+	});
+
 	it('puts a snap over its host at the height asked for, not where the camera was', () => {
 		const { fc, deps, camera, mars, spinMesh, standOnMars } = harness({ spun: true });
 		spinMesh();

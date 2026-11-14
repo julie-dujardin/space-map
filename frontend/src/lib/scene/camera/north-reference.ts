@@ -97,9 +97,8 @@ function* lineage(
 /**
  * The orientation-bearing bodies of `focused`'s {@link lineage} and the
  * planetary system of the place: the J2000 ecliptic in the solar system, else
- * the system's orbital plane when it has drawn orbits. The caller hides the
- * selector when length ≤ 1. A focused probe is its own ref. A `landed` probe
- * is not: the camera orbits the body it stands on, not the probe.
+ * the system's orbital plane when it has drawn orbits. A focused probe is its
+ * own ref. A `landed` probe is not: the camera orbits the body it stands on.
  */
 export function getNorthChoices(
 	focused: PositionedBody | undefined,

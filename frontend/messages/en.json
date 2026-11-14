@@ -1355,6 +1355,7 @@
 		}
 	],
 	"north_reference": "North reference",
+	"north_compass": "Turn north up. Right-click to choose the north reference.",
 	"north_solar_system": "Solar system",
 	"north_solar_system_desc": "J2000 ecliptic plane",
 	"north_system_desc": "Orbital plane",

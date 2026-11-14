@@ -1304,6 +1304,7 @@
 		}
 	],
 	"north_reference": "北の基準",
+	"north_compass": "北を上に向けます。右クリックで北の基準を選択します。",
 	"north_solar_system": "太陽系",
 	"north_solar_system_desc": "J2000 黄道面",
 	"north_system_desc": "軌道面",

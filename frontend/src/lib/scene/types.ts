@@ -301,6 +301,9 @@ export interface Callbacks {
 	/** Where the camera now orbits, and how the view is turned off that pose:
 	 *  left out for a level view. */
 	onCameraPosition?(latitude: number, longitude: number, zoom: number, look?: LookAngles): void;
+	/** The view's heading off north turned, in radians as {@link LookAngles}
+	 *  has it: live, through gestures and flights, for a compass. */
+	onHeading?(heading: number): void;
 	/** Number of user-promoted bodies that can be cleared (excludes the focused
 	 *  body — clearing it would leave the camera pointed at a torn-down mesh). */
 	onUserPromotedChange?(count: number): void;

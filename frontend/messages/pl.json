@@ -1220,6 +1220,7 @@
 		}
 	],
 	"north_reference": "Odniesienie północy",
+	"north_compass": "Obróć północą do góry. Kliknij prawym przyciskiem, aby wybrać odniesienie północy.",
 	"north_solar_system": "Układ Słoneczny",
 	"north_solar_system_desc": "Płaszczyzna ekliptyki J2000",
 	"north_system_desc": "Płaszczyzna orbity",

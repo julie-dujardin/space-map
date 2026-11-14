@@ -44,8 +44,8 @@ export interface FocusState {
 	aimLooks: boolean;
 	/** The orientation that turn settles on, for the pan to end on it. */
 	aimPose: Quaternion | null;
-	/** An orbit fly started looking away from the body, at the sky or tilted
-	 *  over its ground: the turn back eases in. */
+	/** An orbit fly started off the pose a look at the body gives: at the sky,
+	 *  tilted over its ground or turned off north. The turn back eases in. */
 	leavesAim: boolean;
 	focusStartTime: number;
 	focusDurationMs: number;
@@ -59,12 +59,15 @@ const _lookAtQ = new Quaternion();
 const _forwardA = new Vector3();
 const _forwardB = new Vector3();
 const _settleGround = new Vector3();
+const _origin = new Vector3();
 
-/** Whether the camera's view runs off the focus, at the scene origin. */
+/** Whether the camera's pose is off the one a look at the focus, at the
+ *  scene origin, gives it: its view runs off the focus, or its up off north. */
 function looksAway(camera: PerspectiveCamera): boolean {
-	_forwardA.set(0, 0, -1).applyQuaternion(camera.quaternion);
-	_forwardB.copy(camera.position).negate().normalize();
-	return _forwardA.dot(_forwardB) < 1 - 1e-9;
+	_lookAtMatrix.lookAt(camera.position, _origin, camera.up);
+	_lookAtQ.setFromRotationMatrix(_lookAtMatrix);
+	// Small-angle form of the turn between them: past about 4e-5 rad.
+	return 8 * (1 - Math.abs(_lookAtQ.dot(camera.quaternion))) > 2e-9;
 }
 
 /** Compute the orientation a camera at `eye` would have when looking at `target`, without mutating any camera. */
