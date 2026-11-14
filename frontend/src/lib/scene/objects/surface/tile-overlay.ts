@@ -9,6 +9,7 @@ import {
 	type WebGLRenderer
 } from 'three';
 import { tilesBase } from '$lib/fetch/data-base';
+import { opaqueWebpBlob } from '$lib/fetch/webp-opaque';
 import { textureAllowed } from '$lib/host';
 import { FIRST_TILE_LEVEL, WINDOW_TILES, neededLevel } from '$lib/scene/lod/tile-window';
 import { maxTileWindows } from '$lib/scene/render-tier';
@@ -29,6 +30,7 @@ import {
 	restChain,
 	updateChain
 } from './tile-chain';
+import { probeTileAlpha, tileAlphaKept } from './tile-alpha';
 
 /**
  * Surface tiles drawn over a body's whole-globe map, from the first distance
@@ -38,15 +40,24 @@ import {
  * (see `tile-chain.ts`). A fragment blends the two windows on either side of
  * the level its own footprint asks for, and takes the map where no window
  * covers it or a tile is missing.
+ *
+ * A pyramid with `alpha: 'specular'` holds the water mask in the alpha of its
+ * tiles. The shader then gives that mask to the specular patch in place of
+ * the whole-globe mask, where the tiles cover the fragment.
  */
 
 export interface TileOverlay {
 	material: MeshStandardMaterial;
 	chain: TileChain;
+	water: { value: number };
 }
 
 const PARS = /* glsl */ `
+#define SURFACE_TILES
 varying vec3 vTileOff;
+uniform float uTileWater;
+float tileWater = 0.0;
+float tileCovered = 0.0;
 uniform sampler2DArray uTileMap;
 uniform sampler2DArray uTileMask;
 uniform vec4 uTileGrid[ ${MAX_DRAWN} ];
@@ -64,6 +75,7 @@ vec3 tileColour( vec3 below ) {
 
 	float rows = ${WINDOW_TILES.toFixed(1)};
 	vec3 colour = vec3( 0.0 );
+	float water = 0.0;
 	float covered = 0.0;
 	for ( int i = 0; i < ${MAX_DRAWN}; i ++ ) {
 		vec4 window = uTileWindow[ i ];
@@ -79,11 +91,19 @@ vec3 tileColour( vec3 below ) {
 
 		vec3 st = vec3( spot.x / rows, - spot.y / rows, window.y );
 		vec2 texel = vec2( 1.0, - 1.0 ) / ( rows * uTileFilter.y );
-		colour += ( 1.0 - covered ) * alpha * textureGrad( uTileMap, st, major * texel, minor * texel ).rgb;
+		vec4 texelTile = textureGrad( uTileMap, st, major * texel, minor * texel );
+		colour += ( 1.0 - covered ) * alpha * texelTile.rgb;
+		water += ( 1.0 - covered ) * alpha * texelTile.a;
 		covered += ( 1.0 - covered ) * alpha;
 		if ( covered > 0.995 ) break;
 	}
+	tileWater = water * uTileWater;
+	tileCovered = covered * uTileWater;
 	return colour + ( 1.0 - covered ) * below;
+}
+// The part of the fragment under water, from the tiles where they cover it.
+float tileWaterOver( float below ) {
+	return tileWater + ( 1.0 - tileCovered ) * below;
 }
 `;
 
@@ -98,8 +118,9 @@ const MAP_FRAGMENT = /* glsl */ `
 async function loadColourTile(url: string, signal: AbortSignal): Promise<LoadedTile> {
 	const response = await fetch(url, { signal });
 	if (!response.ok) throw new Error(`tile ${response.status}`);
+	const blob = (await probeTileAlpha()) ? await response.blob() : await opaqueWebpBlob(response);
 	// Flipped at decode: a bitmap ignores the upload's flip flag.
-	const bitmap = await createImageBitmap(await response.blob(), {
+	const bitmap = await createImageBitmap(blob, {
 		imageOrientation: 'flipY',
 		premultiplyAlpha: 'none',
 		colorSpaceConversion: 'none'
@@ -126,8 +147,10 @@ const COLOUR_TILES: TileKind = {
 
 function createOverlay(material: MeshStandardMaterial): TileOverlay {
 	const chain = createChain(COLOUR_TILES);
+	const water = { value: 0 };
 	chainShaderHook(material, 'surfaceTiles', (shader) => {
 		Object.assign(shader.uniforms, {
+			uTileWater: water,
 			uTileMap: chain.uniforms.map,
 			uTileMask: chain.uniforms.mask,
 			uTileGrid: chain.uniforms.grid,
@@ -149,7 +172,7 @@ function createOverlay(material: MeshStandardMaterial): TileOverlay {
 			.replace('#include <map_pars_fragment>', `#include <map_pars_fragment>\n${PARS}`)
 			.replace('#include <map_fragment>', MAP_FRAGMENT);
 	});
-	return { material, chain };
+	return { material, chain, water };
 }
 
 /** Free a body's tile windows. The shader hook stays, switched off. */
@@ -217,6 +240,7 @@ export function updateTileOverlay(
 		bo.tileOverlay = undefined;
 	}
 	const overlay = (bo.tileOverlay ??= createOverlay(material));
+	overlay.water.value = tiles.alpha === 'specular' && tileAlphaKept() ? 1 : 0;
 	updateChain(
 		overlay.chain,
 		tiles,

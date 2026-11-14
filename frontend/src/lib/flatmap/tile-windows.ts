@@ -169,7 +169,8 @@ export class LayerTiles {
 
 	private async load(win: HeldWindow, url: string, dx: number, dy: number): Promise<void> {
 		try {
-			const held = await acquireBitmap(url, null);
+			// Every tile: the tiles of a pyramid can hold alpha before the export says so.
+			const held = await acquireBitmap(url, null, true);
 			if (held) {
 				try {
 					if (win.ctx && !win.dropped) win.ctx.drawImage(held.bitmap, dx, dy);

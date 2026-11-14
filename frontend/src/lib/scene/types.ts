@@ -70,6 +70,8 @@ export interface TilesBlock extends CreditFields {
 	patches?: TilePatch[];
 	/** Monthly maps only: one pyramid per month. */
 	frames?: number;
+	/** The layer that the alpha of the tiles holds. Without it, alpha is opaque. */
+	alpha?: 'specular';
 	/** Height pyramids only: `km = bias_km + scale_km · value / 65535`. */
 	scale_km?: number;
 	bias_km?: number;

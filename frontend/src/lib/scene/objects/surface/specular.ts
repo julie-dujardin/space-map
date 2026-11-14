@@ -52,11 +52,12 @@ export async function attachSpecularMap(
 					'#include <roughnessmap_fragment>',
 					`float roughnessFactor = roughness;
 					#ifdef USE_ROUGHNESSMAP
-						// Mask carries the fraction of the texel under water, so a
-						// coastline or a river narrower than a texel lands between the
-						// two roughnesses. Green channel matches three.js' default
-						// roughnessmap sample.
+						// The fraction of the texel under water. Surface tiles give a
+						// finer one where they cover the fragment.
 						vec4 texelRoughness = texture2D(roughnessMap, vRoughnessMapUv);
+						#ifdef SURFACE_TILES
+							texelRoughness.g = tileWaterOver(texelRoughness.g);
+						#endif
 						roughnessFactor = mix(roughness, uOceanRoughness, texelRoughness.g);
 					#endif`
 				);

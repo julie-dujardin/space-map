@@ -12,6 +12,7 @@
  */
 
 import { imageToRaster, type RasterImage } from './raster';
+import { opaqueWebpBlob } from '$lib/fetch/webp-opaque';
 
 /** The memory a picture uses, in bytes. */
 function bitmapBytes(width: number, height: number): number {
@@ -125,20 +126,23 @@ export function textureKey(url: string, decodeWidth: number | null): string {
  *
  * `decodeWidth` makes the picture smaller as it is decoded. Use it for a map
  * that cannot sample more than that width. Null keeps the picture whole.
+ * `opaque` drops the alpha of a WebP, for a tile whose alpha holds a mask.
  *
  * The caller holds one claim. It must call {@link releaseBitmap} with the same
  * key when it stops drawing the picture.
  */
 export async function acquireBitmap(
 	url: string,
-	decodeWidth: number | null
+	decodeWidth: number | null,
+	opaque = false
 ): Promise<{ key: string; bitmap: ImageBitmap } | null> {
-	const key = textureKey(url, decodeWidth);
+	// An opaque decode is another picture of the same file.
+	const key = opaque ? `${textureKey(url, decodeWidth)}#opaque` : textureKey(url, decodeWidth);
 	const held = bitmaps.claim(key);
 	if (held) return { key, bitmap: held };
 	let work = pending.get(key);
 	if (!work) {
-		work = decode(url, decodeWidth);
+		work = decode(url, decodeWidth, opaque);
 		pending.set(key, work);
 		const done = (): boolean => pending.delete(key);
 		work.then(done, done);
@@ -156,10 +160,14 @@ export async function acquireBitmap(
  * memory. Height follows width, so the picture keeps its shape. A browser that
  * does not accept the option gives the whole picture, which also draws.
  */
-async function decode(url: string, decodeWidth: number | null): Promise<ImageBitmap | null> {
+async function decode(
+	url: string,
+	decodeWidth: number | null,
+	opaque: boolean
+): Promise<ImageBitmap | null> {
 	const response = await fetch(url);
 	if (!response.ok) throw new Error(`HTTP ${response.status}`);
-	const blob = await response.blob();
+	const blob = opaque ? await opaqueWebpBlob(response) : await response.blob();
 	if (!decodeWidth) return createImageBitmap(blob);
 	try {
 		return await createImageBitmap(blob, { resizeWidth: decodeWidth, resizeQuality: 'high' });
