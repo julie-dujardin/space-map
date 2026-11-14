@@ -34,9 +34,11 @@
 		/** Shown in the heading when the menu sits inside another one and can
 		 *  hand back to it. */
 		onBack?: () => void;
+		/** Closes the host from the heading's end. */
+		headerEnd?: Snippet;
 	}
 
-	let { scope = 'map', onBack }: Props = $props();
+	let { scope = 'map', onBack, headerEnd }: Props = $props();
 
 	const showTime = $derived(scope !== 'page');
 	const showScene = $derived(scope === 'map');
@@ -267,6 +269,7 @@
 			<h2 class="text-base font-semibold">{m.settings_title()}</h2>
 			<p class="text-xs text-muted-foreground mt-0.5">{m.settings_stored_locally()}</p>
 		</div>
+		{@render headerEnd?.()}
 	</header>
 
 	<ScrollArea class="flex min-h-0 flex-1 flex-col" viewportClasses="min-h-0 flex-1">
