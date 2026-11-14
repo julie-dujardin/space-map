@@ -5,8 +5,7 @@ import {
 	formatRepublican,
 	jdnToRepublican,
 	republicanToJdn,
-	septemberEquinoxJde,
-	toRoman
+	septemberEquinoxJde
 } from './republican';
 
 const on = (y: number, m: number, d: number) => jdnToRepublican(gregorianToJdn(y, m, d));
@@ -69,23 +68,6 @@ describe('septemberEquinoxJde', () => {
 	});
 });
 
-describe('toRoman', () => {
-	it.each([
-		[1, 'I'],
-		[4, 'IV'],
-		[14, 'XIV'],
-		[79, 'LXXIX'],
-		[235, 'CCXXXV'],
-		[1999, 'MCMXCIX']
-	])('%i is %s', (n, roman) => expect(toRoman(n)).toBe(roman));
-
-	it('has nothing for zero, the negatives or past 3999', () => {
-		expect(toRoman(0)).toBeNull();
-		expect(toRoman(-5)).toBeNull();
-		expect(toRoman(4000)).toBeNull();
-	});
-});
-
 describe('formatRepublican', () => {
 	const brumaire = on(1799, 11, 9);
 	const all = { year: true, month: true, day: true };
@@ -93,11 +75,11 @@ describe('formatRepublican', () => {
 	afterEach(() => vi.unstubAllGlobals());
 
 	it.each([
-		['fr', '18 brumaire an VIII'],
-		['en', '18 Brumaire, Year VIII'],
-		['de', '18. Brumaire des Jahres VIII'],
-		['es', '18 de brumario del año VIII'],
-		['ru', '18 брюмера VIII года'],
+		['fr', '18 brumaire an 8'],
+		['en', '18 Brumaire, Year 8'],
+		['de', '18. Brumaire des Jahres 8'],
+		['es', '18 de brumario del año 8'],
+		['ru', '18 брюмера 8 года'],
 		['zh', '共和历8年雾月18日'],
 		['ja', '共和暦8年霧月18日']
 	])('writes the coup of %s as “%s”', (locale, text) => {
@@ -105,30 +87,28 @@ describe('formatRepublican', () => {
 	});
 
 	it('writes the first of the month as the French do', () => {
-		expect(formatRepublican(on(1792, 9, 22), 'fr', all)).toBe('1er vendémiaire an I');
+		expect(formatRepublican(on(1792, 9, 22), 'fr', all)).toBe('1er vendémiaire an 1');
 	});
 
 	it('names the complementary days for their feasts', () => {
-		expect(formatRepublican(on(1795, 9, 22), 'fr', all)).toBe('jour de la Révolution an III');
+		expect(formatRepublican(on(1795, 9, 22), 'fr', all)).toBe('jour de la Révolution an 3');
 		expect(formatRepublican(on(1795, 9, 22), 'en', { month: true })).toBe('Sansculottides');
 	});
 
 	it('keeps only the fields asked for', () => {
-		expect(formatRepublican(brumaire, 'fr', { year: true, month: false, day: false })).toBe(
-			'an VIII'
-		);
+		expect(formatRepublican(brumaire, 'fr', { year: true, month: false, day: false })).toBe('an 8');
 		expect(formatRepublican(brumaire, 'fr', { year: true, month: true, day: false })).toBe(
-			'brumaire an VIII'
+			'brumaire an 8'
 		);
 		expect(formatRepublican(brumaire, 'fr', { year: false, month: true, day: true })).toBe(
 			'18 brumaire'
 		);
 		expect(formatRepublican(brumaire, 'fr', { ...all, weekday: true })).toBe(
-			'octidi 18 brumaire an VIII'
+			'octidi 18 brumaire an 8'
 		);
 	});
 
-	it('writes a year Roman numerals cannot in figures', () => {
+	it('writes years before the first proleptically', () => {
 		expect(formatRepublican(on(1700, 1, 1), 'fr', { year: true, month: false, day: false })).toBe(
 			'an -92'
 		);
@@ -158,12 +138,12 @@ describe('formatRepublican', () => {
 
 		it('goes by the first English the browser asks for', () => {
 			vi.stubGlobal('navigator', { languages: ['fr-FR', 'en-US', 'en-GB'], language: 'fr-FR' });
-			expect(formatRepublican(brumaire, 'en', all)).toBe('18 Brumaire, Year VIII');
+			expect(formatRepublican(brumaire, 'en', all)).toBe('18 Brumaire, Year 8');
 		});
 
 		it('leaves a page in French alone', () => {
 			vi.stubGlobal('navigator', { languages: ['en-GB'], language: 'en-GB' });
-			expect(formatRepublican(brumaire, 'fr', all)).toBe('18 brumaire an VIII');
+			expect(formatRepublican(brumaire, 'fr', all)).toBe('18 brumaire an 8');
 		});
 	});
 });

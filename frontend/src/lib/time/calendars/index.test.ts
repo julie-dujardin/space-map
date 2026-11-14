@@ -77,7 +77,7 @@ describe('calendarDateFormat', () => {
 			minute: '2-digit',
 			hour12: false
 		});
-		expect(format.format(utc(1799, 11, 9, 10))).toBe('18 brumaire an VIII 10:00');
+		expect(format.format(utc(1799, 11, 9, 10))).toBe('18 brumaire an 8 10:00');
 	});
 
 	it('spans a Gregorian year that two Hijri years share', () => {

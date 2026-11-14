@@ -181,8 +181,6 @@ interface RepublicanNames {
 	feasts: readonly string[];
 	/** Days of the décade. */
 	weekdays?: readonly string[];
-	/** Year numbers in Roman numerals, as the decrees wrote them. */
-	roman: boolean;
 	year: (y: string) => string;
 	dayMonth: (d: string, m: string, day: number) => string;
 	monthYear: (m: string, y: string) => string;
@@ -228,7 +226,6 @@ const ENGLISH: RepublicanNames = {
 		'Rewards Day',
 		'Revolution Day'
 	],
-	roman: true,
 	year: (y) => `Year ${y}`,
 	dayMonth: (d, m) => `${d} ${m}`,
 	monthYear: (m, y) => `${m}, Year ${y}`,
@@ -267,7 +264,6 @@ const NAMES: Record<string, RepublicanNames> = {
 			'jour des Récompenses',
 			'jour de la Révolution'
 		],
-		roman: true,
 		year: (y) => `an ${y}`,
 		dayMonth: (d, m, day) => `${day === 1 ? '1er' : d} ${m}`,
 		monthYear: (m, y) => `${m} an ${y}`,
@@ -284,7 +280,6 @@ const NAMES: Record<string, RepublicanNames> = {
 			'Tag der Belohnungen',
 			'Tag der Revolution'
 		],
-		roman: true,
 		year: (y) => `Jahr ${y}`,
 		dayMonth: (d, m) => `${d}. ${m}`,
 		monthYear: (m, y) => `${m} des Jahres ${y}`,
@@ -314,7 +309,6 @@ const NAMES: Record<string, RepublicanNames> = {
 			'giorno delle Ricompense',
 			'giorno della Rivoluzione'
 		],
-		roman: true,
 		year: (y) => `anno ${y}`,
 		dayMonth: (d, m) => `${d} ${m}`,
 		monthYear: (m, y) => `${m} anno ${y}`,
@@ -344,7 +338,6 @@ const NAMES: Record<string, RepublicanNames> = {
 			'día de las Recompensas',
 			'día de la Revolución'
 		],
-		roman: true,
 		year: (y) => `año ${y}`,
 		dayMonth: (d, m) => `${d} de ${m}`,
 		monthYear: (m, y) => `${m} del año ${y}`,
@@ -374,7 +367,6 @@ const NAMES: Record<string, RepublicanNames> = {
 			'dia das Recompensas',
 			'dia da Revolução'
 		],
-		roman: true,
 		year: (y) => `ano ${y}`,
 		dayMonth: (d, m) => `${d} de ${m}`,
 		monthYear: (m, y) => `${m} do ano ${y}`,
@@ -418,7 +410,6 @@ const NAMES: Record<string, RepublicanNames> = {
 			'День наград',
 			'День революции'
 		],
-		roman: true,
 		year: (y) => `${y} год`,
 		dayMonth: (d, m) => `${d} ${m}`,
 		monthYear: (m, y) => `${m} ${y} года`,
@@ -435,7 +426,6 @@ const NAMES: Record<string, RepublicanNames> = {
 			'Dzień Nagród',
 			'Dzień Rewolucji'
 		],
-		roman: true,
 		year: (y) => `rok ${y}`,
 		dayMonth: (d, m) => `${d} ${m}`,
 		monthYear: (m, y) => `${m} roku ${y}`,
@@ -458,7 +448,6 @@ const NAMES: Record<string, RepublicanNames> = {
 		],
 		complementary: 'サンキュロットの日',
 		feasts: ['美徳の日', '才能の日', '労働の日', '意見の日', '褒賞の日', '革命の日'],
-		roman: false,
 		year: (y) => `共和暦${y}年`,
 		dayMonth: (d, m) => `${m}${d}日`,
 		monthYear: (m, y) => `共和暦${y}年${m}`,
@@ -481,7 +470,6 @@ const NAMES: Record<string, RepublicanNames> = {
 		],
 		complementary: '无套裤汉日',
 		feasts: ['美德节', '天才节', '劳动节', '舆论节', '奖赏节', '革命节'],
-		roman: false,
 		year: (y) => `共和历${y}年`,
 		dayMonth: (d, m) => `${m}${d}日`,
 		monthYear: (m, y) => `共和历${y}年${m}`,
@@ -504,7 +492,6 @@ const NAMES: Record<string, RepublicanNames> = {
 		],
 		complementary: 'أيام السانكولوت',
 		feasts: ['يوم الفضيلة', 'يوم العبقرية', 'يوم العمل', 'يوم الرأي', 'يوم المكافآت', 'يوم الثورة'],
-		roman: false,
 		year: (y) => `السنة ${y}`,
 		dayMonth: (d, m) => `${d} ${m}`,
 		monthYear: (m, y) => `${m}، السنة ${y}`,
@@ -527,7 +514,6 @@ const NAMES: Record<string, RepublicanNames> = {
 		],
 		complementary: 'ימי הסאנקילוטים',
 		feasts: ['יום המידה הטובה', 'יום הגאונות', 'יום העבודה', 'יום הדעה', 'יום הגמול', 'יום המהפכה'],
-		roman: false,
 		year: (y) => `שנה ${y}`,
 		dayMonth: (d, m) => `${d} ב${m}`,
 		monthYear: (m, y) => `${m}, שנה ${y}`,
@@ -556,36 +542,6 @@ export function decadeDayNames(locale: string): readonly string[] {
 	return namesFor(locale).weekdays ?? DECADE_DAYS;
 }
 
-const ROMAN: readonly [number, string][] = [
-	[1000, 'M'],
-	[900, 'CM'],
-	[500, 'D'],
-	[400, 'CD'],
-	[100, 'C'],
-	[90, 'XC'],
-	[50, 'L'],
-	[40, 'XL'],
-	[10, 'X'],
-	[9, 'IX'],
-	[5, 'V'],
-	[4, 'IV'],
-	[1, 'I']
-];
-
-/** Roman numerals stop at 3999 and never had a zero or a minus; past those
- *  the year is written in figures. */
-export function toRoman(n: number): string | null {
-	if (!Number.isInteger(n) || n < 1 || n > 3999) return null;
-	let out = '';
-	for (const [value, numeral] of ROMAN) {
-		while (n >= value) {
-			out += numeral;
-			n -= value;
-		}
-	}
-	return out;
-}
-
 export interface RepublicanFormatOptions {
 	year?: boolean;
 	month?: boolean;
@@ -601,7 +557,7 @@ export function formatRepublican(
 ): string {
 	const names = namesFor(locale);
 	const number = new Intl.NumberFormat(locale, { useGrouping: false });
-	const yearText = (names.roman && toRoman(date.year)) || number.format(date.year);
+	const yearText = number.format(date.year);
 	const complementary = date.month === 13;
 
 	let dayMonth: string | undefined;
