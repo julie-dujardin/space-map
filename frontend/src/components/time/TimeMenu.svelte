@@ -73,12 +73,13 @@
 	</button>
 
 	{#if showCalendar}
-		<div class="w-full shrink-0 overflow-hidden rounded-md border bg-background">
+		<!-- Not clipped: the month and year menus are taller than a short month. -->
+		<div class="w-full shrink-0 rounded-md border bg-background">
 			<!-- The columns share the container's width rather than each taking a fixed
 			     cell, so the day targets are as big as the space allows. Each day
 			     keeps its own size and centres in the column it was given. -->
 			<Calendar
-				class="w-full [&_td]:w-[calc(100%/7)] [&_th]:w-[calc(100%/7)] [&_[data-bits-day]]:mx-auto"
+				class="w-full bg-transparent [&_td]:w-[calc(100%/7)] [&_th]:w-[calc(100%/7)] [&_[data-bits-day]]:mx-auto"
 				type="single"
 				bind:value={pickerValue}
 				bind:placeholder={pickerPlaceholder}

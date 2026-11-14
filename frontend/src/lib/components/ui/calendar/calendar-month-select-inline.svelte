@@ -2,8 +2,11 @@
 	import { DateFormatter, type DateValue } from '@internationalized/date';
 	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
 	import { cn } from '$lib/utils.js';
+	import { ScrollArea } from '$lib/components/ui/scroll-area';
+	import { centreInList } from './centre-in-list';
 	import { calendarDateFormat } from '$lib/time/calendars';
 	import { pickerDateToUtcNoon } from '$lib/time/calendars/picker';
+	import { tick } from 'svelte';
 
 	type MonthFormat = Intl.DateTimeFormatOptions['month'] | ((month: number) => string);
 
@@ -34,6 +37,7 @@
 	let open = $state(false);
 	let triggerRef = $state<HTMLButtonElement | null>(null);
 	let menuRef = $state<HTMLDivElement | null>(null);
+	let listRef = $state<HTMLElement | null>(null);
 
 	// A Hebrew leap year has thirteen months, a Republican year twelve and its
 	// complementary days: the year on show says how many.
@@ -93,6 +97,11 @@
 		if (!open) return;
 		document.addEventListener('mousedown', handleDocClick);
 		document.addEventListener('keydown', handleKey);
+		(async () => {
+			await tick();
+			const sel = listRef?.querySelector<HTMLElement>('[aria-selected="true"]');
+			if (listRef && sel) centreInList(listRef, sel);
+		})();
 		return () => {
 			document.removeEventListener('mousedown', handleDocClick);
 			document.removeEventListener('keydown', handleKey);
@@ -116,23 +125,30 @@
 	{#if open}
 		<div
 			bind:this={menuRef}
-			role="listbox"
-			class="absolute top-full start-0 z-20 mt-1 max-h-60 min-w-full overflow-y-auto rounded-md border bg-popover text-popover-foreground shadow-md py-1"
+			class="absolute top-full start-0 z-20 mt-1 flex max-h-60 min-w-full flex-col rounded-md border bg-popover text-popover-foreground shadow-md"
 		>
-			{#each items as item (item.value)}
-				<button
-					type="button"
-					role="option"
-					aria-selected={item.value === selectedValue}
-					onclick={() => pick(item.value)}
-					class="block w-full text-start px-3 py-1.5 text-sm cursor-pointer transition-colors
-						{item.value === selectedValue
-						? 'bg-accent text-accent-foreground'
-						: 'hover:bg-accent hover:text-accent-foreground'}"
-				>
-					{item.label}
-				</button>
-			{/each}
+			<ScrollArea
+				bind:viewportRef={listRef}
+				class="flex min-h-0 flex-1 flex-col rounded-md"
+				viewportClasses="min-h-0 flex-1"
+			>
+				<div role="listbox" class="py-1">
+					{#each items as item (item.value)}
+						<button
+							type="button"
+							role="option"
+							aria-selected={item.value === selectedValue}
+							onclick={() => pick(item.value)}
+							class="block w-full whitespace-nowrap text-start px-3 py-1.5 text-sm cursor-pointer transition-colors
+								{item.value === selectedValue
+								? 'bg-accent text-accent-foreground'
+								: 'hover:bg-accent hover:text-accent-foreground'}"
+						>
+							{item.label}
+						</button>
+					{/each}
+				</div>
+			</ScrollArea>
 		</div>
 	{/if}
 </span>

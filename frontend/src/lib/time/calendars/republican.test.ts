@@ -75,42 +75,42 @@ describe('formatRepublican', () => {
 	afterEach(() => vi.unstubAllGlobals());
 
 	it.each([
-		['fr', '18 brumaire an 8'],
-		['en', '18 Brumaire, Year 8'],
-		['de', '18. Brumaire des Jahres 8'],
-		['es', '18 de brumario del año 8'],
-		['ru', '18 брюмера 8 года'],
-		['zh', '共和历8年雾月18日'],
-		['ja', '共和暦8年霧月18日']
+		['fr', '18 brumaire 8'],
+		['en', '18 Brumaire 8'],
+		['de', '18. Brumaire 8'],
+		['es', '18 de brumario de 8'],
+		['ru', '18 брюмера 8 г.'],
+		['zh', '8年雾月18日'],
+		['ja', '8年霧月18日']
 	])('writes the coup of %s as “%s”', (locale, text) => {
 		expect(formatRepublican(brumaire, locale, all)).toBe(text);
 	});
 
 	it('writes the first of the month as the French do', () => {
-		expect(formatRepublican(on(1792, 9, 22), 'fr', all)).toBe('1er vendémiaire an 1');
+		expect(formatRepublican(on(1792, 9, 22), 'fr', all)).toBe('1er vendémiaire 1');
 	});
 
 	it('names the complementary days for their feasts', () => {
-		expect(formatRepublican(on(1795, 9, 22), 'fr', all)).toBe('jour de la Révolution an 3');
+		expect(formatRepublican(on(1795, 9, 22), 'fr', all)).toBe('jour de la Révolution 3');
 		expect(formatRepublican(on(1795, 9, 22), 'en', { month: true })).toBe('Sansculottides');
 	});
 
 	it('keeps only the fields asked for', () => {
-		expect(formatRepublican(brumaire, 'fr', { year: true, month: false, day: false })).toBe('an 8');
+		expect(formatRepublican(brumaire, 'fr', { year: true, month: false, day: false })).toBe('8');
 		expect(formatRepublican(brumaire, 'fr', { year: true, month: true, day: false })).toBe(
-			'brumaire an 8'
+			'brumaire 8'
 		);
 		expect(formatRepublican(brumaire, 'fr', { year: false, month: true, day: true })).toBe(
 			'18 brumaire'
 		);
 		expect(formatRepublican(brumaire, 'fr', { ...all, weekday: true })).toBe(
-			'octidi 18 brumaire an 8'
+			'octidi 18 brumaire 8'
 		);
 	});
 
 	it('writes years before the first proleptically', () => {
 		expect(formatRepublican(on(1700, 1, 1), 'fr', { year: true, month: false, day: false })).toBe(
-			'an -92'
+			'-92'
 		);
 	});
 
@@ -138,12 +138,12 @@ describe('formatRepublican', () => {
 
 		it('goes by the first English the browser asks for', () => {
 			vi.stubGlobal('navigator', { languages: ['fr-FR', 'en-US', 'en-GB'], language: 'fr-FR' });
-			expect(formatRepublican(brumaire, 'en', all)).toBe('18 Brumaire, Year 8');
+			expect(formatRepublican(brumaire, 'en', all)).toBe('18 Brumaire 8');
 		});
 
 		it('leaves a page in French alone', () => {
 			vi.stubGlobal('navigator', { languages: ['en-GB'], language: 'en-GB' });
-			expect(formatRepublican(brumaire, 'fr', all)).toBe('18 brumaire an 8');
+			expect(formatRepublican(brumaire, 'fr', all)).toBe('18 brumaire 8');
 		});
 	});
 });

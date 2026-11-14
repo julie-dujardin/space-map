@@ -2,6 +2,8 @@
 	import { DateFormatter, type DateValue } from '@internationalized/date';
 	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
 	import { cn } from '$lib/utils.js';
+	import { ScrollArea } from '$lib/components/ui/scroll-area';
+	import { centreInList } from './centre-in-list';
 	import { extendedYear, withExtendedYear, yearLabel } from '$lib/time/calendars/picker';
 	import { tick } from 'svelte';
 
@@ -36,7 +38,7 @@
 	let query = $state('');
 	let triggerRef = $state<HTMLButtonElement | null>(null);
 	let menuRef = $state<HTMLDivElement | null>(null);
-	let listRef = $state<HTMLDivElement | null>(null);
+	let listRef = $state<HTMLElement | null>(null);
 
 	const DEFAULT_YEARS = (() => {
 		const cy = new Date().getFullYear();
@@ -106,11 +108,10 @@
 		query = '';
 		document.addEventListener('mousedown', handleDocClick);
 		document.addEventListener('keydown', handleKey);
-		// Scroll the selected year into view once the menu mounts.
 		(async () => {
 			await tick();
-			const sel = menuRef?.querySelector('[aria-selected="true"]') as HTMLElement | null;
-			sel?.scrollIntoView({ block: 'center' });
+			const sel = listRef?.querySelector<HTMLElement>('[aria-selected="true"]');
+			if (listRef && sel) centreInList(listRef, sel);
 		})();
 		return () => {
 			document.removeEventListener('mousedown', handleDocClick);
@@ -152,22 +153,28 @@
 						focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring"
 				/>
 			</div>
-			<div bind:this={listRef} role="listbox" class="min-h-0 overflow-y-auto pb-1">
-				{#each shown as item (item.value)}
-					<button
-						type="button"
-						role="option"
-						aria-selected={item.value === selectedValue}
-						onclick={() => pick(item.value)}
-						class="block w-full text-start px-3 py-1.5 text-sm cursor-pointer transition-colors
-							{item.value === selectedValue
-							? 'bg-accent text-accent-foreground'
-							: 'hover:bg-accent hover:text-accent-foreground'}"
-					>
-						{item.label}
-					</button>
-				{/each}
-			</div>
+			<ScrollArea
+				bind:viewportRef={listRef}
+				class="flex min-h-0 flex-1 flex-col rounded-b-md"
+				viewportClasses="min-h-0 flex-1"
+			>
+				<div role="listbox" class="pb-1">
+					{#each shown as item (item.value)}
+						<button
+							type="button"
+							role="option"
+							aria-selected={item.value === selectedValue}
+							onclick={() => pick(item.value)}
+							class="block w-full whitespace-nowrap text-start px-3 py-1.5 text-sm cursor-pointer transition-colors
+								{item.value === selectedValue
+								? 'bg-accent text-accent-foreground'
+								: 'hover:bg-accent hover:text-accent-foreground'}"
+						>
+							{item.label}
+						</button>
+					{/each}
+				</div>
+			</ScrollArea>
 		</div>
 	{/if}
 </span>

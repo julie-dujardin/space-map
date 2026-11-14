@@ -181,10 +181,11 @@ interface RepublicanNames {
 	feasts: readonly string[];
 	/** Days of the décade. */
 	weekdays?: readonly string[];
-	year: (y: string) => string;
+	/** A year on its own, where it takes more than the number (Japanese 年). */
+	year?: (y: string) => string;
 	dayMonth: (d: string, m: string, day: number) => string;
-	monthYear: (m: string, y: string) => string;
-	full: (dayMonth: string, y: string) => string;
+	/** A month or a day and month with its year, where a space is not enough. */
+	withYear?: (text: string, y: string) => string;
 }
 
 const FRENCH_MONTHS = [
@@ -226,10 +227,7 @@ const ENGLISH: RepublicanNames = {
 		'Rewards Day',
 		'Revolution Day'
 	],
-	year: (y) => `Year ${y}`,
-	dayMonth: (d, m) => `${d} ${m}`,
-	monthYear: (m, y) => `${m}, Year ${y}`,
-	full: (dm, y) => `${dm}, Year ${y}`
+	dayMonth: (d, m) => `${d} ${m}`
 };
 
 /** The months as a British satirist renamed them, for readers in Britain. */
@@ -264,10 +262,7 @@ const NAMES: Record<string, RepublicanNames> = {
 			'jour des Récompenses',
 			'jour de la Révolution'
 		],
-		year: (y) => `an ${y}`,
-		dayMonth: (d, m, day) => `${day === 1 ? '1er' : d} ${m}`,
-		monthYear: (m, y) => `${m} an ${y}`,
-		full: (dm, y) => `${dm} an ${y}`
+		dayMonth: (d, m, day) => `${day === 1 ? '1er' : d} ${m}`
 	},
 	de: {
 		months: FRENCH_MONTHS,
@@ -280,10 +275,7 @@ const NAMES: Record<string, RepublicanNames> = {
 			'Tag der Belohnungen',
 			'Tag der Revolution'
 		],
-		year: (y) => `Jahr ${y}`,
-		dayMonth: (d, m) => `${d}. ${m}`,
-		monthYear: (m, y) => `${m} des Jahres ${y}`,
-		full: (dm, y) => `${dm} des Jahres ${y}`
+		dayMonth: (d, m) => `${d}. ${m}`
 	},
 	it: {
 		months: [
@@ -309,10 +301,7 @@ const NAMES: Record<string, RepublicanNames> = {
 			'giorno delle Ricompense',
 			'giorno della Rivoluzione'
 		],
-		year: (y) => `anno ${y}`,
-		dayMonth: (d, m) => `${d} ${m}`,
-		monthYear: (m, y) => `${m} anno ${y}`,
-		full: (dm, y) => `${dm} anno ${y}`
+		dayMonth: (d, m) => `${d} ${m}`
 	},
 	es: {
 		months: [
@@ -338,10 +327,8 @@ const NAMES: Record<string, RepublicanNames> = {
 			'día de las Recompensas',
 			'día de la Revolución'
 		],
-		year: (y) => `año ${y}`,
 		dayMonth: (d, m) => `${d} de ${m}`,
-		monthYear: (m, y) => `${m} del año ${y}`,
-		full: (dm, y) => `${dm} del año ${y}`
+		withYear: (text, y) => `${text} de ${y}`
 	},
 	pt: {
 		months: [
@@ -367,10 +354,8 @@ const NAMES: Record<string, RepublicanNames> = {
 			'dia das Recompensas',
 			'dia da Revolução'
 		],
-		year: (y) => `ano ${y}`,
 		dayMonth: (d, m) => `${d} de ${m}`,
-		monthYear: (m, y) => `${m} do ano ${y}`,
-		full: (dm, y) => `${dm} do ano ${y}`
+		withYear: (text, y) => `${text} de ${y}`
 	},
 	ru: {
 		months: [
@@ -410,10 +395,8 @@ const NAMES: Record<string, RepublicanNames> = {
 			'День наград',
 			'День революции'
 		],
-		year: (y) => `${y} год`,
 		dayMonth: (d, m) => `${d} ${m}`,
-		monthYear: (m, y) => `${m} ${y} года`,
-		full: (dm, y) => `${dm} ${y} года`
+		withYear: (text, y) => `${text} ${y} г.`
 	},
 	pl: {
 		months: FRENCH_MONTHS.map((m) => m.toLowerCase()),
@@ -426,10 +409,7 @@ const NAMES: Record<string, RepublicanNames> = {
 			'Dzień Nagród',
 			'Dzień Rewolucji'
 		],
-		year: (y) => `rok ${y}`,
-		dayMonth: (d, m) => `${d} ${m}`,
-		monthYear: (m, y) => `${m} roku ${y}`,
-		full: (dm, y) => `${dm} roku ${y}`
+		dayMonth: (d, m) => `${d} ${m}`
 	},
 	ja: {
 		months: [
@@ -448,10 +428,9 @@ const NAMES: Record<string, RepublicanNames> = {
 		],
 		complementary: 'サンキュロットの日',
 		feasts: ['美徳の日', '才能の日', '労働の日', '意見の日', '褒賞の日', '革命の日'],
-		year: (y) => `共和暦${y}年`,
+		year: (y) => `${y}年`,
 		dayMonth: (d, m) => `${m}${d}日`,
-		monthYear: (m, y) => `共和暦${y}年${m}`,
-		full: (dm, y) => `共和暦${y}年${dm}`
+		withYear: (text, y) => `${y}年${text}`
 	},
 	zh: {
 		months: [
@@ -470,10 +449,9 @@ const NAMES: Record<string, RepublicanNames> = {
 		],
 		complementary: '无套裤汉日',
 		feasts: ['美德节', '天才节', '劳动节', '舆论节', '奖赏节', '革命节'],
-		year: (y) => `共和历${y}年`,
+		year: (y) => `${y}年`,
 		dayMonth: (d, m) => `${m}${d}日`,
-		monthYear: (m, y) => `共和历${y}年${m}`,
-		full: (dm, y) => `共和历${y}年${dm}`
+		withYear: (text, y) => `${y}年${text}`
 	},
 	ar: {
 		months: [
@@ -492,10 +470,7 @@ const NAMES: Record<string, RepublicanNames> = {
 		],
 		complementary: 'أيام السانكولوت',
 		feasts: ['يوم الفضيلة', 'يوم العبقرية', 'يوم العمل', 'يوم الرأي', 'يوم المكافآت', 'يوم الثورة'],
-		year: (y) => `السنة ${y}`,
-		dayMonth: (d, m) => `${d} ${m}`,
-		monthYear: (m, y) => `${m}، السنة ${y}`,
-		full: (dm, y) => `${dm}، السنة ${y}`
+		dayMonth: (d, m) => `${d} ${m}`
 	},
 	he: {
 		months: [
@@ -514,10 +489,7 @@ const NAMES: Record<string, RepublicanNames> = {
 		],
 		complementary: 'ימי הסאנקילוטים',
 		feasts: ['יום המידה הטובה', 'יום הגאונות', 'יום העבודה', 'יום הדעה', 'יום הגמול', 'יום המהפכה'],
-		year: (y) => `שנה ${y}`,
-		dayMonth: (d, m) => `${d} ב${m}`,
-		monthYear: (m, y) => `${m}, שנה ${y}`,
-		full: (dm, y) => `${dm}, שנה ${y}`
+		dayMonth: (d, m) => `${d} ב${m}`
 	}
 };
 
@@ -575,8 +547,9 @@ export function formatRepublican(
 	}
 	const monthName = complementary ? names.complementary : names.months[date.month - 1];
 
-	if (dayMonth !== undefined) return year ? names.full(dayMonth, yearText) : dayMonth;
-	if (month) return year ? names.monthYear(monthName, yearText) : monthName;
+	const withYear = names.withYear ?? ((text: string, y: string) => `${text} ${y}`);
+	if (dayMonth !== undefined) return year ? withYear(dayMonth, yearText) : dayMonth;
+	if (month) return year ? withYear(monthName, yearText) : monthName;
 	if (day) return number.format(date.day);
-	return names.year(yearText);
+	return names.year?.(yearText) ?? yearText;
 }
