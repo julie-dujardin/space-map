@@ -1,6 +1,6 @@
 # Catalogue light grid (`v1/glow/`)
 
-The light of the Milky Way render tree as a 3D grid, so a client can draw as a glow the stars it does not draw as points, and the model light the catalogue lacks, so the glow holds the whole Galaxy. `space-map-glow` builds the grid from the exported tree and dust nest, `space-map-galaxy` builds the model against that grid, and `space-map-export --only glow` writes both. The files sit beside the star tree in the same stored export, under the same base URL, `PUBLIC_EXTRASOLAR_URL`. The model is smooth light from published structure, labelled as model: no mock stars.
+The light of the Milky Way render tree as a 3D grid, so a client can draw as a glow the stars it does not draw as points, and the model light the catalogue lacks, so the glow holds the whole Galaxy. `space-map-glow` builds the grid from the exported tree and dust nest, `space-map-galaxy` builds the model against that grid, and `space-map-export --only glow` writes both. The files sit beside the star tree in the same stored export, under the same base URL, `PUBLIC_TILES_URL`. The model is smooth light from published structure, labelled as model: no mock stars.
 
 ## Directory structure
 
@@ -27,7 +27,7 @@ Each `.bin.gz` is gzip around one payload in the container of [extrasolar.md](ex
 
 One column, `texels`, of type `uint16`, holds four values per texel in the order of `texImage3D`: x fastest, then y, then z. Each value is the bits of a half float. Upload it as it stands: internal format `RGBA16F`, format `RGBA`, type `HALF_FLOAT`, min and mag filter `LINEAR`, `CLAMP_TO_EDGE`. The textures are interleaved because the values of a voxel often repeat, and gzip takes about 40% more off that way than with a column per channel.
 
-Every file repeats the token of `metadata.json`. A client fetches `{PUBLIC_EXTRASOLAR_URL}/v1/glow/{path}?v={token}`.
+Every file repeats the token of `metadata.json`. A client fetches `{PUBLIC_TILES_URL}/v1/glow/{path}?v={token}`.
 
 ## Grid
 

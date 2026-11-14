@@ -34,7 +34,7 @@ from space_map_data.galaxy import build as model_build
 from space_map_data.galaxy import calibrate, geometry
 from space_map_data.galaxy.credits import PAPERS, paper_credits
 from space_map_data.glow import build, form, light, sky_map
-from space_map_data.utils.paths import EXTRASOLAR_DIR
+from space_map_data.utils.paths import TILES_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -319,9 +319,9 @@ def _distribution(root: Path, emission: dict | None) -> str:
         dust["distribution"],
         *(source["distribution"] for source in sources),
     )
-    if distribution == UNDECIDED and root.resolve() == EXTRASOLAR_DIR.resolve():
+    if distribution == UNDECIDED and root.resolve() == TILES_DIR.resolve():
         raise swap.ExportRefused(
-            f"the glow is {UNDECIDED}: name a root other than {EXTRASOLAR_DIR}"
+            f"the glow is {UNDECIDED}: name a root other than {TILES_DIR}"
         )
     return distribution
 
@@ -438,7 +438,7 @@ def _write(root: Path, build_dir: Path, model_dir: Path, emission_dir: Path) -> 
 
 
 def export_glow_only(
-    root: Path = EXTRASOLAR_DIR,
+    root: Path = TILES_DIR,
     build_dir: Path = build.BUILD_DIR,
     model_dir: Path = model_build.BUILD_DIR,
     emission_dir: Path = emission_build.BUILD_DIR,

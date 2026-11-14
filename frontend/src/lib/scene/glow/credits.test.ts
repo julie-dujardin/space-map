@@ -64,7 +64,7 @@ let hosts = 0;
 
 /** Each call serves from a base URL of its own, so no test reads the metadata another one kept. */
 function serve(status: number, body: unknown = META) {
-	configureHost({ extrasolarUrl: `https://data${++hosts}.example` });
+	configureHost({ tilesUrl: `https://data${++hosts}.example` });
 	const fetch = vi.fn(async () => new Response(JSON.stringify(body), { status }));
 	vi.stubGlobal('fetch', fetch);
 	return fetch;

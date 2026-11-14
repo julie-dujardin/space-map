@@ -10,8 +10,9 @@
  */
 
 import type { ExtrasolarSkyCultures } from './skycultures';
-import { host, textureAllowed } from '$lib/host';
+import { textureAllowed } from '$lib/host';
 import { gunzip, gunzipJson } from '$lib/fetch/gz';
+import { tilesBase } from '$lib/fetch/data-base';
 import { fetchWithTimeout } from '$lib/fetch/fetch-timeout';
 import { Container, type ColumnType } from './container';
 
@@ -150,11 +151,6 @@ export class ExtrasolarStaleError extends Error {
 	}
 }
 
-/** Root of the extrasolar export; empty where this host serves none. */
-export function extrasolarBase(): string {
-	return host().extrasolarUrl;
-}
-
 /** Whether this host may fetch the files of a table or tree with this
  *  `distribution` (the same ladder as surface maps). */
 export function extrasolarAllowed(entry: { distribution?: string }): boolean {
@@ -171,7 +167,7 @@ export function extrasolarPath(pattern: string, fields: Record<string, string | 
 }
 
 export function extrasolarUrl(path: string, token: string, prefix = 'x'): string {
-	return `${extrasolarBase()}/v1/${prefix}/${path}?v=${token}`;
+	return `${tilesBase()}/v1/${prefix}/${path}?v=${token}`;
 }
 
 let metadataBase: string | null = null;
@@ -182,7 +178,7 @@ let metadataPending: Promise<ExtrasolarMetadata | null> | null = null;
  * extrasolar URL. A failure is not kept, so the next call tries again.
  */
 export function fetchExtrasolarMetadata(): Promise<ExtrasolarMetadata | null> {
-	const base = extrasolarBase();
+	const base = tilesBase();
 	if (metadataPending && metadataBase === base) return metadataPending;
 	metadataBase = base;
 	if (base === '') {

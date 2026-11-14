@@ -31,7 +31,7 @@ An object the export leaves out has no page and is not listed. Every exported
 group is included.
 
 **Planets of the extrasolar catalogue** are all listed, each with its host
-star, from the served extrasolar export (`space-map-extrasolar/v1/x/`): the
+star, from the served extrasolar export (`space-map-tiles/v1/x/`): the
 planet index gives the systems, and the system files the planets and the hosts'
 names ([extrasolar.md](extrasolar.md#planets-planets)). The site has a page only
 for what that export serves, so a registry change that the extrasolar export

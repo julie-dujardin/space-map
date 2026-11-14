@@ -76,9 +76,9 @@ EXPORT_DIR = PROJECT_ROOT.parent / "space-map-export"
 # exactly; use sidecar_io.mirror_path to translate between the two.
 EXPORT_METADATA_DIR = PROJECT_ROOT.parent / "space-map-export-metadata"
 
-# Surface tile pyramids: millions of files, which the export's host caps, so
-# they are served apart from it. Layout mirrors EXPORT_DIR (v1/tiles/…). Like
-# DOWNLOAD_DIR this may sit on a network mount.
+# The surface tile pyramids (v1/tiles/) and the extrasolar export (v1/x/,
+# v1/dust/, v1/glow/): millions of files, which the export's host caps, so the
+# tile host serves them. Like DOWNLOAD_DIR this may sit on a network mount.
 TILES_DIR = PROJECT_ROOT.parent / "space-map-tiles"
 
 # Frequently-changing data published on its own, away from the export: a
@@ -92,6 +92,3 @@ ACTIVITY_ARCHIVE_DIR = PROJECT_ROOT.parent / "space-map-activity"
 REGISTRY_ROOT = PROJECT_ROOT.parent / "space-map-registry"
 # Copies of the registry after each ingest, one directory for each host.
 REGISTRY_BACKUP_DIR = DERIVED_DIR / "extrasolar" / "registry"
-# The extrasolar export, layout v1/x/. It has too many files for the host of
-# EXPORT_DIR, so it has its own base URL.
-EXTRASOLAR_DIR = PROJECT_ROOT.parent / "space-map-extrasolar"

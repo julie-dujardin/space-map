@@ -140,11 +140,14 @@ vi.mock('$lib/scene/setup/load-gates', () => ({
 		return minorsGate;
 	}
 }));
+vi.mock('$lib/fetch/data-base', async (importActual) => ({
+	...(await importActual<typeof import('$lib/fetch/data-base')>()),
+	tilesBase: () => base
+}));
 vi.mock('$lib/fetch/extrasolar/files', async (importActual) => {
 	const actual = await importActual<typeof import('$lib/fetch/extrasolar/files')>();
 	return {
 		...actual,
-		extrasolarBase: () => base,
 		extrasolarAllowed: () => allow,
 		fetchExtrasolarMetadata: async (): Promise<ExtrasolarMetadata> => {
 			metadataCalls++;

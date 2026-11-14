@@ -59,7 +59,7 @@ from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.extrasolar.exoplanets.catalogues import MINIMUM_MASS
 from space_map_data.extrasolar.exoplanets.iau import PLANET
 from space_map_data.extrasolar.exoplanets.wikidata import planet_qid
-from space_map_data.utils.paths import EXTRASOLAR_DIR
+from space_map_data.utils.paths import TILES_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +86,7 @@ JUPITER_DIAMETER_KM = 2 * JUPITER_RADIUS_CM / 1e5
 CARD_PRECISION = 0.1
 
 
-def served_planet_families_stamp(extrasolar_dir: Path = EXTRASOLAR_DIR) -> dict | None:
+def served_planet_families_stamp(extrasolar_dir: Path = TILES_DIR) -> dict | None:
     """The family counts and the planets token of the served extrasolar
     export, None with no planets served. The pages count the families and
     list planets from the planet files, so they change with either."""
@@ -180,7 +180,7 @@ class _Planet:
 def build_planet_family_groups(
     names: ObjectNames,
     solar: SolarPlanets,
-    extrasolar_dir: Path = EXTRASOLAR_DIR,
+    extrasolar_dir: Path = TILES_DIR,
 ) -> PlanetGroups:
     """Counts, child families and listed planets of every planet- page, and
     the Planets page.

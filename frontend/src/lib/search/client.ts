@@ -21,7 +21,7 @@ import {
 	isFamilySlug
 } from '$lib/fetch/groups/registry';
 import { SUN_ID } from '$lib/constants';
-import { extrasolarBase } from '$lib/fetch/extrasolar/files';
+import { tilesBase } from '$lib/fetch/data-base';
 
 /** Pre-resolved thumbnail descriptor written by the search indexer.
  *  Already narrowed to a single emitted variant — the frontend doesn't pick
@@ -386,7 +386,7 @@ async function searchServed(
 ): Promise<SearchHit[]> {
 	const c = await getClient();
 	if (!c || !query.trim()) return [];
-	const extrasolar = extrasolarBase() !== '';
+	const extrasolar = tilesBase() !== '';
 	const local = [filter, ...(localFilter ? [localFilter] : []), NOT_EXTRASOLAR].join(' AND ');
 	const res = await c.index(INDEX).search(query, {
 		limit,
@@ -521,7 +521,7 @@ export async function searchGroupMembers(
 ): Promise<GroupMemberPage> {
 	if (isFamilySlug(slug) || CLASS_PAGES.has(slug)) {
 		// Their members open pages of the extrasolar export.
-		if (extrasolarBase() === '') return { hits: [], estimatedTotalHits: 0 };
+		if (tilesBase() === '') return { hits: [], estimatedTotalHits: 0 };
 		return searchMemberPage(`classes = ${quote(slug)}`, offset, limit, locale);
 	}
 	// Feature types tag no object — their members are the features themselves,

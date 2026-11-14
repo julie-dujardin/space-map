@@ -14,7 +14,7 @@ import type { LineupBody } from './BodyLineup.svelte';
 import { rowQualifier } from '$lib/credits/imagery-layers';
 import { catalogueSizeCredit } from '$lib/credits/size-sources';
 import { loadTextureCredits, type TextureSource } from '$lib/credits/texture-credits';
-import { extrasolarBase } from '$lib/fetch/extrasolar/files';
+import { tilesBase } from '$lib/fetch/data-base';
 import { isExtrasolarObjectId, planetOfObjectId } from '$lib/fetch/extrasolar/ids';
 import { drawnPlanetIds } from '$lib/scene/exoplanets/drawn';
 import { lineupModelCredits } from './lineup-model-credits.svelte';
@@ -164,7 +164,7 @@ export class LineupHero {
 				ariaLabel: d.fallbackName(),
 				perPage: STAR_PAGE,
 				bandRatio: STAR_BAND_RATIO,
-				compare: extrasolarBase() === '' ? false : undefined
+				compare: tilesBase() === '' ? false : undefined
 			};
 		});
 		// The best-known craft and rockets, whichever kind they are.

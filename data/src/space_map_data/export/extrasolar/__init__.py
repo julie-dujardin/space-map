@@ -1,5 +1,5 @@
 """`space-map-export --only extrasolar`: the extrasolar registry's tables as
-served files under `space-map-extrasolar/v1/x/`.
+served files under `space-map-tiles/v1/x/`.
 
 - `container`: the binary format of every file, with its token.
 - `tiles`: record tiles, the split tables and the checks on the rows.

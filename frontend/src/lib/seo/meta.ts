@@ -25,7 +25,7 @@
 import { error, redirect } from '@sveltejs/kit';
 import * as m from '$lib/paraglide/messages.js';
 import { getLocale } from '$lib/host';
-import { dataBase, imagesBase } from '$lib/fetch/data-base';
+import { dataBase, imagesBase, tilesBase } from '$lib/fetch/data-base';
 import { extractEmbeddedImageMetadata, smallestRasterVariant } from '$lib/fetch/objects/images';
 import {
 	FEATURE_BUNDLES,
@@ -62,7 +62,6 @@ import {
 	EXTRASOLAR_FORMAT,
 	ExtrasolarStaleError,
 	extrasolarAllowed,
-	extrasolarBase,
 	extrasolarPath,
 	type ExtrasolarMetadata
 } from '$lib/fetch/extrasolar/files';
@@ -851,7 +850,7 @@ interface RequestFiles {
  */
 function requestFiles(url: URL): RequestFiles {
 	const signal = AbortSignal.timeout(LOOKUP_TIMEOUT_MS);
-	const base = `${absolutize(extrasolarBase(), url.origin)}/v1/x`;
+	const base = `${absolutize(tilesBase(), url.origin)}/v1/x`;
 	let metadata: Promise<ExtrasolarMetadata> | null = null;
 	return {
 		metadata: () =>

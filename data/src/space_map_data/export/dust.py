@@ -47,7 +47,7 @@ from space_map_data.export.extrasolar import container
 from space_map_data.export.extrasolar.skycultures import UNDECIDED, combined
 from space_map_data.galaxy import geometry
 from space_map_data.galaxy.credits import paper_credits
-from space_map_data.utils.paths import EXTRASOLAR_DIR
+from space_map_data.utils.paths import TILES_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -255,9 +255,9 @@ def export_dust(variant: str, root: Path) -> dict:
     if variant not in VARIANTS:
         raise swap.ExportRefused(f"no variant {variant}")
     distribution = _distribution(variant)
-    if distribution == UNDECIDED and root.resolve() == EXTRASOLAR_DIR.resolve():
+    if distribution == UNDECIDED and root.resolve() == TILES_DIR.resolve():
         raise swap.ExportRefused(
-            f"variant {variant} is {UNDECIDED}: name a root other than {EXTRASOLAR_DIR}"
+            f"variant {variant} is {UNDECIDED}: name a root other than {TILES_DIR}"
         )
     with swap.locked(root):
         return _write(variant, root, distribution)
@@ -293,7 +293,7 @@ def _write(variant: str, root: Path, distribution: str) -> dict:
     )
 
 
-def export_dust_only(variant: str, root: Path = EXTRASOLAR_DIR) -> None:
+def export_dust_only(variant: str, root: Path = TILES_DIR) -> None:
     metadata = export_dust(variant, root)
     sizes = {
         tier: sum(entry[tier]["bytes"] for entry in metadata["levels"])

@@ -1,6 +1,6 @@
 /**
  * Test-only access to the real extrasolar export beside the repo
- * (`space-map-extrasolar/v1/x/`). Tests on it skip where it is absent.
+ * (`space-map-tiles/v1/x/`). Tests on it skip where it is absent.
  */
 
 import { existsSync, readFileSync } from 'node:fs';
@@ -9,7 +9,7 @@ import { Container } from '../container';
 import { ExtrasolarStaleError, type ExtrasolarMetadata } from '../files';
 import type { LookupSource } from '../lookup';
 
-export const EXPORT = new URL('../../../../../../../space-map-extrasolar/v1/x/', import.meta.url);
+export const EXPORT = new URL('../../../../../../../space-map-tiles/v1/x/', import.meta.url);
 export const HAS_EXPORT = existsSync(EXPORT);
 
 /** A decoded payload in a buffer of its own, as the browser has it. */

@@ -90,7 +90,7 @@ from space_map_data.extrasolar.sources.names import IAU_WGSN
 from space_map_data.extrasolar.sources.wikidata import WIKIDATA
 from space_map_data.extrasolar.systems.assemble import NODE_CLASSES
 from space_map_data.extrasolar.tables import METADATA, POINT_SOURCE
-from space_map_data.utils.paths import EXPORT_DIR, EXTRASOLAR_DIR, REGISTRY_ROOT
+from space_map_data.utils.paths import EXPORT_DIR, REGISTRY_ROOT, TILES_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -793,7 +793,7 @@ def replace_bundle_entries(
 
 
 def export_star_objects_only(
-    out_dir: Path = EXPORT_DIR / "v1", extrasolar_dir: Path = EXTRASOLAR_DIR
+    out_dir: Path = EXPORT_DIR / "v1", extrasolar_dir: Path = TILES_DIR
 ) -> None:
     """`space-map-export --only star-objects`: the star and planet entries of
     the object bundles, in place. The other entries and the bucket counts

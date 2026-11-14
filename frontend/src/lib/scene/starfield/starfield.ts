@@ -51,7 +51,6 @@ import { Container, nodeInfo, type NodeInfo } from '$lib/fetch/extrasolar/contai
 import {
 	ExtrasolarStaleError,
 	extrasolarAllowed,
-	extrasolarBase,
 	extrasolarPath,
 	fetchExtrasolarFile,
 	fetchExtrasolarMetadata,
@@ -59,6 +58,7 @@ import {
 	type ExtrasolarCredit,
 	type ExtrasolarTree
 } from '$lib/fetch/extrasolar/files';
+import { tilesBase } from '$lib/fetch/data-base';
 import { RetryBackoff } from '$lib/fetch/retry-backoff';
 import { eagerMinorsDone } from '$lib/scene/setup/load-gates';
 import { SwitchFade } from '$lib/scene/visibility/switch-fade';
@@ -335,7 +335,7 @@ export class StarfieldSystem {
 			group.visible = false;
 			scene.add(group);
 		}
-		const open = extrasolarBase() !== '' && !ctx.layers.skipped.has('starfield');
+		const open = tilesBase() !== '' && !ctx.layers.skipped.has('starfield');
 		this.drawable = open ? 'unknown' : 'no';
 	}
 

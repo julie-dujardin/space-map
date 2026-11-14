@@ -57,7 +57,7 @@ from space_map_data.export.objects.writer import hash_bucket
 from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.models.feature import Feature
 from space_map_data.models.object import Object, ObjectType
-from space_map_data.utils.paths import EXTRASOLAR_DIR, MESSAGES_DIR
+from space_map_data.utils.paths import MESSAGES_DIR, TILES_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -401,7 +401,7 @@ class PlanetPages(NamedTuple):
         ]
 
 
-def available_planet_pages(extrasolar_dir: Path = EXTRASOLAR_DIR) -> PlanetPages:
+def available_planet_pages(extrasolar_dir: Path = TILES_DIR) -> PlanetPages:
     """Every planet of the served extrasolar export below *extrasolar_dir*, and
     the name of each host, or none with no planets served.
 
@@ -455,7 +455,7 @@ def available_planet_pages(extrasolar_dir: Path = EXTRASOLAR_DIR) -> PlanetPages
 
 
 def planet_page_names(
-    hosts: Collection[int], extrasolar_dir: Path = EXTRASOLAR_DIR
+    hosts: Collection[int], extrasolar_dir: Path = TILES_DIR
 ) -> dict[str, Names | None]:
     """The names of the pages of the served *hosts* and of their planets, by
     page id, from their system files alone. None for a page whose file gives

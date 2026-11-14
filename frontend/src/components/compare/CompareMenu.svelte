@@ -19,7 +19,7 @@
 	import { Switch } from '$lib/components/ui/switch/index.js';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import * as m from '$lib/paraglide/messages.js';
-	import { extrasolarBase } from '$lib/fetch/extrasolar/files';
+	import { tilesBase } from '$lib/fetch/data-base';
 	import { isSearchEnabled, searchDrawable, type ObjectHit } from '$lib/search/client';
 	import { getLocale } from '$lib/host';
 	import { typeLabel } from '$lib/search/format';
@@ -86,7 +86,7 @@
 	type Section = 'presets' | 'list';
 
 	const enabled = isSearchEnabled();
-	const hasStars = extrasolarBase() !== '';
+	const hasStars = tilesBase() !== '';
 	let starsPreset = $state<ComparePreset | null>(null);
 	let impressionsPreset = $state<ComparePreset | null>(null);
 	const presetGroups = $derived(comparePresetGroups([starsPreset, impressionsPreset]));

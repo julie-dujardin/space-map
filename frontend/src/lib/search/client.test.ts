@@ -174,7 +174,7 @@ describe('endpoint search', () => {
 	});
 
 	it('offers the stars and planets of other systems where the host serves them', async () => {
-		configureHost({ extrasolarUrl: 'https://extrasolar.example' });
+		configureHost({ tilesUrl: 'https://extrasolar.example' });
 		const system = {
 			...HOST,
 			id: 'x-597894079',
@@ -198,7 +198,7 @@ describe('endpoint search', () => {
 	});
 
 	it('keeps the Δv map to the solar system where the host serves other stars', async () => {
-		configureHost({ extrasolarUrl: 'https://extrasolar.example' });
+		configureHost({ tilesUrl: 'https://extrasolar.example' });
 		search.mockResolvedValue({ hits: [] });
 
 		await searchBodies('Centauri', 'en', 5);
@@ -209,7 +209,7 @@ describe('endpoint search', () => {
 	it.each(['cat-stars', 'cat-planets', 'cat-star-systems', 'star-red-dwarf', 'planet-hot-jupiter'])(
 		'lists the members of %s by their class, planets included',
 		async (slug) => {
-			configureHost({ extrasolarUrl: 'https://extrasolar.example' });
+			configureHost({ tilesUrl: 'https://extrasolar.example' });
 			search.mockResolvedValue({ hits: [HOST, PLANET], estimatedTotalHits: 2 });
 
 			const page = await searchGroupMembers(slug, 30, 10, 'en');
@@ -224,7 +224,7 @@ describe('endpoint search', () => {
 	);
 
 	it('leaves a class page to its own list where the host serves no extrasolar export', async () => {
-		configureHost({ extrasolarUrl: '' });
+		configureHost({ tilesUrl: '' });
 		search.mockClear();
 
 		const page = await searchGroupMembers('cat-stars', 0, 10, 'en');
@@ -234,7 +234,7 @@ describe('endpoint search', () => {
 	});
 
 	it('keeps the stars of other systems off the Solar System page', async () => {
-		configureHost({ extrasolarUrl: 'https://extrasolar.example' });
+		configureHost({ tilesUrl: 'https://extrasolar.example' });
 		search.mockResolvedValue({ hits: [], estimatedTotalHits: 0 });
 
 		await searchGroupMembers('cat-solar-system', 0, 10, 'en');

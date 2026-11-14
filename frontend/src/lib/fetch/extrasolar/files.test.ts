@@ -29,7 +29,7 @@ afterEach(() => {
 
 describe('extrasolar files', () => {
 	it('builds URLs under the host base with the token', () => {
-		configureHost({ extrasolarUrl: 'https://x.example/' });
+		configureHost({ tilesUrl: 'https://x.example/' });
 		expect(extrasolarUrl(extrasolarPath('mw/node/{name}.bin.gz', { name: 'r07' }), TOKEN)).toBe(
 			`https://x.example/v1/x/mw/node/r07.bin.gz?v=${TOKEN}`
 		);
@@ -54,7 +54,7 @@ describe('extrasolar files', () => {
 	});
 
 	it('decodes a file whose token matches', async () => {
-		configureHost({ extrasolarUrl: '/data' });
+		configureHost({ tilesUrl: '/data' });
 		const fetch = serveFixture();
 		const container = await fetchExtrasolarFile('mw/node/r.bin.gz', TOKEN);
 		expect(container.rows).toBe(5);
@@ -62,7 +62,7 @@ describe('extrasolar files', () => {
 	});
 
 	it('rejects a file from another export and tells the stale listeners once', async () => {
-		configureHost({ extrasolarUrl: '/data' });
+		configureHost({ tilesUrl: '/data' });
 		serveFixture();
 		const stale = vi.fn();
 		const off = onExtrasolarStale(stale);
@@ -77,7 +77,7 @@ describe('extrasolar files', () => {
 	});
 
 	it('reads another export of the tree by its prefix, with the same token check', async () => {
-		configureHost({ extrasolarUrl: '/data' });
+		configureHost({ tilesUrl: '/data' });
 		const fetch = serveFixture();
 		const container = await fetchExtrasolarFile('levels/0.bin.gz', TOKEN, { prefix: 'dust' });
 		expect(container.rows).toBe(5);
@@ -89,7 +89,7 @@ describe('extrasolar files', () => {
 	});
 
 	it('decodes a JSON file and checks its token field', async () => {
-		configureHost({ extrasolarUrl: '/data' });
+		configureHost({ tilesUrl: '/data' });
 		const body = gzipSync(JSON.stringify({ token: TOKEN, hosts: [] }));
 		const fetch = vi.fn<(url: string) => Promise<Response>>(
 			async () => new Response(body, { status: 200 })

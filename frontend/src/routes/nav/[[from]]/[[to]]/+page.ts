@@ -1,6 +1,6 @@
 import { error } from '@sveltejs/kit';
 import { browser } from '$app/environment';
-import { extrasolarBase } from '$lib/fetch/extrasolar/files';
+import { tilesBase } from '$lib/fetch/data-base';
 import { isExtrasolarObjectId } from '$lib/fetch/extrasolar/ids';
 import { minimalSeo } from '$lib/seo/meta';
 import { NAV_UNSET, parseNavEnd } from '$lib/state/nav-end';
@@ -14,7 +14,7 @@ export const load: PageLoad = async ({ params, url }) => {
 		const end = parseNavEnd(id);
 		if (!end) error(404, `Unknown body id "${id}"`);
 		// A host without an extrasolar export has no star or planet pages.
-		if (isExtrasolarObjectId(end.bodyId) && !extrasolarBase()) {
+		if (isExtrasolarObjectId(end.bodyId) && !tilesBase()) {
 			error(404, 'No extrasolar catalogue');
 		}
 	}

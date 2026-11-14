@@ -16,7 +16,7 @@ from space_map_data.extrasolar.registry import Registry
 from space_map_data.extrasolar.store import write_json
 from space_map_data.glow import deposit, duplicates, encode, form, sky_map
 from space_map_data.glow.grid import SkyGrid
-from space_map_data.utils.paths import CACHE_DIR, EXTRASOLAR_DIR
+from space_map_data.utils.paths import CACHE_DIR, TILES_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -43,15 +43,15 @@ class StaleBuild(ExportRefused):
     """A file of the build, or a served input, that another run wrote."""
 
 
-def tree_metadata(root: Path = EXTRASOLAR_DIR) -> dict:
+def tree_metadata(root: Path = TILES_DIR) -> dict:
     return json.loads((root / "v1" / "x" / "metadata.json").read_text())
 
 
-def tree_token(root: Path = EXTRASOLAR_DIR) -> str:
+def tree_token(root: Path = TILES_DIR) -> str:
     return tree_metadata(root)["trees"][TREE]["token"]
 
 
-def nest_token(root: Path = EXTRASOLAR_DIR) -> str:
+def nest_token(root: Path = TILES_DIR) -> str:
     return sky_map.nest_metadata(root)["token"]
 
 
@@ -69,7 +69,7 @@ def channels_name(tier: str) -> str:
 
 def build_sun_map(build: Path, workers: int) -> None:
     """The column to each star, as the shader reads it from the Sun's map."""
-    with served(EXTRASOLAR_DIR):
+    with served(TILES_DIR):
         nest = sky_map.load_nest()
         atomic_npy(build / SUN_MAP, sky_map.build_map(nest, np.zeros(3), workers))
         write_json(build / "sun_map.json", {"nest": nest.token})
@@ -79,7 +79,7 @@ def build_duplicates(build: Path, workers: int) -> None:
     """The rows the grid leaves out, because another row holds the same star. The
     registry says which rows have Gaia astrometry, so it must be the one that the
     tree was exported from."""
-    with served(EXTRASOLAR_DIR):
+    with served(TILES_DIR):
         metadata = tree_metadata()
         token = metadata["trees"][TREE]["token"]
         ingest = metadata["registry"]["ingest"]
@@ -134,7 +134,7 @@ def build_deposit(build: Path, workers: int) -> None:
     """One pass over the tree: the values of each tier, their light per channel, the
     sample and the sums. The export is held off for the pass, and the tokens are
     those it ran on."""
-    with served(EXTRASOLAR_DIR):
+    with served(TILES_DIR):
         token = tree_token()
         nest = sky_map.nest_metadata()
         stored = json.loads((build / "sun_map.json").read_text())
@@ -203,7 +203,7 @@ def build_encoded(build: Path) -> None:
     )
 
 
-def read_encoding(build: Path, root: Path = EXTRASOLAR_DIR) -> dict:
+def read_encoding(build: Path, root: Path = TILES_DIR) -> dict:
     """The encoding. It refuses textures it does not list, or a tree or nest that the
     export below `root` has since replaced: the grid holds their stars and their
     dust."""

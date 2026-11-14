@@ -21,7 +21,7 @@ from space_map_data.export.wikidata import StarEntity
 from space_map_data.extrasolar.exoplanets.catalogues import ARCHIVE, EU
 from space_map_data.extrasolar.registry import ALIAS, RETIRED, Registry
 from space_map_data.extrasolar.tables import METADATA
-from space_map_data.utils.paths import EXTRASOLAR_DIR
+from space_map_data.utils.paths import TILES_DIR
 from tests.conftest import EntityStub, labelled
 from tests.extrasolar.conftest import offset
 from tests.extrasolar.exoplanet_files import eu_planet
@@ -747,7 +747,7 @@ class TestChecks:
     def test_another_registry_never_writes_the_served_export(self, tmp_path):
         built = write_registry(tmp_path / "reg", STARS, planets=PLANETS)
         with pytest.raises(ExportRefused, match="name an output root"):
-            export_extrasolar_only(1, built.root, EXTRASOLAR_DIR)
+            export_extrasolar_only(1, built.root, TILES_DIR)
 
 
 class TestHostMerge:

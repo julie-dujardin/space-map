@@ -56,7 +56,7 @@ from space_map_data.extrasolar.families import of_spectral_type
 from space_map_data.extrasolar.measured_radius import MEASURED_SOURCES
 from space_map_data.extrasolar.tables import METADATA, POINT_SOURCE, SYSTEM
 from space_map_data.utils.content_stamp import content_stamp
-from space_map_data.utils.paths import EXTRASOLAR_DIR
+from space_map_data.utils.paths import TILES_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -105,7 +105,7 @@ class StarGroups(FamilyGroups):
     plot: dict | None = None
 
 
-def served_families_stamp(extrasolar_dir: Path = EXTRASOLAR_DIR) -> dict | None:
+def served_families_stamp(extrasolar_dir: Path = TILES_DIR) -> dict | None:
     """The family counts, the star count, a stamp of the family lists and the
     Metadata, Point source and System tokens of the served extrasolar export,
     None with no export served. The pages read the counts and the lists, the
@@ -130,7 +130,7 @@ def served_families_stamp(extrasolar_dir: Path = EXTRASOLAR_DIR) -> dict | None:
 def build_star_family_groups(
     star_objects: list[StarObject],
     names: ObjectNames,
-    extrasolar_dir: Path = EXTRASOLAR_DIR,
+    extrasolar_dir: Path = TILES_DIR,
     sun: NotableObject | None = None,
 ) -> StarGroups:
     """Counts, child families and listed stars of every star- page and of the

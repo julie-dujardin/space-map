@@ -9,7 +9,7 @@ import {
 	loadObjectSeo,
 	loadStarSeo
 } from '$lib/seo/meta';
-import { extrasolarBase } from '$lib/fetch/extrasolar/files';
+import { tilesBase } from '$lib/fetch/data-base';
 import { SKY_CONSTELLATION_SLUG_PREFIX } from '$lib/fetch/groups/registry';
 import type { PageLoad } from './$types';
 
@@ -18,7 +18,7 @@ export const load: PageLoad = async ({ params, url }) => {
 	// 404 unknown type segments instead of coercing them to a `naif-` body.
 	if (!BODY_ROUTE_TYPES.has(type)) error(404, `Unknown type segment "${type}"`);
 	// A host without an extrasolar export has no star pages.
-	if (type === UrlType.Extrasolar && !extrasolarBase()) error(404, 'No extrasolar catalogue');
+	if (type === UrlType.Extrasolar && !tilesBase()) error(404, 'No extrasolar catalogue');
 	// Groups (/g/<slug>) live in their own bundle; the [id] slot holds the slug.
 	const isGroup = type === UrlType.Group;
 	// A constellation is a data key: its pages are its figures.

@@ -42,7 +42,7 @@ from space_map_data.galaxy.residual import StoredResidual
 from space_map_data.glow import build as glow_build
 from space_map_data.glow import gates as glow_gates
 from space_map_data.glow import sky_map
-from space_map_data.utils.paths import CACHE_DIR, EXTRASOLAR_DIR
+from space_map_data.utils.paths import CACHE_DIR, TILES_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +74,7 @@ def scaled_name(tier: str) -> str:
     return f"local.scaled.{tier}.npy"
 
 
-def nest_token(root: Path = EXTRASOLAR_DIR) -> str:
+def nest_token(root: Path = TILES_DIR) -> str:
     return sky_map.nest_metadata(root)["token"]
 
 
@@ -103,7 +103,7 @@ def build_local(out: Path, workers: int) -> None:
     )
 
 
-def _served(root: Path = EXTRASOLAR_DIR):
+def _served(root: Path = TILES_DIR):
     """The served nest and far dust. The export is held off for the read, so both
     are from one export."""
     with served(root):
@@ -466,7 +466,7 @@ def read_encoding(
     out: Path,
     glow_dir: Path = glow_build.BUILD_DIR,
     model_dir: Path = model_build.BUILD_DIR,
-    root: Path = EXTRASOLAR_DIR,
+    root: Path = TILES_DIR,
 ) -> dict:
     """The encoding. It refuses files it does not list, an emission made on another
     nest or another glow or model build (H-alpha is scaled through that dust, and the

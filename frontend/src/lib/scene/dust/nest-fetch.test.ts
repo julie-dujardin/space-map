@@ -29,7 +29,7 @@ const volume = (kind = KIND_VOLUME) => ({ kind, uint8: () => new Uint8Array(8) }
 
 let hosts = 0;
 /** A base URL of its own, so no test reads the metadata another one kept. */
-const newHost = () => configureHost({ extrasolarUrl: `https://data${++hosts}.example` });
+const newHost = () => configureHost({ tilesUrl: `https://data${++hosts}.example` });
 
 afterEach(() => {
 	fetchFile.mockReset();

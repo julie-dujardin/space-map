@@ -52,7 +52,7 @@ from space_map_data.skycultures.build import INDEX_FILE
 from space_map_data.skycultures.licences import NO_DERIVATIVES
 from space_map_data.skycultures.translations import Catalogues
 from space_map_data.utils.content_stamp import content_stamp
-from space_map_data.utils.paths import EXTRASOLAR_DIR
+from space_map_data.utils.paths import TILES_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -95,7 +95,7 @@ class SkyPages:
 
 
 def served_sky_pages_stamp(
-    extrasolar_dir: Path = EXTRASOLAR_DIR,
+    extrasolar_dir: Path = TILES_DIR,
     cultures_dir: Path = CULTURES_DIR,
     po_dir: Path = translations.PO_DIR,
 ) -> dict | None:
@@ -298,7 +298,7 @@ def _home_figure(file: dict, figure: dict) -> dict:
     }
 
 
-def home_figures(extrasolar_dir: Path = EXTRASOLAR_DIR) -> dict[str, dict]:
+def home_figures(extrasolar_dir: Path = TILES_DIR) -> dict[str, dict]:
     """The figure each constellation page calls home, by group slug, or none
     with no export served."""
     root = extrasolar_dir / "v1" / "x"
@@ -378,7 +378,7 @@ def _stars(
 def build_sky_pages(
     star_objects: list[StarObject],
     names: ObjectNames,
-    extrasolar_dir: Path = EXTRASOLAR_DIR,
+    extrasolar_dir: Path = TILES_DIR,
     cultures_dir: Path = CULTURES_DIR,
 ) -> SkyPages:
     """Counts, members, names, text and child pages of the two page types.

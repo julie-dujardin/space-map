@@ -92,16 +92,15 @@ flowchart LR
   user -->|"search (using that key)"| searchhost
   searchhost -->|"search stack's own tunnel"| caddy
   caddy --> meili
-  user -->|"surface tiles"| edge
-  edge -->|"homelab tunnel, :9752<br/>tiles the edge does not hold"| tilescaddy
+  user -->|"surface tiles, stars"| edge
+  edge -->|"homelab tunnel, :9752<br/>files the edge does not hold"| tilescaddy
 ```
 
 ## EU-0
 
 The homelab server. See [julie-dujardin/homelab](https://github.com/julie-dujardin/homelab)
-for sources. It mounts the NAS, which holds the downloads and the tile tree.
-The export and its deploy are not scheduled yet: they run by hand from the
-workstation.
+for sources. It mounts the NAS, which holds the downloads and the tile tree. The export and its deploy are not scheduled yet: they
+run by hand from the workstation.
 
 ## EU-1
 

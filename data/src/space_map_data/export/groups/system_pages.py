@@ -34,7 +34,7 @@ from space_map_data.export.names import Names, ObjectNames, entity_names
 from space_map_data.export.notable import NotableObject
 from space_map_data.export.objects.stars import PREFIX, StarObject
 from space_map_data.extrasolar.tables import METADATA, SYSTEM
-from space_map_data.utils.paths import EXTRASOLAR_DIR
+from space_map_data.utils.paths import TILES_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +59,7 @@ class SystemPages:
     discovery_histograms: dict[str, dict[int, int]] = field(default_factory=dict)
 
 
-def served_system_pages_stamp(extrasolar_dir: Path = EXTRASOLAR_DIR) -> dict | None:
+def served_system_pages_stamp(extrasolar_dir: Path = TILES_DIR) -> dict | None:
     """The System token of the served export, None with no export served: the
     page counts the roots of its tiles."""
     metadata = served_metadata(extrasolar_dir)
@@ -70,7 +70,7 @@ def build_system_pages(
     star_objects: list[StarObject],
     hosts: Counter[int],
     names: ObjectNames,
-    extrasolar_dir: Path = EXTRASOLAR_DIR,
+    extrasolar_dir: Path = TILES_DIR,
     host_years: Mapping[int, int] | None = None,
 ) -> SystemPages:
     """Counts, stats and lists of both pages. `hosts` has the planets of the

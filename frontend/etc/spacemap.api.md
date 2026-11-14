@@ -657,7 +657,6 @@ export function groundDistanceM(a: LonLat, b: LonLat, radiusKm: number): number;
 export interface Host {
 	bodyHref: (id: string, name: string) => string;
 	dataUrl: string;
-	extrasolarUrl: string;
 	groupHref: (slug: string, name: string, figure?: string | null) => string;
 	imagesUrl: string;
 	liveUrl: string;

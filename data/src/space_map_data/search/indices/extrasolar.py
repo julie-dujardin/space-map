@@ -1,6 +1,6 @@
 """Planets, their host stars, and star systems in the search index.
 
-Source files, in the extrasolar export (`space-map-extrasolar/v1/x/`):
+Source files, in the extrasolar export (`space-map-tiles/v1/x/`):
 
     metadata.json               the planets and systems sections, with their tokens and paths
     planets/index.json.gz       every host, with its system

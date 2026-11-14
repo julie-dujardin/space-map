@@ -9,10 +9,10 @@ import numpy as np
 
 from space_map_data.export.extrasolar import container
 from space_map_data.export.extrasolar.render import NODE_INFO, TREE
-from space_map_data.utils.paths import EXTRASOLAR_DIR
+from space_map_data.utils.paths import TILES_DIR
 
-NODE_DIR = EXTRASOLAR_DIR / "v1" / "x" / TREE / "node"
-ID_DIR = EXTRASOLAR_DIR / "v1" / "x" / TREE / "id"
+NODE_DIR = TILES_DIR / "v1" / "x" / TREE / "node"
+ID_DIR = TILES_DIR / "v1" / "x" / TREE / "id"
 SUFFIX = ".bin.gz"
 _CENTRE = struct.Struct("<3d")
 

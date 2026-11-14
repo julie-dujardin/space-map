@@ -8,6 +8,8 @@ services:
     ports:
       - "9752:80"
     volumes:
+      # The parent of `v1/x`, not `v1/x` itself: an export swaps its folders
+      # in by rename, and a mount would stay on the old one.
       - ${TILES_HOST_DIR:-/srv/space-map/space-map-tiles}/v1:/srv/v1:ro
     configs:
       - source: caddyfile
@@ -17,18 +19,19 @@ configs:
   caddyfile:
     # Inlined so the stack deploys from Portainer without the file present on host.
     content: |
+      # For a file whose URL carries the ?v= token of its build.
+      (immutable) {
+      	header {
+      		Cache-Control "public, max-age=31536000, immutable"
+      		match status 2xx 304
+      	}
+      }
+
       :80 {
       	root * /srv
 
       	# Any origin: the SDK embeds the map on other sites.
       	header Access-Control-Allow-Origin "*"
-
-      	# A tile URL carries the ?v= token of its build, so a tile is safe to
-      	# cache forever.
-      	header {
-      		Cache-Control "public, max-age=31536000, immutable"
-      		match status 2xx 304
-      	}
 
       	# Plain folder names only. That leaves out what a build keeps aside: a
       	# pyramid (`{id}.building`), the pyramid it replaced (`{id}.retired`), a
@@ -39,15 +42,45 @@ configs:
       		path_regexp ^/v1/tiles/([\w-]+/)+\d+\.webp$$
       	}
       	handle @tile {
+      		import immutable
       		file_server
       	}
+
+      	# The extrasolar files, each with the ?v= token of its table. No
+      	# Content-Encoding: the client decodes the gzip itself. Segments that
+      	# start with a dot are an export's staging and are left out.
+      	@extrasolar {
+      		method GET HEAD
+      		path_regexp ^/v1/(x|dust|glow)(/[\w-][\w.-]*)+\.gz$$
+      	}
+      	handle @extrasolar {
+      		header Content-Type application/octet-stream
+      		import immutable
+      		file_server
+      	}
+
+      	# The entry points hold the tokens and have none of their own. Every
+      	# server-rendered star page reads one, so it goes out compressed.
+      	@extrasolar_entry {
+      		method GET HEAD
+      		path_regexp ^/v1/(x|dust|glow)/metadata\.json$$
+      	}
+      	handle @extrasolar_entry {
+      		encode gzip
+      		header {
+      			Cache-Control "no-cache"
+      			match status 2xx 304
+      		}
+      		file_server
+      	}
+
       	# An error must outlive its cause nowhere. Left unmarked, Cloudflare
       	# tells the browser to keep a 404 for the zone's Browser Cache TTL.
       	handle {
       		header Cache-Control "no-store"
       		respond 404
       	}
-      	# A tile that is not there is a handler error, which takes this route.
+      	# A file that is not there is a handler error, which takes this route.
       	handle_errors {
       		header Cache-Control "no-store"
       	}

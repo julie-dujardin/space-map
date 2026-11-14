@@ -3,15 +3,20 @@
 Caddy, deployed via docker-compose.
 
 Caddy (config inlined in the compose `config`, so no host file needed) serves
-the [surface tiles](../../../docs/export-format/tiles.md) from the tile tree,
-which it mounts read-only: `/v1/tiles/…/{y}.webp` and nothing else. The stack
-has no tunnel of its own. The public path is the Cloudflare tunnel of the
+the tile tree, which it mounts read-only: the
+[surface tiles](../../../docs/export-format/tiles.md) at
+`/v1/tiles/…/{y}.webp`, and the
+[extrasolar export](../../../docs/export-format/extrasolar.md), the `.gz`
+files and entry points (`metadata.json`) of `/v1/x/`, `/v1/dust/` and
+`/v1/glow/`. Nothing else. The stack has no tunnel of its own. The public path
+is the Cloudflare tunnel of the
 [homelab](https://github.com/julie-dujardin/homelab) (`compose/cloudflared`,
 which also terminates TLS) → host port `9752`. Cloudflare's edge cache is in
 front of the tunnel.
 
 There is no upload. Ingest writes the pyramids into the tree that Caddy
-serves.
+serves, and `space-map-export --only extrasolar`, `--only dust` and
+`--only glow` each swap their folder into it.
 
 ## Deploy
 
@@ -30,12 +35,14 @@ serves.
 
 6. Set `PUBLIC_TILES_URL` to the public hostname on the frontend's Worker, in
    the Cloudflare dashboard. Unset, the site draws the whole-globe tiers
-   alone.
+   alone, and has no stars.
 
-The zone needs no cache rule. Cloudflare caches `.webp` by default, for as
-long as the `Cache-Control` of the tile says: a year. The query string is part
-of its cache key, so the `?v=` token of a rebuilt pyramid makes a new entry. A
-rule that ignores the query string would break that.
+The zone needs no cache rule. Cloudflare caches `.webp` and `.gz` by default,
+for as long as the `Cache-Control` of the file says: a year. It does not cache
+`.json`, so the extrasolar entry points, which name the current tokens, always
+come from the server. The query string is part of its cache key, so the `?v=`
+token of a rebuilt pyramid or table makes a new entry. A rule that ignores the
+query string, or one that caches the entry points, would break that.
 
 ## What the edge keeps
 
@@ -51,6 +58,9 @@ When the server is off:
   server.
 - A page that gets four failures in a row draws the tiers until it is
   reloaded.
+- The extrasolar entry points always come from the server, so a page has no
+  stars, dust or glow, and a star page renders without its details, even
+  where the edge holds the files.
 
 ## A rebuild is public when it ends
 
@@ -65,3 +75,8 @@ The old pyramid moves aside to `{id}.retired`, which is not served, and the
 new one takes its place. The two renames take a moment. A tile asked for
 between them gets a `404` that Caddy marks `no-store`, so neither the edge nor
 a browser keeps it. The end of the ingest run deletes the old pyramid.
+
+An extrasolar export is public when its swap ends, give or take the server's
+NFS attribute cache (about a minute), and so is a new container format:
+deploy the frontend that reads it at the same time. Run the check after that
+minute.

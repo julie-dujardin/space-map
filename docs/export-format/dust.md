@@ -1,6 +1,6 @@
 # Dust nest (`v1/dust/`)
 
-The 3D dust of the Milky Way, as a static nest of Sun-centred textures. `space-map-dust` builds it from the dust maps, and `space-map-export --only dust` writes it. The files sit beside the star tree in `space-map-extrasolar/`, under the same base URL, `PUBLIC_EXTRASOLAR_URL`. They have their own directory because the star tree's export replaces `v1/x/` whole.
+The 3D dust of the Milky Way, as a static nest of Sun-centred textures. `space-map-dust` builds it from the dust maps, and `space-map-export --only dust` writes it. The files sit beside the star tree in the tile tree, `space-map-tiles/`, under the same base URL, `PUBLIC_TILES_URL`. They have their own directory because the star tree's export replaces `v1/x/` whole.
 
 ## Directory structure
 
@@ -17,7 +17,7 @@ v1/dust/
 
 Each `.bin.gz` is gzip around one payload in the container of [extrasolar.md](extrasolar.md), with kind `5` (volume). The info block has 8 bytes: uint16 `nx`, `ny`, `nz`, uint8 level (`4` for the far volume), uint8 tier (`0` high, `1` low). The payload has one `uint8` column, `codes`, with `nx · ny · nz` rows, in the order that `texImage3D` reads: `index = ix + nx · (iy + ny · iz)`. The first buffer starts at a multiple of 8 bytes, so a client passes it to `texImage3D` as a `Uint8Array` with format `RED` and internal format `R8`.
 
-Every file repeats the token of `metadata.json`, as a star tree file repeats its table's token. A client fetches `{PUBLIC_EXTRASOLAR_URL}/v1/dust/{path}?v={token}`.
+Every file repeats the token of `metadata.json`, as a star tree file repeats its table's token. A client fetches `{PUBLIC_TILES_URL}/v1/dust/{path}?v={token}`.
 
 ## Levels
 

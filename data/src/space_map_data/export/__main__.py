@@ -30,7 +30,7 @@ from space_map_data.export.systems import export_systems_only
 from space_map_data.utils.db import engine_scope
 from space_map_data.utils.heap import limit_arenas
 from space_map_data.utils.mirror import sync_all
-from space_map_data.utils.paths import DATA_DIR, EXTRASOLAR_DIR, REGISTRY_ROOT
+from space_map_data.utils.paths import DATA_DIR, REGISTRY_ROOT, TILES_DIR
 
 
 def cli():
@@ -78,9 +78,9 @@ def cli():
     parser.add_argument(
         "--extrasolar-root",
         type=Path,
-        default=EXTRASOLAR_DIR,
+        default=TILES_DIR,
         help="extrasolar, dust and glow: the root of v1/x/, v1/dust/ and v1/glow/"
-        f" (default: {EXTRASOLAR_DIR}, only for the default registry)",
+        f" (default: {TILES_DIR}, only for the default registry)",
     )
     parser.add_argument(
         "--dust-variant",

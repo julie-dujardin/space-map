@@ -26,7 +26,7 @@ from space_map_data.galaxy.geometry import R0, Z0
 from space_map_data.galaxy.model import Model
 from space_map_data.glow import build, gates, light, march, sky_map
 from space_map_data.glow.march import View
-from space_map_data.utils.paths import CACHE_DIR, EXTRASOLAR_DIR
+from space_map_data.utils.paths import CACHE_DIR, TILES_DIR
 
 MODEL = model_build.BUILD_DIR
 GLOW = build.BUILD_DIR
@@ -495,7 +495,7 @@ def lanes(workers: int = 8, model_dir: Path = MODEL) -> None:
     fig.savefig(OUT / "model_lanes.png", dpi=80)
     plt.close(fig)
     # The far side: columns from the Sun past the centre, before and after.
-    roots = {"now": EXTRASOLAR_DIR, "before": MODEL / "backup-phase3" / "root"}
+    roots = {"now": TILES_DIR, "before": MODEL / "backup-phase3" / "root"}
     lon = np.radians(np.linspace(-30, 30, 121))
     lat = np.radians(np.linspace(-2, 2, 9))
     L, B = np.meshgrid(lon, lat)

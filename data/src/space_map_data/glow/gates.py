@@ -19,7 +19,7 @@ from space_map_data.export.extrasolar.build import served
 from space_map_data.extrasolar.store import write_json
 from space_map_data.glow import build, colour, deposit, form, light, march, sky_map
 from space_map_data.glow.march import Textures, View
-from space_map_data.utils.paths import EXTRASOLAR_DIR
+from space_map_data.utils.paths import TILES_DIR
 
 BANDS = ((0, 2), (2, 5), (5, 10), (10, 20), (20, 40), (40, 60), (60, 90))
 # (position in pc, limits). Limits span what the point budget allows there.
@@ -40,7 +40,7 @@ def _served[**P, R](gate: Callable[P, R]) -> Callable[P, R]:
 
     @functools.wraps(gate)
     def held(*args: P.args, **kwargs: P.kwargs) -> R:
-        with served(EXTRASOLAR_DIR):
+        with served(TILES_DIR):
             return gate(*args, **kwargs)
 
     return held

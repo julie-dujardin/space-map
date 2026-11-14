@@ -81,7 +81,7 @@ from space_map_data.extrasolar.registry import Registry, RegistryError
 from space_map_data.extrasolar.sky import REGION_COUNT, REGION_SHIFT
 from space_map_data.extrasolar.tables import METADATA, POINT_SOURCE, TABLES
 from space_map_data.skycultures.licences import NON_COMMERCIAL
-from space_map_data.utils.paths import EXPORT_DIR, EXTRASOLAR_DIR, REGISTRY_ROOT
+from space_map_data.utils.paths import EXPORT_DIR, REGISTRY_ROOT, TILES_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -922,7 +922,7 @@ def _export(
 
 def export_extrasolar(
     registry_root: Path = REGISTRY_ROOT,
-    out_root: Path = EXTRASOLAR_DIR,
+    out_root: Path = TILES_DIR,
     workers: int = 8,
     cultures_dir: Path | None = None,
 ) -> dict:
@@ -1003,16 +1003,16 @@ def export_extrasolar(
 def export_extrasolar_only(
     workers: int,
     registry_root: Path = REGISTRY_ROOT,
-    out_root: Path = EXTRASOLAR_DIR,
+    out_root: Path = TILES_DIR,
 ) -> None:
     """The CLI run. A registry other than the default one writes its matched
     sky cultures to `<root>/skycultures`, as the ingest does, and may not
     write to the served export."""
     default_root = registry_root.resolve() == REGISTRY_ROOT.resolve()
-    if not default_root and out_root.resolve() == EXTRASOLAR_DIR.resolve():
+    if not default_root and out_root.resolve() == TILES_DIR.resolve():
         raise ExportRefused(
             f"{registry_root} is not the default registry: name an output root"
-            f" other than {EXTRASOLAR_DIR}"
+            f" other than {TILES_DIR}"
         )
     cultures_dir = None if default_root else registry_root / "skycultures"
     report = export_extrasolar(registry_root, out_root, workers, cultures_dir)

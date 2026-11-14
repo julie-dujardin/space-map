@@ -29,7 +29,7 @@ from space_map_data.dust.sources import atomic_npy, file_digest
 from space_map_data.export.extrasolar import container
 from space_map_data.extrasolar.store import write_json
 from space_map_data.galaxy import geometry, volumes
-from space_map_data.utils.paths import EXTRASOLAR_DIR
+from space_map_data.utils.paths import TILES_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -146,7 +146,7 @@ class StoredFar:
     level0_half: np.ndarray
 
     @classmethod
-    def load(cls, root: Path = EXTRASOLAR_DIR, tier: str = "high") -> StoredFar:
+    def load(cls, root: Path = TILES_DIR, tier: str = "high") -> StoredFar:
         directory = root / "v1" / "dust"
         metadata = json.loads((directory / "metadata.json").read_text())
         far = metadata["far"]

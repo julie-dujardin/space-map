@@ -1,6 +1,6 @@
 # Extrasolar objects (`v1/x/`)
 
-The objects outside the solar system: their record tiles, one tree per table, the Milky Way render tree, the constellation figures of the sky cultures, and the exoplanets with one file per planetary system. The star systems are a table of their own: a binary is a system of two, and the pairs inside a system are systems too. `space-map-export --only extrasolar` builds them from the extrasolar registry and its tables. They are not part of the main export: the stars alone are over half a million files, and the host of the main export has a file limit. They are written to `space-map-extrasolar/v1/x/` and are served from their own base URL, `PUBLIC_EXTRASOLAR_URL`. Without that URL a client has no stars and no `/x/` pages.
+The objects outside the solar system: their record tiles, one tree per table, the Milky Way render tree, the constellation figures of the sky cultures, and the exoplanets with one file per planetary system. The star systems are a table of their own: a binary is a system of two, and the pairs inside a system are systems too. `space-map-export --only extrasolar` builds them from the extrasolar registry and its tables. They are not part of the main export: the stars alone are over half a million files, and the host of the main export has a file limit. They are written to the tile tree, `space-map-tiles/v1/x/`, and are served with the surface tiles, from `PUBLIC_TILES_URL`. Without that URL a client has no stars and no `/x/` pages.
 
 An object has one ID for all its files. The ID, its URL form and its check are in the design of the registry: `id = serial·2^29 + table·2^24 + cell`, with `cell` the HEALPix level-10 nested cell (ICRS) and `table` the home table. A client decodes it with division, never with bit operators: `cell = id % 2^24`, `table = floor(id / 2^24) % 32`, `serial = floor(id / 2^29)`.
 
@@ -29,7 +29,7 @@ v1/x/
   systems/index.json.gz                  the star systems that a page draws up close, with their held stars
 ```
 
-Each `.bin.gz` file is gzip around one payload in the container format below. A `.json.gz` file is gzip around UTF-8 JSON. The server sends it as `application/octet-stream` with no `Content-Encoding`, and the client decodes it with `DecompressionStream('gzip')`. A client fetches each file as `{PUBLIC_EXTRASOLAR_URL}/v1/x/{path}?v={token}`, with the token of its table or tree.
+Each `.bin.gz` file is gzip around one payload in the container format below. A `.json.gz` file is gzip around UTF-8 JSON. The server sends it as `application/octet-stream` with no `Content-Encoding`, and the client decodes it with `DecompressionStream('gzip')`. A client fetches each file as `{PUBLIC_TILES_URL}/v1/x/{path}?v={token}`, with the token of its table or tree.
 
 ## Container
 

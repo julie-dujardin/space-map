@@ -275,11 +275,11 @@ class TestExport:
         # Off the ladder, so undecided.
         metadata["trees"]["mw"]["distribution"] = "unknown"
         tree.write_text(json.dumps(metadata))
-        monkeypatch.setattr(glow_export, "EXTRASOLAR_DIR", root)
+        monkeypatch.setattr(glow_export, "TILES_DIR", root)
         with pytest.raises(swap.ExportRefused, match="undecided"):
             glow_export.export_glow(root, small)
         assert sorted(p.name for p in (root / "v1").iterdir()) == ["dust", "x"]
-        monkeypatch.setattr(glow_export, "EXTRASOLAR_DIR", tmp_path / "served")
+        monkeypatch.setattr(glow_export, "TILES_DIR", tmp_path / "served")
         assert glow_export.export_glow(root, small)["distribution"] == "undecided"
 
     def test_sizes_come_from_the_encoding_and_not_the_grids(

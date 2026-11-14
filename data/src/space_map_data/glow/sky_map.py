@@ -19,7 +19,7 @@ import numpy as np
 from space_map_data.dust.march import linear_fetch
 from space_map_data.dust.parallel import forked_map
 from space_map_data.export.extrasolar import container
-from space_map_data.utils.paths import EXTRASOLAR_DIR
+from space_map_data.utils.paths import TILES_DIR
 
 SIZE = 256
 SLICES = 24
@@ -49,13 +49,13 @@ class Nest:
     token: str
 
 
-def nest_metadata(root: Path = EXTRASOLAR_DIR) -> dict:
+def nest_metadata(root: Path = TILES_DIR) -> dict:
     """The metadata of the served nest. It holds the token and the frame, so a step
     that needs only those does not read the volumes."""
     return json.loads((root / "v1" / "dust" / "metadata.json").read_text())
 
 
-def load_nest(tier: str = "high", root: Path = EXTRASOLAR_DIR) -> Nest:
+def load_nest(tier: str = "high", root: Path = TILES_DIR) -> Nest:
     """The nest as a client reads it from the export."""
     directory = root / "v1" / "dust"
     metadata = nest_metadata(root)

@@ -11,10 +11,10 @@ import { fetchWithTimeout } from '$lib/fetch/fetch-timeout';
 import { KIND_VOLUME } from '$lib/fetch/extrasolar/container';
 import {
 	extrasolarAllowed,
-	extrasolarBase,
 	fetchExtrasolarFile,
 	type ExtrasolarCredit
 } from '$lib/fetch/extrasolar/files';
+import { tilesBase } from '$lib/fetch/data-base';
 import { DUST_NEAR_PC, rayThroughBox, type RaySpan } from './layout';
 import type { Vec3 } from './octahedral';
 
@@ -98,7 +98,7 @@ async function loadStoredMetadata<T extends Stored>(
 	prefix: string,
 	format: number
 ): Promise<T | null> {
-	if (extrasolarBase() === '') return null;
+	if (tilesBase() === '') return null;
 	const res = await fetchWithTimeout(url, { cache: 'no-cache' });
 	// A host with no such export draws the stars as they are.
 	if (res.status === 404) return null;
@@ -130,7 +130,7 @@ export function fetchStoredMetadata<T extends Stored>(
 	prefix: string,
 	format: number
 ): Promise<T | null> {
-	const url = `${extrasolarBase()}/v1/${prefix}/metadata.json`;
+	const url = `${tilesBase()}/v1/${prefix}/metadata.json`;
 	const kept = metadata.get(url);
 	if (kept) return kept as Promise<T | null>;
 	const p = loadStoredMetadata<T>(url, prefix, format);

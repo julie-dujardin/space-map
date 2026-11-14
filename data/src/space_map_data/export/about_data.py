@@ -42,8 +42,8 @@ from space_map_data.models.object import Object
 from space_map_data.utils.paths import (
     DOWNLOAD_DIR,
     EXPORT_DIR,
-    EXTRASOLAR_DIR,
     SOURCES_DIR,
+    TILES_DIR,
 )
 
 logger = logging.getLogger(__name__)
@@ -613,7 +613,7 @@ def write_about_data(
         layers,
         rings,
         models,
-        EXTRASOLAR_DIR,
+        TILES_DIR,
         SOURCES_DIR,
     )
     (out_dir / "about-data.json").write_bytes(

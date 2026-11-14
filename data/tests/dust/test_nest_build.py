@@ -434,7 +434,7 @@ class TestVolumeFile:
     def test_an_undecided_variant_stays_off_the_served_root(
         self, tmp_path, monkeypatch
     ):
-        monkeypatch.setattr(dust_export, "EXTRASOLAR_DIR", tmp_path)
+        monkeypatch.setattr(dust_export, "TILES_DIR", tmp_path)
         monkeypatch.setattr(dust_export, "_distribution", lambda _variant: "undecided")
         with pytest.raises(swap.ExportRefused):
             dust_export.export_dust("vergely", tmp_path)

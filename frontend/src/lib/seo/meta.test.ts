@@ -320,7 +320,7 @@ describe('loadFigureSeo', () => {
 	});
 
 	beforeEach(() => {
-		configureHost({ dataUrl: DATA, extrasolarUrl: XS_BASE, textures: 'site-only' });
+		configureHost({ dataUrl: DATA, tilesUrl: XS_BASE, textures: 'site-only' });
 		stubExport({
 			'/v1/metadata.json': () => Response.json(METADATA),
 			'/v1/groups/__global__/0.json.gz': () =>
@@ -405,7 +405,7 @@ describe('loadStarSeo', () => {
 		);
 	}
 
-	beforeEach(() => configureHost({ dataUrl: DATA, extrasolarUrl: XS, textures: 'site-only' }));
+	beforeEach(() => configureHost({ dataUrl: DATA, tilesUrl: XS, textures: 'site-only' }));
 
 	it('takes the title and canonical link from the Metadata row', async () => {
 		stubStars();
@@ -493,7 +493,7 @@ describe('loadStarSeo', () => {
 	it('has no page for a retired ID, or where the host may not show the table', async () => {
 		stubStars();
 		expect(await loadStarSeo(String(RETIRED), request(`/x/${RETIRED}`))).toBeNull();
-		configureHost({ dataUrl: DATA, extrasolarUrl: XS, textures: 'open' });
+		configureHost({ dataUrl: DATA, tilesUrl: XS, textures: 'open' });
 		stubStars({ metaDistribution: 'non-commercial' });
 		expect(await loadStarSeo(String(STAR), request(`/x/${STAR}`))).toBeNull();
 	});
@@ -570,7 +570,7 @@ describe('loadPlanetSeo', () => {
 	const planetRequest = (path: string, query = '') =>
 		new URL(`${ORIGIN}${path}/Planet%20Nine%20Found${query}`);
 
-	beforeEach(() => configureHost({ dataUrl: DATA, extrasolarUrl: XS, textures: 'site-only' }));
+	beforeEach(() => configureHost({ dataUrl: DATA, tilesUrl: XS, textures: 'site-only' }));
 
 	it('takes the title and canonical link from the system file', async () => {
 		stubPlanets();
@@ -590,7 +590,7 @@ describe('loadPlanetSeo', () => {
 
 	it('names the planet and its star in the language of the request', async () => {
 		stubPlanets();
-		configureHost({ dataUrl: DATA, extrasolarUrl: XS, textures: 'site-only', locale: () => 'ru' });
+		configureHost({ dataUrl: DATA, tilesUrl: XS, textures: 'site-only', locale: () => 'ru' });
 		const page = await loadPlanetSeo(1091633172, 1, planetRequest('/x/1091633172/b/1'));
 		expect(page).toMatchObject({
 			kind: 'page',

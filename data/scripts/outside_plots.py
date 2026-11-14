@@ -23,7 +23,7 @@ from space_map_data.galaxy import build as model_build
 from space_map_data.galaxy import residual
 from space_map_data.galaxy.geometry import R0, Z0
 from space_map_data.glow import build, light, sky_map
-from space_map_data.utils.paths import CACHE_DIR, EXTRASOLAR_DIR
+from space_map_data.utils.paths import CACHE_DIR, TILES_DIR
 
 OUT = CACHE_DIR / "milky-way-3d"
 WORK = OUT / "outside-build"
@@ -135,7 +135,7 @@ def far(workers: int = 8) -> None:
         )
 
     path = WORK / "far_edge.npy"
-    nest_only, with_far, stored = dust_readers(EXTRASOLAR_DIR)
+    nest_only, with_far, stored = dust_readers(TILES_DIR)
     if path.exists():
         images = np.load(path)
     else:
@@ -260,7 +260,7 @@ def spokes() -> None:
     from space_map_data.galaxy import geometry
 
     if not (WORK / "look_face_after.npy").exists():
-        looks("after", EXTRASOLAR_DIR)
+        looks("after", TILES_DIR)
     before_column = np.load(WORK / "face.current.npy")
     after_column = _face_column(merged_dir("open"))
     n = 600

@@ -13,7 +13,7 @@ import sys
 import tomllib
 from pathlib import Path
 
-from space_map_data.utils.paths import CONFIG_FILE, DATA_DIR, EXPORT_DIR, EXTRASOLAR_DIR
+from space_map_data.utils.paths import CONFIG_FILE, DATA_DIR, EXPORT_DIR, TILES_DIR
 
 from .client import MeiliClient
 from .config import MeiliConfig
@@ -84,9 +84,8 @@ def cli() -> int:
     push.add_argument(
         "--extrasolar-dir",
         type=Path,
-        default=EXTRASOLAR_DIR,
-        help=f"The extrasolar export, which holds the planets (default:"
-        f" {EXTRASOLAR_DIR})",
+        default=TILES_DIR,
+        help=f"The extrasolar export, which holds the planets (default: {TILES_DIR})",
     )
     push.set_defaults(func=cmd_push)
 

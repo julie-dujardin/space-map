@@ -47,13 +47,10 @@ interface CommonOptions {
 	imagesUrl?: string;
 	/** Root of the live tracking feed, for a mirror that writes its own. */
 	liveUrl?: string;
-	/** Root of the surface tile pyramids, for a mirror that serves them. The
-	 *  production CDN serves none: without it a body draws its whole-globe
-	 *  maps alone. */
+	/** Root of the tile host, for a mirror that serves the surface tile
+	 *  pyramids and the stars. The production CDN serves neither: without it
+	 *  a body draws its whole-globe maps alone, and the map has no stars. */
 	tilesUrl?: string;
-	/** Root of the extrasolar export, for a mirror that serves it. Without it
-	 *  the map has no stars. */
-	extrasolarUrl?: string;
 	/** BCP-47 tag that picks localized names; English when omitted. */
 	locale?: string;
 	/** Replaces the English wording the map renders itself, one key at a time. */
@@ -116,7 +113,6 @@ export async function createMap(options: MapOptions): Promise<SpaceMap> {
 		imagesUrl,
 		liveUrl,
 		tilesUrl,
-		extrasolarUrl,
 		locale,
 		messages,
 		includeNonCommercial,
@@ -130,7 +126,6 @@ export async function createMap(options: MapOptions): Promise<SpaceMap> {
 		imagesUrl,
 		liveUrl,
 		tilesUrl,
-		extrasolarUrl,
 		locale,
 		messages,
 		includeNonCommercial
@@ -164,7 +159,6 @@ export async function createFlatMap(options: FlatMapCreateOptions): Promise<Flat
 		imagesUrl,
 		liveUrl,
 		tilesUrl,
-		extrasolarUrl,
 		locale,
 		messages,
 		includeNonCommercial,
@@ -178,7 +172,6 @@ export async function createFlatMap(options: FlatMapCreateOptions): Promise<Flat
 		imagesUrl,
 		liveUrl,
 		tilesUrl,
-		extrasolarUrl,
 		locale,
 		messages,
 		includeNonCommercial
@@ -212,7 +205,6 @@ export async function createPanorama(options: PanoramaCreateOptions): Promise<Pa
 		imagesUrl,
 		liveUrl,
 		tilesUrl,
-		extrasolarUrl,
 		locale,
 		messages,
 		includeNonCommercial,
@@ -226,7 +218,6 @@ export async function createPanorama(options: PanoramaCreateOptions): Promise<Pa
 		imagesUrl,
 		liveUrl,
 		tilesUrl,
-		extrasolarUrl,
 		locale,
 		messages,
 		includeNonCommercial
@@ -261,7 +252,6 @@ export async function createSystemMap(options: SystemMapCreateOptions): Promise<
 		imagesUrl,
 		liveUrl,
 		tilesUrl,
-		extrasolarUrl,
 		locale,
 		messages,
 		includeNonCommercial,
@@ -274,7 +264,6 @@ export async function createSystemMap(options: SystemMapCreateOptions): Promise<
 		imagesUrl,
 		liveUrl,
 		tilesUrl,
-		extrasolarUrl,
 		locale,
 		messages,
 		includeNonCommercial
@@ -311,7 +300,6 @@ function applyHost(
 		| 'imagesUrl'
 		| 'liveUrl'
 		| 'tilesUrl'
-		| 'extrasolarUrl'
 		| 'locale'
 		| 'messages'
 		| 'includeNonCommercial'
@@ -323,7 +311,6 @@ function applyHost(
 	if (options.imagesUrl !== undefined) overrides.imagesUrl = options.imagesUrl;
 	if (options.liveUrl !== undefined) overrides.liveUrl = options.liveUrl;
 	if (options.tilesUrl !== undefined) overrides.tilesUrl = options.tilesUrl;
-	if (options.extrasolarUrl !== undefined) overrides.extrasolarUrl = options.extrasolarUrl;
 	if (options.locale !== undefined) overrides.locale = () => options.locale as string;
 	if (options.messages !== undefined) overrides.messages = options.messages;
 	// The site-only tier is never reachable from here — it is not the SDK's to grant.
