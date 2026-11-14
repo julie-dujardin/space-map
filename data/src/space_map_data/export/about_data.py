@@ -194,7 +194,9 @@ def pyramid_block(tiles: dict, radius_km: float | None) -> dict:
     """The tile pyramid of a map, from its descriptor."""
     width = 2 * tiles["tile_size"] << tiles["max_level"]
     levels = [*tiles["levels"], *tiles["cap_levels"]]
-    finest = max(layer["full_width"] for layer in tiles["layers"])
+    # The alpha mask is a map of its own, listed with its layer.
+    layers = [layer for layer in tiles["layers"] if layer.get("role") != "alpha"]
+    finest = max(layer["full_width"] for layer in layers)
     block: dict = {
         "max_level": tiles["max_level"],
         "width": width,
@@ -204,8 +206,7 @@ def pyramid_block(tiles: dict, radius_km: float | None) -> dict:
         "tiles": sum(level["tiles"] for level in levels),
         "size_bytes": sum(level["size_bytes"] for level in levels),
         "sources": [
-            _source_row(index, layer, radius_km)
-            for index, layer in enumerate(tiles["layers"])
+            _source_row(index, layer, radius_km) for index, layer in enumerate(layers)
         ],
     }
     if "displacement_scale_km" in tiles:

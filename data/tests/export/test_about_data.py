@@ -237,6 +237,15 @@ class TestPyramidBlock:
             {"role": "detail", "width": 8000, "lat_range": [60, 90]},
         ]
 
+    def test_alpha_mask_is_not_a_source(self):
+        layers = [
+            {"dimensions": [4000, 2000], "full_width": 4000},
+            {"dimensions": [16000, 8000], "full_width": 16000, "role": "alpha"},
+        ]
+        block = pyramid_block(_pyramid(layers=layers), MARS_KM)
+        assert [row["width"] for row in block["sources"]] == [4000]
+        assert block["m_per_px"] == ground_scale(4000, MARS_KM)["m_per_px"]
+
     def test_height_pyramid_states_its_step(self):
         block = pyramid_block(_pyramid(displacement_scale_km=65.535), MARS_KM)
         assert block["height_step_m"] == 1.0
