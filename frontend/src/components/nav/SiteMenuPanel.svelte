@@ -1,21 +1,24 @@
 <!--
-  What the site menu holds wherever it opens: the pages, the links about the
-  site, then the settings behind one row so the trigger stays a single button.
-  The phone sheet and the desktop map popover differ only in density and in
-  whether the header row carries a close button.
+  What the site menu holds wherever it opens: the pages, then the links about
+  the site, what is built on it and the settings, each behind one row so the
+  trigger stays a single button. The phone sheet and the desktop map popover
+  differ only in density and in whether the header row carries a close button.
 -->
 <script lang="ts">
 	import CheckIcon from '@lucide/svelte/icons/check';
+	import ChevronLeftIcon from '@lucide/svelte/icons/chevron-left';
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 	import ExternalLinkIcon from '@lucide/svelte/icons/external-link';
 	import SettingsIcon from '@lucide/svelte/icons/settings';
 	import XIcon from '@lucide/svelte/icons/x';
+	import type { Component } from 'svelte';
 	import * as m from '$lib/paraglide/messages.js';
 	import * as Sheet from '$lib/components/ui/sheet/index.js';
 	import SettingsMenu, { type SettingsScope } from '../settings/SettingsMenu.svelte';
 	import SiteMark from './SiteMark.svelte';
 	import {
 		ABOUT_LINKS,
+		MORE_LINKS,
 		SITE_COLUMN,
 		SITE_GUTTER,
 		SITE_PAGES,
@@ -31,11 +34,14 @@
 		variant: 'sheet' | 'popover';
 		/** Called when a page link is followed, so the host can close. */
 		onNavigate?: () => void;
-		/** Bound by the host so it can size itself to the view. */
-		view?: 'pages' | 'settings';
 	}
 
-	let { current, scope, variant, onNavigate, view = $bindable('pages') }: Props = $props();
+	let { current, scope, variant, onNavigate }: Props = $props();
+
+	type View = 'pages' | 'about' | 'more' | 'settings';
+	let view = $state<View>('pages');
+
+	const aboutActive = $derived(ABOUT_LINKS.some((link) => link.id === current));
 
 	const sheet = $derived(variant === 'sheet');
 	const column = $derived(sheet ? `${SITE_COLUMN} ${SITE_GUTTER}` : 'px-5');
@@ -69,6 +75,50 @@
 	</li>
 {/snippet}
 
+{#snippet subview(
+	target: View,
+	label: string,
+	Icon?: Component<{ class?: string }>,
+	active = false
+)}
+	<button
+		type="button"
+		class="{row} cursor-pointer {active
+			? 'bg-accent font-medium text-foreground'
+			: 'text-muted-foreground'}"
+		onclick={() => (view = target)}
+	>
+		<span class="flex items-center gap-3">
+			{#if Icon}<Icon class="size-5" />{/if}
+			{label}
+		</span>
+		<ChevronRightIcon class="size-4.5" />
+	</button>
+{/snippet}
+
+{#snippet linkList(title: string, links: SiteLink[])}
+	<!-- Lines the back button up with the settings' own. -->
+	<header class="{sheet ? `${SITE_COLUMN} px-4` : 'px-3'} flex items-center gap-2 pt-2 pb-3">
+		<button
+			type="button"
+			class="flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-lg
+				transition-colors hover:bg-accent"
+			aria-label={m.back()}
+			onclick={() => (view = 'pages')}
+		>
+			<ChevronLeftIcon class="size-5" />
+		</button>
+		<h2 class="text-base font-semibold">{title}</h2>
+	</header>
+	<nav aria-label={title} class="{sheet ? SITE_COLUMN : ''} pb-2">
+		<ul class="flex flex-col">
+			{#each links as link (link.id)}
+				{@render pageLink(link)}
+			{/each}
+		</ul>
+	</nav>
+{/snippet}
+
 {#if view === 'pages'}
 	<div class="{column} flex shrink-0 items-center justify-between {sheet ? 'h-14' : 'h-12'}">
 		<a
@@ -96,32 +146,19 @@
 	</nav>
 	<div class={column}><div class="border-t border-border"></div></div>
 	<div class="{sheet ? SITE_COLUMN : ''} py-2">
-		<h2
-			class="{sheet ? SITE_GUTTER : 'px-5'} pt-2 pb-1 text-xs font-medium tracking-wide
-				text-muted-foreground uppercase"
-		>
-			{m.nav_about()}
-		</h2>
-		<ul class="flex flex-col">
-			{#each ABOUT_LINKS as link (link.id)}
-				{@render pageLink(link)}
-			{/each}
-		</ul>
+		{@render subview('about', m.nav_about(), undefined, aboutActive)}
+		{@render subview('more', m.nav_more())}
 	</div>
-	<div class={column}><div class="border-t border-border"></div></div>
+	<!-- The sheet's spare height goes above the settings, so they sit at the
+	     bottom of the screen. -->
+	<div class="{column} mt-auto"><div class="border-t border-border"></div></div>
 	<div class="{sheet ? SITE_COLUMN : ''} py-2">
-		<button
-			type="button"
-			class="{row} cursor-pointer text-muted-foreground"
-			onclick={() => (view = 'settings')}
-		>
-			<span class="flex items-center gap-3">
-				<SettingsIcon class="size-5" />
-				{m.settings_title()}
-			</span>
-			<ChevronRightIcon class="size-4.5" />
-		</button>
+		{@render subview('settings', m.settings_title(), SettingsIcon)}
 	</div>
+{:else if view === 'about'}
+	{@render linkList(m.nav_about(), ABOUT_LINKS)}
+{:else if view === 'more'}
+	{@render linkList(m.nav_more(), MORE_LINKS)}
 {:else}
 	<!-- px-1 lines the settings' own px-5 up with the site gutter. -->
 	<div class="{sheet ? `${SITE_COLUMN} px-1` : ''} flex min-h-0 flex-1 flex-col">

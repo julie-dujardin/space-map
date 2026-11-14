@@ -1839,6 +1839,7 @@
 	"nav_label": "Witryna",
 	"nav_menu": "Menu",
 	"nav_about": "O stronie",
+	"nav_more": "Więcej",
 	"status_page_title": "Stan",
 	"status_generated": "Wygenerowano {date}",
 	"status_summary_sources": [

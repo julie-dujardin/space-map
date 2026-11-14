@@ -1894,6 +1894,7 @@
 	"nav_label": "サイト",
 	"nav_menu": "メニュー",
 	"nav_about": "サイトについて",
+	"nav_more": "その他",
 	"status_page_title": "ステータス",
 	"status_generated": "{date} 時点",
 	"status_summary_sources": "{count} 件のソース",

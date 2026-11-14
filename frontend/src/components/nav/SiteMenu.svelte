@@ -1,9 +1,11 @@
 <!--
-  The phone form of the site menu: one button opening a sheet under the row.
-  The tab strip scrolled once the site had more pages than a phone row holds.
+  The phone form of the site menu: one button opening a fullscreen sheet, like
+  the settings behind it, so the page never shows through under either.
 -->
 <script lang="ts">
 	import MenuIcon from '@lucide/svelte/icons/menu';
+	import { getContext, hasContext } from 'svelte';
+	import type { MapCover } from '$lib/state/map-cover.svelte';
 	import * as m from '$lib/paraglide/messages.js';
 	import * as Sheet from '$lib/components/ui/sheet/index.js';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
@@ -26,11 +28,10 @@
 	}: Props = $props();
 
 	let open = $state(false);
-	let view = $state<'pages' | 'settings'>('pages');
-	/** The settings fill the screen so the page never shows through under them. */
-	const height = $derived(
-		view === 'settings' ? 'data-[side=top]:h-dvh pb-[var(--safe-bottom)]' : ''
-	);
+
+	// The sheet covers the whole map, so the map can pause behind it.
+	const mapCover = hasContext('mapCover') ? getContext<MapCover>('mapCover') : null;
+	mapCover?.hold(() => open);
 </script>
 
 <Sheet.Root bind:open>
@@ -47,20 +48,14 @@
 		side="top"
 		showCloseButton={false}
 		overlayClass="z-[69]"
-		class="z-[70] max-h-dvh gap-0 overflow-hidden pt-[var(--safe-top)] ps-[var(--safe-start)] pe-[var(--safe-end)] {height}"
+		class="z-[70] gap-0 overflow-hidden pt-[var(--safe-top)] pb-[var(--safe-bottom)] ps-[var(--safe-start)] pe-[var(--safe-end)] data-[side=top]:h-dvh data-[side=top]:border-b-0"
 	>
 		<Sheet.Title class="sr-only">{m.nav_menu()}</Sheet.Title>
 		<ScrollArea
 			class="flex min-h-0 flex-1 flex-col"
 			viewportClasses="min-h-0 flex-1 [&>div]:flex [&>div]:min-h-full [&>div]:flex-col"
 		>
-			<SiteMenuPanel
-				{current}
-				{scope}
-				variant="sheet"
-				bind:view
-				onNavigate={() => (open = false)}
-			/>
+			<SiteMenuPanel {current} {scope} variant="sheet" onNavigate={() => (open = false)} />
 		</ScrollArea>
 	</Sheet.Content>
 </Sheet.Root>

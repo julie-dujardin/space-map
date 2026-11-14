@@ -3,6 +3,7 @@
 	import SitePage from '../../components/nav/SitePage.svelte';
 	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
 	import { locales } from '$lib/paraglide/runtime';
+	import { SDK_NPM_URL, SPACEGUESSER_URL } from '$lib/constants';
 	import { streamed } from '$lib/state/streamed.svelte';
 	import { groupHref } from '$lib/state/page-href';
 	import { categoryLabel } from '$lib/format/group';
@@ -345,7 +346,7 @@
 		<h3>SDK</h3>
 		<p>
 			SpaceMap can be easily integrated into your websites with the {@render out(
-				'https://www.npmjs.com/package/spacemap',
+				SDK_NPM_URL,
 				'SpaceMap SDK'
 			)}.
 		</p>
@@ -354,7 +355,7 @@
 			<li>Full control over what's rendered, camera focus & position.</li>
 			<li>Draw on the map, and add in your own content.</li>
 			<li>
-				Check out {@render out('https://spaceguesser.com/', 'SpaceGuesser.com')} for examples.
+				Check out {@render out(SPACEGUESSER_URL, 'SpaceGuesser.com')} for examples.
 			</li>
 		</ul>
 	</div>

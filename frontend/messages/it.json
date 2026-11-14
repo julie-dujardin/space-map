@@ -1815,6 +1815,7 @@
 	"nav_label": "Sito",
 	"nav_menu": "Menu",
 	"nav_about": "Informazioni",
+	"nav_more": "Altro",
 	"status_page_title": "Stato",
 	"status_generated": "Generato il {date}",
 	"status_summary_sources": [

@@ -16,7 +16,15 @@
 	import SiteMenu from './SiteMenu.svelte';
 	import SiteQuickSearch from './SiteQuickSearch.svelte';
 	import SiteSearch from './SiteSearch.svelte';
-	import { ABOUT_LINKS, SITE_COLUMN, SITE_GUTTER, SITE_PAGES, type NavPage } from './site';
+	import {
+		ABOUT_LINKS,
+		MORE_LINKS,
+		SITE_COLUMN,
+		SITE_GUTTER,
+		SITE_PAGES,
+		type NavPage,
+		type SiteLink
+	} from './site';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import { cn } from '$lib/utils.js';
@@ -28,12 +36,47 @@
 
 	let { current, class: className }: Props = $props();
 
-	const aboutActive = $derived(ABOUT_LINKS.some((link) => link.id === current));
-
 	const tab = 'flex items-center whitespace-nowrap border-b-2 text-sm transition-colors';
 	const activeTab = 'border-foreground font-medium text-foreground';
 	const idleTab = 'border-transparent text-muted-foreground hover:text-foreground';
 </script>
+
+{#snippet linkMenu(label: string, links: SiteLink[])}
+	{@const groupActive = links.some((link) => link.id === current)}
+	<DropdownMenu.Root>
+		<DropdownMenu.Trigger
+			class="{tab} cursor-pointer gap-1 data-[state=open]:text-foreground {groupActive
+				? activeTab
+				: idleTab}"
+		>
+			{label}
+			<ChevronDownIcon class="size-3.5" />
+		</DropdownMenu.Trigger>
+		<DropdownMenu.Content align="start" sideOffset={2} class="min-w-40">
+			{#each links as link (link.id)}
+				{@const active = link.id === current}
+				<DropdownMenu.Item class="cursor-pointer justify-between">
+					{#snippet child({ props })}
+						<a
+							{...props}
+							href={link.href}
+							aria-current={active ? 'page' : undefined}
+							target={link.external ? '_blank' : undefined}
+							rel={link.external ? 'noopener noreferrer' : undefined}
+						>
+							{link.label()}
+							{#if active}
+								<CheckIcon />
+							{:else if link.external}
+								<ExternalLinkIcon class="text-muted-foreground" />
+							{/if}
+						</a>
+					{/snippet}
+				</DropdownMenu.Item>
+			{/each}
+		</DropdownMenu.Content>
+	</DropdownMenu.Root>
+{/snippet}
 
 <header
 	class={cn(
@@ -77,39 +120,10 @@
 					</li>
 				{/each}
 				<li class="flex shrink-0">
-					<DropdownMenu.Root>
-						<DropdownMenu.Trigger
-							class="{tab} cursor-pointer gap-1 data-[state=open]:text-foreground {aboutActive
-								? activeTab
-								: idleTab}"
-						>
-							{m.nav_about()}
-							<ChevronDownIcon class="size-3.5" />
-						</DropdownMenu.Trigger>
-						<DropdownMenu.Content align="start" sideOffset={2} class="min-w-40">
-							{#each ABOUT_LINKS as link (link.id)}
-								{@const active = link.id === current}
-								<DropdownMenu.Item class="cursor-pointer justify-between">
-									{#snippet child({ props })}
-										<a
-											{...props}
-											href={link.href}
-											aria-current={active ? 'page' : undefined}
-											target={link.external ? '_blank' : undefined}
-											rel={link.external ? 'noopener noreferrer' : undefined}
-										>
-											{link.label()}
-											{#if active}
-												<CheckIcon />
-											{:else if link.external}
-												<ExternalLinkIcon class="text-muted-foreground" />
-											{/if}
-										</a>
-									{/snippet}
-								</DropdownMenu.Item>
-							{/each}
-						</DropdownMenu.Content>
-					</DropdownMenu.Root>
+					{@render linkMenu(m.nav_about(), ABOUT_LINKS)}
+				</li>
+				<li class="flex shrink-0">
+					{@render linkMenu(m.nav_more(), MORE_LINKS)}
 				</li>
 			</ul>
 		</ScrollArea>

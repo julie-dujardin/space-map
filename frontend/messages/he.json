@@ -1839,6 +1839,7 @@
 	"nav_label": "אתר",
 	"nav_menu": "תפריט",
 	"nav_about": "אודות",
+	"nav_more": "עוד",
 	"status_page_title": "מצב",
 	"status_generated": "נוצר ב-{date}",
 	"status_summary_sources": [

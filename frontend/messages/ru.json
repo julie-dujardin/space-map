@@ -1824,6 +1824,7 @@
 	"nav_label": "Сайт",
 	"nav_menu": "Меню",
 	"nav_about": "О сайте",
+	"nav_more": "Ещё",
 	"status_page_title": "Состояние",
 	"status_generated": "Сформировано {date}",
 	"status_summary_sources": [

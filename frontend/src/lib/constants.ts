@@ -52,6 +52,8 @@ export const TYPE_COLOR_SATELLITE = '#bed4ec';
 export const TYPE_COLOR_PROBE = '#d5cfe7';
 
 export const GITHUB_REPO_URL = 'https://github.com/julie-dujardin/space-map';
+export const SDK_NPM_URL = 'https://www.npmjs.com/package/spacemap';
+export const SPACEGUESSER_URL = 'https://spaceguesser.com/';
 /** Written by the build; see `third-party-notices.ts`. */
 export const THIRD_PARTY_NOTICES_URL = '/THIRD_PARTY_NOTICES.txt';
 

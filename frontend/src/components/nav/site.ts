@@ -1,7 +1,7 @@
 /** What the site row and its phone menu share, so both list the same pages on
  *  the same column. */
 import * as m from '$lib/paraglide/messages.js';
-import { GITHUB_REPO_URL } from '$lib/constants';
+import { GITHUB_REPO_URL, SDK_NPM_URL, SPACEGUESSER_URL } from '$lib/constants';
 
 /** The column every page in the site shares — the row and the page body sit
  *  on it, so a heading keeps its place from page to page. */
@@ -23,7 +23,7 @@ export type NavPage =
 	| 'data';
 
 export interface SiteLink {
-	id: NavPage | 'github';
+	id: NavPage | 'github' | 'sdk' | 'spaceguesser';
 	href: string;
 	label: () => string;
 	/** Leaves the site, so it opens in a new tab and is never `current`. */
@@ -46,4 +46,10 @@ export const ABOUT_LINKS: SiteLink[] = [
 	{ id: 'status', href: '/status', label: m.status_page_title },
 	{ id: 'data', href: '/about/data', label: m.about_data_page_title },
 	{ id: 'github', href: GITHUB_REPO_URL, label: m.nav_github, external: true }
+];
+
+/** What is built on the site but lives elsewhere. */
+export const MORE_LINKS: SiteLink[] = [
+	{ id: 'sdk', href: SDK_NPM_URL, label: m.nav_sdk, external: true },
+	{ id: 'spaceguesser', href: SPACEGUESSER_URL, label: m.nav_spaceguesser, external: true }
 ];
