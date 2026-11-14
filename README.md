@@ -1,6 +1,6 @@
 # Space Map
 
-Space Map is a real-time, real-scale, fully continuous map of the solar system, mapping 1.6m objects and 16k surface features.
+Space Map is a real-time, real-scale, fully continuous map of the solar system & milky way, mapping 182m objects and 16k surface features.
 
 [![inner-system](docs/images/inner-system.png)](https://spacemap.co/)
 
@@ -16,13 +16,15 @@ Space Map computes positions at any date, using orbital elements from NASA, ESA,
 
 | Type | Count | Source |
 | --- | --- | --- |
-| [Planets](https://spacemap.co/g/cat-planets/Planets) | 8 | [NASA SPICE kernels (NAIF)](https://naif.jpl.nasa.gov/naif/) |
-| [Dwarf planets](https://spacemap.co/g/cat-dwarf-planets/Dwarf%20Planets) | 10 | [NASA JPL Horizons](https://ssd.jpl.nasa.gov/horizons/) |
-| [Moons](https://spacemap.co/g/cat-moons/Moons) | 987 | [NASA JPL Horizons](https://ssd.jpl.nasa.gov/horizons/), [Small-Body Database](https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html), [Natural Satellites Data Base](https://www.sai.msu.ru/neb/nss/) (SAI/IMCCE), [Johnston's Archive](https://www.johnstonsarchive.net/astro/asteroidmoons.html) |
-| [Asteroids](https://spacemap.co/g/cat-asteroids/Asteroids) | 1.5m | [Small-Body Database](https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html) |
+| [Stars](https://spacemap.co/g/cat-stars/Stars) | 181m | ESA ([Gaia DR3](https://www.cosmos.esa.int/web/gaia/dr3), [Hipparcos](https://www.cosmos.esa.int/web/hipparcos)), [SIMBAD (CDS)](https://simbad.cds.unistra.fr/simbad/), [APOGEE DR17 (SDSS)](https://www.sdss4.org/dr17/irspec/), [LAMOST DR10](https://www.lamost.org/dr10/) |
+| [Star systems](https://spacemap.co/g/cat-star-systems/Star%20Systems) | 1.7m | [Gaia DR3 (ESA)](https://www.cosmos.esa.int/web/gaia/dr3), [Washington Double Star Catalog](http://www.astro.gsu.edu/wds/), [Multiple Star Catalogue](https://www.ctio.noirlab.edu/~atokovin/stars/) |
+| [Planets](https://spacemap.co/g/cat-planets/Planets) | 7.5k | NASA ([NAIF SPICE kernels](https://naif.jpl.nasa.gov/naif/), [Exoplanet Archive](https://exoplanetarchive.ipac.caltech.edu/)), [Exoplanet.eu](https://exoplanet.eu/), [Open Exoplanet Catalogue](https://github.com/OpenExoplanetCatalogue/open_exoplanet_catalogue) |
+| [Dwarf planets](https://spacemap.co/g/cat-dwarf-planets/Dwarf%20Planets) | 11 | [NASA JPL Horizons](https://ssd.jpl.nasa.gov/horizons/) |
+| [Moons](https://spacemap.co/g/cat-moons/Moons) | 987 | NASA ([JPL Horizons](https://ssd.jpl.nasa.gov/horizons/), [Small-Body Database](https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html)), [Natural Satellites Data Base](https://www.sai.msu.ru/neb/nss/) (SAI/IMCCE), [Johnston's Archive](https://www.johnstonsarchive.net/astro/asteroidmoons.html) |
+| [Asteroids](https://spacemap.co/g/cat-asteroids/Asteroids) | 1.6m | [Small-Body Database](https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html) |
 | [Comets](https://spacemap.co/g/cat-comets/Comets) | 4k | [Small-Body Database](https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html) |
 | [Spacecraft](https://spacemap.co/g/cat-spacecraft/Spacecraft) | 29k | [CelesTrak](https://celestrak.org/), [Space-Track](https://www.space-track.org/), NASA ([JPL Horizons](https://ssd.jpl.nasa.gov/horizons/), [NAIF](https://naif.jpl.nasa.gov/naif/), [PDS](https://pds.nasa.gov/)), [ESA SPICE Service](https://www.cosmos.esa.int/web/spice), [JAXA DARTS](https://darts.isas.jaxa.jp/) |
-| [Satellite debris](https://spacemap.co/g/cat-debris/Space%20Debris) | 42k | [CelesTrak](https://celestrak.org/), [Space-Track](https://www.space-track.org/) |
+| [Satellite debris](https://spacemap.co/g/cat-debris/Space%20Debris) | 43k | [CelesTrak](https://celestrak.org/), [Space-Track](https://www.space-track.org/) |
 | [Surface features](https://spacemap.co/g/cat-surface-features/Surface%20features) | 16k | [Gazetteer of Planetary Nomenclature (IAU/USGS/NASA)](https://planetarynames.wr.usgs.gov/) |
 
 See the full list at [spacemap.co/about/data](https://spacemap.co/about/data)
