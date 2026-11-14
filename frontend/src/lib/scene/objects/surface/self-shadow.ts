@@ -170,8 +170,30 @@ export function attachSelfShadowToBody(
 				${SUN_DISC_GLSL}
 				${tiles ? reliefTilesGlsl(steps) : ''}
 
-				float selfHeight(vec2 uv) {
-					return texture2D(uSelfHeightMap, uv).r * uSelfScale;
+				// Where the unit direction p of the body's frame is on the map.
+				vec2 selfUvOf(vec3 p) {
+					return vec2(fract(atan(p.z, -p.x) / 6.2831853), 1.0 - acos(clamp(p.y, -1.0, 1.0)) / 3.14159265);
+				}
+
+				// Height of the map at uv, at mip lod. A loop with a break has no
+				// derivatives of its own, so the mip comes from outside it.
+				float selfHeightUv(vec2 uv, float lod) {
+					return textureLod(uSelfHeightMap, uv, lod).r * uSelfScale;
+				}
+
+				float selfHeightAt(vec3 p, float lod) {
+					return selfHeightUv(selfUvOf(p), lod);
+				}
+
+				// Mip of the fragment's footprint on the ground, for the fragment at
+				// dir whose vSelfUv changes by gx and gy over a screen pixel. Near a
+				// pole the map's columns close in, and a mip of the footprint on the
+				// map would blur along them.
+				float selfGroundLod(vec3 dir, vec2 gx, vec2 gy) {
+					// The map's u runs east over 2π·cos(lat) radians, its v north over π.
+					vec2 scale = vec2(6.2831853 * length(dir.xz), 3.14159265);
+					float foot = max(length(gx * scale), length(gy * scale));
+					return log2(max(foot / (3.14159265 * uSelfTexel.y), 1.0));
 				}
 
 				// A texel of the map in uv, floored at the low tier's, so that a finer
@@ -182,33 +204,25 @@ export function attachSelfShadowToBody(
 
 				// Slope of the whole-globe height map at a direction of the
 				// body's frame: a vector along the unit sphere that points
-				// uphill, as long as the rise over the run.
-				vec3 selfMapSlope(vec3 dir) {
-					float cosLat = sqrt(max(1.0 - dir.y * dir.y, 0.0));
-					if (cosLat < 1e-5) return vec3(0.0);
-					vec3 east = vec3(dir.z, 0.0, -dir.x) / cosLat;
+				// uphill, as long as the rise over the run, read at mip lod.
+				//
+				// The samples are a step away on the ground, not on the map: near
+				// a pole the map's columns close in, and a step along them would
+				// cover no ground.
+				vec3 selfMapSlope(vec3 dir, float lod) {
+					float cosLat = length(dir.xz);
+					vec3 east = cosLat > 1e-5 ? vec3(dir.z, 0.0, -dir.x) / cosLat : vec3(1.0, 0.0, 0.0);
 					vec3 north = cross(dir, east);
 					// Wider than a texel to average out 8-bit terracing.
-					vec2 d = selfTexel() * ${GRADIENT_STENCIL.toFixed(3)};
-					float hu = selfHeight(vSelfUv + vec2(d.x, 0.0))
-						- selfHeight(vSelfUv - vec2(d.x, 0.0));
-					float hv = selfHeight(vSelfUv + vec2(0.0, d.y))
-						- selfHeight(vSelfUv - vec2(0.0, d.y));
-					// The map's u runs east over 2π·cos(lat) radii, its v north over π radii.
-					float su = hu / (2.0 * d.x * 6.2831853 * cosLat * vSelfRadiusW);
-					float sv = hv / (2.0 * d.y * 3.14159265 * vSelfRadiusW);
-					// Fade at the poles, where the columns of the map close in and
-					// blow the east-west slope up into a starburst.
-					float gain = ${NORMAL_STRENGTH.toFixed(3)} * smoothstep(0.0, 0.12, cosLat);
-					su = clamp(su * gain, -${SLOPE_CLAMP.toFixed(3)}, ${SLOPE_CLAMP.toFixed(3)});
-					sv = clamp(sv * gain, -${SLOPE_CLAMP.toFixed(3)}, ${SLOPE_CLAMP.toFixed(3)});
+					float arc = selfTexel().y * ${GRADIENT_STENCIL.toFixed(3)} * 3.14159265;
+					float c = cos(arc);
+					float s = sin(arc);
+					float hu = selfHeightAt(dir * c + east * s, lod) - selfHeightAt(dir * c - east * s, lod);
+					float hv = selfHeightAt(dir * c + north * s, lod) - selfHeightAt(dir * c - north * s, lod);
+					float run = 2.0 * arc * vSelfRadiusW;
+					float su = clamp(hu / run * ${NORMAL_STRENGTH.toFixed(3)}, -${SLOPE_CLAMP.toFixed(3)}, ${SLOPE_CLAMP.toFixed(3)});
+					float sv = clamp(hv / run * ${NORMAL_STRENGTH.toFixed(3)}, -${SLOPE_CLAMP.toFixed(3)}, ${SLOPE_CLAMP.toFixed(3)});
 					return east * su + north * sv;
-				}
-
-				// Height of the map at uv, read at the mip of the fragment's own
-				// footprint: a loop with a break has no derivatives of its own.
-				float selfHeightAt(vec2 uv, vec2 gx, vec2 gy) {
-					return textureGrad(uSelfHeightMap, uv, gx, gy).r * uSelfScale;
 				}
 
 				// Where the ray is on the map 's' along it, for a fragment at dir that
@@ -218,17 +232,15 @@ export function attachSelfShadowToBody(
 				vec2 selfRayUv(float s, bool polar, vec3 dir, vec3 along, vec2 uvPer, vec2 uvBend) {
 					if (polar) {
 						float a = s / vSelfRadiusW;
-						vec3 at = dir * cos(a) + along * sin(a);
-						return vec2(fract(atan(at.z, -at.x) / 6.2831853), 1.0 - acos(clamp(at.y, -1.0, 1.0)) / 3.14159265);
+						return selfUvOf(dir * cos(a) + along * sin(a));
 					}
 					vec2 uv = vSelfUv + s * uvPer + (s * s) * uvBend;
 					return vec2(fract(uv.x), uv.y);
 				}
 
 				// Part of the Sun's disc that the ground of the whole-globe map
-				// leaves in sight, for a Sun towards L. gx and gy are the screen
-				// derivatives of vSelfUv.
-				float selfMapLight(vec3 L, vec2 gx, vec2 gy) {
+				// leaves in sight, for a Sun towards L, read at mip lod.
+				float selfMapLight(vec3 L, float lod) {
 					vec3 dir = normalize(vSelfDir);
 					float cosLat = length(dir.xz);
 					if (cosLat < 1e-5) return 1.0;
@@ -255,7 +267,7 @@ export function attachSelfShadowToBody(
 					float reach = ${SHADOW_REACH.toFixed(3)} * uSelfScale;
 					if (reach <= pixel) return 1.0;
 					float ds = (reach - pixel) / float(SELF_STEPS);
-					float h0 = selfHeightAt(vSelfUv, gx, gy);
+					float h0 = selfHeightUv(vSelfUv, lod);
 					float bend = 0.5 / R;
 					// The edge is as soft as the Sun's disc, widened by a step of the
 					// map's coding at that distance.
@@ -266,7 +278,7 @@ export function attachSelfShadowToBody(
 					for (int i = 1; i <= SELF_STEPS; i++) {
 						float s = pixel + float(i) * ds;
 						// The sphere falls away under the ray by s² / 2R.
-						float rise = (selfHeightAt(selfRayUv(s, polar, dir, along, uvPer, uvBend), gx, gy) - h0) / s - s * bend - tanElev;
+						float rise = (selfHeightUv(selfRayUv(s, polar, dir, along, uvPer, uvBend), lod) - h0) / s - s * bend - tanElev;
 						float x = rise / (disc + coding / s);
 						if (x > stands) {
 							stands = x;
@@ -284,7 +296,7 @@ export function attachSelfShadowToBody(
 							for (int e = 0; e < 2; e++) {
 								float s = centre + (e == 0 ? -around : around);
 								if (s <= pixel) continue;
-								float rise = (selfHeightAt(selfRayUv(s, polar, dir, along, uvPer, uvBend), gx, gy) - h0) / s - s * bend - tanElev;
+								float rise = (selfHeightUv(selfRayUv(s, polar, dir, along, uvPer, uvBend), lod) - h0) / s - s * bend - tanElev;
 								float x = rise / (disc + coding / s);
 								if (x > stands) {
 									stands = x;
@@ -303,13 +315,14 @@ export function attachSelfShadowToBody(
 				'#include <normal_fragment_maps>',
 				`#include <normal_fragment_maps>
 				vec3 selfDir = normalize(vSelfDir);
+				float selfLod = selfGroundLod(selfDir, dFdx(vSelfUv), dFdy(vSelfUv));
 				// The part of the fragment that the tiles answer for.
 				float selfCovered = 0.0;
 				${tiles ? 'mat3x2 selfMap;\n\t\t\t\tmat3x2 selfCap;\n\t\t\t\tfloat selfSide;\n\t\t\t\ttileChartsFrom(uReliefAnchor, vReliefOff, selfMap, selfCap, selfSide);\n\t\t\t\tint selfFirst = -1;' : ''}
 				{
 					vec3 slope = vec3(0.0);
 					${tiles ? 'slope = reliefTileSlope(selfDir, selfMap, selfCap, selfSide, selfCovered, selfFirst);' : ''}
-					if (selfCovered < 0.995 && uSelfScale > 0.0) slope += (1.0 - selfCovered) * selfMapSlope(selfDir);
+					if (selfCovered < 0.995 && uSelfScale > 0.0) slope += (1.0 - selfCovered) * selfMapSlope(selfDir, selfLod);
 					float steep = length(slope);
 					if (steep > ${SLOPE_CLAMP.toFixed(3)}) slope *= ${SLOPE_CLAMP.toFixed(3)} / steep;
 					normal = normalize(normalMatrix * (selfDir - slope));
@@ -322,8 +335,6 @@ export function attachSelfShadowToBody(
 					vec3 Nw = normalize(vSelfWorldNormal);
 					vec3 L = normalize(uSelfSunDir);
 					float gN = dot(L, Nw);
-					vec2 selfUvDx = dFdx(vSelfUv);
-					vec2 selfUvDy = dFdy(vSelfUv);
 					float shadow = smoothstep(${TERMINATOR_GATE_DARK.toFixed(3)}, ${TERMINATOR_GATE_LIT.toFixed(3)}, gN);
 					// Past the terminator the ground is in its own shadow, save where it stands into the Sun.
 					if (shadow > ${GATE_MIN.toFixed(3)}) {
@@ -332,7 +343,7 @@ export function attachSelfShadowToBody(
 						float tileLight = 1.0;
 						${steps > 0 ? TILE_LIGHT : ''}
 						float mapLight = 1.0;
-						if (byTiles < 0.995 && uSelfScale > 0.0) mapLight = selfMapLight(L, selfUvDx, selfUvDy);
+						if (byTiles < 0.995 && uSelfScale > 0.0) mapLight = selfMapLight(L, selfLod);
 						shadow *= mix(mapLight, tileLight, byTiles);
 					}
 					reflectedLight.directDiffuse *= shadow;
