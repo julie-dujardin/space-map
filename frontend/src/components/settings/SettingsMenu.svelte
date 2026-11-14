@@ -21,6 +21,7 @@
 	} from '$lib/scene/objects/surface/atmosphere-quality';
 	import { recalibrateAtmosphere } from '$lib/scene/perf/atmosphere-calibration';
 	import { switchLanguage } from '$lib/state/language';
+	import { calendarName, offeredCalendars, type CalendarId } from '$lib/time/calendars';
 
 	/** Graphics and the debug overlay only change what the 3D scene draws, so the
 	 *  map alone carries them; the date formatters are reached from anything that
@@ -43,7 +44,7 @@
 	const settings = getSettings();
 
 	/** Every segmented row selects one of these. */
-	type SegmentedValue = Theme | Clock | ReducedMotion | DateFormatChoice | PanoramaGyro;
+	type SegmentedValue = Theme | Clock | 'decimal' | ReducedMotion | DateFormatChoice | PanoramaGyro;
 	interface SegmentedOption {
 		value: SegmentedValue;
 		label: () => string;
@@ -67,16 +68,40 @@
 		{ value: 'light', label: () => m.settings_theme_light() }
 	];
 
-	const clockOptions: { value: Clock; label: () => string }[] = [
+	/** The Republican calendar comes with its decimal day, no choice offered:
+	 *  the row shows it, locked, as ISO shows its 24h. */
+	const republican = $derived(settings.resolvedDecimalTime);
+	const clockOptions = $derived<{ value: Clock | 'decimal'; label: () => string }[]>([
 		{ value: 'auto', label: () => m.settings_auto() },
 		{ value: '24h', label: () => m.settings_clock_24h() },
-		{ value: '12h', label: () => m.settings_clock_12h() }
-	];
+		{ value: '12h', label: () => m.settings_clock_12h() },
+		...(republican ? [{ value: 'decimal' as const, label: () => m.settings_clock_decimal() }] : [])
+	]);
 
 	const dateFormatOptions = [
 		{ value: 'auto' as const, label: () => m.settings_dateformat_locale() },
 		{ value: 'iso' as const, label: () => m.settings_dateformat_iso() }
 	];
+
+	const ownCalendarNames = {
+		julian: () => m.settings_calendar_julian(),
+		republican: () => m.settings_calendar_french_republican()
+	};
+	function calendarLabel(calendar: CalendarId): string {
+		return calendarName(calendar, getLocale(), ownCalendarNames);
+	}
+	/** The Gregorian first, as the one most readers will come back to; the
+	 *  rest by name in the reader's language. */
+	const calendarOptions = $derived.by(() => {
+		const collator = new Intl.Collator(getLocale());
+		const [gregorian, ...rest] = offeredCalendars().map((value) => ({
+			value,
+			label: calendarLabel(value)
+		}));
+		return [gregorian, ...rest.sort((a, b) => collator.compare(a.label, b.label))];
+	});
+	// ISO 8601 is Gregorian, so choosing it settles the calendar as it does the clock.
+	let calendarLocked = $derived(settings.dateFormat === 'iso');
 
 	const gyroOptions: { value: PanoramaGyro; label: () => string }[] = [
 		{ value: 'auto', label: () => m.settings_auto() },
@@ -157,8 +182,10 @@
 	);
 	// ISO date format implies 24h; lock the clock toggle so the UI matches the
 	// behavior already enforced by the formatters.
-	let clockLocked = $derived(settings.dateFormat === 'iso');
-	let effectiveClock = $derived<Clock>(clockLocked ? '24h' : settings.clock);
+	let clockLocked = $derived(settings.dateFormat === 'iso' || republican);
+	let effectiveClock = $derived<Clock | 'decimal'>(
+		republican ? 'decimal' : clockLocked ? '24h' : settings.clock
+	);
 </script>
 
 <!-- `locked` given at all marks the row as lockable: only those animate their
@@ -364,6 +391,49 @@
 					)}
 
 					<div class="flex flex-col gap-2">
+						<div class="flex items-center justify-between gap-3">
+							<div class="min-w-0">
+								<div id="settings-calendar-label" class="text-sm font-medium">
+									{m.settings_calendar()}
+								</div>
+							</div>
+							<div
+								class="relative min-w-0 shrink transition-opacity {calendarLocked
+									? 'opacity-60'
+									: ''}"
+							>
+								<select
+									class="w-full max-w-56 truncate appearance-none rounded-md border border-input bg-background pe-7 ps-2.5 py-1.5 text-sm
+										hover:bg-accent transition-colors
+										focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring
+										{calendarLocked ? 'cursor-not-allowed' : 'cursor-pointer'}"
+									aria-labelledby="settings-calendar-label"
+									disabled={calendarLocked}
+									value={calendarLocked ? 'gregory' : settings.calendar}
+									onchange={(e) =>
+										settings.setCalendar((e.currentTarget as HTMLSelectElement).value)}
+								>
+									<option value="auto">{m.settings_auto()}</option>
+									{#each calendarOptions as opt (opt.value)}
+										<option value={opt.value}>{opt.label}</option>
+									{/each}
+								</select>
+								<ChevronDownIcon
+									class="absolute end-1.5 top-1/2 -translate-y-1/2 size-3.5 opacity-50 pointer-events-none"
+								/>
+							</div>
+						</div>
+						{#if calendarLocked}
+							{@render autoSource(calendarLabel('gregory'), m.settings_source_iso())}
+						{:else if settings.calendar === 'auto'}
+							{@render autoSource(
+								calendarLabel(settings.resolvedCalendar),
+								m.settings_source_browser({ tag: settings.browserLanguage })
+							)}
+						{/if}
+					</div>
+
+					<div class="flex flex-col gap-2">
 						{@render segmented(
 							m.settings_clock(),
 							clockOptions,
@@ -371,7 +441,9 @@
 							(v) => settings.setClock(v as Clock),
 							clockLocked
 						)}
-						{#if clockLocked}
+						{#if republican}
+							{@render autoSource(m.settings_clock_decimal(), m.settings_source_calendar())}
+						{:else if clockLocked}
 							{@render autoSource(m.settings_clock_24h(), m.settings_source_iso())}
 						{:else if settings.clock === 'auto'}
 							{@render autoSource(resolvedClockLabel, m.settings_source_locale())}

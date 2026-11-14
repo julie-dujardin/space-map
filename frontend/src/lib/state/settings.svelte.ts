@@ -1,5 +1,11 @@
 import type { Locale } from '$lib/paraglide/runtime.js';
 import { DEFAULT_SKY_CULTURE } from '$lib/constants';
+import {
+	browserCalendar,
+	FRENCH_REPUBLICAN,
+	isKnownCalendar,
+	type CalendarId
+} from '$lib/time/calendars';
 import { getLocale } from '$lib/host';
 import type { PageSky, SceneSettings } from '$lib/scene/settings.svelte';
 import type {
@@ -25,6 +31,8 @@ export type Theme = 'auto' | 'light' | 'dark';
 export type Clock = 'auto' | '12h' | '24h';
 export type ReducedMotion = 'auto' | 'on' | 'off';
 export type DateFormatChoice = 'auto' | 'iso';
+/** 'auto' follows the browser's own calendar; see {@link browserCalendar}. */
+export type CalendarChoice = 'auto' | CalendarId;
 /** 'auto' follows reduced motion: on unless motion is being suppressed. */
 export type PanoramaGyro = 'auto' | 'on' | 'off';
 export type LanguageChoice = 'auto' | Locale;
@@ -36,6 +44,7 @@ interface SettingValues {
 	clock: Clock;
 	reducedMotion: ReducedMotion;
 	dateFormat: DateFormatChoice;
+	calendar: CalendarChoice;
 	panoramaGyro: PanoramaGyro;
 	language: LanguageChoice;
 	showDebugInfo: boolean;
@@ -84,6 +93,7 @@ const SETTING_SPEC = {
 	clock: { default: 'auto', persist: true },
 	reducedMotion: { default: 'auto', persist: true },
 	dateFormat: { default: 'auto', persist: true },
+	calendar: { default: 'auto', persist: true },
 	panoramaGyro: { default: 'auto', persist: true },
 	language: { default: 'auto', persist: true },
 	showDebugInfo: { default: false, persist: true },
@@ -159,6 +169,7 @@ class SettingsState implements SceneSettings, SettingValues {
 	clock = $state<Clock>(SETTING_SPEC.clock.default);
 	reducedMotion = $state<ReducedMotion>(SETTING_SPEC.reducedMotion.default);
 	dateFormat = $state<DateFormatChoice>(SETTING_SPEC.dateFormat.default);
+	calendar = $state<CalendarChoice>(SETTING_SPEC.calendar.default);
 	/** Whether the device's orientation sensor turns a panorama. */
 	panoramaGyro = $state<PanoramaGyro>(SETTING_SPEC.panoramaGyro.default);
 	language = $state<LanguageChoice>(SETTING_SPEC.language.default);
@@ -257,6 +268,10 @@ class SettingsState implements SceneSettings, SettingValues {
 
 	setDateFormat(v: DateFormatChoice) {
 		this.set('dateFormat', v);
+	}
+
+	setCalendar(v: CalendarChoice) {
+		this.set('calendar', v);
 	}
 
 	setPanoramaGyro(v: PanoramaGyro) {
@@ -403,9 +418,22 @@ class SettingsState implements SceneSettings, SettingValues {
 		return localeUses12h(getLocale());
 	}
 
+	/** Decimal hours come with the Republican calendar, which decreed them. */
+	get resolvedDecimalTime(): boolean {
+		return this.resolvedCalendar === FRENCH_REPUBLICAN;
+	}
+
 	/** Resolved date format. */
 	get resolvedDateFormat(): 'locale' | 'iso' {
 		return this.dateFormat === 'iso' ? 'iso' : 'locale';
+	}
+
+	/** The calendar dates are written in. ISO 8601 is Gregorian; a stored
+	 *  calendar this browser lacks falls back to auto. */
+	get resolvedCalendar(): CalendarId {
+		if (this.resolvedDateFormat === 'iso') return 'gregory';
+		if (this.calendar !== 'auto' && isKnownCalendar(this.calendar)) return this.calendar;
+		return browserCalendar();
 	}
 
 	/** Browser language tag, used to label the "auto" language source. */
