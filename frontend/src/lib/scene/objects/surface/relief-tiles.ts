@@ -54,16 +54,34 @@ const MARCH_REACH = 8;
 const STEP_PIXELS = 1.5;
 
 /** Halvings of the step around the sample that hides the most. */
-const REFINE_STEPS = 3;
+export const REFINE_STEPS = 3;
 
 /** Steepest ground that the search around a sample allows for: a crest
  *  beside the sample stands higher by at most this slope over half a step. */
-const STEEPEST = 1;
+export const STEEPEST = 1;
 
 /** Least radius of the Sun's disc for the edge of a shadow, in radians. The
  *  samples of a ray miss the true crest by a part of their step, and a
  *  sharper edge would show that. */
 const MIN_SUN_SIZE = 0.006;
+
+/** The edge of a shadow, in GLSL. The tiles' ray and the whole-globe map's
+ *  ray share it, so that their blend has no seam. */
+export const SUN_DISC_GLSL = /* glsl */ `
+#ifndef SUN_DISC
+#define SUN_DISC
+// The Sun's disc as a rise over the run, for a Sun that is 'tanElev' above
+// the sphere and 'sunSize' in radius.
+float sunDiscRise( float sunSize, float tanElev ) {
+	return max( sunSize, ${MIN_SUN_SIZE.toFixed(4)} ) * ( 1.0 + tanElev * tanElev );
+}
+
+// Part of the Sun's disc in sight, where the ground stands 'stands' discs into the ray.
+float sunDiscLight( float stands ) {
+	return 1.0 - smoothstep( - 1.0, 1.0, stands );
+}
+#endif
+`;
 
 export interface ReliefTiles {
 	tiles: TilesBlock;
@@ -177,7 +195,7 @@ vec3 reliefTileSlope( vec3 dir, mat3x2 map, mat3x2 cap, float side, out float co
  * weak GPU much more for each sample.
  */
 function shadowGlsl(steps: number): string {
-	return /* glsl */ `
+	return /* glsl */ `${SUN_DISC_GLSL}
 // One window as a shadow ray reads it. The ray is a line on the window's
 // chart, so where it is inside the window is worked out once, not at each
 // sample. 'sight' holds what a sample reads, as a mat2x4 and not a struct
@@ -187,7 +205,7 @@ function shadowGlsl(steps: number): string {
 // a bit each. 'widest' is the longest step that the window's pixels still
 // hold, 'hands' the step from which the ray reads the next window, and
 // 'beyond' how far from the fragment the next window can be read at all.
-void reliefSight( int i, mat3x2 map, mat3x2 cap, float side, vec2 mapStep, vec2 capStep, out mat2x4 sight, out float widest, out float hands, out float beyond ) {
+void reliefSight( int i, mat3x2 map, mat3x2 cap, float side, vec2 mapStep, vec2 capStep, out mat2x4 sight, out float widest, out float hands, out float beyond, out int coarser ) {
 	vec4 window = uReliefWindow[ i ];
 	vec4 grid = uReliefGrid[ i ];
 	bool onMap = window.x < 0.5;
@@ -223,16 +241,25 @@ void reliefSight( int i, mat3x2 map, mat3x2 cap, float side, vec2 mapStep, vec2 
 	// for these pixels, but they are the same ground as the fragment's. The
 	// pyramid around a patch is not: it has none of the hills that only the
 	// patch resolves, and close to the fragment it would stand in the ray.
-	hands = widest;
-	beyond = 0.0;
-	if ( i + 1 < ${MAX_DRAWN} ) {
-		float next = PI / ( uReliefFilter.y * exp2( uReliefWindow[ i + 1 ].z ) );
-		hands = max( hands, 0.5 * ${STEP_PIXELS.toFixed(2)} * next );
-		// Within half a pixel of a window, its height is that of the fragment's
-		// own pixel, and the fragment stands above or below that by all the
-		// relief that the pixel averages away.
-		beyond = 0.5 * next;
+	// The ray steps on to wider pixels, on its own chart where it can. A
+	// window of the same level on the other chart has no wider pixels, and to
+	// step to it would make the shadow depend on the charts the chain holds.
+	coarser = - 1;
+	int other = - 1;
+	for ( int j = 0; j < ${MAX_DRAWN}; j ++ ) {
+		vec4 next = uReliefWindow[ j ];
+		if ( j <= i || next.w < 0.5 || next.z >= window.z ) continue;
+		if ( coarser < 0 && next.x == window.x ) coarser = j;
+		if ( other < 0 ) other = j;
 	}
+	if ( coarser < 0 ) coarser = other;
+	hands = widest;
+	if ( coarser >= 0 ) hands = max( hands, 0.5 * ${STEP_PIXELS.toFixed(2)} * PI / ( uReliefFilter.y * exp2( uReliefWindow[ coarser ].z ) ) );
+	// Within half a pixel of the next window, its height is that of the
+	// fragment's own pixel, and the fragment stands above or below that by all
+	// the relief that the pixel averages away.
+	beyond = 0.0;
+	if ( i + 1 < ${MAX_DRAWN} ) beyond = 0.5 * PI / ( uReliefFilter.y * exp2( uReliefWindow[ i + 1 ].z ) );
 }
 
 // Height of the ground 't' radians along the ray, as a part of the pyramid's
@@ -279,12 +306,13 @@ float reliefTileShadow( vec3 dir, mat3x2 map, mat3x2 cap, float side, vec3 toSun
 	float widest;
 	float hands;
 	float beyond;
+	int coarser;
 	float own = - 1.0;
 	for ( int i = 0; i < ${MAX_DRAWN}; i ++ ) {
 		if ( i < first ) continue;
 		if ( i >= drawn ) break;
 		w = i;
-		reliefSight( i, map, cap, side, mapStep, capStep, sight, widest, hands, beyond );
+		reliefSight( i, map, cap, side, mapStep, capStep, sight, widest, hands, beyond, coarser );
 		own = reliefSightValue( sight, 0.0 );
 		if ( own >= 0.0 ) break;
 	}
@@ -315,7 +343,7 @@ float reliefTileShadow( vec3 dir, mat3x2 map, mat3x2 cap, float side, vec3 toSun
 
 	// How far the ground stands into the ray is counted in discs of the Sun.
 	// The disc is an angle, and the ray's rise is a slope.
-	float perDisc = 1.0 / ( max( sunSize, ${MIN_SUN_SIZE.toFixed(4)} ) * ( 1.0 + tanElev * tanElev ) );
+	float perDisc = 1.0 / sunDiscRise( sunSize, tanElev );
 	float t = 0.0;
 	float hidden = - 1e9;
 	// The sample that hides the most, the step around it and its window.
@@ -325,16 +353,16 @@ float reliefTileShadow( vec3 dir, mat3x2 map, mat3x2 cap, float side, vec3 toSun
 	for ( int i = 1; i <= ${steps}; i ++ ) {
 		float before = t;
 		t = t * ratio + head;
-		if ( w + 1 < drawn && t - before > hands ) {
-			w ++;
-			reliefSight( w, map, cap, side, mapStep, capStep, sight, widest, hands, beyond );
+		if ( coarser >= 0 && t - before > hands ) {
+			w = coarser;
+			reliefSight( w, map, cap, side, mapStep, capStep, sight, widest, hands, beyond, coarser );
 		}
 		float value = reliefSightValue( sight, t );
 		// The ray left this window, or a tile of it is missing.
 		if ( value < 0.0 && w + 1 < drawn ) {
 			if ( t < beyond ) continue;
 			w ++;
-			reliefSight( w, map, cap, side, mapStep, capStep, sight, widest, hands, beyond );
+			reliefSight( w, map, cap, side, mapStep, capStep, sight, widest, hands, beyond, coarser );
 			value = reliefSightValue( sight, t );
 		}
 		if ( value < 0.0 ) continue;
@@ -356,12 +384,21 @@ float reliefTileShadow( vec3 dir, mat3x2 map, mat3x2 cap, float side, vec3 toSun
 	float crest = ${(STEEPEST * 0.5).toFixed(2)} * around / max( worst, 1e-9 ) * perDisc;
 	if ( hidden < 1.0 && hidden + crest > - 1.0 ) {
 		w = worstWindow;
-		reliefSight( w, map, cap, side, mapStep, capStep, sight, widest, hands, beyond );
+		reliefSight( w, map, cap, side, mapStep, capStep, sight, widest, hands, beyond, coarser );
 		for ( int k = 0; k < ${REFINE_STEPS}; k ++ ) {
 			around *= 0.5;
-			if ( w > start && around < widest ) {
-				w --;
-				reliefSight( w, map, cap, side, mapStep, capStep, sight, widest, hands, beyond );
+			// The nearest finer level, on the ray's chart where it has one.
+			int finer = - 1;
+			for ( int j = 0; j < ${MAX_DRAWN}; j ++ ) {
+				vec4 back = uReliefWindow[ j ];
+				if ( j < start || j >= w || back.z <= uReliefWindow[ w ].z ) continue;
+				bool closer = finer < 0 || back.z < uReliefWindow[ finer ].z;
+				bool sameChart = back.x == uReliefWindow[ w ].x;
+				if ( closer || ( back.z == uReliefWindow[ finer ].z && sameChart ) ) finer = j;
+			}
+			if ( finer >= 0 && around < widest ) {
+				w = finer;
+				reliefSight( w, map, cap, side, mapStep, capStep, sight, widest, hands, beyond, coarser );
 			}
 			float centre = worst;
 			for ( int e = 0; e < 2; e ++ ) {
@@ -379,7 +416,7 @@ float reliefTileShadow( vec3 dir, mat3x2 map, mat3x2 cap, float side, vec3 toSun
 			}
 		}
 	}
-	return 1.0 - smoothstep( - 1.0, 1.0, hidden );
+	return sunDiscLight( hidden );
 }
 `;
 }

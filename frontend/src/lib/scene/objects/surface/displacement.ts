@@ -247,6 +247,7 @@ async function pyramidHeights(meta: DisplacementMeta, tiles: TilesBlock): Promis
 		}
 	});
 	const tex = new DataTexture(data, width, size, RedFormat, FloatType);
+	tex.userData.heightStep = gain;
 	tex.colorSpace = NoColorSpace;
 	tex.magFilter = LinearFilter;
 	tex.minFilter = LinearMipmapLinearFilter;
