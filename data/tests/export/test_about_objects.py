@@ -85,10 +85,11 @@ class TestKindOf:
         assert kind_of("debris", True) == "debris"
 
 
-# A star, a resolved star system and a planet of the star.
+# A star, a resolved star system, a planet of the star and a galaxy.
 STAR_ID = ids.encode(0, 1, 5)
 SYSTEM_ID = ids.encode(0, 3, 5)
 PLANET_ID = f"x-{STAR_ID}-b-1"
+GALAXY_ID = ids.encode(0, 4, 9)
 
 
 class TestCatalogueKind:
@@ -100,6 +101,9 @@ class TestCatalogueKind:
 
     def test_a_held_star_is_a_star(self):
         assert catalogue_kind(f"x-{SYSTEM_ID}", "star") == "star"
+
+    def test_a_galaxy(self):
+        assert catalogue_kind(f"x-{GALAXY_ID}", "galaxy") == "galaxy"
 
     def test_solar_system(self):
         assert catalogue_kind("naif-10", "planet") is None
@@ -261,6 +265,7 @@ CENSUS: dict[str, dict] = {
         "size_bytes": 20,
         "sources": {"nasa-exoplanet-archive": 2},
     },
+    "galaxy": {"count": 1, "size_bytes": 10, "sources": {"literature": 1}},
 }
 
 
@@ -291,7 +296,7 @@ def _export(out) -> None:
         },
         "ring_sources": [{"title": "PDS", "url": "https://pds-rings"}],
     }
-    vega, pair = f"x-{STAR_ID}", f"x-{SYSTEM_ID}"
+    vega, pair, galaxy = f"x-{STAR_ID}", f"x-{SYSTEM_ID}", f"x-{GALAXY_ID}"
     global_data = {
         "naif-699": saturn,
         "spkid-1": {"id": "spkid-1", "type": "asteroid_main_belt"},
@@ -312,11 +317,18 @@ def _export(out) -> None:
             "type": "exoplanet",
             "cross_refs": {"wikidata_qid": "Q8"},
         },
+        galaxy: {
+            "id": galaxy,
+            "type": "galaxy",
+            "cross_refs": {"wikidata_qid": "Q321"},
+            "images": [{}],
+        },
     }
     localized = {
         "en": {
             "spkid-1": {"name": "x", "description": "asteroid"},
             vega: {"wikipedia": {"url": "https://en.wikipedia.org/wiki/Vega"}},
+            galaxy: {"wikipedia": {"extract": "The Milky Way is…"}},
         },
         "fr": {
             "spkid-2": {"name": "y", "instance_of": [{"name": "TNO"}]},
@@ -366,6 +378,7 @@ class TestObjectRows:
 
     def test_rows_in_page_order(self, rows):
         assert list(rows) == [
+            "galaxy",
             "star",
             "star_system",
             "planet",
@@ -410,6 +423,15 @@ class TestObjectRows:
             "wikipedia": 1,
         }
         assert _sources(rows["star_system"]) == {"star-systems": 1, "wikidata": 1}
+        # The census gives the papers, the entry the rest.
+        assert rows["galaxy"]["count"] == 1
+        assert rows["galaxy"]["localized"]["en"] == 1
+        assert _sources(rows["galaxy"]) == {
+            "literature": 1,
+            "wikidata": 1,
+            "commons": 1,
+            "wikipedia": 1,
+        }
         assert _sources(rows["planet"]) == {
             "nasa-exoplanet-archive": 2,
             "naif": 1,

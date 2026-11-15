@@ -49,6 +49,7 @@ from space_map_data.extrasolar.sources.gaia import (
     GAIA_DR3_NAMED,
     BestNeighbours,
 )
+from space_map_data.extrasolar.sources.galaxies import GALAXY_LIST
 from space_map_data.extrasolar.sources.hipparcos import HIPPARCOS, HIPPARCOS_1997
 from space_map_data.extrasolar.sources.jmdc import JMDC
 from space_map_data.extrasolar.sources.literature import LITERATURE
@@ -277,6 +278,7 @@ class TestTables:
                     *(source.name for source in DISTANCE_SOURCES),
                     STAR_SYSTEMS,
                     JMDC.name,
+                    GALAXY_LIST.name,
                 }
         distance = {g.name: g for g in POINT_SOURCE.groups}["distance"]
         # A paper is chosen for its star. Under it the system outranks the rest.
@@ -289,6 +291,7 @@ class TestTables:
             *(source.name for source in EXOPLANET_SOURCES),
             WIKIDATA.name,
             STAR_SYSTEMS,
+            GALAXY_LIST.name,
             SIMBAD.name,
             HIPPARCOS.name,
             HIPPARCOS_1997.name,

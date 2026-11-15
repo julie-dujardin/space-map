@@ -1096,10 +1096,12 @@ places it from its `orbit` block, so it carries `windows: [[null, null]]`.
 An object of the extrasolar catalogue ([extrasolar.md](extrasolar.md)) has an
 entry when a Wikidata item with an article in one of the site's languages
 names it, or, for a star, when the literature table of the repo
-(`constants/stars/literature.py`) gives it a value. The entry holds metadata
-only: no orbit and no coverage, because its place is in its record, and no
-catalogue values, which stay in the record tiles and the planet files under
-their own terms. Wikidata gives no quantity, spectral type or distance here.
+(`constants/stars/literature.py`) gives it a value, or, for a galaxy, when it
+is in the galaxy list of the repo (`constants/galaxies/literature.py`). The
+entry holds metadata only: no orbit and no coverage, because its place is in
+its record, and no catalogue values, which stay in the record tiles and the
+planet files under their own terms. Wikidata gives no quantity, spectral type
+or distance here.
 
 - A star's id is `x-` and its extrasolar ID. Its Metadata row has `object`.
   A star system is an extrasolar object too, and has an entry when a Wikidata
@@ -1109,6 +1111,9 @@ their own terms. Wikidata gives no quantity, spectral type or distance here.
   An item of a galaxy, a nebula, a cluster or another object that is not a
   star names none, unless Wikidata also gives it the type of a star or a star
   system. A star with no Wikidata item has a global entry only.
+- A galaxy's id is `x-` and its extrasolar ID too. Its Metadata row has
+  `object` and the class `galaxy`. Its item is the one that the galaxy list
+  names (the Milky Way: Q321), never one that the star list finds.
 - A planet's id is `x-<host>-b-<number>`, as its scene id. Its row in the
   planets table has a `wikidata/qid` id and its entry in its system file has
   `object` ([extrasolar.md](extrasolar.md)). Only a planet that the extrasolar
@@ -1117,8 +1122,8 @@ their own terms. Wikidata gives no quantity, spectral type or distance here.
 The global entry holds:
 
 - `id`, `type` (`star`; `binary_star` or `multiple_star` for a node of a star
-  system whose Metadata class is `binary star` or `multiple star`; or
-  `exoplanet`), `name` (a star: the name of its Metadata row; a planet: its
+  system whose Metadata class is `binary star` or `multiple star`; `galaxy`;
+  or `exoplanet`), `name` (a star or a galaxy: the name of its Metadata row; a planet: its
   global name, see "Names", as in its system file) and `cross_refs.wikidata_qid` when it has an
   item;
 - `sitelinks_count`, the item's sitelinks on all Wikimedia projects, as for a
@@ -1137,6 +1142,14 @@ The global entry holds:
   2006", "title": "…", "url": "https://doi.org/…"}]}`. A value from a paper
   has the source `literature` in its `*_source` column; the star page cites
   the work beside it;
+- on a galaxy of the galaxy list, `references`, the works that the list cites
+  for the values of its Redshift row, by column group (`position`, `distance`,
+  `morphology`, `stellar_mass`, `total_mass`, `star_formation_rate`). A group
+  can cite two works: the distance of the Milky Way has its value from one
+  and its systematic error from another. A value of the list has the source
+  `galaxy-literature` in its `*_source` column;
+- on a galaxy of the galaxy list, `facts`, the values that no table holds
+  because no galaxy catalogue gives them (below);
 - on a planet with a map, `map_texture_available: true` and the texture keys
   of a body of `systems/{bary}.json`: `tiers`, `texture`, `alternates`,
   `clouds`, `night`, `glow`, `specular`, `displacement`
@@ -1164,12 +1177,73 @@ as `EntityRef`:
   `constellation`, which names a satellite constellation. An IAU constellation
   links to its figure in `modern_iau` (`primary_type` `group` with the culture's
   slug, `secondary_type` `figure` with the figure's `slug`, extrasolar.md) under
-  the name that page takes.
+  the name that page takes. The galaxy of the Sun has none: it is in every
+  direction of the sky.
 
 A reference to a star or a planet with an entry links to its page
 (`primary_type` `x`) under the name that page takes. `space-map-export --only
-star-objects` rewrites the star and planet entries in the written bundles,
-with the bundle counts as they are.
+star-objects` rewrites the star, galaxy and planet entries in the written
+bundles, with the bundle counts as they are.
+
+`facts` of a galaxy maps a name to a value:
+
+```ts
+facts?: Record<string, {
+  value?: number;      // absent for a limit and for a range
+  lower?: number;      // the bounds that the works give; `lower` alone is a lower limit,
+  upper?: number;      // both bounds with no `value` are a range
+  estimate?: true;     // the export works the value out from the values of `references`; no paper prints it. `lower` and `upper` are then the rounded ends of a range, not bounds
+  references: Array<{ short: string; title: string; url: string }>;
+}>;
+```
+
+The names and their units (`FACTS` in `constants/galaxies/literature.py`). A
+galaxy has only the facts that its entry in the list gives. The values are
+those of the Milky Way:
+
+| Name | Unit | Value | Work |
+|---|---|---|---|
+| `black_hole_mass` | solar masses | 4.297 ± 0.012 × 10⁶, Sgr A*, statistical error | GRAVITY Collaboration 2022 |
+| `age` | Gyr | 13, since the old disc began to form; no error | Xiang & Rix 2022 |
+| `scale_length` | pc | 2640 ± 130, of the exponential disc | Licquia & Newman 2016 |
+| `thin_disc_scale_height`, `thick_disc_scale_height` | pc | 300 ± 60 and 900 ± 180, near the Sun | Jurić et al. 2008 |
+| `half_light_radius` | pc | 5750 ± 380 | Lian et al. 2024 |
+| `disc_radius` | pc | over 26,000: disc stars are found past this radius (99.7% confidence). A lower limit | López-Corredoira et al. 2018 |
+| `bar_half_length` | pc | 5000 ± 200 | Wegg, Gerhard & Portail 2015 |
+| `stellar_halo_mass` | solar masses | 1.4 ± 0.4 × 10⁹ | Deason, Belokurov & Sanders 2019 |
+| `circular_speed` | km/s | 236 ± 7, at the radius of the Sun's orbit | Reid et al. 2019 |
+| `supernova_rate` | per century | 1.63 ± 0.46, core-collapse supernovae | Rozwadowska, Vissani & Cappellaro 2021 |
+| `globular_clusters` | count | 157 | Harris 2010 |
+| `satellite_galaxies` | count | at least 65. A lower limit | Pace 2025 |
+| `planets_per_star` | planets | 1.6 (+0.72, −0.89): bound planets of 5 M⊕ to 10 MJ at 0.5 to 10 AU | Cassan et al. 2012 |
+| `free_floating_planets_per_star` | planets | 21 (+23, −13): free-floating or on very wide orbits, 0.33 to 6660 M⊕ | Sumi et al. 2023 |
+| `star_count` | stars and stellar remnants | 1 to 2 × 10¹¹. An estimate, a range with no `value` | Cautun et al. 2020, Chabrier 2003 |
+| `planet_count` | bound planets | 0.8 to 5 × 10¹¹. An estimate, a range with no `value` | Cautun et al. 2020, Chabrier 2003, Cassan et al. 2012 |
+| `orbital_period` | Myr | 212 (202 to 223), of a circular orbit at the Sun's radius. An estimate | Reid et al. 2019 |
+
+No paper counts the stars or the planets of the Milky Way, so the export
+estimates them (`extrasolar/sources/galaxies.py`). The range of an estimate
+takes each input at the end of its range. Each end is then rounded to the
+nearest digit that the inputs support, up or down, so `lower` and `upper` of
+an estimate are not bounds: the stars come to 1.06 to 2.06 × 10¹¹ and read 1
+to 2 × 10¹¹. The estimates:
+
+- `star_count` is the stellar mass of the Redshift row over the mean mass of
+  a star or stellar remnant near the Sun, 0.33 M☉ (0.27 to 0.43): 0.047 ±
+  0.004 M☉ pc⁻³ over 0.141 ± 0.021 pc⁻³ (Chabrier 2003, Table 3, disc column,
+  without the brown dwarfs). It takes the mix of stars near the Sun for the
+  whole galaxy;
+- `planet_count` is `star_count` times `planets_per_star`. It counts only the
+  planets of that mass and orbit range, so it is a floor;
+- `orbital_period` is 2π · R0 over `circular_speed`, with both from one fit:
+  8.15 ± 0.15 kpc and 236 ± 7 km/s (Reid et al. 2019, Table 3, fit A5). The
+  speed was fitted at that R0, and the period depends on their ratio, so the
+  `distance` of the Redshift row, which is of another work, plays no part.
+  Only the galaxy of the Sun has it (`sun_orbit_radius` of its list entry).
+
+A count is a range with no `value`, each end to one digit: its inputs do not
+support one number. The often quoted 400 billion stars has no paper behind
+it. The period has a value, to three digits.
 
 `host_id` goes on an object with no `coverage` when the catalogue says what
 it sits at or orbits: the primary of an asteroid moon, the station a docked

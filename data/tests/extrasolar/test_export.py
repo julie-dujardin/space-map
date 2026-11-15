@@ -33,17 +33,17 @@ from space_map_data.extrasolar.interiors import inputs
 from space_map_data.extrasolar.registry import Registry, RegistryBusy
 from space_map_data.extrasolar.sources.hipparcos import g_estimate, propagate
 from space_map_data.extrasolar.tables import (
-    BINARY_ORBIT,
     METADATA,
     POINT_SOURCE,
-    SYSTEM,
     SYSTEM_MEMBER,
     SYSTEM_STAR,
+    TABLES,
 )
 from tests.extrasolar.export_registry import (
     HOST,
     Held,
     Node,
+    galaxy,
     planet,
     random_stars,
     star,
@@ -254,6 +254,7 @@ class TestExport:
             "point-source",
             "binary-orbit",
             "system",
+            "redshift",
             "interior",
         }
         assert meta["tables"]["point-source"]["number"] == 1
@@ -505,9 +506,11 @@ class TestExport:
             ("system", inputs.SYSTEM_COLUMNS),
             ("metadata", inputs.CLASS_COLUMNS),
             ("planets", radius.TRANSIT_COLUMNS),
+            ("redshift", ("id",)),
+            ("redshift", None),
             *(
                 (table.slug, census.read_columns(table))
-                for table in (METADATA, POINT_SOURCE, BINARY_ORBIT, SYSTEM)
+                for table in (METADATA, *TABLES)
             ),
         }
 
@@ -516,6 +519,77 @@ class TestExport:
         inline = export_extrasolar(built.root, tmp_path / "inline", workers=1)
         pooled = export_extrasolar(built.root, out, workers=2)
         assert inline["tokens"] == pooled["tokens"]
+
+
+class TestGalaxy:
+    """A galaxy has a Metadata row and a Redshift row, and no render row."""
+
+    @pytest.fixture
+    def exported(self, tmp_path, out):
+        built = write_registry(
+            tmp_path / "reg",
+            random_stars(20, seed=4),
+            galaxies=[galaxy(266.4, -29.0, 8277.0, name="Milky Way", qid="Q321")],
+        )
+        report = export_extrasolar(built.root, out, workers=1)
+        return built, ExportReader(out / "v1" / "x"), report
+
+    def test_the_table_is_served(self, exported):
+        _, reader, _ = exported
+        entry = reader.metadata["tables"]["redshift"]
+        assert (entry["number"], entry["rows"]) == (4, 1)
+        assert (entry["split"], entry["max_rows"]) == ("redshift/split.bin.gz", 1500)
+        types = {column["name"]: column["type"] for column in entry["columns"]}
+        assert types["distance"] == "float64" and types["stellar_mass"] == "float32"
+        assert types["morphological_type"] == types["distance_source"] == "dict"
+
+    def test_a_client_finds_its_records(self, exported):
+        built, reader, _ = exported
+        found = reader.lookup(str(built.galaxies[0]))
+        assert found is not None and set(found.rows) == {"redshift"}
+        assert (found.metadata["name"], found.metadata["class"]) == (
+            "Milky Way",
+            "galaxy",
+        )
+        assert found.metadata["object"] and found.metadata["mask"] == 1 << 4
+        # A galaxy is no star: no family, no type, no radius.
+        assert (found.metadata["families"], found.metadata["families_estimated"]) == (
+            0,
+            0,
+        )
+        assert (
+            found.metadata["spectral_type"] is None and found.metadata["radius"] is None
+        )
+        row = found.rows["redshift"]
+        assert (row["ra"], row["dec"], row["distance"]) == (266.4, -29.0, 8277.0)
+        assert (row["distance_method"], row["distance_source"]) == (
+            "dynamical",
+            "galaxy-literature",
+        )
+        assert row["total_mass"] is None and row["total_mass_source"] is None
+
+    def test_it_is_not_drawn(self, exported):
+        built, reader, report = exported
+        assert report["render"]["rendered"] == 20
+        assert reader_ids(reader).isdisjoint(built.galaxies)
+
+    def test_a_registry_with_no_galaxy_has_an_empty_table(self, tmp_path, out):
+        built = write_registry(tmp_path / "reg", random_stars(5, seed=4))
+        export_extrasolar(built.root, out, workers=1)
+        entry = ExportReader(out / "v1" / "x").metadata["tables"]["redshift"]
+        assert (entry["rows"], entry["tiles"]) == (0, 12)
+
+
+def reader_ids(reader: ExportReader) -> set[int]:
+    """Every ID of the render tree."""
+    found: set[int] = set()
+    names = ["r"]
+    while names:
+        name = names.pop()
+        found.update(reader.node_ids(name).tolist())
+        mask = NodeInfo.of(reader.node(name)).child_mask
+        names += [f"{name}{k}" for k in range(8) if mask >> k & 1]
+    return found
 
 
 class TestBrightest:
@@ -754,6 +828,39 @@ class TestChecks:
             export_extrasolar(built.root, out, workers=1)
         assert not (out / "v1" / "x").exists()
         assert not (out / "v1" / ".x-staging").exists()
+
+    @pytest.mark.parametrize(
+        ("mask", "problem"),
+        [
+            (0, "Redshift row without the Redshift bit"),
+            (None, "Redshift row with no live Metadata row"),
+        ],
+    )
+    def test_a_galaxy_with_a_wrong_metadata_row(self, tmp_path, out, mask, problem):
+        def tamper(_systems, meta):
+            row = next(row for row in meta if row["class"] == "galaxy")
+            if mask is None:
+                meta.remove(row)
+            else:
+                row["mask"] = mask
+
+        built = write_registry(
+            tmp_path / "reg",
+            random_stars(5),
+            galaxies=[galaxy(266.4, -29.0)],
+            tamper=tamper,
+        )
+        with pytest.raises(ExportRefused, match=problem):
+            export_extrasolar(built.root, out, workers=1)
+        assert not (out / "v1" / "x").exists()
+
+    def test_the_redshift_bit_on_a_star(self, tmp_path, out):
+        def tamper(_systems, meta):
+            meta[0]["mask"] |= 1 << 4
+
+        built = write_registry(tmp_path / "reg", random_stars(5), tamper=tamper)
+        with pytest.raises(ExportRefused, match="Redshift bit on an ID with no"):
+            export_extrasolar(built.root, out, workers=1)
 
     def test_a_served_id_goes_missing(self, tmp_path, out):
         stars = random_stars(40, seed=5)

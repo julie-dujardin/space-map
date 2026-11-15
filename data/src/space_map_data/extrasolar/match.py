@@ -23,9 +23,13 @@ import numpy as np
 import pyarrow as pa
 import pyarrow.compute as pc
 
-# The kind of a system node. It sits at the position of its primary star, and
-# it agrees only with its own kind, also against a missing kind.
+# The kind of a system node. It sits at the position of its primary star.
 SYSTEM_KIND = "system"
+# The kind of a galaxy. Its point is one chosen place inside it.
+GALAXY_KIND = "galaxy"
+# These kinds agree only with their own kind, also against a missing kind: a
+# star at the point of such an object is not that object.
+EXCLUSIVE_KINDS = (SYSTEM_KIND, GALAXY_KIND)
 
 
 @dataclass
@@ -74,8 +78,8 @@ class PositionMatcher:
     mag_offset: float = 0.0
     mag_sigma: float = 0.3
     # (row kind, candidate kind) pairs that agree, beside equal kinds. A pair
-    # with a kind missing on either side agrees, unless one side is
-    # SYSTEM_KIND.
+    # with a kind missing on either side agrees, unless one side is of
+    # EXCLUSIVE_KINDS.
     kinds: frozenset[tuple[str, str]] = frozenset()
 
     def _error(self, error: np.ndarray) -> np.ndarray:
@@ -107,12 +111,12 @@ class PositionMatcher:
             agree = pc.or_(agree, pc.is_in(joined, value_set=allowed))
         # A null comparison means a kind is missing.
         agree = agree.fill_null(True)
-        system = pc.or_(
-            pc.equal(row, SYSTEM_KIND).fill_null(False),
-            pc.equal(key, SYSTEM_KIND).fill_null(False),
+        exclusive = pa.array(EXCLUSIVE_KINDS)
+        own = pc.or_(
+            pc.is_in(row, value_set=exclusive), pc.is_in(key, value_set=exclusive)
         )
         same = pc.equal(row, key).fill_null(False)
-        agree = pc.and_(agree, pc.or_(pc.invert(system), same))
+        agree = pc.and_(agree, pc.or_(pc.invert(own), same))
         return agree.to_numpy(zero_copy_only=False)
 
 

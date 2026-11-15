@@ -18,6 +18,7 @@ from space_map_data.constants.atmosphere.references import (
     ATMOSPHERE_FACT_SOURCES,
     ATMOSPHERE_REFERENCES,
 )
+from space_map_data.constants.galaxies import literature as galaxy_literature
 from space_map_data.constants.interior.references import INTERIOR_SOURCES
 from space_map_data.constants.measured_shapes import MEASURED_SHAPES
 from space_map_data.constants.planets.families import NOMINAL_SOLAR_VALUES
@@ -176,6 +177,15 @@ def _star_references() -> list[dict]:
     ]
 
 
+def _galaxy_references() -> list[dict]:
+    """The papers behind the values of the galaxy list, in the shape of
+    `_star_references`."""
+    return [
+        {"title": ref.short, "url": ref.url, "contribution": ref.title}
+        for ref in galaxy_literature.REFERENCES.values()
+    ]
+
+
 # Shortest list first: a shared work stays in whichever list would most
 # notice losing it, so a small bibliography isn't stripped of an entry a
 # larger one can spare.
@@ -184,6 +194,7 @@ _REFERENCE_SECTIONS = (
     "ring",
     "traverse",
     "temperature",
+    "galaxy",
     "orientation",
     "star",
     "radiation",
@@ -535,6 +546,7 @@ def write_credits(
             "traverse": [_bibliography_row(r) for r in TRAVERSE_SOURCES.values()],
             "orientation": _orientation_references(),
             "star": _star_references(),
+            "galaxy": _galaxy_references(),
         }
     )
 
@@ -552,6 +564,7 @@ def write_credits(
         "traverse_references": references["traverse"],
         "orientation_references": references["orientation"],
         "star_references": references["star"],
+        "galaxy_references": references["galaxy"],
     }
     if models_out:
         payload["models"] = models_out

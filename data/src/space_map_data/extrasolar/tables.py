@@ -142,6 +142,10 @@ HOST_ERRORS = {"host_radius": ("host_radius_error",)}
 # System table.
 STAR_SYSTEMS = "star-systems"
 SYSTEM_TABLE = 3
+# The source of the galaxy list (`constants/galaxies/literature.py`). It mints
+# its galaxies in the Redshift table.
+GALAXY_LITERATURE = "galaxy-literature"
+REDSHIFT_TABLE = 4
 # The exoplanet catalogues, in their source order.
 EXOPLANET_SOURCES = (
     "nasa-exoplanet-archive",
@@ -168,11 +172,12 @@ WIKIDATA_CATALOGUE_NUMBER = "wikidata-catalogue-number"
 # gives its best one. SIMBAD comes before Hipparcos because it knows more
 # designations. A catalogue number from Wikidata ("2MASS J0532+8246") beats
 # only the Gaia DR3 number, which is the last resort. A resolved system takes
-# the Wikidata label, else the name of its trees.
+# the Wikidata label, else the name of its trees. A galaxy takes its name in
+# the galaxy list.
 # A node of a star system is a "binary star" or a "multiple star", also when
 # a catalogue gives its point another class. Its members tell what its
 # objects are. Else the class is a specific class of any source: white dwarf,
-# brown dwarf or pulsar. The generic "star" of any source comes last.
+# brown dwarf, pulsar or galaxy. The generic "star" of any source comes last.
 METADATA = TableDef(
     number=None,
     slug="metadata",
@@ -185,6 +190,7 @@ METADATA = TableDef(
                 *EXOPLANET_SOURCES,
                 "wikidata",
                 STAR_SYSTEMS,
+                GALAXY_LITERATURE,
                 "simbad",
                 "hipparcos-2007",
                 "hipparcos-1997",
@@ -201,6 +207,7 @@ METADATA = TableDef(
             (pa.field("class", pa.string()),),
             (
                 STAR_SYSTEMS,
+                GALAXY_LITERATURE,
                 *EXOPLANET_SOURCES,
                 "simbad",
                 "gaia-dr3",
@@ -224,9 +231,11 @@ METADATA = TableDef(
     ),
 )
 
+# The catalogue of the keys of the galaxy list.
+GALAXY_CATALOGUE = "galaxy"
 # An ID with an id of one of these catalogues has an entry in the site's
 # object files, which is built from that catalogue.
-OBJECT_CATALOGUES = frozenset({"wikidata", "literature"})
+OBJECT_CATALOGUES = frozenset({"wikidata", "literature", GALAXY_CATALOGUE})
 
 # Every Gaia DR3 field of the positionable stars with its error or range, and
 # the Hipparcos astrometry and photometry. A group that one catalogue fills
@@ -1010,7 +1019,52 @@ SYSTEM = TableDef(
     ),
 )
 
-TABLES: tuple[TableDef, ...] = (POINT_SOURCE, BINARY_ORBIT, SYSTEM)
+
+def _bounded(name: str) -> tuple[pa.Field, ...]:
+    return _fields(pa.float32(), name, f"{name}_lower", f"{name}_upper")
+
+
+# A galaxy. Its point is one chosen place inside it: the Milky Way's is
+# Sgr A*. `ra` and `dec` are the ICRS position of the point at J2016.0, in deg.
+# `distance` is from the Sun to the point, in pc, with its 1σ bounds.
+# `distance_method`: `dynamical` (the orbits of stars about the central black
+# hole, in angle and in velocity). `morphological_type` is the revised Hubble
+# type as published. The masses are in solar masses: `total_mass` is all the
+# mass inside the radius where the mean density is 200 times the critical
+# density. `star_formation_rate` is in solar masses per year. `*_lower` and
+# `*_upper` are the bounds that the source prints. A value of the galaxy list
+# is a paper's, and the galaxy's object entry cites it by group. The table has
+# no size column: no measured diameter of the Milky Way fits one, so its
+# object entry tells its size in its facts.
+REDSHIFT = TableDef(
+    number=REDSHIFT_TABLE,
+    slug="redshift",
+    groups=(
+        ColumnGroup(
+            "position", _fields(pa.float64(), "ra", "dec"), (GALAXY_LITERATURE,)
+        ),
+        ColumnGroup(
+            "distance",
+            (
+                *_fields(pa.float64(), "distance", "distance_lower", "distance_upper"),
+                pa.field("distance_method", pa.string()),
+            ),
+            (GALAXY_LITERATURE,),
+        ),
+        ColumnGroup(
+            "morphology",
+            (pa.field("morphological_type", pa.string()),),
+            (GALAXY_LITERATURE,),
+        ),
+        # One group each: a catalogue can hold one value and not the others.
+        *(
+            ColumnGroup(name, _bounded(name), (GALAXY_LITERATURE,))
+            for name in ("stellar_mass", "total_mass", "star_formation_rate")
+        ),
+    ),
+)
+
+TABLES: tuple[TableDef, ...] = (POINT_SOURCE, BINARY_ORBIT, SYSTEM, REDSHIFT)
 
 
 def merge_by_source_order(table: TableDef, rows: pa.Table) -> pa.Table:

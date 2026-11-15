@@ -1,6 +1,6 @@
 """The star ingest: Gaia DR3, Hipparcos, SIMBAD, the IAU star names, the
 exoplanet catalogues with their planets, the distance catalogues, the
-literature table, the star systems, then Wikidata.
+literature table, the star systems, the galaxy list, then Wikidata.
 
 Gaia goes first, so a star that Gaia measured has its home and its cell from
 Gaia. Gaia DR3 is two passes: the positionable stars of the chunks, then the
@@ -15,17 +15,19 @@ numbers of its stars with a Gaia DR3 id. A HIP number whose Gaia best
 neighbour SIMBAD gives to another star has no best neighbour. The distance
 passes never mint, so they come after every pass that matches by position.
 The star systems come after them: they read the stars that the passes made,
-and the stars of a system take its shared distance. Wikidata goes last: it is
-not permanent, so its claims settle on the joins of all the other passes.
+and the stars of a system take its shared distance. The galaxy list mints its
+galaxies in table 4. Wikidata goes last: it is not permanent, so its claims
+settle on the joins of all the other passes.
 
 The metallicity catalogues (PASTEL, APOGEE DR17, the LAMOST DR10 M dwarfs)
 and the class catalogues (GCVS, SPICY, ATNF) are no pass. Their rows join the
 rows of a pass: the Gaia rows by source_id, PASTEL and the GCVS also the
 Hipparcos rows by HIP number, and ATNF only the SIMBAD rows by oid. `limit`
 reads only the first Gaia chunks that hold that many stars, and the Hipparcos
-stars and names in the same pixels. Such an ingest is partial: it retires
-nothing, but it still rebuilds the tables from what it read. It never goes
-to REGISTRY_ROOT, because every later ingest keeps the IDs that it mints.
+stars and names in the same pixels. The galaxy list is no part of a pixel, so
+it is read whole. Such an ingest is partial: it retires nothing, but it still
+rebuilds the tables from what it read. It never goes to REGISTRY_ROOT, because
+every later ingest keeps the IDs that it mints.
 """
 
 import logging
@@ -52,6 +54,7 @@ from space_map_data.extrasolar.sources import (
     atnf,
     distances,
     gaia,
+    galaxies,
     gcvs,
     hipparcos,
     jmdc,
@@ -80,7 +83,12 @@ from space_map_data.extrasolar.systems.ingest import (
     check_inputs,
     read_inputs,
 )
-from space_map_data.extrasolar.tables import BINARY_ORBIT, METADATA, POINT_SOURCE
+from space_map_data.extrasolar.tables import (
+    BINARY_ORBIT,
+    METADATA,
+    POINT_SOURCE,
+    REDSHIFT,
+)
 from space_map_data.utils.paths import REGISTRY_BACKUP_DIR, REGISTRY_ROOT
 
 logger = logging.getLogger(__name__)
@@ -287,6 +295,7 @@ def ingest(
         # The systems read the rows of every pass that places a star.
         inputs, index = read_inputs(run, simbad_list, planets, read.hub, reader)
         found = add_systems(run, inputs, index, complete)
+        run.add(galaxies.GALAXY_LIST, [galaxies.engine_rows()], complete)
         hosts = [] if inputs.planets is None else inputs.planets["host"].to_pylist()
         hosted = [at for at, host in enumerate(hosts) if host]
         del inputs, index
@@ -307,6 +316,7 @@ def ingest(
             item_rows, items, [(qid, *claims[at]) for at, qid in record_items.items()]
         )
         found.items_placed([*lines, *more])
+        item_rows = galaxies.with_items(item_rows)
         # A source that is not permanent comes after the permanent sources.
         run.add(WIKIDATA, [item_rows], complete)
         run.add(jmdc.JMDC, [_keep(jmdc.engine_rows(hd_positions), ranges)], complete)
@@ -379,6 +389,7 @@ def summary(registry: Registry, name_ids: list[str], items: int) -> str:
     point = _scan(_table_paths(registry, POINT_SOURCE.slug), _point_part)
     metadata = _scan(_table_paths(registry, METADATA.slug), _metadata_part)
     orbits = _scan(_table_paths(registry, BINARY_ORBIT.slug), _rows)
+    galaxy_rows = _scan(_table_paths(registry, REDSHIFT.slug), _rows)
     # numpy types `np.sum` of a list as a scalar.
     lengths = np.asarray(
         np.sum([counts for _, counts in metadata], axis=0, dtype=np.int64)
@@ -388,6 +399,7 @@ def summary(registry: Registry, name_ids: list[str], items: int) -> str:
         "Extrasolar stars",
         f"point-source rows: {sum(n for n, _, _ in point):,}",
         f"binary-orbit rows: {sum(orbits):,}",
+        f"redshift rows: {sum(galaxy_rows):,}",
         f"metadata rows: {sum(n for n, _ in metadata):,} ({live:,} live)",
         "",
         "ID length (digits) of live IDs:",

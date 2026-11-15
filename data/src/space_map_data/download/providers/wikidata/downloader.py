@@ -19,6 +19,7 @@ from space_map_data.constants.earth_sats.launch_vehicles import (
 )
 from space_map_data.constants.earth_sats.orbit_class import EarthOrbitClass
 from space_map_data.constants.earth_sats.reusable_vehicles import REUSABLE_VEHICLE_QIDS
+from space_map_data.constants.galaxies.literature import galaxy_qids
 from space_map_data.constants.minor_planet_moons import minor_planet_moon_qids
 from space_map_data.constants.nomenclature.feature_types import FEATURE_TYPES
 from space_map_data.constants.nomenclature.quadrangles import quadrangle_qids
@@ -116,18 +117,22 @@ class WikidataDownloader(Downloader):
             nomenclature_qids, nomenclature_dir, limit=limit, fetch_desc="nomenclature"
         )
 
-        # Stars and planets match by catalogue id at the extrasolar ingest and
-        # export, not through the database, so their items come from their own
-        # lists. Both keep their entities in stars/.
-        star_qids = wikidata_stars.star_qids()
-        exoplanet_qids = wikidata_exoplanets.exoplanet_qids()
+        # The extrasolar ingest and export link the stars, planets and
+        # galaxies, not the database, so their items come from their own
+        # lists. All keep their entities in stars/, which the Wikipedia and
+        # Commons downloads read.
+        extrasolar_qids = (
+            wikidata_stars.star_qids()
+            | wikidata_exoplanets.exoplanet_qids()
+            | galaxy_qids()
+        )
         stars_dir = self.out_dir / "stars"
         stars_dir.mkdir(exist_ok=True)
         self._fetch_entities(
-            star_qids | exoplanet_qids,
+            extrasolar_qids,
             stars_dir,
             limit=limit,
-            fetch_desc="stars and planets",
+            fetch_desc="stars, planets and galaxies",
         )
 
         # Fetch IAU feature-type entities (one per 2-letter IAU code that has a
@@ -342,9 +347,7 @@ class WikidataDownloader(Downloader):
                 property_pids, properties_dir, limit=None, fetch_desc="properties"
             )
 
-        all_count = (
-            len(object_qids) + len(nomenclature_qids) + len(star_qids | exoplanet_qids)
-        )
+        all_count = len(object_qids) + len(nomenclature_qids) + len(extrasolar_qids)
         self._save_metadata(
             API_URL,
             all_count,

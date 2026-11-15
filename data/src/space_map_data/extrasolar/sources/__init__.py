@@ -7,6 +7,7 @@
 - `simbad`: SIMBAD's well-known stars and their designations.
 - `names`: the IAU star names. They never mint.
 - `literature`: the star values of the literature table in the repo.
+- `galaxies`: the galaxy list in the repo, home Redshift.
 - `distances`: the distance catalogues.
 - `wikidata`: the Wikidata items of stars. They never mint.
 """

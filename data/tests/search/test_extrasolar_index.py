@@ -1,4 +1,4 @@
-"""Tests for the search documents of planets and their host stars."""
+"""Tests for the search documents of planets, their host stars and galaxies."""
 
 import gzip
 import json
@@ -25,7 +25,7 @@ from space_map_data.search.indices.extrasolar import (
     host_document,
     planet_document,
 )
-from tests.extrasolar.export_registry import Node, planet, write_registry
+from tests.extrasolar.export_registry import Node, galaxy, planet, write_registry
 from tests.extrasolar.test_export_planets import PLANETS, STARS
 from tests.extrasolar.test_export_systems import (
     ALPHA_CEN,
@@ -434,6 +434,66 @@ class TestSystems:
         path.write_text(json.dumps(metadata))
         docs = list(build_extrasolar_documents(out))
         assert {doc["kind"] for doc in docs} == {"object", "planet"}
+
+
+class TestGalaxy:
+    """A galaxy is indexed as a star is: when its entry has an extract."""
+
+    @pytest.fixture
+    def milky_way(self, tmp_path):
+        built = write_registry(
+            tmp_path / "reg",
+            STARS,
+            planets=PLANETS,
+            galaxies=[galaxy(266.4, -29.0, name="Milky Way", qid="Q321")],
+        )
+        out = tmp_path / "out"
+        export_extrasolar(built.root, out, workers=1, cultures_dir=tmp_path / "none")
+        return f"x-{built.galaxies[0]}", out
+
+    def _entry(self, tmp_path, key: str, english: dict) -> None:
+        bundles = {
+            "__global__": {
+                key: {"id": key, "type": "galaxy", "name": "Milky Way"},
+            },
+            "en": {key: english},
+        }
+        for tier, rows in bundles.items():
+            directory = tmp_path / "export" / "v1" / "objects" / tier
+            directory.mkdir(parents=True)
+            (directory / "0.json.gz").write_bytes(
+                gzip.compress(json.dumps(rows).encode())
+            )
+
+    def test_the_export_makes_no_document(self, milky_way):
+        key, out = milky_way
+        assert key not in {doc["id"] for doc in build_extrasolar_documents(out)}
+
+    def test_an_entry_with_no_extract_is_left_out(
+        self, milky_way, tmp_path, monkeypatch
+    ):
+        monkeypatch.setattr(objects, "LANGUAGES", ("en",))
+        monkeypatch.setattr(objects, "read_manual_aliases", dict)
+        key, out = milky_way
+        self._entry(tmp_path, key, {"description": "a galaxy"})
+        docs = list(CATALOG_INDEX.build_documents(tmp_path / "export", out))
+        assert key not in {doc["id"] for doc in docs}
+
+    def test_an_entry_with_an_extract_is_a_document_of_its_type_alone(
+        self, milky_way, tmp_path, monkeypatch
+    ):
+        monkeypatch.setattr(objects, "LANGUAGES", ("en",))
+        monkeypatch.setattr(objects, "read_manual_aliases", dict)
+        key, out = milky_way
+        extract = {"wikipedia": {"extract": "The Milky Way is the galaxy…"}}
+        self._entry(tmp_path, key, extract)
+        docs = list(CATALOG_INDEX.build_documents(tmp_path / "export", out))
+        (doc,) = (doc for doc in docs if doc["id"] == key)
+        assert (doc["kind"], doc["name"]) == ("object", "Milky Way")
+        assert doc["object"] == {"id": key, "type": "galaxy"}
+        # No star page, no size.
+        assert doc["classes"] == ["galaxy"]
+        assert "diameter_km" not in doc
 
 
 class TestDesignations:

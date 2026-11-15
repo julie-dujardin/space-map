@@ -43,6 +43,8 @@ from space_map_data.extrasolar.systems.assemble import HELD, NODE_CLASSES
 from space_map_data.extrasolar.tables import (
     METADATA,
     POINT_SOURCE,
+    REDSHIFT,
+    REDSHIFT_TABLE,
     REFERENCE,
     SYSTEM,
     SYSTEM_ORBIT,
@@ -61,12 +63,15 @@ ROOTS = 12
 # 40 B. So the median tiles are about 92 kB, 73 kB, 34 kB, 51 kB and, at most,
 # 60 kB. The Binary orbit and System rows are sparse on the sky, and at these
 # counts their largest tiles, 111 kB and 124 kB, stay under the largest Point
-# source tile. Every table needs an entry: the export leaves out no table.
+# source tile. The Redshift table holds too few rows to measure, so it takes
+# the count of System. Every table needs an entry: the export leaves out no
+# table.
 MAX_ROWS = {
     METADATA.slug: 7_500,
     "point-source": 900,
     "binary-orbit": 300,
     "system": 1_500,
+    "redshift": 1_500,
     INTERIOR.slug: 1_500,
 }
 # String columns with few distinct values, besides the group source columns.
@@ -77,6 +82,7 @@ DICTIONARY = frozenset(
         "phot_variable_flag",
         "libname_gspphot",
         "distance_method",
+        "morphological_type",
         "simbad_otype",
         "simbad_system_otype",
         "feh_xhip_quality",
@@ -511,6 +517,29 @@ def check_ids(
     return problems
 
 
+def check_redshift(
+    registry: Registry, regions: tuple[int, ...], rows: pa.Table
+) -> Problems:
+    """The Metadata `rows` of `regions` against the Redshift rows there: each
+    Redshift row has a live Metadata row, and the Redshift bit of the mask is
+    on the IDs with a Redshift row and on no other."""
+    problems = Problems()
+    held = _read(registry, REDSHIFT, regions, ("id",))["id"].to_numpy()
+    live = rows.filter(rows["alias_target"].is_null())
+    ids = live["id"].to_numpy()
+    marked = (live["mask"].fill_null(0).to_numpy() >> REDSHIFT_TABLE) & 1 == 1
+    has_row = np.isin(ids, held)
+    lost = held[~np.isin(held, ids)]
+    problems.add("Redshift row with no live Metadata row", lost, lost.size)
+    unmarked = ids[has_row & ~marked]
+    problems.add(
+        "Redshift row without the Redshift bit of its mask", unmarked, unmarked.size
+    )
+    stray = ids[marked & ~has_row]
+    problems.add("Redshift bit on an ID with no Redshift row", stray, stray.size)
+    return problems
+
+
 def _flat_cross_ids(rows: pa.Table) -> pa.Table:
     lengths = pc.list_value_length(rows["cross_ids"]).fill_null(0).to_numpy()
     items = pc.list_flatten(rows["cross_ids"]).combine_chunks()
@@ -603,6 +632,8 @@ def build_unit(job: UnitJob) -> UnitResult:
     if job.slug == METADATA.slug:
         rows, dropped = collapse_aliases(registry, rows)
     problems = check_ids(registry, job.slug, job.unit.regions, rows)
+    if job.slug == METADATA.slug:
+        problems.update(check_redshift(registry, job.unit.regions, rows))
     if job.check is not None:
         problems.update(job.check(rows))
     if job.previous is not None:

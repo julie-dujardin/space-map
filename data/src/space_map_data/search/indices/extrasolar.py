@@ -1,4 +1,4 @@
-"""Planets, their host stars, and star systems in the search index.
+"""Planets, their host stars, star systems and galaxies in the search index.
 
 Source files, in the extrasolar export (`space-map-tiles/v1/x/`):
 
@@ -27,11 +27,12 @@ The names are those of the pages (`export.names`), from the `name` and
 
 The root `classes` of a document are its type and the class pages it is on. A
 star has the pages of its families, published and estimated. A node of a star
-system has no family: its stars do. A planet of the IAU class `planet` has its
-families. A companion of another class gets no family from the export, but it
-is a brown dwarf or lighter, so the Stars row lists it with the brown dwarfs. A
-host of a planet of the class planet is on the Planetary Systems page, a pair
-that a planet circles too.
+system has no family: its stars do. A galaxy is on no class page, so it has
+its type alone. A planet of the IAU class `planet` has its families. A
+companion of another class gets no family from the export, but it is a brown
+dwarf or lighter, so the Stars row lists it with the brown dwarfs. A host of a
+planet of the class planet is on the Planetary Systems page, a pair that a
+planet circles too.
 
 The root `star_count` is on a star system and `planet_count`, of the class
 planet alone, on a planetary system, so a range on one leaves that kind of
@@ -56,7 +57,7 @@ from space_map_data.export.groups.planet_family import PAGES as PLANET_PAGES
 from space_map_data.export.groups.planet_family import measured_diameter_km
 from space_map_data.export.groups.star_family import star_pages
 from space_map_data.export.groups.star_lineup import drawable_star_radii
-from space_map_data.export.objects.stars import PLANET_ID, SYSTEM_TYPES
+from space_map_data.export.objects.stars import GALAXY_TYPE, PLANET_ID, SYSTEM_TYPES
 from space_map_data.export.objects.stars import PREFIX as STAR_PREFIX
 from space_map_data.extrasolar.exoplanets.iau import PLANET
 from space_map_data.extrasolar.tables import METADATA, SYSTEM
@@ -197,14 +198,16 @@ def _add_class_facts(
     planets: dict[str, dict[str, Any]],
     extrasolar_dir: Path,
 ) -> None:
-    """Put the `classes` on each star and system, its stars on each system and
-    the planets of the class planet on each planetary system. A tile holds many
-    of them, so they are read together."""
+    """Put the `classes` on each star, system and galaxy, its stars on each
+    system and the planets of the class planet on each planetary system. A
+    tile holds many of them, so they are read together."""
     singles = {}
     systems = {}
     for doc in stars:
         id_ = int(doc["id"].removeprefix(STAR_PREFIX))
-        if doc["object"]["type"] in SYSTEM_TYPES.values():
+        if doc["object"]["type"] == GALAXY_TYPE:
+            doc["classes"] = [GALAXY_TYPE]
+        elif doc["object"]["type"] in SYSTEM_TYPES.values():
             doc["classes"] = [doc["object"]["type"], STAR_SYSTEMS_SLUG]
             systems[id_] = doc
         else:

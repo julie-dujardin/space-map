@@ -5,6 +5,7 @@ An object's kind is what it is, and each ID counts once. A star has its home
 in Point source. A held star has no Point source row and its home in System,
 but it is a star. A node of a star system is no star: a resolved system has
 its home in System, and a point that holds two or more stars in Point source.
+A galaxy has its home in Redshift.
 A source feeds an object when one of its values comes from it. Wikidata is
 left out: every object with an item has an object entry, and the main export
 counts the items from the entries.
@@ -26,24 +27,36 @@ from space_map_data.extrasolar.sources.wikidata import WIKIDATA
 from space_map_data.extrasolar.systems.assemble import NODE_CLASSES
 from space_map_data.extrasolar.tables import (
     BINARY_ORBIT,
+    GALAXY_LITERATURE,
     METADATA,
     POINT_SOURCE,
+    REDSHIFT,
     SYSTEM,
+    TABLES,
     TableDef,
 )
 
-STAR, STAR_SYSTEM, PLANET = "star", "star_system", "planet"
+STAR, STAR_SYSTEM, PLANET, GALAXY = "star", "star_system", "planet", "galaxy"
 
-KIND_OF_HOME = {POINT_SOURCE.number: STAR, SYSTEM.number: STAR_SYSTEM}
-# The tables of the drawn points and of the stars' interiors. Metadata and
-# System hold both kinds by row.
-_STAR_TABLES = (POINT_SOURCE.slug, BINARY_ORBIT.slug, INTERIOR_SLUG)
+KIND_OF_HOME = {
+    POINT_SOURCE.number: STAR,
+    SYSTEM.number: STAR_SYSTEM,
+    REDSHIFT.number: GALAXY,
+}
+# The tables whose rows are all of one kind: the drawn points and the stars'
+# interiors, and the galaxies. Metadata and System hold several kinds by row.
+_KIND_TABLES = {
+    STAR: (POINT_SOURCE.slug, BINARY_ORBIT.slug, INTERIOR_SLUG),
+    GALAXY: (REDSHIFT.slug,),
+}
 _SHARED_TABLES = (METADATA.slug, SYSTEM.slug)
-# Another pass of a catalogue counts as that catalogue.
+# Another pass of a catalogue counts as that catalogue. The galaxy list holds
+# values from papers, as the literature table does.
 _CATALOGUE_OF_PASS = {
     "gaia-dr3-named": "gaia-dr3",
     "simbad-hip": "simbad",
     "simbad-parallax": "simbad",
+    GALAXY_LITERATURE: "literature",
 }
 # Groups of the star tables that a pass carries for a catalogue of their own,
 # which the star panels credit apart.
@@ -134,7 +147,7 @@ def region_census(
     held = _held_stars(registry, region)
     # The IDs of the nodes, also those that are points. Metadata comes first.
     nodes = np.zeros(0, np.int64)
-    for table in (METADATA, POINT_SOURCE, BINARY_ORBIT, SYSTEM):
+    for table in (METADATA, *TABLES):
         rows = registry.read_table(table.slug, region, list(read_columns(table)))
         if rows is None:
             continue
@@ -204,7 +217,7 @@ def census(registry: Registry, run: Runner, planets: pa.Table | None) -> Census:
                 sorted(sources[kind].items(), key=lambda item: (-item[1], item[0]))
             ),
         }
-        for kind in (STAR, STAR_SYSTEM, PLANET)
+        for kind in (STAR, STAR_SYSTEM, PLANET, GALAXY)
         if count[kind]
     }
     return Census(objects, rows)
@@ -219,14 +232,14 @@ def with_bytes(
 ) -> dict[str, dict]:
     """The census with `size_bytes`, the bytes of each kind's files. The
     render tree draws the stars, and the Interior tiles are theirs. The
-    Metadata and System tiles go to the stars
-    and the star systems by their rows, and the systems index to the star
-    systems. The sky cultures are not objects."""
+    Redshift tiles are the galaxies'. The Metadata and System tiles go to the
+    kinds by their rows, and the systems index to the star systems. The sky
+    cultures are not objects."""
     size: Counter[str] = Counter(
         {STAR: tree_bytes, PLANET: planet_bytes, STAR_SYSTEM: index_bytes}
     )
-    for slug in _STAR_TABLES:
-        size[STAR] += table_bytes.get(slug, 0)
+    for kind, slugs in _KIND_TABLES.items():
+        size[kind] += sum(table_bytes.get(slug, 0) for slug in slugs)
     for slug in _SHARED_TABLES:
         rows = {kind: counted.rows[slug, kind] for kind in KIND_OF_HOME.values()}
         for kind, n in rows.items():

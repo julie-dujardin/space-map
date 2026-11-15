@@ -13,6 +13,7 @@ from space_map_data.export.credits import (
     _REFERENCE_SECTIONS,
     _atmosphere_references,
     _build_model_contributors,
+    _galaxy_references,
     _interior_references,
     _merge_references,
     _orientation_references,
@@ -36,6 +37,7 @@ def _sections() -> dict[str, list[dict]]:
         "traverse": [r._asdict() for r in TRAVERSE_SOURCES.values()],
         "orientation": _orientation_references(),
         "star": _star_references(),
+        "galaxy": _galaxy_references(),
     }
 
 

@@ -14,6 +14,8 @@ export as it was. The checks:
   reads;
 - the Interior table holds only live IDs, as the registry's tables do;
 - the star systems hold together, with their Metadata links (`systems`);
+- every Redshift row has a live Metadata row, and the Redshift bit of the
+  Metadata mask is on the IDs with a Redshift row and on no other;
 - every planet host and system is live with its rows, and every planet that
   the previous export serves is still served, or its number is retired or an
   alias, or its host is no longer live.
@@ -79,6 +81,7 @@ from space_map_data.extrasolar.interiors import schema as interior_schema
 from space_map_data.extrasolar.interiors import table as interiors
 from space_map_data.extrasolar.registry import Registry, RegistryError
 from space_map_data.extrasolar.sky import REGION_COUNT, REGION_SHIFT
+from space_map_data.extrasolar.sources.galaxies import GalaxyMoved, home_galaxy
 from space_map_data.extrasolar.tables import METADATA, POINT_SOURCE, TABLES
 from space_map_data.skycultures.licences import NON_COMMERCIAL
 from space_map_data.utils.paths import EXPORT_DIR, REGISTRY_ROOT, TILES_DIR
@@ -668,6 +671,7 @@ def _metadata(
     index_entry: dict,
     index_bytes: int,
     interior_credits: list[dict],
+    home: int | None,
 ) -> dict:
     tables_out = {}
     for result in tables_built:
@@ -735,6 +739,9 @@ def _metadata(
         ),
         "credits": [*CREDITS, *interior_credits],
     }
+    # A page of a star finds the galaxy above it here: no row names it.
+    if home is not None:
+        metadata["home_galaxy"] = home
     if cultures is not None:
         metadata[skycultures.TABLE] = {**cultures.entry, "frame": FRAME}
     if planet_files is not None:
@@ -775,6 +782,14 @@ class Built:
     index_entry: dict
 
 
+def _home_galaxy(registry: Registry) -> int | None:
+    """`home_galaxy` of the registry. A galaxy that moved refuses the export."""
+    try:
+        return home_galaxy(registry)
+    except GalaxyMoved as error:
+        raise ExportRefused(f"{error}; the served export is unchanged") from None
+
+
 def _refuse(problems: Problems) -> None:
     if problems:
         for line in problems.lines():
@@ -805,6 +820,7 @@ def _export(
             logger.info("systems: %s %d", name, count)
         # Before the tiles, which take the longest.
         _refuse(trees.check())
+        home = _home_galaxy(registry)
         refs = trees.refs()
         planet_rows = planets.read_planets(registry)
         planet_keys = (
@@ -894,6 +910,7 @@ def _export(
             index_entry,
             index_file.size,
             interiors.credits(interior_counts),
+            home,
         )
         (layout.staging / METADATA_FILE).write_text(
             json.dumps(metadata, indent=1) + "\n"

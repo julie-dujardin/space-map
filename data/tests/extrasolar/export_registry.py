@@ -1,5 +1,6 @@
-"""A small registry with real Metadata, Point source, Binary orbit, System and
-planets tables, written directly in the layout of `extrasolar.registry`."""
+"""A small registry with real Metadata, Point source, Binary orbit, System,
+Redshift and planets tables, written directly in the layout of
+`extrasolar.registry`."""
 
 import json
 from collections import defaultdict
@@ -27,8 +28,12 @@ from space_map_data.extrasolar.registry import (
 from space_map_data.extrasolar.store import region_file
 from space_map_data.extrasolar.tables import (
     BINARY_ORBIT,
+    GALAXY_CATALOGUE,
+    GALAXY_LITERATURE,
     METADATA,
     POINT_SOURCE,
+    REDSHIFT,
+    REDSHIFT_TABLE,
     SYSTEM,
     SYSTEM_TABLE,
 )
@@ -106,6 +111,36 @@ def star(
         }
     row["_name"] = name
     return row
+
+
+def galaxy(
+    ra: float,
+    dec: float,
+    distance: float = 8000.0,
+    *,
+    key: str = "galaxy",
+    name: str = "Galaxy",
+    qid: str | None = None,
+) -> dict:
+    """A Redshift row of a galaxy of the galaxy list, with its key, its name
+    and its Wikidata item."""
+    return {
+        "ra": ra,
+        "dec": dec,
+        "position_source": GALAXY_LITERATURE,
+        "distance": distance,
+        "distance_lower": 0.99 * distance,
+        "distance_upper": 1.01 * distance,
+        "distance_method": "dynamical",
+        "distance_source": GALAXY_LITERATURE,
+        "diameter": 30000.0,
+        "shape_source": GALAXY_LITERATURE,
+        "morphological_type": "SBbc",
+        "morphology_source": GALAXY_LITERATURE,
+        "_key": key,
+        "_name": name,
+        "_qid": qid,
+    }
 
 
 def planet(
@@ -218,6 +253,8 @@ class Built:
     nodes: list[int] = field(default_factory=list)
     # The ID of each held star, by node index and letter.
     held: dict[tuple[int, str], int] = field(default_factory=dict)
+    # The ID of each row of `galaxies`.
+    galaxies: list[int] = field(default_factory=list)
 
 
 def _primary(nodes: Sequence[Node], at: int) -> int:
@@ -411,6 +448,7 @@ def write_registry(
     planet_status: Sequence[tuple[int, int, str, tuple[int, int] | None]] = (),
     systems: Sequence[Node] = (),
     tamper: Callable[[list[dict], list[dict]], None] | None = None,
+    galaxies: Sequence[dict] = (),
 ) -> Built:
     """Write a registry of one ingest. `aliases` are (loser, survivor) pairs of
     star indexes: the loser's ID is an alias and has no data rows. A `retired`
@@ -425,7 +463,8 @@ def write_registry(
     status, alias target) status records there, the target a (star index,
     number). `systems` are the nodes of star systems, with System rows, and
     Metadata rows for the resolved ones. `tamper` may change the System rows
-    and the Metadata rows before they are written."""
+    and the Metadata rows before they are written. `galaxies` are rows of
+    `galaxy`, each with an ID of table 4."""
     serials: dict[int, int] = defaultdict(int)
     minted = []
     for row in stars:
@@ -434,7 +473,13 @@ def write_registry(
         serials[cell] += 1
 
     node_ids, system_rows, system_meta, held_ids = _system_rows(systems, stars, minted)
-    records = []
+    galaxy_serials: dict[int, int] = defaultdict(int)
+    galaxy_ids = []
+    for row in galaxies:
+        cell = _cell(row["ra"], row["dec"])
+        galaxy_ids.append(ids.encode(galaxy_serials[cell], REDSHIFT_TABLE, cell))
+        galaxy_serials[cell] += 1
+    records = [(id_, LIVE, None) for id_ in galaxy_ids]
     for index, id_ in enumerate(minted):
         if index not in missing:
             records.append((id_, RETIRED if index in retired else LIVE, None))
@@ -583,6 +628,32 @@ def write_registry(
                 "system": system_meta[held_id]["system"],
             }
         )
+    for id_, row in zip(galaxy_ids, galaxies):
+        meta_rows.append(
+            {
+                "id": id_,
+                "name": row["_name"],
+                "name_source": GALAXY_LITERATURE,
+                "class": "galaxy",
+                "class_source": GALAXY_LITERATURE,
+                "cross_ids": [
+                    {
+                        "catalogue": GALAXY_CATALOGUE,
+                        "release": "key",
+                        "catalogue_id": row["_key"],
+                    }
+                ]
+                + (
+                    [{"catalogue": "wikidata", "release": "qid", "catalogue_id": qid}]
+                    if (qid := row["_qid"])
+                    else []
+                ),
+                "mask": 1 << REDSHIFT_TABLE,
+                "object": True,
+                "alias_target": None,
+                "system": None,
+            }
+        )
     for loser, target in alias_map.items():
         meta_rows.append(
             {"id": loser, "mask": 0, "alias_target": target}
@@ -602,6 +673,15 @@ def write_registry(
                 for row in system_rows
             ],
             schema=SYSTEM.schema,
+        )
+    if galaxies:
+        tables["redshift"] = pa.Table.from_pylist(
+            [
+                {"id": id_}
+                | {name: row.get(name) for name in REDSHIFT.schema.names[1:]}
+                for id_, row in zip(galaxy_ids, galaxies)
+            ],
+            schema=REDSHIFT.schema,
         )
     for slug, table in tables.items():
         for region, part in by_region(table).items():
@@ -689,7 +769,13 @@ def write_registry(
     (root / "registry").mkdir(parents=True, exist_ok=True)
     (root / "registry" / "manifest.json").write_text(json.dumps(manifest))
     return Built(
-        root, minted, alias_map, [minted[i] for i in retired], node_ids, held_ids
+        root,
+        minted,
+        alias_map,
+        [minted[i] for i in retired],
+        node_ids,
+        held_ids,
+        galaxy_ids,
     )
 
 

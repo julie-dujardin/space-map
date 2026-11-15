@@ -8,14 +8,21 @@ from space_map_data.export.extrasolar.build import FAMILIES_FILE, export_extraso
 from space_map_data.export.extrasolar.planets import read_planets
 from space_map_data.export.extrasolar.reader import ExportReader
 from space_map_data.extrasolar.registry import Registry
-from tests.extrasolar.export_registry import Built, Node, planet, star, write_registry
+from tests.extrasolar.export_registry import (
+    Built,
+    Node,
+    galaxy,
+    planet,
+    star,
+    write_registry,
+)
 
 
 def _registry(root, held: bool = False) -> Built:
     """A Gaia and Hipparcos star with a Gaia orbit, a Gaia star named from
     Wikidata, a SIMBAD star that is a point of two stars, the resolved pair
-    of the first two, and a planet of the first. With `held`, the two stars
-    of the point are held stars."""
+    of the first two, a planet of the first, and a galaxy. With `held`, the
+    two stars of the point are held stars."""
 
     def names(_systems, meta):
         meta[1] |= {"name_source": "wikidata"}
@@ -40,6 +47,7 @@ def _registry(root, held: bool = False) -> Built:
         # A host in a system has the file of its root.
         planets=[planet(0, 1, system=("node", 0))],
         tamper=names,
+        galaxies=[galaxy(266.4, -29.0)],
     )
 
 
@@ -66,6 +74,9 @@ class TestSourceKey:
     def test_wikidata_is_left_out(self):
         assert census.source_key("wikidata", "name") is None
 
+    def test_the_galaxy_list_is_papers(self):
+        assert census.source_key("galaxy-literature", "distance") == "literature"
+
 
 class TestCensus:
     @pytest.fixture
@@ -77,7 +88,11 @@ class TestCensus:
     def test_each_id_counts_once_by_its_home_table(self, objects):
         # The point of two stars is a star system, not a star.
         counts = {kind: entry["count"] for kind, entry in objects.items()}
-        assert counts == {"star": 2, "star_system": 2, "planet": 1}
+        assert counts == {"star": 2, "star_system": 2, "planet": 1, "galaxy": 1}
+
+    def test_a_galaxy_is_fed_by_the_papers_of_its_list(self, objects):
+        assert objects["galaxy"]["sources"] == {"literature": 1}
+        assert "literature" not in objects["star"]["sources"]
 
     def test_star_sources(self, objects):
         assert objects["star"]["sources"] == {
@@ -99,7 +114,7 @@ class TestCensus:
         with Registry(built.root).reader() as registry:
             counted = census.census(registry, _serial, read_planets(registry))
         counts = {kind: entry["count"] for kind, entry in counted.objects.items()}
-        assert counts == {"star": 3, "star_system": 2, "planet": 1}
+        assert counts == {"star": 3, "star_system": 2, "planet": 1, "galaxy": 1}
         assert counted.rows["system", "star"] == 1
         assert counted.objects["star"]["sources"]["star-systems"] == 1
 
@@ -115,6 +130,7 @@ class TestServedCensus:
             "star": 2,
             "star_system": 2,
             "planet": 1,
+            "galaxy": 1,
         }
         assert objects["star"]["sources"]["gaia-dr3"] == 2
         files = [
@@ -134,8 +150,12 @@ class TestServedCensus:
                 p.stat().st_size for p in (root / name).rglob("*") if p.is_file()
             )
 
-        # The pair and the point are the two System rows and two of four live
+        # The pair and the point are the two System rows and two of five live
         # IDs. The systems index is theirs.
         assert objects["star_system"]["size_bytes"] == pytest.approx(
-            tree("system") + tree("metadata") / 2 + tree("systems"), abs=1
+            tree("system") + tree("metadata") * 2 / 5 + tree("systems"), abs=1
+        )
+        # The galaxy is the one Redshift row and one of five live IDs.
+        assert objects["galaxy"]["size_bytes"] == pytest.approx(
+            tree("redshift") + tree("metadata") / 5, abs=1
         )

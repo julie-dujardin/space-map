@@ -16,11 +16,12 @@ translation is the word "asteroid" — pure noise in a name search. Notable
 ones (Ceres, Vesta, Pallas, …) carry aliases, a Wikipedia article, or a
 `named_after` field and survive the cut.
 
-The stars, star systems and planets of the extrasolar catalogue that have an
-entry (`x-<id>`, `x-<host>-b-<n>`) are in the same bundles. A star or a
-system is indexed when its entry in the base locale has a Wikipedia extract,
-as the sitemap lists it, or when it hosts planets. A planet's document is built in `extrasolar`, which
-puts the names of its entry on it.
+The stars, star systems, galaxies and planets of the extrasolar catalogue
+that have an entry (`x-<id>`, `x-<host>-b-<n>`) are in the same bundles. A
+star, a system or a galaxy is indexed when its entry in the base locale has a
+Wikipedia extract, as the sitemap lists it, or when it hosts planets. A
+planet's document is built in `extrasolar`, which puts the names of its entry
+on it.
 
 The root `classes` of a document are its type and the class pages it is on, for
 the class filter. Search has one class of asteroid: the orbit classes in
@@ -67,6 +68,7 @@ _ALWAYS_INDEX = frozenset(
         "star",
         "binary_star",
         "multiple_star",
+        "galaxy",
         "planet",
         "exoplanet",
         "dwarf_planet",

@@ -72,6 +72,8 @@ interface Credits {
   activity_references: Array<Reference>;    // volcanism, tectonics, tidal heating and planetary magnetism
   radiation_references: Array<Reference>;   // trapped-particle belts and the doses behind the radiation blocks
   traverse_references: Array<Reference>;    // rover routes and landing sites that place probes on the ground
+  star_references: Array<Reference>;        // papers behind the hand-curated star values (`constants/stars/`); `title` is the short name of the work, `contribution` its title
+  galaxy_references: Array<Reference>;      // papers behind the galaxy list (`constants/galaxies/literature.py`), in the shape of `star_references`
   models?: Array<{               // 3D-model source catalogs (one entry per catalog with ≥ 1 bundle)
     name: string;                // "NASA-3D-Resources", "ESA SciFleet"
     url: string;                 // user-facing catalog landing page

@@ -508,6 +508,35 @@ class TestWriteSitemap:
         )
         assert pages.objects == {"x-1": "/x/1/Sirius"}
 
+    def test_lists_a_galaxy_as_it_lists_a_star(self, session: Session, tmp_path: Path):
+        _write_bundles(
+            tmp_path / "objects" / "__global__",
+            1,
+            {f"x-{n}": {"name": name} for n, name in ((1, "Milky Way"), (2, "Other"))},
+        )
+        _write_bundles(
+            tmp_path / "objects" / BASE_LOCALE,
+            1,
+            {"x-1": {"wikipedia": {"extract": "The Milky Way is…"}}},
+        )
+        galaxies = [
+            StarObject(
+                1, "Milky Way", "Q321", object_type="galaxy", galaxy="milky-way"
+            ),
+            StarObject(2, "Other", None, object_type="galaxy", galaxy="other"),
+        ]
+        pages = sitemap.write_sitemap(
+            session,
+            tmp_path,
+            ObjectNames(_entities({}), session),
+            {BASE_LOCALE: 1, "global": 1},
+            {BASE_LOCALE: 0, "global": 0},
+            galaxies,
+            PlanetPages([], {}),
+            [],
+        )
+        assert pages.objects == {"x-1": "/x/1/Milky%20Way"}
+
     def test_lists_each_planet_and_host_after_the_other_pages(
         self, session: Session, tmp_path: Path
     ):

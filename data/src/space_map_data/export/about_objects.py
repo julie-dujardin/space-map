@@ -6,8 +6,9 @@ Every figure is read off the files on disk, so a phase that the export skipped
 as unchanged counts for what it left there. A gzip file can hold several
 kinds. Its size is split between them by the raw bytes of their entries or rows.
 
-The stars, star systems and planets of the extrasolar catalogue are those of
-the census that the extrasolar export serves (`export/extrasolar/census.py`).
+The stars, star systems, planets and galaxies of the extrasolar catalogue are
+those of the census that the extrasolar export serves
+(`export/extrasolar/census.py`).
 Their object entries are a part of them, so an entry adds its bytes, text and
 sources but not to the count, and it goes to the row of its home table.
 """
@@ -27,12 +28,13 @@ import orjson
 from space_map_data.constants.providers import ID_TYPES, LANGUAGES
 from space_map_data.export.extrasolar.build import METADATA_FILE, served
 from space_map_data.export.extrasolar.census import (
+    GALAXY,
     PLANET,
     STAR,
     STAR_SYSTEM,
 )
 from space_map_data.export.extrasolar.reader import ExportReader
-from space_map_data.export.objects.stars import PLANET_ID
+from space_map_data.export.objects.stars import GALAXY_TYPE, PLANET_ID
 from space_map_data.export.objects.stars import PREFIX as STAR_PREFIX
 from space_map_data.export.objects.stars import TYPE as STAR_TYPE
 from space_map_data.export.position.format import (
@@ -54,6 +56,7 @@ logger = logging.getLogger(__name__)
 
 # The rows in the order of the page. A kind that is not listed follows by name.
 KINDS = (
+    GALAXY,
     STAR,
     STAR_SYSTEM,
     PLANET,
@@ -115,13 +118,13 @@ def kind_of(object_type: str, satcat: bool) -> str:
 def catalogue_kind(object_id: str, object_type: str) -> str | None:
     """The row of an entry of the extrasolar catalogue, by the kind of its
     object as the census counts it: a node of a star system has the type of
-    its class, so another type is a star system. None for an object of the
-    solar system."""
+    its class, so a type that is no star's or galaxy's is a star system. None
+    for an object of the solar system."""
     if not object_id.startswith(STAR_PREFIX):
         return None
     if PLANET_ID.match(object_id):
         return PLANET
-    return STAR if object_type == STAR_TYPE else STAR_SYSTEM
+    return {STAR_TYPE: STAR, GALAXY_TYPE: GALAXY}.get(object_type, STAR_SYSTEM)
 
 
 def has_own_text(entry: dict) -> bool:

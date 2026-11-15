@@ -42,6 +42,7 @@ from space_map_data.export.objects.position_sources import (
 from space_map_data.export.objects.stars import (
     PlanetObject,
     StarObject,
+    star_facts,
     star_references,
 )
 from space_map_data.export.position.elements.celestrak_source import current_day_dirs
@@ -151,8 +152,9 @@ def tier_b_fingerprint(
       barycenters.
     - `body_values`: the paper sizes and GMs and the kernel lists that rank
       the body radii and masses.
-    - `stars`: the star entries, which each registry ingest links again, and
-      the works that the literature table cites for them.
+    - `stars`: the star and galaxy entries, which each registry ingest links
+      again, the works that the literature table and the galaxy list cite for
+      them, and the facts of the galaxy list.
     - `planets`: the planet entries, which each registry ingest links again,
       and what names them: their status, their repeated letters and the names
       of their hosts.
@@ -195,7 +197,14 @@ def tier_b_fingerprint(
         ),
         "stars": _digest(
             [
-                (star.id, star.qid, star.name, star.iau_named, star_references(star))
+                (
+                    star.id,
+                    star.qid,
+                    star.name,
+                    star.iau_named,
+                    star_references(star),
+                    star_facts(star),
+                )
                 for star in star_objects
             ]
         ),

@@ -1,5 +1,6 @@
 """Tests for the object entries of the stars with a Wikidata item or a value
-from a paper, and of the planets with an item."""
+from a paper, of the galaxies of the galaxy list, and of the planets with an
+item."""
 
 import gzip
 from pathlib import Path
@@ -10,6 +11,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 
+from space_map_data.constants.galaxies import literature as galaxy_literature
 from space_map_data.constants.stars.literature import REFERENCES
 from space_map_data.export.objects import stars
 from space_map_data.export.objects.stars import (
@@ -21,6 +23,7 @@ from space_map_data.export.objects.stars import (
     read_extrasolar_objects,
     replace_bundle_entries,
     star_entries,
+    star_facts,
     star_references,
 )
 from space_map_data.export.objects.wikipedia import WikipediaSummary
@@ -31,6 +34,7 @@ from space_map_data.extrasolar.tables import CROSS_ID
 from tests.extrasolar.export_registry import (
     Held,
     Node,
+    galaxy,
     planet,
     star,
     write_registry,
@@ -321,6 +325,139 @@ class TestStarEntries:
         assert not has_description({"wikipedia": {"url": "https://en…"}})
         assert not has_description({"description": "star"})
         assert not has_description(None)
+
+
+class TestGalaxyEntries:
+    """The entry of a galaxy of the galaxy list."""
+
+    MILKY_WAY = StarObject(
+        9, "Milky Way", "Q321", object_type="galaxy", galaxy="milky-way"
+    )
+
+    @pytest.fixture
+    def entries(self, monkeypatch):
+        summary = WikipediaSummary(extract="The Milky Way is…", url="https://en…")
+        monkeypatch.setattr(
+            stars, "load_wikipedia_summaries_for_qid", lambda qid: {"en": summary}
+        )
+        monkeypatch.setattr(
+            stars, "collect_star_images", lambda qid: [{"file": "Milky Way.jpg"}]
+        )
+        labels = {"en": "Milky Way", "fr": "Voie lactée", "de": "Milchstraße"}
+        entities = fake_entities({"Q321": entity(labels)}, sitelinks={"Q321": 211})
+        return star_entries([self.MILKY_WAY], entities)
+
+    def test_global(self, entries):
+        entry = entries[0]["x-9"]
+        assert (entry["type"], entry["name"]) == ("galaxy", "Milky Way")
+        assert entry["cross_refs"] == {"wikidata_qid": "Q321"}
+        assert entry["sitelinks_count"] == 211
+        assert entry["images"] == [{"file": "Milky Way.jpg"}]
+
+    def test_it_is_localized_as_a_star_is(self, entries):
+        localized = entries[1]
+        assert localized["fr"]["x-9"]["name"] == "Voie lactée"
+        assert "name" not in localized["en"]["x-9"]
+        assert has_description(localized["en"]["x-9"])
+
+    def test_the_galaxy_of_the_sun_has_no_constellation(self, monkeypatch):
+        monkeypatch.setattr(stars, "load_wikipedia_summaries_for_qid", lambda qid: {})
+        monkeypatch.setattr(stars, "collect_star_images", lambda qid: None)
+        # Wikidata gives the Milky Way 22 constellations.
+        claims = {"P59": items("Q8679", "Q8866"), "P361": items("Q3")}
+        referenced = {
+            "Q8679": entity({"en": "Pisces"}),
+            "Q3": entity({"en": "Local Group"}),
+        }
+        item = entity({"en": "Milky Way"}, claims=claims)
+        other = StarObject(8, "Other", "Q5", object_type="galaxy", galaxy="other")
+        entities = fake_entities({"Q321": item, "Q5": item}, referenced)
+        _, localized = star_entries([self.MILKY_WAY, other], entities)
+        assert localized["en"]["x-9"] == {"part_of": [{"name": "Local Group"}]}
+        assert "iau_constellation" in localized["en"]["x-8"]
+
+    def test_references_by_column_group(self, entries):
+        works = galaxy_literature.REFERENCES
+        references = entries[0]["x-9"]["references"]
+        assert list(references) == [
+            "position",
+            "distance",
+            "morphology",
+            "stellar_mass",
+            "total_mass",
+            "star_formation_rate",
+        ]
+        assert references["position"] == [works["xu_2022"]._asdict()]
+        assert [work["short"] for work in references["distance"]] == [
+            "GRAVITY Collaboration 2022",
+            "GRAVITY Collaboration 2021",
+        ]
+
+    def test_facts(self, entries):
+        facts = entries[0]["x-9"]["facts"]
+        assert set(facts) <= set(galaxy_literature.FACTS)
+        works = galaxy_literature.REFERENCES
+        assert facts["half_light_radius"] == {
+            "value": 5750,
+            "lower": 5370,
+            "upper": 6130,
+            "references": [works["lian_2024"]._asdict()],
+        }
+        # The paper gives no error.
+        assert facts["age"] == {
+            "value": 13.0,
+            "references": [works["xiang_rix_2022"]._asdict()],
+        }
+        # A lower limit.
+        assert facts["disc_radius"] == {
+            "lower": 26000,
+            "references": [works["lopez_corredoira_2018"]._asdict()],
+        }
+
+    def test_an_estimate_says_so_and_cites_its_inputs(self, entries):
+        works = galaxy_literature.REFERENCES
+        # A range: the inputs do not support one number.
+        assert entries[0]["x-9"]["facts"]["star_count"] == {
+            "lower": 1e11,
+            "upper": 2e11,
+            "estimate": True,
+            "references": [
+                works["cautun_2020"]._asdict(),
+                works["chabrier_2003"]._asdict(),
+            ],
+        }
+        planets = entries[0]["x-9"]["facts"]["planet_count"]
+        assert (planets["lower"], planets["upper"]) == (8e10, 5e11)
+        assert "value" not in planets
+        period = entries[0]["x-9"]["facts"]["orbital_period"]
+        assert (period["value"], period["estimate"]) == (212.0, True)
+        assert period["references"] == [works["reid_2019"]._asdict()]
+        assert "estimate" not in entries[0]["x-9"]["facts"]["planets_per_star"]
+
+    def test_a_star_has_no_facts(self):
+        assert star_facts(StarObject(7, "η Carinae", "Q1", ETA_CAR)) == {}
+
+    def test_a_key_that_the_list_no_longer_has_cites_nothing(self):
+        gone = StarObject(8, "Gone", None, object_type="galaxy", galaxy="gone")
+        assert star_facts(gone) == {} and star_references(gone) == {}
+
+    def test_a_galaxy_of_the_registry(self, tmp_path):
+        built = write_registry(
+            tmp_path / "reg",
+            [star(10.0, 10.0)],
+            galaxies=[
+                galaxy(266.4, -29.0, key="milky-way", name="Milky Way", qid="Q321"),
+                galaxy(10.7, 41.3, key="other", name="Other"),
+            ],
+        )
+        found, _ = read_extrasolar_objects(built.root)
+        milky_way, other = built.galaxies
+        assert sorted(found, key=lambda entry: entry.name) == [
+            StarObject(
+                milky_way, "Milky Way", "Q321", None, "galaxy", galaxy="milky-way"
+            ),
+            StarObject(other, "Other", None, None, "galaxy", galaxy="other"),
+        ]
 
 
 class TestPlanetEntries:

@@ -1,5 +1,5 @@
 """Object entries of the extrasolar objects with a Wikidata item or a value
-from a paper: stars and star systems, and planets with an item.
+from a paper: stars, star systems and galaxies, and planets with an item.
 
 They live in the object bundles, under `x-<id>` like the `/x/<id>` pages and
 `x-<host>-b-<n>` like the `/x/<host>/b/<n>` ones, so these pages read their
@@ -8,13 +8,15 @@ references and discovery dates from Wikidata, Wikipedia extracts, Commons
 images, and the works that the literature table cites for a value. A planet
 with a map also has its texture keys (`TextureLayers.entry_blocks`). The
 record tiles and the planet files of the extrasolar export hold the values,
-under their own terms.
+under their own terms. A galaxy of the galaxy list also has the values of the
+list that no table holds (`facts`), each with its work.
 
-The registry's Metadata rows say which stars and systems have an entry
-(`object`), and give their English name, class, QID and literature key. A
-node of a star system, a resolved system or a point that holds several stars,
-takes its class as its type, as a planet host does in search. A planet has an
-entry when its planets table row has a Wikidata QID among its cross ids.
+The registry's Metadata rows say which stars, systems and galaxies have an
+entry (`object`), and give their English name, class, QID and literature or
+galaxy key. A node of a star system, a resolved system or a point that holds
+several stars, takes its class as its type, as a planet host does in search. A
+galaxy has the type `galaxy`. A planet has an entry when its planets table row
+has a Wikidata QID among its cross ids.
 """
 
 import gzip
@@ -33,6 +35,7 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
+from space_map_data.constants.galaxies import literature as galaxy_literature
 from space_map_data.constants.providers import BASE_LOCALE, LANGUAGES
 from space_map_data.constants.stars.literature import (
     DISTANCES,
@@ -80,6 +83,7 @@ from space_map_data.extrasolar.exoplanets.wikidata import planet_qid
 from space_map_data.extrasolar.ids import cell_of
 from space_map_data.extrasolar.registry import NoRegistry, Registry
 from space_map_data.extrasolar.sky import region_of
+from space_map_data.extrasolar.sources import galaxies
 from space_map_data.extrasolar.sources.literature import (
     LITERATURE,
     MEASURED_TABLES,
@@ -99,6 +103,11 @@ TYPE = "star"
 PLANET_TYPE = "exoplanet"
 # The type of the entry of a star system node, by its class.
 SYSTEM_TYPES = {cls: cls.replace(" ", "_") for cls in NODE_CLASSES}
+GALAXY_TYPE = "galaxy"
+# The type of an entry whose class is no star's.
+_TYPES = {**SYSTEM_TYPES, galaxies.CLASS: GALAXY_TYPE}
+# The key of the claim that names the IAU constellation of an object.
+CONSTELLATION_CLAIM = "iau_constellation"
 # The id of a planet's entry, as its scene id, with its host's page id and ID.
 PLANET_ID = re.compile(r"^(?P<host_id>x-(?P<host>\d+))-b-\d+$")
 # The prefixes of SIMBAD's identifiers that Wikidata copies into some aliases:
@@ -144,13 +153,16 @@ class StarObject:
     qid: str | None = None
     # The key of the star in the literature table.
     literature: StarKey | None = None
-    # The entry's type: a star, or the class of a node of a star system.
+    # The entry's type: a star, the class of a node of a star system, or a
+    # galaxy.
     object_type: str = TYPE
     # True when its name is the IAU proper name.
     iau_named: bool = False
     # The tables of MEASURED_TABLES that its Point source row holds a value
     # of, in their order.
     papers: tuple[str, ...] = ()
+    # The key of a galaxy in the galaxy list.
+    galaxy: str | None = None
 
     @property
     def obj_id(self) -> str:
@@ -221,10 +233,11 @@ def _read_part(path: Path) -> list[StarObject]:
         for x in cross_ids:
             ids[x["catalogue"]].append(x["catalogue_id"])
         qids, keys = ids[WIKIDATA.catalogue], ids[LITERATURE.catalogue]
-        if len(qids) > 1 or len(keys) > 1 or not (qids or keys):
+        listed = ids[galaxies.GALAXY_LIST.catalogue]
+        if max(map(len, (qids, keys, listed))) > 1 or not (qids or keys or listed):
             raise ValueError(
-                f"{path}: ID {id_} has the Wikidata items {qids} and the"
-                f" literature keys {keys}"
+                f"{path}: ID {id_} has the Wikidata items {qids}, the literature"
+                f" keys {keys} and the galaxy keys {listed}"
             )
         out.append(
             StarObject(
@@ -232,8 +245,9 @@ def _read_part(path: Path) -> list[StarObject]:
                 name,
                 qids[0] if qids else None,
                 key_of(keys[0]) if keys else None,
-                SYSTEM_TYPES.get(cls, TYPE),
+                _TYPES.get(cls, TYPE),
                 name_source == IAU_WGSN.name,
+                galaxy=listed[0] if listed else None,
             )
         )
     return out
@@ -560,9 +574,43 @@ def _localized(
     return data
 
 
+def _works(keys: Iterable[str]) -> list[dict]:
+    return [galaxy_literature.REFERENCES[key]._asdict() for key in keys]
+
+
+def _listed(star: StarObject) -> galaxy_literature.Galaxy | None:
+    """The entry of a galaxy in the galaxy list. None for a star, and for a
+    key that the list no longer has."""
+    if star.galaxy is None:
+        return None
+    return galaxy_literature.GALAXIES.get(star.galaxy)
+
+
+def star_facts(star: StarObject) -> dict[str, dict]:
+    """The values of a galaxy of the galaxy list that no table holds, by
+    name (`galaxy_literature.FACTS`): the value and the bounds that its works
+    give, `estimate` on a value that the export works out, and its works."""
+    listed = _listed(star)
+    if listed is None:
+        return {}
+    found = galaxies.facts(listed)
+    return {
+        name: {
+            key: value
+            for key, value in fact._asdict().items()
+            if key in ("value", "lower", "upper") and value is not None
+        }
+        | ({"estimate": True} if fact.estimate else {})
+        | {"references": _works(fact.references)}
+        for name, fact in found.items()
+    }
+
+
 def star_references(star: StarObject) -> dict[str, list[dict]]:
     """The works that the literature table cites for the values of the star,
-    by column group."""
+    or the galaxy list for those of the galaxy, by column group."""
+    if (listed := _listed(star)) is not None:
+        return {group: _works(works) for group, works in galaxies.cited(listed).items()}
     if star.literature is None:
         return {}
     cited = {"distance": DISTANCES.get(star.literature)}
@@ -587,6 +635,7 @@ def _global(
     qid: str | None,
     read: _Read,
     references: dict[str, list[dict]] | None = None,
+    facts: dict[str, dict] | None = None,
 ) -> dict:
     data: dict = {"id": obj_id, "type": object_type, "name": name}
     if qid:
@@ -601,6 +650,8 @@ def _global(
         data["wikidata"] = wikidata
     if references:
         data["references"] = references
+    if facts:
+        data["facts"] = facts
     return data
 
 
@@ -692,6 +743,9 @@ def star_entries(
             star_pages[obj_id] = PlanetHost(star_names(star, None), star.iau_named)
         else:
             read(obj_id, star.qid, star)
+            if (listed := _listed(star)) is not None and listed.holds_sun:
+                # The galaxy of the Sun is in every direction of the sky.
+                reads[obj_id].claims.pop(CONSTELLATION_CLAIM, None)
         global_data[obj_id] = _global(
             obj_id,
             star.name,
@@ -699,6 +753,7 @@ def star_entries(
             star.qid,
             reads[obj_id],
             star_references(star),
+            star_facts(star),
         )
     shared = sum(planet.qid in pages for planet in planets)
     for planet in planets:
@@ -734,11 +789,13 @@ def star_entries(
             )
             if block:
                 localized[lang][obj_id] = block
-    star_ids = [f"{PREFIX}{star.id}" for star in stars if star.object_type == TYPE]
-    node_ids = [f"{PREFIX}{star.id}" for star in stars if star.object_type != TYPE]
-    _log_entries("Star", star_ids, global_data, localized)
-    if node_ids:
-        _log_entries("Star system", node_ids, global_data, localized)
+    labels = {TYPE: "Star", GALAXY_TYPE: "Galaxy"}
+    by_label: dict[str, list[str]] = {"Star": []}
+    for star in stars:
+        label = labels.get(star.object_type, "Star system")
+        by_label.setdefault(label, []).append(f"{PREFIX}{star.id}")
+    for label, ids in by_label.items():
+        _log_entries(label, ids, global_data, localized)
     if planets:
         _log_entries(
             "Planet", [planet.obj_id for planet in planets], global_data, localized
