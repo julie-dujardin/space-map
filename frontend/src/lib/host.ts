@@ -19,6 +19,7 @@ export interface CoreMessages {
 	attribution_imagery: () => string;
 	attribution_stars: () => string;
 	attribution_constellations: () => string;
+	attribution_section_skybox: () => string;
 	attribution_galaxy: () => string;
 	attribution_galaxy_model: () => string;
 	credits_see_all: () => string;
@@ -40,6 +41,7 @@ export interface CoreMessages {
 	system_map_zone_outer: () => string;
 	unit_symbol_astronomical_unit: () => string;
 	system_map_axis_au: () => string;
+	star_chart_label: (inputs: { name: string }) => string;
 }
 
 export interface Host {
@@ -64,7 +66,8 @@ export interface Host {
 	 *  sky culture `slug`. */
 	groupHref: (slug: string, name: string, figure?: string | null) => string;
 	/** How far down the `distribution` ladder this embed may draw surface maps,
-	 *  panoramas, craft models and stars (docs/export-format/textures.md). `open` is
+	 *  panoramas, craft models, stars and sky cultures
+	 *  (docs/export-format/textures.md). `open` is
 	 *  what anyone may serve, `non-commercial` adds works whose licence bars
 	 *  commercial reuse, and `site-only` adds those cleared for spacemap.co
 	 *  alone. A bare embed gets `open`: it cannot accept a licence for the page
@@ -98,6 +101,7 @@ const DEFAULT_HOST: Host = {
 		attribution_imagery: () => 'Imagery',
 		attribution_stars: () => 'Stars',
 		attribution_constellations: () => 'Constellations',
+		attribution_section_skybox: () => 'Star map',
 		attribution_galaxy: () => 'Milky Way',
 		attribution_galaxy_model: () => 'model',
 		credits_see_all: () => 'See full credits',
@@ -118,7 +122,8 @@ const DEFAULT_HOST: Host = {
 		system_map_zone_inner: () => 'Inner asteroids & comets',
 		system_map_zone_outer: () => 'Outer asteroids & comets',
 		unit_symbol_astronomical_unit: () => 'AU',
-		system_map_axis_au: () => 'AU · log'
+		system_map_axis_au: () => 'AU · log',
+		star_chart_label: ({ name }) => `Star chart of ${name}`
 	},
 	// A bare embed has no pages to link to, so labels stay put.
 	bodyHref: () => '',

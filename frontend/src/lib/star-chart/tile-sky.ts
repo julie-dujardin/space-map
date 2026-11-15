@@ -11,6 +11,7 @@ import { CAP_EDGE, MAP, NORTH, chartColumns, chartRows } from '$lib/scene/lod/ti
 import type { ChartFrame } from './frame';
 import { CHART_GLSL, rayUniforms, type Pixels, type SkySource } from './sky';
 import { planSky, planYields, type SkyPlan, type SkyPyramid } from './sky-tiles';
+import { webgl2Canvas } from './webgl';
 
 // The read starts at the bottom row of the picture, so the top of the frame is
 // drawn there.
@@ -230,20 +231,16 @@ let painter: Painter | null = null;
 
 function sharedPainter(): Painter {
 	if (painter && !painter.gl.isContextLost()) return painter;
-	const open = (canvas: OffscreenCanvas | HTMLCanvasElement): WebGL2RenderingContext | null =>
-		canvas.getContext('webgl2', {
-			alpha: false,
-			antialias: false,
-			depth: false,
-			stencil: false
-		}) as WebGL2RenderingContext | null;
-	// Some browsers have an OffscreenCanvas with no WebGL 2.
-	const gl =
-		(typeof OffscreenCanvas === 'undefined' ? null : open(new OffscreenCanvas(1, 1))) ??
-		open(document.createElement('canvas'));
-	if (!gl) throw new Error('star map needs WebGL 2');
-	painter = new Painter(gl);
+	const held = webgl2Canvas({ alpha: false, antialias: false, depth: false, stencil: false });
+	if (!held) throw new Error('star map needs WebGL 2');
+	painter = new Painter(held.gl);
 	return painter;
+}
+
+/** Frees the context of the tile sky. The next paint makes another. */
+export function releaseTilePainter(): void {
+	painter?.gl.getExtension('WEBGL_lose_context')?.loseContext();
+	painter = null;
 }
 
 export class TileSkySource implements SkySource {

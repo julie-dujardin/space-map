@@ -1,7 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
 import * as details from '$lib/fetch/groups/details';
-import { fetchFigureDetail, fetchFigureName, figurePageName } from './figures';
-import { ExtrasolarStatusError } from './files';
+import { configureHost } from '$lib/host';
+import * as files from './files';
+import {
+	fetchFigureChart,
+	fetchFigureDetail,
+	fetchFigureName,
+	figurePageName,
+	StarChartError
+} from './figures';
 import * as skycultures from './skycultures';
 import type { LoadedSkyCulture, SkyCultureFile } from './skycultures';
 
@@ -237,9 +244,66 @@ describe('the chart of a figure page', () => {
 	it('does not read the names again when the host has no such file', async () => {
 		loadPlaced();
 		vi.spyOn(skycultures, 'fetchInternationalNames').mockRejectedValue(
-			new ExtrasolarStatusError('https://t/v1/x/names.json.gz', 404)
+			new files.ExtrasolarStatusError('https://t/v1/x/names.json.gz', 404)
 		);
 		const { global } = await fetchFigureDetail('culture-maya', '003', 'en');
 		expect((await global!.star_chart!.load()).more).toBeUndefined();
+	});
+});
+
+describe('the chart of a figure with no page around it', () => {
+	const placed = {
+		...file,
+		members: [
+			{ id: 1, position: [1, 0, 0] },
+			{ id: 2, position: [0, 2, 0] },
+			...file.members.slice(2)
+		]
+	} as unknown as SkyCultureFile;
+
+	function serve(distribution: string): void {
+		vi.spyOn(files, 'fetchExtrasolarMetadata').mockResolvedValue({
+			skycultures: { cultures: [{ key: 'maya', distribution }] }
+		} as never);
+		vi.spyOn(skycultures, 'fetchSkyCulture').mockResolvedValue({
+			file: placed,
+			entry: { key: 'maya', group: 'x', labels: {}, credit },
+			credits: [credit]
+		} as never);
+		vi.spyOn(skycultures, 'fetchInternationalNames').mockResolvedValue(null);
+	}
+
+	async function reason(slug: string, figure: string): Promise<string | undefined> {
+		const error = await fetchFigureChart(slug, figure, 'en').catch((e: unknown) => e);
+		return error instanceof StarChartError ? error.reason : undefined;
+	}
+
+	it('is unavailable where the host serves no sky cultures', async () => {
+		vi.spyOn(files, 'fetchExtrasolarMetadata').mockResolvedValue(null);
+		expect(await reason('culture-maya', '003')).toBe('unavailable');
+	});
+
+	it('needs the non-commercial tier for a non-commercial culture', async () => {
+		serve('non-commercial');
+		configureHost({ textures: 'open' });
+		expect(await reason('culture-maya', '003')).toBe('non-commercial');
+		configureHost({ textures: 'non-commercial' });
+		const { name, chart } = await fetchFigureChart('culture-maya', '003', 'en');
+		expect(name).toBe('Turtle');
+		expect(chart.chart.lines).toHaveLength(1);
+		configureHost({});
+	});
+
+	it('is not found for another culture, another figure, or a figure with no place', async () => {
+		serve('open');
+		expect(await reason('culture-inca', '003')).toBe('not-found');
+		expect(await reason('maya', '003')).toBe('not-found');
+		expect(await reason('culture-maya', '999')).toBe('not-found');
+		vi.spyOn(skycultures, 'fetchSkyCulture').mockResolvedValue({
+			file,
+			entry: { key: 'maya', group: 'x', labels: {}, credit },
+			credits: [credit]
+		} as never);
+		expect(await reason('culture-maya', '003')).toBe('not-found');
 	});
 });

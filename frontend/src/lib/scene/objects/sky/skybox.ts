@@ -149,6 +149,32 @@ function makeCube(bitmaps: ImageBitmap[], exposure?: number): CubeTexture {
 	return cube;
 }
 
+/** The tiers this device may upload, the smallest first. */
+export function skyboxTiers(meta: SkyboxMetadata, maxTextureSize: number): string[] {
+	const limit = Math.min(maxTextureSize, currentRenderTier().maxSkyboxFace);
+	const sorted = [...meta.tiers].sort(
+		(a, b) => (meta.tier_face_size[a] ?? 0) - (meta.tier_face_size[b] ?? 0)
+	);
+	const fits = sorted.filter((tier) => (meta.tier_face_size[tier] ?? Infinity) <= limit);
+	return fits.length ? fits : sorted.slice(0, 1);
+}
+
+/** One tier of the skybox as a cube on `renderer`. The faces go once it holds them. */
+export async function loadSkyboxTier(
+	renderer: WebGLRenderer,
+	meta: SkyboxMetadata,
+	tier: string
+): Promise<CubeTexture> {
+	const bitmaps = await tierBitmaps(meta.id, tier);
+	const cube = makeCube(bitmaps, meta.exposure ?? SHIPPED_EXPOSURE);
+	try {
+		renderer.initTexture(cube);
+	} finally {
+		releaseTierBitmaps(meta.id, tier, bitmaps);
+	}
+	return cube;
+}
+
 /** Smallest declared tier, for the fast first paint. */
 function pickLowTier(meta: SkyboxMetadata): string | null {
 	if (meta.tiers.length === 0) return null;

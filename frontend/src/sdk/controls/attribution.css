@@ -57,3 +57,14 @@
 .sm-attribution__label {
 	color: rgb(255 255 255 / 50%);
 }
+
+/* A chart can be narrower than its credits. They wrap, so that none is cut. */
+.sm-attribution--wrap {
+	flex-wrap: wrap;
+	row-gap: 0;
+	white-space: normal;
+}
+
+.sm-attribution--wrap .sm-attribution__group {
+	overflow: visible;
+}

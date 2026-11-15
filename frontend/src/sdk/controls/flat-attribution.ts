@@ -7,7 +7,7 @@
 import type { FlatMap } from '$lib/flatmap/flat-map';
 import { host } from '$lib/host';
 import type { Control, ControlPosition } from '$lib/scene/controls';
-import { bar, group, link, CREDITS_URL, HOME_URL } from './attribution-bar';
+import { bar, fillGroup, group, link, CREDITS_URL, HOME_URL } from './attribution-bar';
 import './attribution.css';
 
 export class FlatAttributionControl implements Control<FlatMap> {
@@ -23,12 +23,7 @@ export class FlatAttributionControl implements Control<FlatMap> {
 		);
 		const fill = (): void => {
 			const names = [...new Set(map.credits.map((credit) => credit.organisation))].filter(Boolean);
-			imagery.hidden = names.length === 0;
-			if (imagery.hidden) return;
-			const tag = document.createElement('span');
-			tag.className = 'sm-attribution__label';
-			tag.textContent = `${host().messages.attribution_imagery()}:`;
-			imagery.replaceChildren(tag, ` ${names.join(' · ')}`);
+			fillGroup(imagery, host().messages.attribution_imagery(), names);
 		};
 		fill();
 		this.off = map.on('layerschange', fill);

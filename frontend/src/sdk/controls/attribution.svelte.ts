@@ -9,7 +9,7 @@ import { host } from '$lib/host';
 import type { Control, ControlPosition } from '$lib/scene/controls';
 import type { SpaceMap } from '$lib/scene/space-map.svelte';
 import { attributionChips } from '$lib/scene/state/attribution';
-import { bar, group, link, CREDITS_URL, HOME_URL } from './attribution-bar';
+import { bar, fillGroup, group, link, CREDITS_URL, HOME_URL } from './attribution-bar';
 import './attribution.css';
 
 export class AttributionControl implements Control<SpaceMap> {
@@ -34,12 +34,16 @@ export class AttributionControl implements Control<SpaceMap> {
 		this.stop = $effect.root(() => {
 			$effect(() => {
 				const chips = attributionChips(map.ctx);
-				fill(orbits, host().messages.attribution_orbits(), chips.orbits);
-				fill(imagery, host().messages.attribution_imagery(), chips.imagery);
-				fill(constellations, host().messages.attribution_constellations(), chips.constellations);
+				fillGroup(orbits, host().messages.attribution_orbits(), chips.orbits);
+				fillGroup(imagery, host().messages.attribution_imagery(), chips.imagery);
+				fillGroup(
+					constellations,
+					host().messages.attribution_constellations(),
+					chips.constellations
+				);
 				const model = chips.galaxyModel ? [host().messages.attribution_galaxy_model()] : [];
-				fill(galaxy, host().messages.attribution_galaxy(), model);
-				fill(stars, host().messages.attribution_stars(), chips.stars);
+				fillGroup(galaxy, host().messages.attribution_galaxy(), model);
+				fillGroup(stars, host().messages.attribution_stars(), chips.stars);
 			});
 		});
 		return root;
@@ -53,13 +57,4 @@ export class AttributionControl implements Control<SpaceMap> {
 	getDefaultPosition(): ControlPosition {
 		return 'bottom-right';
 	}
-}
-
-function fill(el: HTMLElement, label: string, names: string[]): void {
-	el.hidden = names.length === 0;
-	if (el.hidden) return;
-	const tag = document.createElement('span');
-	tag.className = 'sm-attribution__label';
-	tag.textContent = `${label}:`;
-	el.replaceChildren(tag, ` ${names.join(' · ')}`);
 }

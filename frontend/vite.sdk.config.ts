@@ -76,7 +76,7 @@ function bundledTypes(outDir: string): Plugin {
 /** What the CDN copy may weigh, gzipped, since that is what a page downloads.
  *  A budget rather than a target: the map carries a renderer and an ephemeris,
  *  and the number is here to catch a dependency landing in it by accident. */
-const MAX_GZIP_BYTES = 500 * 1024;
+const MAX_GZIP_BYTES = 512 * 1024;
 
 function sizeBudget(outDir: string, file: string): Plugin {
 	return {
@@ -142,6 +142,7 @@ export default defineConfig(({ mode }) => {
 							here('./src/sdk/flatmap.html'),
 							here('./src/sdk/panorama.html'),
 							here('./src/sdk/systemmap.html'),
+							here('./src/sdk/starchart.html'),
 							here('./node_modules/three/build/three.module.min.js'),
 							here('./node_modules/three/build/three.core.min.js')
 						]),

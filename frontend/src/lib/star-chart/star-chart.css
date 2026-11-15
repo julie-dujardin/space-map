@@ -1,0 +1,89 @@
+.sm-chart {
+	position: relative;
+	overflow: hidden;
+	width: 100%;
+}
+
+/* With no sky the lines and rings go on the page's own background. */
+.sm-chart--sky {
+	background: #05070c;
+}
+
+.sm-chart--fill {
+	height: 100%;
+}
+
+.sm-chart__sky,
+.sm-chart__lines,
+.sm-chart__names {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+}
+
+.sm-chart__sky {
+	display: block;
+	/* The picture of another size keeps its shape until the next paint. */
+	object-fit: cover;
+	opacity: 0;
+	transition: opacity 0.3s;
+}
+
+.sm-chart__sky--painted {
+	opacity: 1;
+}
+
+.sm-chart__lines,
+.sm-chart__names {
+	pointer-events: none;
+}
+
+.sm-chart__line {
+	fill: none;
+	stroke: rgb(150 180 235 / 60%);
+	stroke-width: 1;
+	stroke-linecap: round;
+}
+
+.sm-chart__ring {
+	fill: none;
+	stroke: rgb(150 180 235 / 70%);
+	stroke-width: 1;
+}
+
+.sm-chart__names {
+	font:
+		500 11px/13px system-ui,
+		sans-serif;
+}
+
+.sm-chart__name {
+	position: absolute;
+	margin: 0;
+	padding: 0;
+	border: 0;
+	background: none;
+	font: inherit;
+	white-space: nowrap;
+	color: rgb(255 255 255 / 92%);
+	text-shadow:
+		0 0 3px rgb(0 0 0 / 95%),
+		0 0 6px rgb(0 0 0 / 80%);
+}
+
+.sm-chart__name--neighbour {
+	color: rgb(255 255 255 / 55%);
+}
+
+button.sm-chart__name {
+	pointer-events: auto;
+	cursor: pointer;
+}
+
+button.sm-chart__name:hover,
+button.sm-chart__name:focus-visible {
+	color: #fff;
+	text-decoration: underline;
+	outline: none;
+}

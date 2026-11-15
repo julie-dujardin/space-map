@@ -1,8 +1,8 @@
 # spacemap
 
 The map of the Solar System from [spacemap.co](https://spacemap.co), on your
-website! Also available: flat maps, 360 panoramas from the surface, and diagrams
-of the solar systems and satellite systems.
+website! Also available: flat maps, 360 panoramas from the surface, diagrams
+of the solar systems and satellite systems, and star charts of constellations.
 
 Distances are kilometres and angles are degrees throughout. Objects are named
 by their export id: `naif-399` for Earth, `spkid-20000004` for Vesta,
@@ -24,7 +24,8 @@ the SDK draws only what a page may use:
 - **Non-commercial** imagery and models are licensed for educational and
   non-commercial use: the Uranus map, the Huygens descent panorama of Titan,
   and the models of a few craft, most of them Soviet (Buran, Vostok, Lunokhod,
-  Salyut 1). These can be turned on, for non-commmercial projects only, with:
+  Salyut 1), and the sky cultures and star names of the star charts. These can
+  be turned on, for non-commmercial projects only, with:
 
   ```js
   const map = await createMap({ container: '#map', includeNonCommercial: true });
@@ -756,6 +757,83 @@ for the corners. The words it writes itself are in `messages`, under
 `system_map_*`, `planetary_system_*`, `tab_rings` and
 `unit_symbol_astronomical_unit`. Kilometres are written by the browser, in the
 `locale`'s own form.
+
+## The star chart
+
+One figure of a sky culture, drawn over the sky behind it, with the names of
+its stars. It needs no Solar System map.
+
+```js
+import { createStarChart } from 'spacemap';
+
+const chart = await createStarChart({
+	container: '#chart',
+	slug: 'culture-modern_iau',
+	figure: 'Ori',
+	includeNonCommercial: true
+});
+chart.on('select', (star) => console.log(star.name, star.ra, star.dec));
+```
+
+`slug` and `figure` name it as the map's `constellationselect` event does, so a
+click on a constellation's name in the map can open its chart:
+
+```js
+map.on('constellationselect', ({ slug, figure }) =>
+	createStarChart({ container: '#chart', slug, figure, includeNonCommercial: true, map })
+);
+```
+
+**The sky cultures and the star names are licensed for non-commercial use
+only**, as is every position of their stars. Without `includeNonCommercial`,
+`createStarChart` rejects with a `StarChartError` whose `reason` is
+`non-commercial`. The default data host does not serve the sky cultures yet:
+until it does, the reason is `unavailable`. A culture or figure that does not
+exist, or that has no place in the sky, is `not-found`.
+
+- `framing`: `fit` (the default) takes the container's width and sets the
+  chart's height to the shape of the figure. `fill` takes the container's whole
+  box, which must have a height, and shows the sky around the figure.
+- `names: false` draws no names. `neighbours: false` names no star outside the
+  figure. `sky: false` paints no sky and downloads none: the lines and rings go
+  on your own background.
+- `map`: a Solar System map on the same page. The chart then reads that map's
+  sky, and the star map is not downloaded twice.
+
+`dataUrl`, `locale`, `messages` and `includeNonCommercial` are page-wide, as a
+map's are. A chart sets only the ones it is given, so the maps already on the
+page keep their own.
+
+The chart follows the size of its container. A click on a name sends `select`
+with the star and goes nowhere: what follows is your page's. `remove()` takes
+the chart out and frees its WebGL context.
+
+### Drawing your own overlay
+
+The chart says where it put everything, after each paint and again as it finds
+the names:
+
+```js
+chart.on('overlay', (overlay) => {
+	for (const star of overlay.stars) console.log(star.id, star.name, star.x, star.y);
+	// overlay.neighbours, overlay.standIns (clusters and nebulae), overlay.lines,
+	// overlay.labels (the names as the chart laid them out), overlay.frame
+});
+const [x, y] = chart.project(83.82, -5.39); // the Orion Nebula, in CSS pixels
+```
+
+`projectStarChart(overlay.frame, ra, dec)` does the same with no chart. Pixels
+count from the top left of the chart; right ascension and declination are
+degrees. With `names: false` the overlay still holds the names, for a page that
+draws its own.
+
+### Its credit line
+
+The chart carries a credit line, as every map does, and it cannot be removed:
+the star map behind it, then the culture with its authors, the catalogues that
+place its stars, and the list of star names. `chart.credits` holds the same
+works. The star map comes from the tiles of NASA's Deep Star Maps 2020 where
+they are served, and else from the six faces of the map's sky cube.
 
 ## Restricting the map
 

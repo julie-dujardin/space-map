@@ -228,6 +228,8 @@ export interface CoreMessages {
 	// (undocumented)
 	attribution_orbits: () => string;
 	// (undocumented)
+	attribution_section_skybox: () => string;
+	// (undocumented)
 	attribution_stars: () => string;
 	// (undocumented)
 	body_note_crash_site: () => string;
@@ -263,6 +265,8 @@ export interface CoreMessages {
 	planetary_system_retrograde: () => string;
 	// (undocumented)
 	scene_canvas_label: () => string;
+	// (undocumented)
+	star_chart_label: (inputs: { name: string }) => string;
 	// (undocumented)
 	system_map_axis_au: () => string;
 	// (undocumented)
@@ -310,6 +314,9 @@ export function createPanorama(options: PanoramaCreateOptions): Promise<Panorama
 
 // @public
 export function createProjection(id: ProjectionId, options?: ProjectionOptions): Projection;
+
+// @public
+export function createStarChart(options: StarChartCreateOptions): Promise<StarChart>;
 
 // @public
 export function createSystemMap(options: SystemMapCreateOptions): Promise<SystemMap>;
@@ -1243,6 +1250,9 @@ export interface ProjectionOptions {
 }
 
 // @public
+export function projectStarChart(frame: StarChartFrame, ra: number, dec: number): [number, number];
+
+// @public
 export function samples(options: SamplesOptions): InertialAnchor;
 
 // @public (undocumented)
@@ -1552,6 +1562,157 @@ export interface SpaceMapOptions {
 	live?: boolean;
 	settings?: SceneSettings;
 	view?: CameraOptions & CameraAngles;
+}
+
+// @public
+export class StarChart {
+	constructor(options: StarChartOptions);
+	addControl(control: Control<StarChart>, position?: ControlPosition): this;
+	// @internal
+	attribution: Control<StarChart> | null;
+	get credits(): StarChartCredit[];
+	getOverlay(): StarChartOverlay | null;
+	// @internal
+	load(): Promise<void>;
+	// @internal
+	mount(container: HTMLElement): void;
+	get name(): string;
+	// (undocumented)
+	off<K extends keyof StarChartEvents>(event: K, listener: StarChartEvents[K]): void;
+	on<K extends keyof StarChartEvents>(event: K, listener: StarChartEvents[K]): () => void;
+	once<K extends keyof StarChartEvents>(event: K, listener: StarChartEvents[K]): () => void;
+	project(ra: number, dec: number): [number, number] | null;
+	remove(): void;
+	removeControl(control: Control<StarChart>): this;
+}
+
+// @public
+export class StarChartAttributionControl implements Control<StarChart> {
+	// (undocumented)
+	getDefaultPosition(): ControlPosition;
+	// (undocumented)
+	onAdd(chart: StarChart): HTMLElement;
+	// (undocumented)
+	onRemove(): void;
+}
+
+// @public (undocumented)
+export interface StarChartCreateOptions extends CommonOptions, StarChartOptions {
+	controls?: Control<StarChart>[];
+	events?: {
+		[K in keyof StarChartEvents]?: StarChartEvents[K];
+	};
+}
+
+// @public
+export interface StarChartCredit {
+	// (undocumented)
+	license?: string;
+	// (undocumented)
+	organisation: string;
+	section: 'sky' | 'constellations';
+	// (undocumented)
+	source: string;
+}
+
+// @public
+export class StarChartError extends Error {
+	constructor(reason: StarChartErrorReason, message: string);
+	// (undocumented)
+	readonly reason: StarChartErrorReason;
+}
+
+// @public
+export type StarChartErrorReason = 'unavailable' | 'non-commercial' | 'not-found';
+
+// @public
+export interface StarChartEvents {
+	error: (error: Error) => void;
+	overlay: (overlay: StarChartOverlay) => void;
+	select: (star: StarChartStar) => void;
+}
+
+// @public (undocumented)
+export interface StarChartFrame {
+	forward: Vec3_2;
+	halfHeight: number;
+	// (undocumented)
+	height: number;
+	right: Vec3_2;
+	// (undocumented)
+	up: Vec3_2;
+	width: number;
+}
+
+// @public
+export type StarChartFraming = 'fit' | 'fill';
+
+// @public
+export interface StarChartLabel {
+	// (undocumented)
+	height: number;
+	id?: string;
+	// (undocumented)
+	left: number;
+	// (undocumented)
+	member: boolean;
+	// (undocumented)
+	name: string;
+	// (undocumented)
+	top: number;
+	// (undocumented)
+	width: number;
+}
+
+// @public
+export interface StarChartOptions {
+	figure: string;
+	framing?: StarChartFraming;
+	map?: SpaceMap;
+	names?: boolean;
+	neighbours?: boolean;
+	sky?: boolean;
+	slug: string;
+}
+
+// @public
+export interface StarChartOverlay {
+	// (undocumented)
+	frame: StarChartFrame;
+	labels: StarChartLabel[];
+	lines: [x1: number, y1: number, x2: number, y2: number][];
+	neighbours: StarChartStar[];
+	sky: boolean;
+	// (undocumented)
+	standIns: StarChartStandIn[];
+	stars: StarChartStar[];
+}
+
+// @public
+export interface StarChartStandIn {
+	// (undocumented)
+	dec: number;
+	// (undocumented)
+	name: string | null;
+	// (undocumented)
+	ra: number;
+	// (undocumented)
+	x: number;
+	// (undocumented)
+	y: number;
+}
+
+// @public
+export interface StarChartStar {
+	// (undocumented)
+	dec: number;
+	id: string;
+	member: boolean;
+	name: string | null;
+	ra: number;
+	x: number;
+	// (undocumented)
+	y: number;
 }
 
 // @public

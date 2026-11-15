@@ -1,7 +1,7 @@
 /**
  * The map for pages outside spacemap.co, as one script.
  *
- * There are four of them. {@link createMap} puts the Solar System in a
+ * There are five of them. {@link createMap} puts the Solar System in a
  * container — bodies and spacecraft in three dimensions, over time.
  * {@link createFlatMap} puts one body's surface there instead, drawn flat in a
  * projection of the host's choosing, with layers it can switch and drawings of
@@ -9,13 +9,15 @@
  * inside a rover's panorama, with arrows along its traverse.
  * {@link createSystemMap} is the diagram to pick a body from: the Solar
  * System, a planetary system or a zone of small bodies along a distance axis.
+ * {@link createStarChart} draws one figure of a sky culture over the sky
+ * behind it, with the names of its stars.
  * The classes, the host seam and the clock's date helpers are exported for
  * hosts that drive them directly.
  *
  * Distances are kilometres and angles are degrees throughout.
  */
 
-import { configureHost, type CoreMessages, type HostOverrides } from '$lib/host';
+import { configureHost, host, type CoreMessages, type HostOverrides } from '$lib/host';
 import type { Control } from '$lib/scene/controls';
 import { SpaceMap, type SpaceMapOptions, type MapEvents } from '$lib/scene/space-map.svelte';
 import { atmosphereBootSettled } from '$lib/scene/perf/atmosphere-calibration';
@@ -28,9 +30,12 @@ import {
 	type PanoramaViewOptions
 } from '$lib/panorama/view';
 import { SystemMap, type SystemMapEvents, type SystemMapOptions } from '$lib/systemmap/system-map';
+import { StarChart, type StarChartEvents, type StarChartOptions } from '$lib/star-chart/star-chart';
+import { StarChartError } from '$lib/fetch/extrasolar/figures';
 import { AttributionControl } from './controls/attribution.svelte';
 import { FlatAttributionControl } from './controls/flat-attribution';
 import { PanoramaAttributionControl } from './controls/panorama-attribution';
+import { StarChartAttributionControl } from './controls/star-chart-attribution';
 
 /** What both maps take: where to put it, where its data comes from, and what
  *  language to read it in. */
@@ -55,15 +60,16 @@ interface CommonOptions {
 	locale?: string;
 	/** Replaces the English wording the map renders itself, one key at a time. */
 	messages?: Partial<CoreMessages>;
-	/** Draw the imagery and models whose licence forbids commercial reuse —
-	 *  off by default, because only the page knows whether it is a commercial
-	 *  one. Turning it on covers the Uranus map, which otherwise renders in
-	 *  its fallback colour, the Huygens descent panorama of Titan, which is
-	 *  otherwise a place on the map with no sphere to open, and the models of
-	 *  a few craft (Buran, Vostok, Lunokhod), which otherwise stay markers, and
-	 *  the stars from Gaia, which otherwise stay off the map; the page accepts each one's terms by asking for it, and the credit line
-	 *  naming its author is a condition of them, not a courtesy. Some maps are
-	 *  ours for spacemap.co alone and this does not reach them. */
+	/** Draw the works whose licence forbids commercial reuse. Off by default:
+	 *  only the page knows whether it is a commercial one. It covers the Uranus
+	 *  map, the Huygens descent panorama of Titan, the models of a few craft
+	 *  (Buran, Vostok, Lunokhod), the stars from Gaia, and the sky cultures and
+	 *  star names of the star charts. Without it, Uranus has its fallback
+	 *  colour, Huygens is a place with no panorama, the craft are markers, the
+	 *  map has no Gaia stars, and no star chart draws. A page that asks for it
+	 *  accepts the terms of each work. The credit line that names each author is
+	 *  one of those terms. Some maps are for spacemap.co alone, and this does
+	 *  not reach them. */
 	includeNonCommercial?: boolean;
 }
 
@@ -283,6 +289,69 @@ export async function createSystemMap(options: SystemMapCreateOptions): Promise<
 	return map;
 }
 
+export interface StarChartCreateOptions extends CommonOptions, StarChartOptions {
+	/** Controls to hang on the chart, each in the corner it asks for. The credit
+	 *  line is always there and is not one of them. */
+	controls?: Control<StarChart>[];
+	/** Listeners attached before the first paint. Later ones go through
+	 *  {@link StarChart.on}. */
+	events?: { [K in keyof StarChartEvents]?: StarChartEvents[K] };
+}
+
+/** Mount a star chart of one figure and resolve once it is painted. It needs
+ *  no Solar System map. Its data is licensed for non-commercial use only, so
+ *  it draws only with `includeNonCommercial`. A click on a name reports the
+ *  star and goes nowhere.
+ *
+ *  A chart sets only the host settings that it names, page-wide as a map's.
+ *  The others stay as the maps on the page set them.
+ *
+ *  Rejects with a {@link StarChartError} when the figure has no chart here,
+ *  and when its data does not load. */
+export async function createStarChart(options: StarChartCreateOptions): Promise<StarChart> {
+	const {
+		container,
+		dataUrl,
+		imagesUrl,
+		liveUrl,
+		tilesUrl,
+		locale,
+		messages,
+		includeNonCommercial,
+		controls,
+		events,
+		...rest
+	} = options;
+	const element = resolveContainer(container);
+	const named = hostOverrides({
+		dataUrl,
+		imagesUrl,
+		liveUrl,
+		tilesUrl,
+		locale,
+		messages,
+		includeNonCommercial
+	});
+	const { messages: shown, ...kept } = host();
+	configureHost({ ...kept, ...named, messages: { ...shown, ...named.messages } });
+
+	const chart = new StarChart(rest);
+	chart.mount(element);
+	for (const [event, listener] of Object.entries(events ?? {})) {
+		chart.on(event as keyof StarChartEvents, listener as StarChartEvents[keyof StarChartEvents]);
+	}
+	chart.attribution = new StarChartAttributionControl();
+	chart.addControl(chart.attribution);
+	for (const control of controls ?? []) chart.addControl(control);
+	try {
+		await chart.load();
+	} catch (error) {
+		chart.remove();
+		throw error;
+	}
+	return chart;
+}
+
 function resolveContainer(container: HTMLElement | string): HTMLElement {
 	if (typeof container !== 'string') return container;
 	const element = document.querySelector(container);
@@ -291,20 +360,19 @@ function resolveContainer(container: HTMLElement | string): HTMLElement {
 	return element;
 }
 
+type HostOptions = Pick<
+	CommonOptions,
+	'dataUrl' | 'imagesUrl' | 'liveUrl' | 'tilesUrl' | 'locale' | 'messages' | 'includeNonCommercial'
+>;
+
 /** What a map leaves out goes back to its default, so a second map on the page
  *  does not inherit the first one's origins. */
-function applyHost(
-	options: Pick<
-		CommonOptions,
-		| 'dataUrl'
-		| 'imagesUrl'
-		| 'liveUrl'
-		| 'tilesUrl'
-		| 'locale'
-		| 'messages'
-		| 'includeNonCommercial'
-	>
-) {
+function applyHost(options: HostOptions) {
+	configureHost(hostOverrides(options));
+}
+
+/** The host settings that `options` names. */
+function hostOverrides(options: HostOptions): HostOverrides {
 	const overrides: HostOverrides = {};
 	// The trailing slash is trimmed by configureHost, for every host alike.
 	if (options.dataUrl !== undefined) overrides.dataUrl = options.dataUrl;
@@ -315,7 +383,7 @@ function applyHost(
 	if (options.messages !== undefined) overrides.messages = options.messages;
 	// The site-only tier is never reachable from here — it is not the SDK's to grant.
 	if (options.includeNonCommercial) overrides.textures = 'non-commercial';
-	configureHost(overrides);
+	return overrides;
 }
 
 export {
@@ -329,6 +397,9 @@ export {
 	PanoramaAttributionControl,
 	PanoramaView,
 	SpaceMap,
+	StarChart,
+	StarChartAttributionControl,
+	StarChartError,
 	SystemMap
 };
 
@@ -460,6 +531,21 @@ export type {
 	SystemMapView,
 	SystemMapZone
 } from '$lib/systemmap/views';
+
+// -- the star chart -----------------------------------------------------------
+export type {
+	StarChartCredit,
+	StarChartEvents,
+	StarChartFraming,
+	StarChartLabel,
+	StarChartOptions,
+	StarChartOverlay,
+	StarChartStandIn,
+	StarChartStar
+} from '$lib/star-chart/star-chart';
+export { projectStarChart } from '$lib/star-chart/star-chart';
+export type { ChartFrame as StarChartFrame } from '$lib/star-chart/frame';
+export type { StarChartErrorReason } from '$lib/fetch/extrasolar/figures';
 
 // -- the host seam ------------------------------------------------------------
 export type { CoreMessages, Host, HostOverrides } from '$lib/host';

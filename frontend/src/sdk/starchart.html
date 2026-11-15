@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>spacemap SDK — star chart demo</title>
+		<style>
+			html,
+			body {
+				margin: 0;
+				min-height: 100%;
+				background: #05070e;
+				color: #e6e6e6;
+				font:
+					14px/1.45 system-ui,
+					sans-serif;
+			}
+			main {
+				box-sizing: border-box;
+				max-width: 1100px;
+				margin: 0 auto;
+				padding: 16px;
+			}
+			h1 {
+				margin: 0 0 4px;
+				font-size: 16px;
+			}
+			h1 small {
+				font-weight: normal;
+				color: #9aa;
+			}
+			.pages {
+				margin: 0 0 6px;
+				font-size: 12px;
+				color: #9aa;
+			}
+			.pages a {
+				color: #8cf;
+			}
+			#bar {
+				display: flex;
+				flex-wrap: wrap;
+				align-items: center;
+				gap: 8px;
+				margin: 10px 0;
+			}
+			#bar label {
+				display: flex;
+				align-items: center;
+				gap: 4px;
+				color: #9aa;
+			}
+			select,
+			button {
+				font: inherit;
+				color: inherit;
+				background: #171a24;
+				border: 1px solid #3a3e4d;
+				border-radius: 6px;
+				padding: 4px 8px;
+			}
+			button {
+				cursor: pointer;
+			}
+			#error {
+				color: #f88;
+			}
+			#log,
+			#overlay-info {
+				font:
+					12px/1.5 ui-monospace,
+					monospace;
+				color: #9fb0c9;
+				white-space: pre-wrap;
+			}
+			/* A box the reader can resize, to watch the chart follow it. */
+			#box {
+				position: relative;
+				width: min(100%, 720px);
+				resize: both;
+				overflow: hidden;
+				border: 1px dashed #2c2f3a;
+			}
+			#box.fill {
+				height: 480px;
+			}
+			/* The page's own names, drawn from the overlay. */
+			#own {
+				position: absolute;
+				inset: 0;
+				pointer-events: none;
+			}
+			#own text {
+				pointer-events: auto;
+				cursor: pointer;
+			}
+			.light,
+			.light body {
+				background: #f4f1ea;
+				color: #222;
+			}
+			.light select,
+			.light button {
+				background: #fff;
+				border-color: #bbb;
+			}
+			#own text {
+				fill: #ffd479;
+				font: 600 11px system-ui;
+				paint-order: stroke;
+				stroke: #000;
+				stroke-width: 3px;
+			}
+			#own circle {
+				fill: none;
+				stroke: #ffd479;
+			}
+			#map {
+				height: 360px;
+				margin-top: 12px;
+			}
+		</style>
+	</head>
+	<body>
+		<main>
+			<nav class="pages">
+				<a href="index.html">index</a> · <a href="demo.html">3D</a> ·
+				<a href="flatmap.html">flat</a> · <a href="panorama.html">panorama</a> ·
+				<a href="systemmap.html">system</a> · <b>star chart</b> · <a href="all.html">all</a>
+			</nav>
+			<h1>spacemap star chart <small>demo</small></h1>
+			<p id="error" hidden></p>
+			<div id="bar">
+				<select id="figure">
+					<option value="culture-modern_iau/Ori">Orion</option>
+					<option value="culture-modern_iau/Cru">Crux</option>
+					<option value="culture-modern_iau/Hya">Hydra</option>
+					<option value="culture-modern_iau/UMi">Ursa Minor</option>
+					<option value="culture-chinese/005">Chinese: Northern Dipper</option>
+					<option value="culture-boorong/Kul">Boorong: Kulkunbulla</option>
+					<option value="culture-arabic_indigenous/Thur">Arabic: al-Thurayya</option>
+				</select>
+				<select id="framing">
+					<option value="fit">fit</option>
+					<option value="fill">fill</option>
+				</select>
+				<label><input id="names" type="checkbox" checked /> names</label>
+				<label><input id="neighbours" type="checkbox" checked /> neighbours</label>
+				<label><input id="own-names" type="checkbox" /> the page's own names</label>
+				<button id="remount" type="button">Remount</button>
+				<button id="stress" type="button">Mount and remove ×20</button>
+			</div>
+			<div id="box"><svg id="own"></svg></div>
+			<p id="log">click a name</p>
+			<p id="overlay-info"></p>
+			<div id="map" hidden></div>
+		</main>
+
+		<script type="module">
+			import { createMap, createStarChart, StarChartError } from './spacemap.js';
+
+			// ?data=<export root> ?tiles=<tile host> ?lang=<bcp47>
+			// ?figure=<slug>/<figure> ?framing=fit|fill ?names=0 ?neighbours=0 ?sky=0
+			// ?height=<px>  the box's height with fill   ?light=1  a light page
+			// ?nc=0   the page has not accepted the non-commercial terms
+			// ?map=1  a Solar System map below, whose sky the chart reads
+			// ?map=2  the same map, made after the first chart
+			// ?throw=1  an overlay listener that throws
+			const params = new URLSearchParams(location.search);
+			const local = ['localhost', '127.0.0.1'].includes(location.hostname);
+			const dataUrl = params.get('data') ?? (local ? 'http://localhost:8080' : null);
+			// The local data server serves the sky cultures and tiles too.
+			const tilesUrl = params.get('tiles') ?? (local ? dataUrl : null);
+
+			const $ = (id) => document.getElementById(id);
+			const fail = (e) => {
+				const reason = e instanceof StarChartError ? ` (${e.reason})` : '';
+				$('error').textContent = `${e?.message ?? e}${reason}`;
+				$('error').hidden = false;
+			};
+
+			const host = {};
+			if (dataUrl) host.dataUrl = dataUrl;
+			if (tilesUrl) host.tilesUrl = tilesUrl;
+			if (params.has('lang')) host.locale = params.get('lang');
+			// The sky cultures are for non-commercial use, as this page is.
+			host.includeNonCommercial = params.get('nc') !== '0';
+
+			if (params.has('figure')) {
+				const option = document.createElement('option');
+				option.value = option.textContent = params.get('figure');
+				$('figure').prepend(option);
+				$('figure').value = option.value;
+			}
+			$('framing').value = params.get('framing') ?? 'fit';
+			if (params.get('light') === '1') document.documentElement.classList.add('light');
+			if (params.has('height')) $('box').style.height = `${params.get('height')}px`;
+			$('names').checked = params.get('names') !== '0';
+			$('neighbours').checked = params.get('neighbours') !== '0';
+
+			let map = null;
+			const openMap = async () => {
+				$('map').hidden = false;
+				map = await createMap({ container: $('map'), ...host });
+				globalThis.map = map;
+			};
+			if (params.get('map') === '1') await openMap();
+
+			const drawOwn = (overlay) => {
+				const svg = $('own');
+				svg.replaceChildren();
+				if (!$('own-names').checked || !overlay) return;
+				svg.setAttribute('viewBox', `0 0 ${overlay.frame.width} ${overlay.frame.height}`);
+				for (const star of [...overlay.stars, ...overlay.neighbours]) {
+					if (!star.name) continue;
+					const ring = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+					ring.setAttribute('cx', star.x);
+					ring.setAttribute('cy', star.y);
+					ring.setAttribute('r', 5);
+					const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+					text.setAttribute('x', star.x + 8);
+					text.setAttribute('y', star.y + 4);
+					text.textContent = star.name;
+					text.onclick = () => {
+						$('log').textContent = `the page's own name: ${star.name} ${star.id}`;
+						globalThis.lastOwnSelect = star;
+					};
+					svg.append(ring, text);
+				}
+			};
+			const describe = (overlay) => {
+				$('overlay-info').textContent =
+					`overlay: ${overlay.stars.length} stars, ${overlay.neighbours.length} neighbours, ` +
+					`${overlay.lines.length} lines, ${overlay.labels.length} labels, sky ${overlay.sky}\n` +
+					`credits: ${(chart?.credits ?? []).map((c) => `${c.section}: ${c.organisation}`).join(' · ')}`;
+			};
+
+			let chart = null;
+			const openOnce = async () => {
+				chart?.remove();
+				chart = null;
+				$('error').hidden = true;
+				const [slug, figure] = $('figure').value.split('/');
+				const framing = $('framing').value;
+				$('box').className = framing;
+				$('box').querySelector('.sm-chart')?.remove();
+				try {
+					chart = await createStarChart({
+						container: $('box'),
+						...host,
+						slug,
+						figure,
+						framing,
+						names: $('names').checked && !$('own-names').checked,
+						neighbours: $('neighbours').checked,
+						sky: params.get('sky') !== '0',
+						map: map ?? undefined,
+						events: {
+							select: (star) => {
+								$('log').textContent =
+									`select: ${star.name ?? '(no name)'} ${star.id} ` +
+									`RA ${star.ra.toFixed(3)}° Dec ${star.dec.toFixed(3)}° ` +
+									`at ${star.x.toFixed(0)}, ${star.y.toFixed(0)} px` +
+									(star.member ? '' : ' (neighbour)');
+								globalThis.lastSelect = star;
+							},
+							overlay: (overlay) => {
+								drawOwn(overlay);
+								describe(overlay);
+								if (params.get('throw') === '1') throw new Error('a page listener that throws');
+							},
+							error: fail
+						}
+					});
+					// The chart goes after the page's own layer, which stays on top.
+					$('box').append($('own'));
+					globalThis.chart = chart;
+					describe(chart.getOverlay());
+				} catch (e) {
+					fail(e);
+				}
+			};
+			// One chart at a time: a control changed while a chart is on its way waits for it.
+			let queue = Promise.resolve();
+			const open = () => (queue = queue.then(openOnce));
+			await open();
+			if (params.get('map') === '2') {
+				await openMap();
+				await open();
+			}
+
+			for (const id of ['figure', 'framing', 'names', 'neighbours', 'own-names'])
+				$(id).onchange = open;
+			$('remount').onclick = open;
+			$('stress').onclick = async () => {
+				for (let i = 0; i < 20; i++) await open();
+				$('log').textContent = 'mounted and removed 20 times';
+			};
+			globalThis.openChart = open;
+		</script>
+	</body>
+</html>

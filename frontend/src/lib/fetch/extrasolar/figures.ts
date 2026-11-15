@@ -18,7 +18,12 @@ import {
 	type ChartStar,
 	type FigureChart
 } from '$lib/star-chart/figure';
-import { extrasolarPermanent, type ExtrasolarCredit } from './files';
+import {
+	extrasolarAllowed,
+	extrasolarPermanent,
+	fetchExtrasolarMetadata,
+	type ExtrasolarCredit
+} from './files';
 import {
 	cultureName,
 	cultureStarName,
@@ -42,15 +47,23 @@ export function figurePageName(figure: SkyCultureFigure, locale: string): string
 	return labelOf(figure, locale) ?? figure.slug ?? figure.id;
 }
 
-async function loadFigure(
-	slug: string,
-	segment: string
-): Promise<{ culture: LoadedSkyCulture; figure: SkyCultureFigure }> {
+interface FoundFigure {
+	culture: LoadedSkyCulture;
+	figure: SkyCultureFigure;
+}
+
+/** A figure and its culture, or null where the export or the host has none. */
+async function findLoadedFigure(slug: string, segment: string): Promise<FoundFigure | null> {
 	const key = slug.slice(SKY_CULTURE_SLUG_PREFIX.length);
 	const culture = await fetchSkyCulture(key);
 	const figure = culture?.file.key === key ? findFigure(culture.file, segment) : undefined;
-	if (!culture || !figure) throw new Error(`no figure ${segment} in ${slug}`);
-	return { culture, figure };
+	return culture && figure ? { culture, figure } : null;
+}
+
+async function loadFigure(slug: string, segment: string): Promise<FoundFigure> {
+	const found = await findLoadedFigure(slug, segment);
+	if (!found) throw new Error(`no figure ${segment} in ${slug}`);
+	return found;
 }
 
 export async function fetchFigureName(slug: string, segment: string): Promise<string> {
@@ -204,5 +217,58 @@ export async function fetchFigureDetail(
 			parent_group_name:
 				entry.group === null ? page?.localized?.parent_group_name : cultureName(entry, lang)
 		}
+	};
+}
+
+/** Why a figure has no chart: the host serves no sky cultures, the page has
+ *  not accepted the culture's non-commercial terms, or the culture has no such
+ *  figure with a place in the sky. */
+export type StarChartErrorReason = 'unavailable' | 'non-commercial' | 'not-found';
+
+/** A figure with no chart here. `reason` says why. */
+export class StarChartError extends Error {
+	constructor(
+		readonly reason: StarChartErrorReason,
+		message: string
+	) {
+		super(`spacemap: ${message}`);
+		this.name = 'StarChartError';
+	}
+}
+
+/**
+ * A figure's name and chart, for a chart with no page around it. Rejects with
+ * a {@link StarChartError} when the figure has no chart, and as the fetch does
+ * when a file does not load.
+ */
+export async function fetchFigureChart(
+	slug: string,
+	segment: string,
+	lang: string = getLocale()
+): Promise<{ name: string; chart: LoadedChart }> {
+	const table = (await fetchExtrasolarMetadata())?.skycultures;
+	if (!table) throw new StarChartError('unavailable', 'this host serves no sky cultures');
+	const key = slug.startsWith(SKY_CULTURE_SLUG_PREFIX)
+		? slug.slice(SKY_CULTURE_SLUG_PREFIX.length)
+		: null;
+	const entry = table.cultures.find((culture) => culture.key === key);
+	if (!entry) throw new StarChartError('not-found', `no sky culture ${slug}`);
+	if (!extrasolarAllowed(entry))
+		throw new StarChartError(
+			'non-commercial',
+			`${slug} is for non-commercial use: set includeNonCommercial to draw it`
+		);
+	const found = await findLoadedFigure(slug, segment);
+	if (!found || !figurePlaced(found.culture.file, found.figure))
+		throw new StarChartError(
+			'not-found',
+			`no figure ${segment} with a place in the sky in ${slug}`
+		);
+	const { culture, figure } = found;
+	// The page only adds the localized names of its stars.
+	const page = figure.page ? await fetchGroupDetail(figure.page, lang).catch(() => null) : null;
+	return {
+		name: figurePageName(figure, lang),
+		chart: await loadChart(culture, figure, starNamer(page, lang))
 	};
 }
