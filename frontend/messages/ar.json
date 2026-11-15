@@ -484,6 +484,20 @@
 		}
 	],
 	"group_stat_members": "الأعضاء",
+	"group_count_worlds": [
+		{
+			"declarations": ["input count", "input display", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=zero": "لا عالم",
+				"countPlural=one": "عالم واحد",
+				"countPlural=two": "عالمين",
+				"countPlural=few": "{display} عوالم",
+				"countPlural=many": "{display} عالمًا",
+				"countPlural=other": "{display} عالم"
+			}
+		}
+	],
 	"group_stat_named": "المُسمّاة",
 	"group_stat_active": "نشط",
 	"group_stat_first_launch": "أول إطلاق",

@@ -455,6 +455,16 @@
 		}
 	],
 	"group_stat_members": "成员",
+	"group_count_worlds": [
+		{
+			"declarations": ["input count", "input display", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{display} 个天体",
+				"countPlural=other": "{display} 个天体"
+			}
+		}
+	],
 	"group_stat_named": "已命名",
 	"group_stat_active": "运行中",
 	"group_stat_first_launch": "首次发射",

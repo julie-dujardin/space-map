@@ -453,6 +453,16 @@
 		}
 	],
 	"group_stat_members": "メンバー",
+	"group_count_worlds": [
+		{
+			"declarations": ["input count", "input display", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{display} 個の天体",
+				"countPlural=other": "{display} 個の天体"
+			}
+		}
+	],
 	"group_stat_named": "命名済み",
 	"group_stat_active": "稼働中",
 	"group_stat_first_launch": "初回打ち上げ",

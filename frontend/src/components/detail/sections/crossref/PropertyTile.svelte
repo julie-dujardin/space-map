@@ -73,6 +73,16 @@
 	);
 	let count = $derived(n != null ? Promise.resolve(n) : detail.then((d) => d.global?.member_count));
 
+	/** A property page's members are worlds that carry it, so they are counted
+	 *  as worlds; anything else this tile backs (the Solar System's children)
+	 *  is a collection whose name already says what its members are. */
+	function countLabel(total: number): string {
+		const display = formatCompactNumber(total);
+		return drawn
+			? m.group_count_worlds({ count: total, display })
+			: joinParts({ value: display, unit: m.group_stat_members() });
+	}
+
 	function tint(e: NotableMemberEntry): string {
 		return (e.id ? BODY_COLORS[e.id] : undefined) ?? e.color ?? DEFAULT_BODY_COLOR;
 	}
@@ -108,9 +118,7 @@
 	<GroupTile
 		{slug}
 		name={name ?? categoryLabel(slug)}
-		label={total != null
-			? joinParts({ value: formatCompactNumber(total), unit: m.group_stat_members() })
-			: ''}
+		label={total != null ? countLabel(total) : ''}
 		background={drawn ? drawings : undefined}
 		{tab}
 		class={className}

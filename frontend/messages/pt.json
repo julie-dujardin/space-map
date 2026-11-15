@@ -533,6 +533,17 @@
 		}
 	],
 	"group_stat_members": "Membros",
+	"group_count_worlds": [
+		{
+			"declarations": ["input count", "input display", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{display} mundo",
+				"countPlural=many": "{display} mundos",
+				"countPlural=other": "{display} mundos"
+			}
+		}
+	],
 	"group_stat_named": "Nomeados",
 	"group_stat_active": "Ativos",
 	"group_stat_first_launch": "Primeiro lançamento",

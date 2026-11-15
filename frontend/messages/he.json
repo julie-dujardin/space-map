@@ -538,6 +538,18 @@
 		}
 	],
 	"group_stat_members": "חברים",
+	"group_count_worlds": [
+		{
+			"declarations": ["input count", "input display", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "עולם אחד",
+				"countPlural=two": "שני עולמות",
+				"countPlural=many": "{display} עולמות",
+				"countPlural=other": "{display} עולמות"
+			}
+		}
+	],
 	"group_stat_named": "בעלי שם",
 	"group_stat_active": "פעילים",
 	"group_stat_first_launch": "שיגור ראשון",
