@@ -18,6 +18,7 @@ function state(): FocusState {
 		camTargetWorld: null,
 		camTargetOffset: null,
 		camOriginOffset: null,
+		camTargetSpun: null,
 		flyQ0: null,
 		orbitFly: false,
 		arcOrbit: false,

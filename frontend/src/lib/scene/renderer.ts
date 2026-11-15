@@ -402,6 +402,7 @@ export class SceneRenderer {
 		camTargetWorld: null,
 		camTargetOffset: null,
 		camOriginOffset: null,
+		camTargetSpun: null,
 		flyQ0: null,
 		orbitFly: false,
 		arcOrbit: false,
@@ -2572,6 +2573,7 @@ export class SceneRenderer {
 		this.focus.camTargetWorld = null;
 		this.focus.camTargetOffset = null;
 		this.focus.camOriginOffset = null;
+		this.focus.camTargetSpun = null;
 		this.focus.flyQ0 = null;
 		this.focus.orbitFly = false;
 		this.focus.arcOrbit = false;
@@ -3054,6 +3056,41 @@ export class SceneRenderer {
 		}
 		fc.snapOntoGround(host, view);
 		return 0;
+	}
+
+	/** @internal Fly to `height` over the ground the probe `id` stands on,
+	 *  looking down at it, wherever the camera is. Null when it is not on the
+	 *  ground. */
+	frameLanded(id: string, height: number): number | null {
+		const body = this.ctx.getBody(id);
+		if (!body) return null;
+		this.applyJdUpdate();
+		const landed = this.focusController.landedSite(body);
+		if (!landed) return null;
+		this.disarmLimits();
+		this.focusWasOutOfRange = false;
+		return this.focusController.arriveAbove(landed.host, landed.site, height, body);
+	}
+
+	/** @internal Scene units from the camera to a feature's seat, or to the
+	 *  probe `target` while it stands on the ground. Null for anything else,
+	 *  and with no place. It reads the drawn date and starts no loads, because
+	 *  a page calls it from reactive code. */
+	groundRange(target: string | FeatureAnchor): number | null {
+		const jd = this.placedJd;
+		if (Number.isNaN(jd)) return null;
+		const camera = this.focusController.cameraTruePos();
+		if (typeof target === 'string') {
+			const body = this.ctx.getBody(target);
+			if (!body || !this.focusController.onGroundAt(body, jd)) return null;
+			const at = this.placer.place(body, jd);
+			return at && f64dist(camera, at);
+		}
+		const host = this.ctx.getBody(target.hostId);
+		const hostPos = host && this.placer.place(host, jd);
+		if (!host || !hostPos) return null;
+		const hostBo = this.bodyObjects.get(host.data.id);
+		return f64dist(camera, featureSeat(target, host, hostPos, hostBo, jd));
 	}
 
 	/** Focused body when the NDC ray hits its overlay model, else null. Cast in

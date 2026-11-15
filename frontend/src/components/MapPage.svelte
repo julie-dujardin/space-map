@@ -6,7 +6,14 @@
 	import { lockPageZoom } from '$lib/page-zoom';
 	import { SpaceMap, lookOf, type Arrival } from '$lib/scene/space-map.svelte';
 	import { formatJulianDate } from '$lib/format/date';
-	import { isDiscless, ObjectType, type PositionedBody } from '$lib/types/objects';
+	import {
+		effectiveRadiusKm,
+		isDiscless,
+		ObjectType,
+		type FeatureAnchor,
+		type PositionedBody
+	} from '$lib/types/objects';
+	import { featureStandoff } from '$lib/scene/objects/surface/nomenclature';
 	import { minCameraDistance } from '$lib/scene/visibility/camera-limits';
 	import { DEFAULT_VIEW, UrlType } from '$lib/state/view';
 	import { UNPLACED_TOAST } from '$lib/state/notices';
@@ -124,7 +131,7 @@
 	import LoadingBar from './LoadingBar.svelte';
 	import ReloadButton from './ReloadButton.svelte';
 	import { lazyImport } from '$lib/lazy-import';
-	import { sceneToKm } from '$lib/math/units';
+	import { kmToScene, sceneToKm } from '$lib/math/units';
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import { jdToDate } from '$lib/time/jd';
 	import { isExtrasolarObjectId, isStarObjectId } from '$lib/fetch/extrasolar/ids';
@@ -480,6 +487,33 @@
 		const planet = selectedBody.exoplanet;
 		if (planet) return { kind: 'planet', body: selectedBody, anchor: planet };
 		return { kind: 'body', body: selectedBody };
+	});
+
+	/** The drawer's feature, where it has one, as the camera finds it on its host. */
+	const drawerFeature = $derived.by((): FeatureAnchor | null => {
+		if (focusable?.kind !== 'feature') return null;
+		const { featureId, lat, lon, diameterM } = focusable.feature;
+		return { hostId: focusable.body.data.id, featureId, lat, lon, diameterM };
+	});
+
+	/** How far over a feature its zoom button puts the camera. */
+	function featureFraming(feature: FeatureAnchor, host: PositionedBody): number {
+		return featureStandoff(feature.diameterM, effectiveRadiusKm(host.data));
+	}
+
+	/** Whether the camera frames the drawer's feature or landed probe. Measured
+	 *  from the object, because the camera orbits the host's centre. Undefined
+	 *  for other objects. */
+	const groundFramed = $derived.by((): boolean | undefined => {
+		void appState.view.zoom;
+		void appState.view.latitude;
+		void appState.view.longitude;
+		const body = selectedBody;
+		if (!body) return undefined;
+		const feature = drawerFeature;
+		const range = map.groundRange(feature ?? body.data.id);
+		if (range === null) return feature ? false : undefined;
+		return range <= (feature ? featureFraming(feature, body) : framingZoom(body)) * 4;
 	});
 
 	/** The opening view has no panel yet. A page of the catalogue opens with
@@ -1467,13 +1501,31 @@
 					inert={bgInert}
 					inPlace={placeholderHeld}
 					onClose={() => closeDetail()}
+					framed={groundFramed}
 					onMaximize={() => {
 						if (!selectedBody) return;
+						// On the ground the camera flies down over it: a move to it would
+						// only turn the view where it already looks over its host.
+						if (drawerFeature) {
+							map.frameFeature(drawerFeature);
+							return;
+						}
+						if (map.frameLanded(selectedBody.data.id, framingZoom(selectedBody)) !== null) return;
 						if (isDiscless(selectedBody.data)) frameStarSystem(selectedBody);
 						else map.focusOnBody(selectedBody.data.id, framingZoom(selectedBody));
 					}}
 					onMinimize={() => {
 						if (!selectedBody) return;
+						// Back out over the feature until its host is framed whole.
+						if (drawerFeature) {
+							const host = selectedBody;
+							const height = framingZoom(host) - kmToScene(effectiveRadiusKm(host.data));
+							map.frameFeature(
+								drawerFeature,
+								Math.max(height, featureFraming(drawerFeature, host) * 5)
+							);
+							return;
+						}
 						if (isExtrasolarObjectId(selectedBody.data.id)) {
 							frameStarSystem(selectedBody);
 							return;

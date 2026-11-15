@@ -82,6 +82,10 @@
 		 *  maximized object, which offers the map as a link instead. */
 		onMaximize?: () => void;
 		onMinimize?: () => void;
+		/** Whether the camera frames the object, where its distance to the body
+		 *  it orbits cannot tell: a landed probe or a feature, which stand on
+		 *  their host's ground. Read from that distance when left out. */
+		framed?: boolean;
 		/** The map's own page for this object, shown at the top of the overview
 		 *  when the panel is open somewhere that is not the map. */
 		mapHref?: string;
@@ -100,6 +104,7 @@
 		onClose,
 		onMaximize,
 		onMinimize,
+		framed,
 		mapHref,
 		onSheetResize,
 		inert = false,
@@ -234,11 +239,12 @@
 	// overshoot can't strand the camera on the maximize side of an exact threshold.
 	// With no disc to close in on, the camera only ever frames the object's system.
 	let isMinimized = $derived(
-		appState && objectBody && !isDiscless(objectBody.data)
-			? appState.view.zoom <= minCameraDistance(objectBody) * 20
-			: false
+		framed ??
+			(appState && objectBody && !isDiscless(objectBody.data)
+				? appState.view.zoom <= minCameraDistance(objectBody) * 20
+				: false)
 	);
-	let showCameraButtons = $derived(!isFeatureMode && !!objectBody && !!onMaximize && !!onMinimize);
+	let showCameraButtons = $derived(!!objectBody && !!onMaximize && !!onMinimize);
 	// The action row is the map's: elsewhere the panel heads its overview with
 	// the way back to the map instead, and a collection is not an object to act on.
 	let showActions = $derived(!mapHref && !!objectBody);

@@ -128,6 +128,7 @@ function harness({ spun }: { spun: boolean }) {
 			camTargetWorld: null,
 			camTargetOffset: null,
 			camOriginOffset: null,
+			camTargetSpun: null,
 			flyQ0: null,
 			orbitFly: false,
 			arcOrbit: false,

@@ -1425,6 +1425,10 @@ export class SpaceMap {
 	): number;
 	// @internal
 	focusOnPathPoint(centerId: string, rKm: readonly [number, number, number]): void;
+	// @internal
+	frameFeature(anchor: FeatureAnchor, height?: number): number;
+	// @internal
+	frameLanded(id: string, height: number): number | null;
 	getBody(id: string): Body_2 | undefined;
 	getCamera(): CameraState | null;
 	getChildren(id: string): string[];
@@ -1436,6 +1440,8 @@ export class SpaceMap {
 	getSubsolarPoint(id: string): LonLat | null;
 	// @internal
 	goTo(id: string, options?: GoToOptions): Promise<Arrival>;
+	// @internal
+	groundRange(target: string | FeatureAnchor): number | null;
 	// @internal
 	haloOnScreen(id: string): boolean;
 	hasTiles(id: string): Promise<boolean>;

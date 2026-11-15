@@ -66,7 +66,7 @@ import { LayerSet, MAP_LAYERS, type MapLayerId } from './layers';
 import { ControlHost, type Control, type ControlPosition } from './controls';
 import { onExtrasolarStale } from '$lib/fetch/extrasolar/files';
 import { isExtrasolarObjectId } from '$lib/fetch/extrasolar/ids';
-import { featureDiameterM } from '$lib/scene/objects/surface/nomenclature';
+import { featureStandoff } from '$lib/scene/objects/surface/nomenclature';
 import './map.css';
 
 export interface SpaceMapOptions {
@@ -1525,13 +1525,28 @@ export class SpaceMap {
 	): number {
 		const hostBody = this.ctx.getBody(bodyId);
 		if (!hostBody) return 0;
-		const idealScene = kmToScene(
-			(featureDiameterM(diameterM, effectiveRadiusKm(hostBody.data)) * 4) / 1000
-		);
-		const minScene = kmToScene(0.02);
-		const maxScene = kmToScene(effectiveRadiusKm(hostBody.data) * 5);
-		const zoom = Math.min(Math.max(idealScene, minScene), maxScene);
+		const zoom = featureStandoff(diameterM, effectiveRadiusKm(hostBody.data));
 		const anchor: FeatureAnchor = { hostId: bodyId, featureId, lat, lon, diameterM };
+		return this.featureMove(anchor, zoom, move, view, look);
+	}
+
+	/** @internal Fly to `height` scene units over a surface feature, wherever
+	 *  the camera is: the standoff {@link focusOnFeature} frames it at when
+	 *  left out. A turn from over its host would only aim the view at it. */
+	frameFeature(anchor: FeatureAnchor, height?: number): number {
+		const hostBody = this.ctx.getBody(anchor.hostId);
+		if (!hostBody) return 0;
+		const zoom = height ?? featureStandoff(anchor.diameterM, effectiveRadiusKm(hostBody.data));
+		return this.featureMove(anchor, zoom, 'frame');
+	}
+
+	private featureMove(
+		anchor: FeatureAnchor,
+		zoom: number,
+		move: 'turn' | 'frame' | 'snap',
+		view: CameraView | null = null,
+		look?: LookAngles
+	): number {
 		// The host takes the focus inside, and that is a move onto the feature.
 		this.movingToFeature = true;
 		try {
@@ -1539,6 +1554,21 @@ export class SpaceMap {
 		} finally {
 			this.movingToFeature = false;
 		}
+	}
+
+	/** @internal Fly to `height` scene units over the ground the probe `id`
+	 *  stands on, wherever the camera is: a move to it from over that ground
+	 *  would only aim the view at it. Null when `id` is not on the ground. */
+	frameLanded(id: string, height: number): number | null {
+		return this.renderer?.frameLanded(id, height) ?? null;
+	}
+
+	/** @internal Scene units from the camera to the seat of a surface feature,
+	 *  or to the probe `id` while it stands on the ground: what tells whether
+	 *  the camera is on either, where its distance to the body it orbits, the
+	 *  host's centre, cannot. Null for anything else, and with no place. */
+	groundRange(target: string | FeatureAnchor): number | null {
+		return this.renderer?.groundRange(target) ?? null;
 	}
 
 	/** @internal Re-aim at `body` without the focus handshake — for browser history. */

@@ -26,6 +26,11 @@ export interface FocusState {
 	 *  arc center drifts from the body at high sim speed, ballooning the radius.
 	 *  Null when the origin is world-fixed (approach flies from afar). */
 	camOriginOffset: Vec3 | null;
+	/** {@link camTargetOffset} on the spin axes of the body `bodyId`, for a fly
+	 *  onto its ground: the offset turns with the body, so the flight ends over
+	 *  the place it set out for and not where that place was at takeoff. Null
+	 *  when the target does not turn. */
+	camTargetSpun: { bodyId: string; offset: Vec3 } | null;
 	flyQ0: Quaternion | null;
 	orbitFly: boolean;
 	/** Camera circles the focus center at constant radius (arc, not chord) instead
@@ -207,6 +212,7 @@ export function stepFocusAnimation(
 		state.camTargetWorld = null;
 		state.camTargetOffset = null;
 		state.camOriginOffset = null;
+		state.camTargetSpun = null;
 		state.flyQ0 = null;
 		state.orbitFly = false;
 		state.arcOrbit = false;
@@ -247,6 +253,7 @@ export function prepareFocusTarget(
 	state.arcOrbit = false;
 	// Approach flies leave from a fixed world point; only arc-orbit tracks the origin.
 	state.camOriginOffset = null;
+	state.camTargetSpun = null;
 
 	if (camPos) {
 		state.camOriginWorld = cameraTruePos;

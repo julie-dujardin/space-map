@@ -6,6 +6,10 @@ import type { Vec3 } from '$lib/scene/animation/math';
 import type { OutOfRangeNotifier } from '$lib/scene/out-of-range-notice';
 import { refreshTrail, type TrailView } from '$lib/scene/objects/trail/refresh';
 import type { Placer } from './placer';
+import { Vector3 } from 'three';
+import { bodyQuaternion } from '$lib/math/orientation';
+
+const _turned = new Vector3();
 
 export interface UpdatePositionsParams {
 	jd: number;
@@ -114,6 +118,15 @@ export function updatePositions(params: UpdatePositionsParams): UpdatePositionsR
 		}
 	} else if (focusPos) {
 		setVec(focus.focusTargetWorld, focusPos);
+		const spun = focus.camTargetSpun;
+		if (spun && focus.camTargetOffset && focusedBody?.data.id === spun.bodyId) {
+			const q =
+				focusedBody.orientation && bodyQuaternion(focusedBody.orientation, jd, focusedBody.nutPrec);
+			if (q) {
+				_turned.set(...spun.offset).applyQuaternion(q);
+				setVec(focus.camTargetOffset, [_turned.x, _turned.y, _turned.z]);
+			}
+		}
 		const camOff = focus.camTargetOffset;
 		if (camOff && focus.camTargetWorld) addVec(focus.camTargetWorld, focusPos, camOff);
 		// Arc-orbit only: pin the start of the arc to the body too, so the body stays framed.

@@ -65,6 +65,14 @@ export function featureDiameterM(diameterM: number, hostRadiusKm: number): numbe
 	return diameterM > 0 ? diameterM : hostRadiusKm * 1000 * DEFAULT_FEATURE_DIAMETER_RADII;
 }
 
+/** Scene units over a feature that frame it: four of its diameters, floored
+ *  at 20 m and capped at five radii of its host, so it never collapses or
+ *  overshoots. */
+export function featureStandoff(diameterM: number, hostRadiusKm: number): number {
+	const ideal = kmToScene((featureDiameterM(diameterM, hostRadiusKm) * 4) / 1000);
+	return Math.min(Math.max(ideal, kmToScene(0.02)), kmToScene(hostRadiusKm * 5));
+}
+
 /** Approximate text-box height (px) of `.scene-feature-label` (12px font +
  *  line-height + shadow). Used as the y-overlap threshold in the collision cull. */
 const FEATURE_LINE_H = 16;

@@ -108,6 +108,8 @@ export function viewOverSite(
 }
 
 const _from = new Vector3();
+const _spun = new Vector3();
+const _unspin = new Quaternion();
 const _shift = new Vector3();
 const _forward = new Vector3();
 const _ground = new Vector3();
@@ -834,16 +836,17 @@ export class FocusController {
 		const { focus, callbacks } = this.deps;
 		const hostPos = this.place(host);
 		if (!hostPos) return 0;
-		const camPos = sphericalToCartesian(
-			[...hostPos],
-			view.latitude,
-			view.longitude,
-			view.zoom,
-			siteQuat(host, this.deps.clock.jd)
-		);
+		const q = siteQuat(host, this.deps.clock.jd);
+		const camPos = sphericalToCartesian([...hostPos], view.latitude, view.longitude, view.zoom, q);
 		callbacks.onCameraPosition?.(view.latitude, view.longitude, view.zoom);
 		this.pendingInitialView = null;
 		this.setFocusTarget(host, camPos, subject);
+		// The ground turns under the flight: its end turns with it.
+		const offset = focus.camTargetOffset;
+		if (q && offset) {
+			const spun = _spun.set(...offset).applyQuaternion(_unspin.set(...q).invert());
+			focus.camTargetSpun = { bodyId: host.data.id, offset: [spun.x, spun.y, spun.z] };
+		}
 		focus.orbitFly = true;
 		this.onGround = true;
 		this.placedOffSubject = true;
