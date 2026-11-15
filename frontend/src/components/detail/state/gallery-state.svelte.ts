@@ -9,6 +9,7 @@ import {
 	findGallery,
 	heroImage,
 	imageCount,
+	pictureSlide,
 	type Gallery,
 	type ShelfLink,
 	buildGalleries,
@@ -68,10 +69,9 @@ export class GalleryState {
 	readonly activeGallery: Gallery | undefined;
 	readonly hasImages: boolean;
 	readonly imageTotal: number;
-	readonly viewerImages: Gallery['images'] | undefined;
-	// Gate the viewer mount on a valid index AND a loaded images list. The
-	// AppState's `?img=` URL parser doesn't know how many images this gallery
-	// has, so we belt-and-braces the bound here too.
+	/** The shelf that the viewer pages through. */
+	readonly viewerShelf: Gallery | undefined;
+	/** The URL names a picture that the shelf holds. The URL parser does not know the shelf. */
 	readonly viewerActive: boolean;
 	// Structure tab's hero is the atmosphere shelf — what the cross-section
 	// plots is exactly what those photos show. Interior has no equivalent picture.
@@ -121,13 +121,12 @@ export class GalleryState {
 		this.activeGallery = $derived(findGallery(this.galleries, d.appState()?.view.gallery ?? null));
 		this.hasImages = $derived(this.galleries.length > 0);
 		this.imageTotal = $derived(imageCount(this.galleries));
-		this.viewerImages = $derived((this.activeGallery ?? this.galleries[0])?.images);
-		const viewerIndex = $derived(d.appState()?.view.imageIndex);
+		this.viewerShelf = $derived(this.activeGallery ?? this.galleries[0]);
+		const viewerPicture = $derived(d.appState()?.view.imageIndex ?? null);
 		this.viewerActive = $derived(
-			!!this.viewerImages &&
-				this.viewerImages.length > 0 &&
-				viewerIndex != null &&
-				viewerIndex < this.viewerImages.length
+			!!this.viewerShelf &&
+				viewerPicture !== null &&
+				pictureSlide(this.viewerShelf, viewerPicture) !== null
 		);
 		this.atmosphereGallery = $derived(findGallery(this.galleries, ATMOSPHERE_GALLERY));
 		this.exoplanetsGallery = $derived(findGallery(this.galleries, EXOPLANETS_GALLERY));

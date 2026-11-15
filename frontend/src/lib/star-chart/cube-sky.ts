@@ -99,7 +99,6 @@ export class CubeSkySource implements SkySource {
 		toneMapped: false
 	});
 	private readonly listeners = new Set<() => void>();
-	private target: WebGLRenderTarget | null = null;
 
 	/**
 	 * @param cube J2000 equatorial faces in the order of the skybox, with mips,
@@ -119,8 +118,8 @@ export class CubeSkySource implements SkySource {
 		const cube = this.cube();
 		const { renderer } = this;
 		if (!cube || renderer.getContext().isContextLost()) return null;
-		if (!this.target) this.target = new WebGLRenderTarget(width, height, { depthBuffer: false });
-		else this.target.setSize(width, height);
+		// A kept target of the viewer's size would hold tens of MB of the map's GPU memory.
+		const target = new WebGLRenderTarget(width, height, { depthBuffer: false });
 		const uniforms = this.material.uniforms;
 		uniforms.uSky.value = cube;
 		uniforms.uPixel.value = [1 / width, 1 / height];
@@ -134,11 +133,20 @@ export class CubeSkySource implements SkySource {
 		});
 		const data = new Uint8ClampedArray(width * height * 4);
 		const before = renderer.getRenderTarget();
-		renderer.setRenderTarget(this.target);
-		renderer.render(this.scene, this.camera);
-		renderer.readRenderTargetPixels(this.target, 0, 0, width, height, data);
-		renderer.setRenderTarget(before);
+		try {
+			renderer.setRenderTarget(target);
+			renderer.render(this.scene, this.camera);
+			renderer.readRenderTargetPixels(target, 0, 0, width, height, data);
+		} finally {
+			renderer.setRenderTarget(before);
+			target.dispose();
+		}
 		return { data, width, height };
+	}
+
+	finest(): number | null {
+		const cube = this.cube();
+		return cube ? Math.PI / 2 / (cube.userData.faceTexels as number) : null;
 	}
 
 	onChange(listener: () => void): () => void {
@@ -153,7 +161,6 @@ export class CubeSkySource implements SkySource {
 
 	dispose(): void {
 		this.listeners.clear();
-		this.target?.dispose();
 		this.geometry.dispose();
 		this.material.dispose();
 	}

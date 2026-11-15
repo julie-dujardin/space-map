@@ -10,7 +10,7 @@ import { acquireBitmap, releaseBitmap } from '$lib/flatmap/texture-cache';
 import { CAP_EDGE, MAP, NORTH, chartColumns, chartRows } from '$lib/scene/lod/tile-window';
 import type { ChartFrame } from './frame';
 import { CHART_GLSL, rayUniforms, type Pixels, type SkySource } from './sky';
-import { planSky, type SkyPlan, type SkyPyramid } from './sky-tiles';
+import { planSky, planYields, type SkyPlan, type SkyPyramid } from './sky-tiles';
 
 // The read starts at the bottom row of the picture, so the top of the frame is
 // drawn there.
@@ -278,6 +278,11 @@ export class TileSkySource implements SkySource {
 				if (tile.status === 'fulfilled' && tile.value) releaseBitmap(tile.value.key);
 			}
 		}
+	}
+
+	yields(frame: ChartFrame, width: number, height: number, step: number): boolean {
+		const plan = planSky(this.pyramid, frame, width, height);
+		return !!plan && planYields(plan, step, this.pyramid.tile_size);
 	}
 
 	/** A pyramid does not change while the page is open. */

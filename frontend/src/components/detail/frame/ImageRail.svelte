@@ -66,6 +66,7 @@
 					name={alt}
 					aspect={4 / 3}
 					labels={false}
+					{gallery}
 					class="h-28 shrink-0 snap-start rounded-md"
 				/>
 			{/if}

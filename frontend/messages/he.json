@@ -750,6 +750,8 @@
 	"panorama_map_expand": "הצגת ציר הזמן",
 	"panorama_map_collapse": "הסתרת ציר הזמן",
 	"image_view_on_commons": "צפה ב־Commons",
+	"image_drawn_credit": "{label}: {works}",
+	"image_drawn_work": "{name} ({license})",
 	"image_open_viewer": "פתח תמונה בגודל מלא",
 	"star_chart_label": "מפת כוכבים: {name}",
 	"image_previous": "התמונה הקודמת",

@@ -1,13 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import {
 	buildGalleries,
+	CHART_PICTURE,
 	EXOPLANETS_GALLERY,
 	findGallery,
 	imageCount,
 	imageTitle,
 	MAIN_GALLERY,
+	pictureSlide,
 	RINGS_GALLERY,
-	shelfCount
+	shelfCount,
+	slidePicture
 } from './galleries';
 import type { ObjectImage } from './object-data';
 
@@ -204,5 +207,31 @@ describe('the chart of a figure', () => {
 		expect(galleries).toEqual([{ key: MAIN_GALLERY, title: 'Turtle', images: [], chart }]);
 		expect(imageCount(galleries)).toBe(1);
 		expect(shelfCount(galleries[0])).toBe(1);
+	});
+});
+
+describe('the slides of the viewer', () => {
+	const chart = { slug: 'culture-maya', figure: '003', load: () => Promise.reject() };
+	const images = [image('a.jpg'), image('b.jpg')];
+
+	it('puts the chart first and keeps the index of each image', () => {
+		const shelf = { images, chart };
+		expect(pictureSlide(shelf, CHART_PICTURE)).toBe(0);
+		expect(pictureSlide(shelf, 0)).toBe(1);
+		expect(pictureSlide(shelf, 1)).toBe(2);
+		expect([0, 1, 2].map((slide) => slidePicture(shelf, slide))).toEqual([CHART_PICTURE, 0, 1]);
+	});
+
+	it('counts the images alone on a shelf with no chart', () => {
+		const shelf = { images };
+		expect(pictureSlide(shelf, 1)).toBe(1);
+		expect(slidePicture(shelf, 1)).toBe(1);
+	});
+
+	it('has no slide for a picture that the shelf does not hold', () => {
+		expect(pictureSlide({ images }, CHART_PICTURE)).toBeNull();
+		expect(pictureSlide({ images, chart }, 2)).toBeNull();
+		expect(pictureSlide({ images: [], chart }, 0)).toBeNull();
+		expect(pictureSlide({ images: [], chart }, CHART_PICTURE)).toBe(0);
 	});
 });

@@ -1,15 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import type { Vec3 } from '$lib/math/travel/vec3';
 import { MAP, NORTH, SOUTH } from '$lib/scene/lod/tile-window';
-import { fitFrame } from './frame';
-import { PEAK_SHARE } from './sky';
+import { stepOfLevel } from '$lib/flatmap/tile-plan';
+import { figureAspect, fillFrame, fitFrame } from './frame';
+import { PAINT_RATIO, PEAK_SHARE, paintRatio } from './sky';
 import {
 	MATCHED_PEAK_SHARE,
 	MAX_TILES,
+	MIN_TILES,
 	gridColumn,
 	peakShare,
 	planSky,
+	planYields,
 	skyPixel,
+	tileBudget,
 	type SkyPyramid
 } from './sky-tiles';
 
@@ -139,6 +143,14 @@ describe('planSky', () => {
 		expect(planSky(PYRAMID, frameAt(90, 40, 40, 360), 720, 720)!.chart).toBe(MAP);
 	});
 
+	it('reads a coarser level for a picture past its budget', () => {
+		// 2420 px over 48 degrees near the pole match level 3, which is 16 tiles there.
+		const frame = fitFrame([direction(240, 80)], { width: 1210, height: 900, minFieldDeg: 36 });
+		expect(planSky(PYRAMID, frame, 2420, 1800)).toMatchObject({ chart: NORTH, level: 3 });
+		const small = planSky(PYRAMID, frame, 1210, 900)!;
+		expect(small.tiles.length).toBeLessThanOrEqual(tileBudget(1210, 900, 1024));
+	});
+
 	it('never asks for more tiles than the limit', () => {
 		for (const [ra, dec, field, pixels] of [
 			[0, 89, 170, 2000],
@@ -186,5 +198,128 @@ describe('gridColumn', () => {
 		expect(row.map((x) => gridColumn(x, plan.column0, 2 ** plan.level * 2))).toEqual(
 			row.map((_, i) => i)
 		);
+	});
+});
+
+describe('tileBudget', () => {
+	it('gives a larger picture more tiles, within the bounds', () => {
+		expect(tileBudget(714, 714, 1024)).toBe(MIN_TILES);
+		expect(tileBudget(780, 1688, 1024)).toBeGreaterThan(MIN_TILES);
+		expect(tileBudget(2420, 1800, 1024)).toBe(MAX_TILES);
+	});
+});
+
+// Figures as RA and declination of their stars, degrees.
+const FIGURES: Record<string, [number, number][]> = {
+	cygnus: [
+		[310.4, 45.3],
+		[305.6, 40.3],
+		[311.6, 34.0],
+		[292.7, 28.0],
+		[296.2, 45.1],
+		[292.4, 51.7],
+		[289.3, 53.4],
+		[303.9, 47.7],
+		[314.3, 41.2],
+		[318.2, 30.2]
+	],
+	scorpius: [
+		[241.4, -19.8],
+		[240.1, -22.6],
+		[239.7, -26.1],
+		[245.3, -25.6],
+		[247.4, -26.4],
+		[249.0, -28.2],
+		[252.5, -34.3],
+		[253.0, -38.0],
+		[253.6, -42.4],
+		[258.0, -43.2],
+		[264.3, -43.0],
+		[266.9, -40.1],
+		[265.6, -39.0],
+		[267.5, -37.0],
+		[243.0, -19.5]
+	],
+	centaurus: [
+		[190.4, -49.0],
+		[205.0, -53.5],
+		[211.0, -60.4],
+		[219.9, -60.8],
+		[208.9, -47.3],
+		[209.7, -44.8],
+		[218.9, -42.2],
+		[215.1, -37.9],
+		[170.3, -54.5],
+		[182.1, -50.7],
+		[172.9, -59.4],
+		[202.8, -39.4],
+		[190.0, -40.0],
+		[224.8, -42.1]
+	],
+	ursaMajor: [
+		[178.5, 53.7],
+		[176.5, 47.8],
+		[167.4, 44.5],
+		[155.6, 41.5],
+		[169.6, 33.1],
+		[169.5, 31.5],
+		[183.9, 57.0],
+		[165.9, 61.8],
+		[193.5, 56.0],
+		[201.0, 54.9],
+		[206.9, 49.3],
+		[142.9, 63.1],
+		[127.6, 60.7],
+		[134.8, 48.0]
+	],
+	single: [[56.6, 24.1]]
+};
+
+/** The level, or the cube of 4096 px a face, of a chart as the drawer's hero
+ *  paints it and as the viewer paints it. */
+function levels(figure: string, viewer: [number, number], deviceRatio: number) {
+	const points = FIGURES[figure].map(([ra, dec]) => direction(ra, dec));
+	const cube = Math.PI / 2 / 4096;
+	const read = (frame: ReturnType<typeof fitFrame>, ratio: number) => {
+		const width = Math.round(frame.width * ratio);
+		const plan = planSky(PYRAMID, frame, width, Math.round(frame.height * ratio))!;
+		expect(plan.tiles.length).toBeLessThanOrEqual(tileBudget(width, frame.height * ratio, 1024));
+		return planYields(plan, cube, 1024) ? 'cube' : plan.level;
+	};
+	const aspect = figureAspect(points, 1, 1.6);
+	const hero = fitFrame(points, { width: 357, height: Math.round(357 / aspect) });
+	const [width, height] = viewer;
+	const fill = fillFrame(points, { width, height, clear: [16, 72] });
+	return [read(hero, PAINT_RATIO), read(fill, paintRatio(width, height, deviceRatio))];
+}
+
+describe('the maximised chart', () => {
+	// The cube of 4096 px a face holds the pixels of level 3.
+	it.each([
+		['cygnus', [1210, 900], 2, [2, 2]],
+		['scorpius', [1210, 900], 2, [2, 3]],
+		['centaurus', [1210, 900], 2, [2, 2]],
+		['centaurus', [1210, 900], 1, [2, 2]],
+		['ursaMajor', [390, 844], 3, [2, 'cube']],
+		['centaurus', [390, 844], 3, [2, 'cube']],
+		['single', [1210, 900], 2, [4, 5]]
+	] as const)('of %s in %j at ratio %d reads %j', (figure, viewer, ratio, expected) => {
+		expect(levels(figure, [...viewer], ratio)).toEqual(expected);
+	});
+});
+
+describe('planYields', () => {
+	const frame = fitFrame([direction(240, 80)], { width: 1210, height: 900, minFieldDeg: 36 });
+
+	it('keeps a plan at the level that the picture wants', () => {
+		const plan = planSky(PYRAMID, frame, 1210, 900)!;
+		expect(plan.short).toBe(false);
+		expect(planYields(plan, stepOfLevel(plan.level + 3, 1024), 1024)).toBe(false);
+	});
+
+	it('gives a plan that the budget made coarse to a sky two levels finer', () => {
+		const plan = { ...planSky(PYRAMID, frame, 1210, 900)!, short: true };
+		expect(planYields(plan, stepOfLevel(plan.level + 1, 1024), 1024)).toBe(false);
+		expect(planYields(plan, stepOfLevel(plan.level + 2, 1024), 1024)).toBe(true);
 	});
 });

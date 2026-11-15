@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fitFrame } from './frame';
-import { LayeredSky } from './layered-sky';
+import { INTERIM_PIXELS, LayeredSky } from './layered-sky';
 import type { Pixels, SkySource } from './sky';
 
 const frame = () => fitFrame([[1, 0, 0]], { width: 10, height: 10 });
@@ -77,6 +77,66 @@ describe('LayeredSky', () => {
 		expect(changed).toHaveBeenCalledTimes(1);
 		expect(await sky.paint(FRAME, 1, 1)).toBe(late);
 		expect(fine.paints).toBe(1);
+	});
+
+	it('paints a small coarse picture while a large fine one is on its way', async () => {
+		const fine = slow();
+		const sky = new LayeredSky(async () => fine);
+		const asked: number[][] = [];
+		sky.setCoarse({
+			paint: async (_frame, width, height) => {
+				asked.push([width, height]);
+				return picture(2);
+			},
+			onChange: () => () => {}
+		});
+		const first = sky.paint(FRAME, 2400, 1800);
+		await vi.advanceTimersByTimeAsync(300);
+		expect((await first)?.data[0]).toBe(2);
+		const [[width, height]] = asked;
+		expect(width * height).toBeLessThanOrEqual(INTERIM_PIXELS * 1.01);
+		expect(width / height).toBeCloseTo(2400 / 1800, 2);
+	});
+
+	it('paints the coarse sky where the fine one would read too coarse a level', async () => {
+		const fine = Object.assign(
+			source(async () => picture(1)),
+			{ yields: () => true }
+		);
+		const sky = new LayeredSky(async () => fine);
+		let finest: number | null = 1e-4;
+		sky.setCoarse(
+			Object.assign(
+				source(async () => picture(2)),
+				{ finest: () => finest }
+			)
+		);
+		expect((await sky.paint(FRAME, 1, 1))?.data[0]).toBe(2);
+		expect(fine.paints).toBe(0);
+		// With no coarse picture to give way to, the fine sky paints.
+		finest = null;
+		expect((await sky.paint(frame(), 1, 1))?.data[0]).toBe(1);
+	});
+
+	it('gives a fine picture up to a finer coarse sky that comes later', async () => {
+		const fine = Object.assign(
+			source(async () => picture(1)),
+			{ yields: () => true }
+		);
+		const sky = new LayeredSky(async () => fine);
+		let finest: number | null = null;
+		const coarse = Object.assign(
+			source(async () => picture(2)),
+			{ finest: () => finest }
+		);
+		sky.setCoarse(coarse);
+		const changed = vi.fn();
+		sky.watch(FRAME, changed);
+		expect((await sky.paint(FRAME, 1, 1))?.data[0]).toBe(1);
+		finest = 1e-4;
+		coarse.changed();
+		expect(changed).toHaveBeenCalledTimes(1);
+		expect((await sky.paint(FRAME, 1, 1))?.data[0]).toBe(2);
 	});
 
 	it('waits for the fine sky on a frame that has shown it', async () => {

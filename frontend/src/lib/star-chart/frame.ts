@@ -138,6 +138,52 @@ export function fitFrame(directions: readonly Vec3[], options: FrameOptions): Ch
 	return { ...box.axes, halfHeight: Math.max(grown, least), width, height };
 }
 
+/** Sky around the figure in a frame that fills an area, as a share of its
+ *  half size. The figure takes five eighths of the area at most. */
+export const FILL_MARGIN = 0.6;
+/** CSS pixels per degree at most in such a frame. The finest sky tiles hold
+ *  182 px per degree, and a chart paints two pixels per CSS pixel. */
+export const FILL_MAX_SCALE = 100;
+
+export interface FillOptions {
+	/** CSS pixels of the area. */
+	width: number;
+	height: number;
+	/** CSS pixels at the left and right edges, and at the top and bottom
+	 *  edges, that the figure stays out of. Sky still fills them. */
+	clear?: readonly [number, number];
+	margin?: number;
+	minFieldDeg?: number;
+}
+
+/**
+ * The frame that fills an area of any shape. The figure is at the centre at
+ * one scale in both axes; the rest of the area is the sky around it.
+ */
+export function fillFrame(directions: readonly Vec3[], options: FillOptions): ChartFrame {
+	const {
+		width,
+		height,
+		clear = [0, 0],
+		margin = FILL_MARGIN,
+		minFieldDeg = DEFAULT_MIN_FIELD_DEG
+	} = options;
+	const box = centredBox(directions);
+	// A small area keeps half of each side for the figure.
+	const free = [
+		Math.max(width - 2 * clear[0], width / 2),
+		Math.max(height - 2 * clear[1], height / 2)
+	];
+	// Plane units per CSS pixel.
+	const step = Math.max(
+		(2 * box.halfWidth * (1 + margin)) / free[0],
+		(2 * box.halfHeight * (1 + margin)) / free[1],
+		(2 * minHalf(minFieldDeg)) / Math.min(width, height),
+		Math.PI / 180 / FILL_MAX_SCALE
+	);
+	return { ...box.axes, halfHeight: (step * height) / 2, width, height };
+}
+
 /** Width over height of the figure with its margin, held between two limits so
  *  that a line of stars does not give a sliver. */
 export function figureAspect(

@@ -5,6 +5,7 @@
  * control, so an embed credits exactly what the site does.
  */
 
+import type { ExtrasolarCredit } from '$lib/fetch/extrasolar/files';
 import { SUN_ID } from '$lib/constants';
 import type { OrbitArchive } from '$lib/fetch/position/format';
 import type { ContextManager } from './context-manager.svelte';
@@ -76,6 +77,13 @@ export interface AttributionChips {
 	galaxyModel: boolean;
 }
 
+/** Who gave a part of the constellations, with the authors of a culture. */
+export function constellationCreditName(credit: ExtrasolarCredit): string {
+	return credit.authors && credit.authors[0] !== STELLARIUM_TEAM
+		? `${credit.organisation} (${credit.authors.join(', ')})`
+		: credit.organisation;
+}
+
 /** Reads the credit stores' version counters, so a caller in a `$derived` or
  *  `$effect` recomputes as the scene loads. */
 export function attributionChips(
@@ -101,15 +109,7 @@ export function attributionChips(
 
 	// An embed has no popover, so its bar is the only place for the authors.
 	const constellations = [
-		...new Set(
-			credits.constellations
-				.filter((c) => c.license)
-				.map((c) =>
-					c.authors && c.authors[0] !== STELLARIUM_TEAM
-						? `${c.organisation} (${c.authors.join(', ')})`
-						: c.organisation
-				)
-		)
+		...new Set(credits.constellations.filter((c) => c.license).map(constellationCreditName))
 	];
 
 	return {

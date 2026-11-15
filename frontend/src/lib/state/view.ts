@@ -12,6 +12,7 @@ import {
 	planetOfObjectId
 } from '$lib/fetch/extrasolar/ids';
 import { SKY_CULTURE_SLUG_PREFIX } from '$lib/fetch/groups/registry';
+import type { ShelfPicture } from '$lib/fetch/objects/galleries';
 
 /** URL path discriminator. Body types map 1:1 to ID prefix; Feature is a
  *  sub-selection on top of a body and uses a nested route shape
@@ -159,9 +160,9 @@ export interface MapViewState {
 	/** Camera framing (lat/lon/zoom) was explicit — an `?at=` block or group
 	 *  anchor. Absent for a bare deep link, which frames by target size/model. */
 	framed?: boolean;
-	/** 0-based index into the active gallery's images; null when the viewer is
-	 *  closed. Which gallery that is comes from `gallery`. */
-	imageIndex: number | null;
+	/** The picture that the viewer shows: a 0-based index into the images of
+	 *  the active gallery, or its chart. Null when the viewer is closed. */
+	imageIndex: ShelfPicture | null;
 	/** Image gallery opened under the Images tab; null = the shelf index.
 	 *  Deep-linked as `&gal=`, and what `imageIndex` counts into. */
 	gallery: string | null;

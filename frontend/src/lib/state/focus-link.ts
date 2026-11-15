@@ -7,6 +7,7 @@
  * bundles the repeated pieces: the href for each kind of target, the
  * modified-click test, and the click handler that focuses + flies the camera.
  */
+import type { ShelfPicture } from '$lib/fetch/objects/galleries';
 import type { RouteOption, TripState } from '$lib/travel/trip';
 import { isModifiedClick } from '$lib/modified-click';
 import type { AppState } from './app-state.svelte';
@@ -80,11 +81,11 @@ export function tripRouteHref(
 	return appState ? serializeUrl({ ...appState.view, trip: { ...trip, profile } }) : undefined;
 }
 
-/** The URL for the image viewer opened on one image. Pass the gallery key when
+/** The URL for the image viewer opened on one picture. Pass the gallery key when
  *  the link also has to switch shelves — the index counts into that gallery. */
 export function imageHref(
 	appState: AppState | undefined,
-	index: number,
+	index: ShelfPicture,
 	gallery?: string
 ): string | undefined {
 	if (!appState) return undefined;

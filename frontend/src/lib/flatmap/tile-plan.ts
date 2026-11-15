@@ -216,11 +216,12 @@ function fitted(
 	level: number,
 	tileSize: number,
 	extent: Extent,
-	margin: number
+	margin: number,
+	maxPixels: number
 ): WindowSpec | undefined {
 	for (const grow of [margin, 0]) {
 		const spec = windowOver(chart, level, tileSize, extent, grow);
-		if (spec.width * spec.height <= MAX_WINDOW_PIXELS) return spec;
+		if (spec.width * spec.height <= maxPixels) return spec;
 	}
 	return undefined;
 }
@@ -248,12 +249,14 @@ function reaches(patch: PatchRange, extent: Extent): boolean {
  * around the patch.
  *
  * `moves` is false for a frame that stays in place. Its windows have no margin.
+ * A window holds `maxPixels` at most.
  */
 export function planWindows(
 	pyramid: Pyramid,
 	frame: FrameSample,
 	firstLevel: number,
-	moves = true
+	moves = true,
+	maxPixels = MAX_WINDOW_PIXELS
 ): WindowSpec[] {
 	const margin = moves ? MARGIN : 0;
 	const centre = frame.place(0.5, 0.5);
@@ -283,16 +286,25 @@ export function planWindows(
 		}
 	}
 	for (let level = Math.min(wanted, finest); level > pyramid.max_level; level--) {
-		const spec = fitted(finestOn.chart, level, pyramid.tile_size, finestOn.extent, margin);
+		const spec = fitted(
+			finestOn.chart,
+			level,
+			pyramid.tile_size,
+			finestOn.extent,
+			margin,
+			maxPixels
+		);
 		if (!spec) continue;
 		specs.push(spec);
 		break;
 	}
 
 	for (let level = Math.min(wanted, pyramid.max_level); level >= firstLevel; level--) {
-		const map = fitted(MAP, level, pyramid.tile_size, onMap, margin);
+		const map = fitted(MAP, level, pyramid.tile_size, onMap, margin, maxPixels);
 		const polar =
-			onCap && level >= 1 ? fitted(cap, level, pyramid.tile_size, onCap, margin) : undefined;
+			onCap && level >= 1
+				? fitted(cap, level, pyramid.tile_size, onCap, margin, maxPixels)
+				: undefined;
 		const mapPixels = map ? map.width * map.height : Infinity;
 		const spec =
 			polar && polar.width * polar.height <= mapPixels * CAP_GAIN ? polar : (map ?? polar);

@@ -791,9 +791,10 @@
 
 <!-- Sibling of the drawer, not a descendant: keeps its pointer events out of
      Vaul's drag detection and the drawer's transform context. -->
-{#if gallery.viewerActive && gallery.viewerImages}
+{#if gallery.viewerActive && gallery.viewerShelf}
 	<ImageViewer
-		images={gallery.viewerImages}
+		images={gallery.viewerShelf.images}
+		chart={gallery.viewerShelf.chart}
 		alt={displayName}
 		subjectLink={(image) =>
 			image.subject === undefined ? undefined : gallery.subjectLink(image.subject)}

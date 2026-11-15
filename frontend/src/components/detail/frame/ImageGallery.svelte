@@ -37,6 +37,7 @@
 			picture={chart}
 			name={alt}
 			labels={false}
+			{gallery}
 			class="mb-2 break-inside-avoid rounded-md"
 		/>
 	{/if}

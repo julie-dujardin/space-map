@@ -26,13 +26,33 @@ export interface SkySource {
 	): Promise<Pixels | null>;
 	/** Hear when a new paint gives another picture. Returns the unsubscribe. */
 	onChange(listener: () => void): () => void;
+	/** Radians of sky in one pixel of the source at its finest. Null while the
+	 *  source has no sky. */
+	finest?(): number | null;
+	/** Whether a paint of this picture shows less than a sky whose pixel is
+	 *  `step` radians. */
+	yields?(frame: ChartFrame, width: number, height: number, step: number): boolean;
 }
 
 /** The sky of the charts on a page. Each chart hears of its own picture only. */
 export interface ChartSky {
+	/** As {@link SkySource.paint}. A picture shown while a better one is on its
+	 *  way can be smaller than asked. */
 	paint: SkySource['paint'];
 	/** Hear when a new paint of `frame` gives a better picture. Returns the unsubscribe. */
 	watch(frame: ChartFrame, listener: () => void): () => void;
+}
+
+/** Pixels of the painted sky per CSS pixel, at most. */
+export const PAINT_RATIO = 2;
+/** The most pixels of one painted sky. It caps the memory and the readback
+ *  of a paint on a large screen. */
+export const MAX_PAINT_PIXELS = 6_000_000;
+
+/** Painted pixels per CSS pixel for a frame of this size: `wanted` up to
+ *  {@link PAINT_RATIO}, or less for a frame past {@link MAX_PAINT_PIXELS}. */
+export function paintRatio(width: number, height: number, wanted = PAINT_RATIO): number {
+	return Math.min(wanted, PAINT_RATIO, Math.sqrt(MAX_PAINT_PIXELS / (width * height)));
 }
 
 /** Taps on each side of a pixel that holds `texels` of the source: one per

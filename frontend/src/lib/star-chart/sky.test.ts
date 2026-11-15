@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { fitFrame } from './frame';
-import { HALF_PEAK_SHARE, halved, paintedFlux, rayUniforms, type Pixels } from './sky';
+import {
+	HALF_PEAK_SHARE,
+	halved,
+	MAX_PAINT_PIXELS,
+	paintedFlux,
+	paintRatio,
+	rayUniforms,
+	type Pixels
+} from './sky';
 
 function sky(width: number, height: number, level: number): Pixels {
 	const data = new Uint8ClampedArray(width * height * 4).fill(level);
@@ -47,5 +55,34 @@ describe('halved', () => {
 		expect(half.data[0]).toBe(20);
 		expect(half.data[4]).toBe(Math.round(70 + 150 * HALF_PEAK_SHARE));
 		expect([half.data[3], half.data[7]]).toEqual([255, 255]);
+	});
+});
+
+describe('paintRatio', () => {
+	it('is the ratio wanted for a frame under the limit', () => {
+		expect(paintRatio(357, 300)).toBe(2);
+		expect(paintRatio(1210, 900)).toBe(2);
+		expect(paintRatio(1210, 900, 1)).toBe(1);
+	});
+
+	it('holds a large frame at the most pixels of a paint', () => {
+		const ratio = paintRatio(3840, 2160);
+		expect(ratio).toBeLessThan(1);
+		expect(3840 * ratio * 2160 * ratio).toBeCloseTo(MAX_PAINT_PIXELS, 0);
+		expect(paintRatio(3840, 2160, 1)).toBe(ratio);
+	});
+});
+
+describe('paintRatio of a chart that fills a screen', () => {
+	it('paints at the ratio of the screen, up to the most', () => {
+		for (const [device, painted] of [
+			[1, 1],
+			[1.25, 1.25],
+			[1.5, 1.5],
+			[2, 2],
+			[3, 2]
+		]) {
+			expect(paintRatio(1210, 900, device)).toBe(painted);
+		}
 	});
 });

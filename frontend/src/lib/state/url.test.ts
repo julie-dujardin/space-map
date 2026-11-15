@@ -32,6 +32,7 @@ import {
 	parseUrl,
 	serializeUrl
 } from './url';
+import { CHART_PICTURE } from '$lib/fetch/objects/galleries';
 import { DEFAULT_TRIP } from '$lib/travel/trip';
 import type { MapViewState } from './view';
 
@@ -156,6 +157,23 @@ describe('serializeUrl', () => {
 			});
 			expect(url.startsWith('/g/cat-moons/Moons?at=')).toBe(true);
 			expect(url).toContain('&img=2');
+		});
+
+		it('closes the viewer on the way to another object', () => {
+			const open: MapViewState = {
+				...baseView,
+				imageIndex: CHART_PICTURE,
+				tab: 'images',
+				gallery: 'main'
+			};
+			const star = applyFocus(open, { type: 'x', id: 'x-22610699', name: 'Rigel' });
+			expect(star.imageIndex).toBeNull();
+			expect(serializeUrl(star)).not.toContain('img=');
+		});
+
+		it('names the chart of the shelf with no index', () => {
+			const url = serializeUrl({ ...baseView, imageIndex: CHART_PICTURE, tab: 'images' });
+			expect(url).toContain('&img=chart&tab=images');
 		});
 	});
 
@@ -347,6 +365,26 @@ describe('parseUrl on a group', () => {
 		// plain URL.
 		page.url = new URL(url) as typeof page.url;
 	}
+
+	it('reads the picture of the viewer: an image by its index, or the chart', () => {
+		open('http://x/g/cat-moons/Moons?img=2&tab=images&gal=main');
+		expect(parseUrl()).toMatchObject({ imageIndex: 2, gallery: 'main' });
+		open('http://x/g/cat-moons/Moons?img=chart&tab=images&gal=main');
+		expect(parseUrl()!.imageIndex).toBe(CHART_PICTURE);
+		for (const none of ['', 'map', '-1', '1.5']) {
+			open(`http://x/g/cat-moons/Moons?img=${none}`);
+			expect(parseUrl()!.imageIndex, none).toBeNull();
+		}
+	});
+
+	it('writes the chart and an image index as it read them', () => {
+		for (const img of ['chart', '0', '3']) {
+			open(`http://x/g/cat-moons/Moons?img=${img}&tab=images&gal=main`);
+			const url = new URL(serializeUrl({ ...parseUrl()!, name: 'Moons' }), 'http://x');
+			expect(url.searchParams.get('img')).toBe(img);
+			expect(url.searchParams.get('gal')).toBe('main');
+		}
+	});
 
 	it('lands on the anchor, framed at the anchor zoom, without focus=', () => {
 		open('http://x/g/cat-moons/Moons');

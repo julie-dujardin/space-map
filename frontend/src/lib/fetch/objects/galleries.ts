@@ -25,6 +25,13 @@ export const FEATURES_GALLERY = 'features';
  *  its Exoplanets tab. */
 export const EXOPLANETS_GALLERY = 'exoplanets';
 
+/** What `&img=` holds for the chart of a shelf. The chart has no index, so
+ *  the indexes of the images do not depend on it. */
+export const CHART_PICTURE = 'chart';
+
+/** A picture of a shelf: the index of an image, or the chart. */
+export type ShelfPicture = number | typeof CHART_PICTURE;
+
 /** The chart of a figure of a sky culture: a picture that the browser draws. */
 export interface StarChartPicture {
 	/** The group slug of the culture. */
@@ -40,7 +47,7 @@ export interface Gallery {
 	key: string;
 	title: string;
 	images: ObjectImage[];
-	/** Leads the shelf. The viewer's index counts `images` alone. */
+	/** Leads the shelf. An image index counts `images` alone. */
 	chart?: StarChartPicture;
 	/** Object.id the whole shelf is about, linked under its title. */
 	subjectId?: string;
@@ -87,6 +94,22 @@ export function imageCount(galleries: Gallery[]): number {
 /** How many pictures one shelf holds. */
 export function shelfCount(gallery: Gallery): number {
 	return gallery.images.length + (gallery.chart ? 1 : 0);
+}
+
+type Shelf = Pick<Gallery, 'images' | 'chart'>;
+
+/** The place of a picture among the slides of the viewer, where the chart
+ *  leads. Null when the shelf holds no such picture. */
+export function pictureSlide(shelf: Shelf, picture: ShelfPicture): number | null {
+	const lead = shelf.chart ? 1 : 0;
+	if (picture === CHART_PICTURE) return lead ? 0 : null;
+	return picture >= 0 && picture < shelf.images.length ? picture + lead : null;
+}
+
+/** The picture at a slide of the viewer. */
+export function slidePicture(shelf: Shelf, slide: number): ShelfPicture {
+	if (!shelf.chart) return slide;
+	return slide === 0 ? CHART_PICTURE : slide - 1;
 }
 
 /** The bundle fields a gallery list is assembled from — object or group. */

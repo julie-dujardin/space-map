@@ -16,6 +16,7 @@ import {
 	type GroupOpen,
 	type NavEnd
 } from './url';
+import type { ShelfPicture } from '$lib/fetch/objects/galleries';
 import { serializeSearchSuffix, type SearchUrlState } from '$lib/search/url';
 import { serializeTripSuffix, type TripState } from '$lib/travel/trip';
 
@@ -347,9 +348,9 @@ export class AppState {
 		else this.pushNow();
 	}
 
-	/** Open the viewer on one image, or close it with null. Pass a gallery key
+	/** Open the viewer on one picture, or close it with null. Pass a gallery key
 	 *  to open it on another shelf — the index counts into that gallery. */
-	setImage(index: number | null, gallery?: string) {
+	setImage(index: ShelfPicture | null, gallery?: string) {
 		const prev = this.view.imageIndex;
 		const base = gallery === undefined ? this.view : applyGallery(this.view, gallery);
 		this.view = applyImage(base, index);

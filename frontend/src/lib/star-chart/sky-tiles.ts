@@ -15,9 +15,16 @@ import { PEAK_SHARE, tapsPerSide } from './sky';
 
 const DEG = Math.PI / 180;
 
-/** Tiles of one paint, at most: 64 MB as pixels. A frame that needs more
- *  reads a coarser level. */
-export const MAX_TILES = 16;
+/** Tiles of one paint, at most: 96 MB as pixels, the same on the GPU while the
+ *  paint runs, and about 6 MB to fetch. */
+export const MAX_TILES = 24;
+
+/** Tiles that any paint can read. The hero and the gallery tile need no more. */
+export const MIN_TILES = 9;
+
+/** Tile pixels per pixel of the picture that a paint can read. The tiles at
+ *  the edge of a frame are mostly outside it. */
+const TEXELS_PER_PIXEL = 10;
 
 /** Taps along one side of a pixel, at most. */
 export const MAX_TAPS = 6;
@@ -66,6 +73,8 @@ export interface SkyPlan {
 	taps: [across: number, down: number];
 	/** How much of its brightest tap a pixel keeps over its mean. */
 	peakShare: number;
+	/** The budget took a coarser level than the picture wants. */
+	short: boolean;
 }
 
 /** A direction as a place of the pyramid: east longitude and latitude, degrees. */
@@ -148,11 +157,29 @@ export function peakShare(pixels: number): number {
 	return MATCHED_PEAK_SHARE + (PEAK_SHARE - MATCHED_PEAK_SHARE) * ramp;
 }
 
+/** A finer sky shows more than tiles of this many times its pixel. One level
+ *  is not enough: the cube's bytes lose faint stars that the tiles keep. */
+const YIELD_RATIO = 4;
+
+/** Whether another sky whose pixel is `step` radians shows more than `plan`.
+ *  A plan that the budget made coarse gives way to a sky two levels finer. */
+export function planYields(plan: SkyPlan, step: number, tileSize: number): boolean {
+	return plan.short && step * YIELD_RATIO <= stepOfLevel(plan.level, tileSize);
+}
+
+/** The most tiles that a picture of this size reads. A larger picture reads
+ *  more, within {@link MAX_TILES}. */
+export function tileBudget(width: number, height: number, tileSize: number): number {
+	const wanted = Math.ceil((TEXELS_PER_PIXEL * width * height) / (tileSize * tileSize));
+	return Math.min(Math.max(wanted, MIN_TILES), MAX_TILES);
+}
+
 /**
  * The tiles that paint `frame` as a picture of `width` pixels. The level is
  * the first one whose pixels are as small as those of the picture, or the
- * finest of the pyramid. A wide chart reads one level more. The chart is the
- * map, or a cap for a frame near a pole, by the rule of the flat maps.
+ * finest of the pyramid. A wide chart reads one level more. A frame past the
+ * {@link tileBudget} reads a coarser level. The chart is the map, or a cap for
+ * a frame near a pole, by the rule of the flat maps.
  */
 export function planSky(
 	pyramid: SkyPyramid,
@@ -171,9 +198,12 @@ export function planSky(
 		levelForStep((centreScaleDeg(frame) * DEG * frame.width) / width, size),
 		0
 	);
-	let step = stepOfLevel(matched < WIDE_UNDER_LEVEL ? matched + 1 : matched, size);
+	const budget = tileBudget(width, height, size);
+	const wanted = Math.min(matched < WIDE_UNDER_LEVEL ? matched + 1 : matched, pyramid.max_level);
+	let step = stepOfLevel(wanted, size);
 	for (;;) {
-		const [spec] = planWindows(pyramid, { ...sample, step }, 0, false);
+		// The budget counts whole tiles, so the window has no pixel limit of its own.
+		const [spec] = planWindows(pyramid, { ...sample, step }, 0, false, Infinity);
 		if (!spec) return null;
 		const { chart, level } = spec;
 		const levelColumns = chartColumns(chart, level);
@@ -189,7 +219,7 @@ export function planSky(
 			Math.min(Math.floor((spec.y0 + spec.height - 1) / size), chartRows(chart, level) - 1) -
 			row0 +
 			1;
-		if (columns * rows > MAX_TILES && step < coarsest) {
+		if (columns * rows > budget && step < coarsest) {
 			step = Math.min(step * 2, coarsest);
 			continue;
 		}
@@ -214,7 +244,8 @@ export function planSky(
 			rows,
 			tiles,
 			taps: [tapsPerSide(across, MAX_TAPS), tapsPerSide(down, MAX_TAPS)],
-			peakShare: peakShare(across * down)
+			peakShare: peakShare(across * down),
+			short: level < wanted
 		};
 	}
 }

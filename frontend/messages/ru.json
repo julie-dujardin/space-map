@@ -684,6 +684,8 @@
 	"panorama_map_expand": "Показать хронологию",
 	"panorama_map_collapse": "Скрыть хронологию",
 	"image_view_on_commons": "Открыть в Commons",
+	"image_drawn_credit": "{label}: {works}",
+	"image_drawn_work": "{name} ({license})",
 	"image_open_viewer": "Открыть в полном размере",
 	"star_chart_label": "Звёздная карта: {name}",
 	"image_previous": "Предыдущее изображение",

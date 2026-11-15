@@ -132,7 +132,12 @@
 <!-- A figure of a sky culture is its stars: the chart goes before any picture of it. -->
 {#snippet starChartSnippet()}
 	{#if starChart}
-		<StarChart picture={starChart} name={data?.localized?.name ?? fallbackName} {...HERO_CHART} />
+		<StarChart
+			picture={starChart}
+			name={data?.localized?.name ?? fallbackName}
+			gallery={MAIN_GALLERY}
+			{...HERO_CHART}
+		/>
 	{/if}
 {/snippet}
 

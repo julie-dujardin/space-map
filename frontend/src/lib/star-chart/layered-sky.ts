@@ -2,7 +2,8 @@
  * Two skies as one: a fine source that needs time, over a coarse one that is
  * at hand. A chart gets the coarse picture when the fine one is slow, and is
  * told when its own fine picture is in. A fine source that fails is asked
- * again after a wait.
+ * again after a wait. A frame that the fine source reads too coarsely gets
+ * the coarse sky.
  */
 
 import { RetryBackoff } from '$lib/fetch/retry-backoff';
@@ -11,6 +12,10 @@ import type { ChartSky, Pixels, SkySource } from './sky';
 
 /** The fine picture gets this long before the coarse one is painted. */
 const GRACE_MS = 250;
+
+/** Pixels of a coarse picture that shows while the fine one is on its way, at
+ *  most. The coarse sky paints on the map's renderer and stops its frame. */
+export const INTERIM_PIXELS = 1_000_000;
 
 const SLOW = Symbol('slow');
 const FINE = 'fine';
@@ -28,6 +33,10 @@ export class LayeredSky implements ChartSky {
 	private coarse: SkySource | null = null;
 	private unsubscribe = (): void => {};
 	private readonly shown = new WeakMap<ChartFrame, Shown>();
+	/** The size of the last fine picture of a frame. */
+	private readonly sizes = new WeakMap<ChartFrame, [number, number]>();
+	/** The fine source, once made. */
+	private opened: SkySource | null = null;
 	/** Fine pictures that came in after the coarse one was painted. */
 	private readonly late = new WeakMap<ChartFrame, Pixels>();
 	/** One failure for all the paints that an outage fails. */
@@ -40,8 +49,8 @@ export class LayeredSky implements ChartSky {
 	setCoarse(source: SkySource | null): void {
 		this.unsubscribe();
 		this.coarse = source;
-		this.unsubscribe = source?.onChange(() => this.tellBelow()) ?? (() => {});
-		this.tellBelow();
+		this.unsubscribe = source?.onChange(() => this.coarseChanged()) ?? (() => {});
+		this.coarseChanged();
 	}
 
 	async paint(
@@ -53,19 +62,27 @@ export class LayeredSky implements ChartSky {
 		const kept = this.late.get(frame);
 		this.late.delete(frame);
 		if (kept?.width === width && kept.height === height) return kept;
-		const below = async (): Promise<Pixels | null> =>
-			(await this.coarse?.paint(frame, width, height, signal)) ?? null;
+		const below = async (shrink = 1): Promise<Pixels | null> =>
+			(await this.coarse?.paint(
+				frame,
+				Math.max(Math.round(width * shrink), 1),
+				Math.max(Math.round(height * shrink), 1),
+				signal
+			)) ?? null;
 		if (this.retry.waiting(FINE)) {
 			this.shown.set(frame, 'below');
 			return below();
 		}
 		const fine = this.source().then(async (source) => {
 			if (!source) return null;
+			const rival = this.coarse?.finest?.() ?? null;
+			if (rival !== null && source.yields?.(frame, width, height, rival)) return null;
 			try {
 				const pixels = await source.paint(frame, width, height, signal);
 				if (pixels) {
 					this.retry.clear(FINE);
 					this.shown.set(frame, 'fine');
+					this.sizes.set(frame, [width, height]);
 				}
 				return pixels;
 			} catch (e) {
@@ -90,7 +107,7 @@ export class LayeredSky implements ChartSky {
 		clearTimeout(timer);
 		if (first !== SLOW) return orBelow(first);
 		this.shown.set(frame, 'interim');
-		const coarse = await below();
+		const coarse = await below(Math.min(Math.sqrt(INTERIM_PIXELS / (width * height)), 1));
 		// No picture to show meanwhile: one paint, of the fine sky.
 		if (!coarse) return orBelow(await fine);
 		void fine.then((pixels) => {
@@ -116,12 +133,15 @@ export class LayeredSky implements ChartSky {
 	}
 
 	private source(): Promise<SkySource | null> {
-		this.fine ??= this.openFine().catch((e: unknown) => {
-			console.warn('[star-chart] no tile sky:', e);
-			this.fine = null;
-			this.failed();
-			return null;
-		});
+		this.fine ??= this.openFine().then(
+			(source) => (this.opened = source),
+			(e: unknown) => {
+				console.warn('[star-chart] no tile sky:', e);
+				this.fine = null;
+				this.failed();
+				return null;
+			}
+		);
 		return this.fine;
 	}
 
@@ -131,6 +151,19 @@ export class LayeredSky implements ChartSky {
 
 	private tell(frame: ChartFrame): void {
 		for (const listener of [...(this.listeners.get(frame) ?? [])]) listener();
+	}
+
+	/** A new coarse sky also repaints the charts whose fine sky gives way to it. */
+	private coarseChanged(): void {
+		this.tellBelow();
+		const rival = this.coarse?.finest?.() ?? null;
+		const fine = this.opened;
+		if (rival === null || !fine) return;
+		for (const frame of [...this.listeners.keys()]) {
+			const size = this.sizes.get(frame);
+			if (this.shown.get(frame) === 'fine' && size && fine.yields?.(frame, ...size, rival))
+				this.tell(frame);
+		}
 	}
 
 	/** A new coarse sky, or the fine one may be back: for the charts that

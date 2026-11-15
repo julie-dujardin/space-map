@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { getContext, mount, onDestroy, unmount } from 'svelte';
+	import { getAllContexts, getContext, mount, onDestroy, unmount, untrack } from 'svelte';
 	import 'photoswipe/style.css';
 	import type PhotoSwipeT from 'photoswipe';
 	import * as m from '$lib/paraglide/messages.js';
@@ -11,21 +11,99 @@
 		type ImageMetadata
 	} from '$lib/fetch/objects/images';
 	import type { AppState } from '$lib/state/app-state.svelte';
-	import type { ShelfLink } from '$lib/fetch/objects/galleries';
+	import {
+		CHART_PICTURE,
+		pictureSlide,
+		slidePicture,
+		type ShelfLink,
+		type StarChartPicture
+	} from '$lib/fetch/objects/galleries';
 	import { detailPanelPx } from '$lib/drawer';
-	import ImageViewerCaption, { type Attribution } from './ImageViewerCaption.svelte';
+	import type { LabelBox } from '$lib/star-chart/labels';
+	import StarChart from '../detail/frame/StarChart.svelte';
+	import ImageViewerCaption, {
+		type Attribution,
+		type DrawnCredit
+	} from './ImageViewerCaption.svelte';
 
 	interface Props {
 		images: ObjectImage[];
+		/** The chart of a figure, before the images. The viewer draws it at its own size. */
+		chart?: StarChartPicture;
 		alt: string;
 		/** What the picture on screen is of, when the shelf mixes subjects. The
 		 *  caption is mounted outside the tree, so the link arrives resolved. */
 		subjectLink?: (image: ObjectImage) => ShelfLink | undefined;
 	}
 
-	let { images, alt, subjectLink }: Props = $props();
+	let { images, chart, alt, subjectLink }: Props = $props();
 
 	const appState = getContext<AppState>('appState');
+	// A chart in a slide is outside the component tree, and reads the same contexts.
+	const contexts = getAllContexts();
+
+	const CHART_SLIDE = 'chart';
+	/** CSS pixels that the figure stays out of: the sides, then the top bar and the caption. */
+	const CHART_CLEAR = [16, 72] as const;
+
+	/** Client boxes of the chrome that shows over a slide. */
+	let chrome = $state.raw<readonly LabelBox[]>([]);
+	let viewerRoot: HTMLElement | null = null;
+
+	/** The parts of the chart slide under the chrome. The slide at rest has the
+	 *  viewer's own box. */
+	function chartCovered(): LabelBox[] {
+		const origin = viewerRoot?.getBoundingClientRect();
+		if (!origin) return [];
+		return chrome.map((box) => ({
+			...box,
+			left: box.left - origin.left,
+			top: box.top - origin.top
+		}));
+	}
+
+	/** Keeps `chrome` to the top bar's buttons, the caption and the arrows that show. */
+	function watchChrome(root: HTMLElement): () => void {
+		const parts = () => [
+			...root.querySelectorAll(
+				'.pswp__top-bar > *, .pswp-sm-caption-root > *, .pswp__button--arrow'
+			)
+		];
+		const measure = () => {
+			const boxes = parts()
+				.filter(
+					(el) => el.getClientRects().length > 0 && getComputedStyle(el).visibility === 'visible'
+				)
+				.map((el) => {
+					const { left, top, width, height } = el.getBoundingClientRect();
+					return { left, top, width, height };
+				});
+			// A new array lays the names out again.
+			if (JSON.stringify(boxes) !== JSON.stringify(chrome)) chrome = boxes;
+		};
+		const resized = new ResizeObserver(measure);
+		const changed = new MutationObserver(measure);
+		resized.observe(root);
+		// The arrows hide by a class of the root (touch, mouse) or by `disabled`.
+		changed.observe(root, { attributes: true, attributeFilter: ['class'] });
+		for (const part of parts()) {
+			resized.observe(part);
+			changed.observe(part, {
+				attributes: true,
+				attributeFilter: ['disabled'],
+				childList: true,
+				subtree: true,
+				characterData: true
+			});
+		}
+		const caption = root.querySelector('.pswp-sm-caption-root');
+		if (caption) changed.observe(caption, { childList: true, subtree: true, characterData: true });
+		measure();
+		return () => {
+			resized.disconnect();
+			changed.disconnect();
+		};
+	}
 
 	// Plain `let` (not $state) so the lifecycle effect tracks only
 	// `imageIndex`, not our own ref mutations.
@@ -37,7 +115,10 @@
 	let destroyed = false;
 
 	$effect(() => {
-		const idx = appState.view.imageIndex;
+		const picture = appState.view.imageIndex;
+		// The shelf is fixed while the viewer is open. A chart-only shelf is a new
+		// array at each recompute.
+		const idx = picture === null ? null : untrack(() => pictureSlide({ images, chart }, picture));
 		if (idx !== null && !pswp && !opening) {
 			void open(idx);
 		} else if (idx === null && pswp) {
@@ -72,7 +153,7 @@
 			if (destroyed || appState.view.imageIndex === null) return;
 
 			const inst = new PhotoSwipe({
-				dataSource: images.map(toSlideData),
+				dataSource: [...(chart ? [{ type: CHART_SLIDE }] : []), ...images.map(toSlideData)],
 				index: initialIndex,
 				loop: false,
 				wheelToZoom: true,
@@ -104,7 +185,15 @@
 			// setImage uses replaceState while the viewer is open, so paging
 			// through a gallery doesn't grow browser history.
 			inst.on('change', () => {
-				if (pswp) appState.setImage(inst.currIndex);
+				if (pswp) appState.setImage(slidePicture({ images, chart }, inst.currIndex));
+			});
+
+			if (chart) holdChart(inst, chart);
+
+			inst.on('afterInit', () => {
+				if (!inst.element) return;
+				viewerRoot = inst.element;
+				inst.on('destroy', watchChrome(inst.element));
 			});
 
 			// pswp is already null when we initiated the close ourselves.
@@ -145,6 +234,49 @@
 		};
 	}
 
+	// --- chart (a slide that the browser draws) --------------------------------
+
+	function holdChart(inst: PhotoSwipeT, picture: StarChartPicture) {
+		let drawn: Record<string, never> | null = null;
+		inst.on('contentLoad', (e) => {
+			if (e.content.type !== CHART_SLIDE) return;
+			e.preventDefault();
+			e.content.element = document.createElement('div');
+			e.content.element.className = 'pswp__content';
+		});
+		// The chart of a slide next to the open one would read its tiles for nothing.
+		inst.on('contentActivate', ({ content }) => {
+			if (content.type !== CHART_SLIDE || !content.element || drawn) return;
+			drawn = mount(StarChart, {
+				target: content.element,
+				props: {
+					picture,
+					name: alt,
+					fill: true,
+					clear: CHART_CLEAR,
+					covered: chartCovered,
+					oncredits: (credits) => (chartCredits = credits)
+				},
+				context: contexts
+			});
+		});
+		const drop = () => {
+			if (drawn) void unmount(drawn);
+			drawn = null;
+		};
+		// A slide two away is taken out of the page. Its chart holds a canvas of the
+		// viewer's size and its credits.
+		inst.on('contentRemove', ({ content }) => {
+			if (content.type === CHART_SLIDE) drop();
+		});
+		// A closing viewer drops its listeners before its slides.
+		inst.on('destroy', drop);
+	}
+
+	/** What the mounted chart reports it draws from. The viewer covers the credit
+	 *  bar, which names the same works. */
+	let chartCredits = $state.raw<DrawnCredit[]>([]);
+
 	// --- caption (Svelte component mounted into PhotoSwipe's DOM) --------------
 
 	// PhotoSwipe is recreated per open, so this resets between viewer sessions
@@ -168,15 +300,32 @@
 			image: ObjectImage | null;
 			attribution: Attribution | null;
 			subject: ShelfLink | null;
+			chart: boolean;
 		} = $state({
 			image: null,
 			attribution: null,
-			subject: null
+			subject: null,
+			chart: false
 		});
 
 		const captionApp = mount(ImageViewerCaption, {
 			target: root,
-			props: captionState
+			props: {
+				get image() {
+					return captionState.image;
+				},
+				get attribution() {
+					return captionState.attribution;
+				},
+				get subject() {
+					return captionState.subject;
+				},
+				get drawn() {
+					return captionState.chart
+						? { title: m.star_chart_label({ name: alt }), credits: chartCredits }
+						: null;
+				}
+			}
 		});
 
 		// Bumped per render so a slow fetch for a prior slide can't overwrite
@@ -184,14 +333,20 @@
 		let fetchToken = 0;
 
 		async function render() {
-			const idx = inst.currIndex;
-			const image = images[idx];
+			const picture = slidePicture({ images, chart }, inst.currIndex);
+			const token = ++fetchToken;
+			captionState.chart = picture === CHART_PICTURE;
+			captionState.attribution = null;
+			if (picture === CHART_PICTURE) {
+				captionState.image = null;
+				captionState.subject = null;
+				return;
+			}
+			const image = images[picture];
 			if (!image) return;
 			captionState.image = image;
-			captionState.attribution = null;
 			captionState.subject = subjectLink?.(image) ?? null;
 
-			const token = ++fetchToken;
 			const meta = await getMetadata(image);
 			if (token !== fetchToken) return;
 
@@ -201,7 +356,9 @@
 		inst.on('change', render);
 		render();
 
-		inst.on('destroy', () => unmount(captionApp));
+		inst.on('destroy', () => {
+			void unmount(captionApp);
+		});
 	}
 
 	function extractAttribution(meta: ImageMetadata): Attribution {
@@ -366,6 +523,21 @@
 			-webkit-backdrop-filter: blur(10px);
 			backdrop-filter: blur(10px);
 			border-start-start-radius: 2px;
+		}
+	}
+	/* A drawn picture names several works, so its credits wrap. */
+	:global(.pswp-space-map .pswp-sm-caption-credits.is-drawn) {
+		display: block;
+		line-height: 1.3;
+		white-space: normal;
+	}
+	:global(.pswp-space-map .pswp-sm-caption-credits.is-drawn .pswp-sm-caption-sep) {
+		margin-inline: 0.375rem;
+	}
+	@media (min-width: 768px) {
+		:global(.pswp-space-map .pswp-sm-caption-credits.is-drawn) {
+			max-width: 65%;
+			text-align: end;
 		}
 	}
 	:global(.pswp-space-map .pswp-sm-caption-credits a) {

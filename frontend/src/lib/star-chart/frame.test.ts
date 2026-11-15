@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { normalize, type Vec3 } from '$lib/math/travel/vec3';
-import { centreScaleDeg, directionAt, figureAspect, fitFrame, planeHalf, project } from './frame';
+import {
+	centreScaleDeg,
+	directionAt,
+	figureAspect,
+	FILL_MARGIN,
+	FILL_MAX_SCALE,
+	fillFrame,
+	fitFrame,
+	planeHalf,
+	project
+} from './frame';
 
 function icrs(raDeg: number, decDeg: number): Vec3 {
 	const ra = (raDeg * Math.PI) / 180;
@@ -93,5 +103,96 @@ describe('directionAt', () => {
 			expect(x).toBeCloseTo(fx * 400, 9);
 			expect(y).toBeCloseTo(fy * 300, 9);
 		}
+	});
+});
+
+describe('the frame that fills an area', () => {
+	// Taller than wide, as Orion: 16 by 26 degrees.
+	const stars = [icrs(78, -8), icrs(89, 7), icrs(84, -1), icrs(81, 6), icrs(87, -10), icrs(84, 18)];
+	const clear = [16, 72] as const;
+	const areas = {
+		wide: { width: 1210, height: 900 },
+		tall: { width: 390, height: 844 },
+		square: { width: 700, height: 700 }
+	};
+
+	function box(points: [number, number][]) {
+		const xs = points.map(([x]) => x);
+		const ys = points.map(([, y]) => y);
+		return {
+			left: Math.min(...xs),
+			right: Math.max(...xs),
+			top: Math.min(...ys),
+			bottom: Math.max(...ys)
+		};
+	}
+
+	for (const [shape, area] of Object.entries(areas)) {
+		const frame = fillFrame(stars, { ...area, clear });
+		const points = stars.map((star) => project(frame, star));
+		const { left, right, top, bottom } = box(points);
+
+		it(`has the size of a ${shape} area`, () => {
+			expect([frame.width, frame.height]).toEqual([area.width, area.height]);
+		});
+
+		it(`holds the figure at the centre of a ${shape} area, out of the cleared edges`, () => {
+			expect((left + right) / 2).toBeCloseTo(area.width / 2, 0);
+			expect((top + bottom) / 2).toBeCloseTo(area.height / 2, 0);
+			expect(left).toBeGreaterThan(clear[0]);
+			expect(right).toBeLessThan(area.width - clear[0]);
+			expect(top).toBeGreaterThan(clear[1]);
+			expect(bottom).toBeLessThan(area.height - clear[1]);
+		});
+
+		it(`gives the figure its share of a ${shape} area, and sky to the rest`, () => {
+			const across = (right - left) / (area.width - 2 * clear[0]);
+			const down = (bottom - top) / (area.height - 2 * clear[1]);
+			expect(Math.max(across, down)).toBeCloseTo(1 / (1 + FILL_MARGIN), 2);
+		});
+
+		it(`does not stretch the figure in a ${shape} area`, () => {
+			// The same figure in its own frame: every distance grows by one factor.
+			const own = fitFrame(stars, { width: 300, height: 400 });
+			const reference = stars.map((star) => project(own, star));
+			const factors: number[] = [];
+			for (let i = 1; i < stars.length; i++) {
+				factors.push(
+					Math.hypot(points[i][0] - points[0][0], points[i][1] - points[0][1]) /
+						Math.hypot(reference[i][0] - reference[0][0], reference[i][1] - reference[0][1])
+				);
+				// Each star keeps its bearing from the first.
+				expect(Math.atan2(points[i][1] - points[0][1], points[i][0] - points[0][0])).toBeCloseTo(
+					Math.atan2(reference[i][1] - reference[0][1], reference[i][0] - reference[0][0]),
+					9
+				);
+			}
+			for (const factor of factors) expect(factor).toBeCloseTo(factors[0], 9);
+			const [halfWidth, halfHeight] = planeHalf(frame);
+			expect(halfWidth / halfHeight).toBeCloseTo(area.width / area.height, 12);
+		});
+	}
+
+	it('shows more sky in a larger area, at the same share', () => {
+		const small = fillFrame(stars, { width: 600, height: 400 });
+		const large = fillFrame(stars, { width: 1800, height: 400 });
+		expect(centreScaleDeg(large)).toBeCloseTo(centreScaleDeg(small), 12);
+		expect(planeHalf(large)[0]).toBeCloseTo(planeHalf(small)[0] * 3, 12);
+	});
+
+	it('does not magnify a small figure past the finest tiles', () => {
+		const frame = fillFrame([icrs(56.6, 24.1)], { width: 1600, height: 1200 });
+		expect(1 / centreScaleDeg(frame)).toBeCloseTo(FILL_MAX_SCALE, 9);
+	});
+
+	it('keeps the smallest field on a small area', () => {
+		const frame = fillFrame([icrs(56.6, 24.1)], { width: 390, height: 844 });
+		expect(centreScaleDeg(frame) * 390).toBeCloseTo(8, 1);
+	});
+
+	it('keeps half of a side for the figure when the cleared edges take more', () => {
+		const frame = fillFrame(stars, { width: 800, height: 200, clear: [16, 72] });
+		const { top, bottom } = box(stars.map((star) => project(frame, star)));
+		expect(bottom - top).toBeCloseTo(100 / (1 + FILL_MARGIN), 0);
 	});
 });

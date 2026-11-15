@@ -785,6 +785,8 @@
 	"panorama_map_expand": "Show the timeline",
 	"panorama_map_collapse": "Hide the timeline",
 	"image_view_on_commons": "View on Commons",
+	"image_drawn_credit": "{label}: {works}",
+	"image_drawn_work": "{name} ({license})",
 	"image_open_viewer": "Open full-size image",
 	"star_chart_label": "Star chart of {name}",
 	"image_previous": "Previous image",

@@ -11,6 +11,7 @@ import {
 	SKY_CULTURE_SLUG_PREFIX,
 	SMALL_BODY_FLAG_SLUG_PREFIX
 } from '$lib/fetch/groups/registry';
+import { CHART_PICTURE, type ShelfPicture } from '$lib/fetch/objects/galleries';
 import { SAT_ORBIT_ZONES } from '$lib/charts/orbit-zones';
 import { isLagrangeClass } from '$lib/math/orbit/lagrange';
 import { DEFAULT_TRIP, parseTrip, serializeTripSuffix, type TripState } from '$lib/travel/trip';
@@ -63,9 +64,10 @@ function parseFeatureId(raw: string | null): number | null {
 	return Number.isInteger(n) && n > 0 ? n : null;
 }
 
-/** Parse the `&img=` gallery index; null (viewer closed) for anything invalid. */
-function parseImageIndex(raw: string | null): number | null {
+/** The picture that `&img=` names; null (viewer closed) for anything invalid. */
+function parseImageIndex(raw: string | null): ShelfPicture | null {
 	if (!raw) return null;
+	if (raw === CHART_PICTURE) return CHART_PICTURE;
 	const n = Number(raw);
 	return Number.isInteger(n) && n >= 0 ? n : null;
 }
@@ -487,8 +489,8 @@ export function applyQuad(current: MapViewState, code: string | null): MapViewSt
 	return { ...current, quad: code, memberPage: null };
 }
 
-/** Next view when opening the image viewer on one image of the active gallery. */
-export function applyImage(current: MapViewState, index: number | null): MapViewState {
+/** Next view when opening the image viewer on one picture of the active gallery. */
+export function applyImage(current: MapViewState, index: ShelfPicture | null): MapViewState {
 	return { ...current, imageIndex: index };
 }
 
@@ -620,7 +622,7 @@ export function serializeUrl(state: MapViewState): string {
 		serializeAngle(state.pitch, state.bearing);
 
 	const img =
-		typeof state.imageIndex === 'number' && Number.isInteger(state.imageIndex)
+		state.imageIndex === CHART_PICTURE || Number.isInteger(state.imageIndex)
 			? `&img=${state.imageIndex}`
 			: '';
 	// `mp` is only meaningful under the paginated lists (members / features),
