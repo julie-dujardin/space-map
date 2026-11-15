@@ -3,6 +3,7 @@
 	import { onDestroy, onMount, setContext, tick, untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import Scene from './Scene.svelte';
+	import { lockPageZoom } from '$lib/page-zoom';
 	import { SpaceMap, lookOf, type Arrival } from '$lib/scene/space-map.svelte';
 	import { formatJulianDate } from '$lib/format/date';
 	import { isDiscless, ObjectType, type PositionedBody } from '$lib/types/objects';
@@ -357,6 +358,10 @@
 	const shownLayers = () => new Set(map.getLayers().filter((id) => map.isLayerVisible(id)));
 	let visibleLayers = $state.raw(shownLayers());
 	$effect(() => map.on('layerschange', () => (visibleLayers = shownLayers())));
+
+	// The map takes every pinch on it, so a page zoomed by one elsewhere could not
+	// be zoomed back.
+	$effect(lockPageZoom);
 	let clearSkyPillShown = $derived(constellationsWanted(settings, (id) => visibleLayers.has(id)));
 	let mapPillShown = $derived(framesDiffer || ringPillShown || clearSkyPillShown);
 	// A runtime switch: it hides the stars, and they go on loading as the camera moves.

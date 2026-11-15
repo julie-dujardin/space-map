@@ -5,12 +5,12 @@
 	import LiveAnnouncer from '$lib/a11y/LiveAnnouncer.svelte';
 	import SearchProof from '../components/search/SearchProof.svelte';
 	import { getSettings } from '$lib/state/settings.svelte';
-	import { keepInputsFromZooming } from '$lib/ios-input-zoom';
+	import { initPageZoom } from '$lib/page-zoom';
 
 	let { children } = $props();
 	const settings = getSettings();
 
-	$effect(keepInputsFromZooming);
+	$effect(initPageZoom);
 
 	let direction = $state(getTextDirection(getLocale()));
 
