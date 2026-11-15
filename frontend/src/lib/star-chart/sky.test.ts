@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { fitFrame } from './frame';
-import { paintedFlux, rayUniforms, type Pixels } from './sky';
+import { HALF_PEAK_SHARE, halved, paintedFlux, rayUniforms, type Pixels } from './sky';
 
 function sky(width: number, height: number, level: number): Pixels {
 	const data = new Uint8ClampedArray(width * height * 4).fill(level);
@@ -35,5 +35,17 @@ describe('the painted sky', () => {
 		const uniforms = rayUniforms(frame);
 		expect(uniforms.uForward).toEqual([1, 0, 0]);
 		expect(uniforms.uHalf[0]).toBeCloseTo(uniforms.uHalf[1] * 2, 12);
+	});
+});
+
+describe('halved', () => {
+	it('keeps a share of a star that is one pixel of four', () => {
+		const pixels = sky(4, 4, 20);
+		paint(pixels, 2, 0, 220);
+		const half = halved(pixels);
+		expect([half.width, half.height]).toEqual([2, 2]);
+		expect(half.data[0]).toBe(20);
+		expect(half.data[4]).toBe(Math.round(70 + 150 * HALF_PEAK_SHARE));
+		expect([half.data[3], half.data[7]]).toEqual([255, 255]);
 	});
 });

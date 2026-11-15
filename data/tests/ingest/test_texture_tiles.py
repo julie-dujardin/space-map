@@ -6,12 +6,19 @@ import shutil
 import time
 from pathlib import Path
 
+import Imath
 import numpy as np
+import OpenEXR  # ty: ignore[unresolved-import]  # C extension, no stubs
 import pytest
 import tifffile
 from PIL import Image
 
-from space_map_data.ingest.providers.textures import TextureProcessor, config, tiles
+from space_map_data.ingest.providers.textures import (
+    TextureProcessor,
+    config,
+    skybox,
+    tiles,
+)
 from space_map_data.ingest.providers.textures.image_io import (
     HeightRaster,
     open_height_raster,
@@ -1790,8 +1797,161 @@ class TestProcessTiles:
         with pytest.raises(ValueError, match="patches on a pyramid with alpha"):
             proc.process_tiles()
 
-    def test_skybox_is_not_tiled(self, tmp_path, monkeypatch):
-        entry = {**self._colour_entry(tmp_path), "type": "cubemap_skybox"}
-        proc = self._processor(monkeypatch, tmp_path, [entry])
+
+def _write_exr(path: Path, light: np.ndarray) -> None:
+    """``light`` as (H, W, 3), written as the star map is: RGB half floats."""
+    header = OpenEXR.Header(light.shape[1], light.shape[0])
+    half = Imath.Channel(Imath.PixelType(Imath.PixelType.HALF))
+    header["channels"] = {name: half for name in "RGB"}
+    out = OpenEXR.OutputFile(str(path), header)
+    out.writePixels(
+        {
+            name: light[..., channel].astype(np.float16).tobytes()
+            for channel, name in enumerate("RGB")
+        }
+    )
+    out.close()
+
+
+def _sky(width: int, height: int) -> np.ndarray:
+    """A faint sky that brightens to the south, with one white star four
+    pixels wide in the north-east quarter."""
+    light = np.empty((height, width, 3), dtype=np.float32)
+    light[:] = np.linspace(0.001, 0.02, height)[:, None, None]
+    light[..., 2] *= 0.5
+    light[height // 4 : height // 4 + 4, 3 * width // 4 : 3 * width // 4 + 4] = 1.0
+    return light
+
+
+class TestExrRaster:
+    """The star map's EXR is read by window, a band of scanlines at a time."""
+
+    def test_window_holds_the_samples_of_the_file(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(skybox, "_RASTER_BAND_ROWS", 4)
+        light = np.random.default_rng(3).random((10, 12, 3)).astype(np.float16)
+        _write_exr(tmp_path / "sky.exr", light)
+        raster = skybox.ExrRaster(tmp_path / "sky.exr")
+        assert raster.shape == (10, 12, 3)
+        assert np.array_equal(raster[3:9, 2:11], light[3:9, 2:11])
+
+    def test_keeps_the_last_bands_only(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(skybox, "_RASTER_BAND_ROWS", 4)
+        band_bytes = 4 * 12 * 3 * 2
+        monkeypatch.setattr(skybox, "_RASTER_CACHE_BYTES", 2 * band_bytes)
+        light = np.random.default_rng(3).random((16, 12, 3)).astype(np.float16)
+        _write_exr(tmp_path / "sky.exr", light)
+        raster = skybox.ExrRaster(tmp_path / "sky.exr")
+        assert np.array_equal(raster[0:16, 0:12], light)
+        assert list(raster._cache) == [2, 3]
+        raster.release()
+        assert not raster._cache
+
+
+class TestLightCoding:
+    """Linear light goes into a tile's bytes on a power curve."""
+
+    def test_round_trip_is_within_half_a_step(self):
+        coding = tiles.LightCoding(gamma=4.0)
+        light = np.linspace(0.0, 1.0, 1000, dtype=np.float32)
+        code = coding.pack(light)
+        assert code.dtype == np.uint8 and (code[0], code[-1]) == (0, 255)
+        step = np.abs(light**0.25 - code / 255.0)
+        assert step.max() <= 0.5 / 255 + 1e-6
+        assert np.allclose(coding.unpack(code), (code / 255.0) ** 4)
+
+    def test_faint_light_takes_most_of_the_bytes(self):
+        """Light under 1/16 has half of the byte range."""
+        assert tiles.LightCoding(gamma=4.0).pack(np.array([1 / 16]))[0] == 128
+
+    def test_light_outside_the_range_is_clipped(self):
+        """A resampled edge of a star can be under 0 or over 1."""
+        code = tiles.LightCoding().pack(np.array([-0.2, 1.7]))
+        assert code.tolist() == [0, 255]
+
+
+class TestSkyPyramid:
+    """The star map's pyramid: tiles of linear light from its HDR source."""
+
+    @staticmethod
+    def _entry(tmp_path, light: np.ndarray, **extra) -> dict:
+        raw = tmp_path / "raw"
+        raw.mkdir(exist_ok=True)
+        _write_exr(raw / "sky.exr", light)
+        return {
+            "body": "stars",
+            "source": "https://example.com/sky",
+            "organisation": "NASA",
+            "license": "Public domain",
+            "attribution": "Test credit",
+            "file": "sky.exr",
+            "type": "cubemap_skybox",
+            **extra,
+        }
+
+    def _build(self, tmp_path, monkeypatch, light: np.ndarray, **extra) -> dict:
+        entry = self._entry(tmp_path, light, **extra)
+        proc = TestProcessTiles._processor(monkeypatch, tmp_path, [entry])
         proc.process_tiles()
-        assert not (tmp_path / "tiles").exists()
+        return json.loads((tmp_path / "meta" / "stars" / "metadata.json").read_text())
+
+    def test_descriptor_names_the_curve(self, tmp_path, monkeypatch):
+        meta = self._build(tmp_path, monkeypatch, _sky(4 * TILE, 2 * TILE))
+        assert meta["id"] == "stars"
+        assert meta["light_gamma"] == config.SKY_TILE_GAMMA
+        assert (meta["tile_size"], meta["max_level"]) == (TILE, 1)
+        assert [level["tiles"] for level in meta["levels"]] == [2, 8]
+        assert [level["tiles"] for level in meta["cap_levels"]] == [2]
+        assert "displacement_scale_km" not in meta
+        out = tmp_path / "tiles" / "stars"
+        assert (out / "north" / "1" / "0" / "0.webp").exists()
+
+    def test_finest_level_is_the_source_as_it_is_stored(self, tmp_path, monkeypatch):
+        """Same grid as the file: no shift, no mirror, the star where it was."""
+        light = _sky(4 * TILE, 2 * TILE)
+        self._build(tmp_path, monkeypatch, light)
+        coding = tiles.LightCoding()
+        got = coding.unpack(_stitch(tmp_path / "tiles" / "stars", 1, "RGB"))
+        star = np.unravel_index(got.sum(axis=-1).argmax(), got.shape[:2])
+        assert TILE // 2 <= star[0] < TILE // 2 + 4
+        assert 3 * TILE <= star[1] < 3 * TILE + 4
+        # Lossy tiles: compared on the curve, where the error is even.
+        error = np.abs(got**0.25 - np.clip(light, 0, 1) ** 0.25)
+        assert error.mean() < 0.02
+
+    def test_a_coarser_level_is_the_mean_of_the_light(self, tmp_path, monkeypatch):
+        """The star's 16 pixels at 1 become 4 pixels at 1 a level down. A mean
+        of the bytes of the faint sky would be darker than its light."""
+        light = _sky(4 * TILE, 2 * TILE)
+        self._build(tmp_path, monkeypatch, light)
+        coding = tiles.LightCoding()
+        coarse = coding.unpack(_stitch(tmp_path / "tiles" / "stars", 0, "RGB"))
+        expected = light.reshape(TILE, 2, 2 * TILE, 2, 3).mean(axis=(1, 3))
+        assert coarse.sum() == pytest.approx(expected.sum(), rel=0.1)
+        y, x = TILE // 4, 3 * TILE // 2
+        assert coarse[y : y + 2, x : x + 2].min() > 0.6
+
+    def test_the_starless_cube_has_no_pyramid(self, tmp_path, monkeypatch):
+        entry = self._entry(tmp_path, _sky(4 * TILE, 2 * TILE))
+        entry.update(body="stars_starless", type="cubemap_starless")
+        proc = TestProcessTiles._processor(monkeypatch, tmp_path, [entry])
+        proc.process_tiles()
+        assert not (tmp_path / "tiles" / "stars_starless").exists()
+
+    @pytest.mark.parametrize("north", [True, False])
+    @pytest.mark.parametrize("width", [16 * TILE, 64 * TILE])
+    def test_cap_reads_each_field_of_the_light(self, north, width):
+        """Sources coarser and finer than the cap."""
+        edges = 90.0 - np.arange(width // 2 + 1) * (360.0 / width)
+        lats = (edges[:-1] + edges[1:]) / 2
+        lons = -180.0 + (np.arange(width) + 0.5) * (360.0 / width)
+        field = (_globe(lats[:, None], lons[None, :]) / 1000).astype(np.float16)
+        light = np.stack([field, 2 * field, 3 * field], axis=-1)
+        layer = tiles.Layer(
+            light, tiles.Placement(), to_values=lambda raw: raw.astype(np.float32)
+        )
+        cap = tiles.Cap(north, 4)
+        got = layer.cap(cap, 0, cap.size, 0, cap.size)
+        expected = _globe(*_cap_lat_lon(cap)) / 1000
+        assert got.shape == (cap.size, cap.size, 3)
+        for channel in range(3):
+            assert np.abs(got[..., channel] - (channel + 1) * expected).max() < 0.07

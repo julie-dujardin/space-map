@@ -103,6 +103,7 @@ segment):
     "faces": ["px", "nx", "py", "ny", "pz", "nz"],
     "tiers": ["low", "high"],
     "tier_face_size": { "low": 2048, "high": 4096 },
+    "exposure": 4.0,
     "source": "https://svs.gsfc.nasa.gov/4851/",
     "organisation": "NASA",
     "attribution": "...",
@@ -110,6 +111,17 @@ segment):
       "id": "stars_starless",
       "tiers": ["glow"],
       "tier_face_size": { "glow": 256 }
+    },
+    "tiles": {
+      "id": "stars",
+      "tile_size": 1024,
+      "max_level": 5,
+      "version": "0123456789",
+      "source": "https://svs.gsfc.nasa.gov/4851/",
+      "organisation": "NASA",
+      "light_gamma": 4.0,
+      "license": "Public domain",
+      "attribution": "..."
     }
   }
 }
@@ -120,11 +132,24 @@ the export. The frontend loads face URLs as
 `/v1/textures/{skybox.id}/{tier}_{face}.webp` and picks the largest tier
 whose `tier_face_size[tier]` fits the device's max texture dimension.
 
+`exposure` is the `e` of the tonemap of the faces. A face holds the light of
+the star map as `e·light / (1 + e·light)`, then the sRGB curve. A reader
+that wants the light back needs it. An export made before the star charts
+has no `exposure`; its value is 4.
+
 `starless` is the same sky without the Hipparcos and Tycho stars (type
 `cubemap_starless`), in the same frame and tonemap, at the one size the glow
 reads it: `/v1/textures/{starless.id}/{tier}_{face}.webp`. The glow draws it
 past the solar system, where the stars draw as points. It is omitted when
 that bundle is not ingested.
+
+`tiles` is the star map as a tile pyramid on the tile host, at the full
+detail of its source: `/v1/tiles/{tiles.id}/{z}/{x}/{y}.webp?v={tiles.version}`
+and the same below `north/` and `south/` for the polar caps. Its tiles hold
+linear light, `(byte / 255) ^ light_gamma`, not the tonemap of the cube
+faces. [tiles.md](tiles.md) gives the grid, the place of a direction on it
+and the curve. It is omitted when the pyramid is not built; the cube faces
+are then the only star map.
 
 ## Caching & versioning
 

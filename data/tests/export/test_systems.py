@@ -623,6 +623,7 @@ class TestSkyboxBlock:
         "faces": ["px", "nx", "py", "ny", "pz", "nz"],
         "tiers": ["low", "high"],
         "tier_face_size": {"low": 2048, "high": 4096},
+        "exposure": 4.0,
         "source": "https://svs.gsfc.nasa.gov/4851/",
         "organisation": "NASA",
     }
@@ -656,9 +657,53 @@ class TestSkyboxBlock:
         assert meta is not None
         assert "starless" not in skybox_block(meta)
 
+    def test_states_the_exposure_of_the_faces(self, tmp_path):
+        """A reader takes the faces back to the light of the star map by it."""
+        self._seed(tmp_path, "stars", {**self._SKYBOX, "exposure": 2.5})
+        meta = load_skybox_metadata(tmp_path)
+        assert meta is not None
+        assert skybox_block(meta)["exposure"] == 2.5
+
     def test_no_skybox(self, tmp_path):
         self._seed(tmp_path, "stars_starless", self._STARLESS)
         assert load_skybox_metadata(tmp_path) is None
+
+    def test_names_the_tile_pyramid(self, tmp_path):
+        """The star map's pyramid, with the curve that its tiles hold."""
+        self._seed(tmp_path, "stars", self._SKYBOX)
+        tiles_dir = tmp_path / "tiles" / "stars"
+        tiles_dir.mkdir(parents=True)
+        descriptor = {
+            "id": "stars",
+            "source": "https://svs.gsfc.nasa.gov/4851/",
+            "organisation": "NASA",
+            "license": "Public domain",
+            "type": "cubemap_skybox",
+            "version": "0123456789",
+            "tile_size": 1024,
+            "max_level": 5,
+            "light_gamma": 4.0,
+            "levels": [],
+        }
+        (tiles_dir / "metadata.json").write_text(json.dumps(descriptor))
+        meta = load_skybox_metadata(tmp_path)
+        assert meta is not None
+        assert skybox_block(meta)["tiles"] == {
+            "id": "stars",
+            "tile_size": 1024,
+            "max_level": 5,
+            "version": "0123456789",
+            "source": "https://svs.gsfc.nasa.gov/4851/",
+            "organisation": "NASA",
+            "light_gamma": 4.0,
+            "license": "Public domain",
+        }
+
+    def test_without_the_tile_pyramid(self, tmp_path):
+        self._seed(tmp_path, "stars", self._SKYBOX)
+        meta = load_skybox_metadata(tmp_path)
+        assert meta is not None
+        assert "tiles" not in skybox_block(meta)
 
 
 class TestLoadOrientation:

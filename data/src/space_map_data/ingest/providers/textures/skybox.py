@@ -1,6 +1,9 @@
-"""HDR equirect EXR streaming loader with Reinhard tonemap."""
+"""HDR equirect EXR: a streaming loader with Reinhard tonemap for the cube
+tiers, and a reader by window for the tile pyramid."""
 
 import logging
+import threading
+from collections import OrderedDict
 from pathlib import Path
 
 import Imath
@@ -15,6 +18,11 @@ log = logging.getLogger(__name__)
 # with 4× downsample, each band reads 256×4 = 1024 source scanlines per
 # channel (~128 MiB of half-float source data per band).
 _BAND_OUT_ROWS = 256
+# Scanlines that ``ExrRaster`` decodes at a time, and the bytes it keeps
+# decoded. A row of cap tiles through a pole reads the scanlines from the
+# pole to 46° at once: 3.3 GiB of a 64K map. A row of map tiles reads 0.4 GiB.
+_RASTER_BAND_ROWS = 64
+_RASTER_CACHE_BYTES = 7 << 29
 
 
 def mem_available_bytes() -> int | None:
@@ -33,6 +41,72 @@ def mem_available_bytes() -> int | None:
     except OSError:
         return None
     return None
+
+
+class ExrRaster:
+    """An RGB half-float EXR read by window like an array, as (H, W, 3).
+
+    The file is 12 GiB decoded, and the EXR reader gives whole scanlines
+    only. A read decodes the bands of scanlines under it, and the last bands
+    stay decoded for the reads beside it.
+    """
+
+    def __init__(self, src: Path) -> None:
+        self._file = OpenEXR.InputFile(str(src))
+        window = self._file.header()["dataWindow"]
+        self._top = window.min.y
+        self.shape: tuple[int, int, int] = (
+            window.max.y - window.min.y + 1,
+            window.max.x - window.min.x + 1,
+            3,
+        )
+        self.dtype = np.dtype(np.float16)
+        self._cache: OrderedDict[int, np.ndarray] = OrderedDict()
+        self._held = 0
+        # The reader is not safe to share between threads.
+        self._lock = threading.Lock()
+
+    def _band(self, index: int) -> np.ndarray:
+        with self._lock:
+            band = self._cache.get(index)
+            if band is not None:
+                self._cache.move_to_end(index)
+                return band
+            height, width, _ = self.shape
+            y0 = index * _RASTER_BAND_ROWS
+            y1 = min(y0 + _RASTER_BAND_ROWS, height)
+            half = Imath.PixelType(Imath.PixelType.HALF)
+            band = np.empty((y1 - y0, width, 3), dtype=np.float16)
+            # One call: each call inflates the scanlines again.
+            raws = self._file.channels("RGB", half, self._top + y0, self._top + y1 - 1)
+            for channel, raw in enumerate(raws):
+                band[..., channel] = np.frombuffer(raw, np.float16).reshape(
+                    y1 - y0, width
+                )
+            self._cache[index] = band
+            self._held += band.nbytes
+            while self._held > _RASTER_CACHE_BYTES and len(self._cache) > 1:
+                self._held -= self._cache.popitem(last=False)[1].nbytes
+            return band
+
+    def __getitem__(self, key: tuple[slice, slice]) -> np.ndarray:
+        y0, y1, _ = key[0].indices(self.shape[0])
+        x0, x1, _ = key[1].indices(self.shape[1])
+        out = np.empty((max(y1 - y0, 0), max(x1 - x0, 0), 3), dtype=np.float16)
+        rows = _RASTER_BAND_ROWS
+        for index in range(y0 // rows, -(-y1 // rows)):
+            band = self._band(index)
+            top, bottom = max(y0, index * rows), min(y1, index * rows + band.shape[0])
+            out[top - y0 : bottom - y0] = band[
+                top - index * rows : bottom - index * rows, x0:x1
+            ]
+        return out
+
+    def release(self) -> None:
+        """Drop the decoded bands."""
+        with self._lock:
+            self._cache.clear()
+            self._held = 0
 
 
 def load_and_tonemap_streaming(src: Path, ds: int, exposure: float) -> np.ndarray:

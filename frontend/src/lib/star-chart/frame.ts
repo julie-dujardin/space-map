@@ -165,6 +165,12 @@ export function planeHalf(frame: ChartFrame): [number, number] {
 	return [(frame.halfHeight * frame.width) / frame.height, frame.halfHeight];
 }
 
+/** The direction at a fraction of the frame from its top-left corner. */
+export function directionAt(frame: ChartFrame, fx: number, fy: number): Vec3 {
+	const [halfWidth, halfHeight] = planeHalf(frame);
+	return fromPlane(frame, (2 * fx - 1) * halfWidth, (1 - 2 * fy) * halfHeight);
+}
+
 /** Degrees of sky in one CSS pixel at the centre of the frame. */
 export function centreScaleDeg(frame: ChartFrame): number {
 	return ((2 * frame.halfHeight) / frame.height) * (180 / Math.PI);

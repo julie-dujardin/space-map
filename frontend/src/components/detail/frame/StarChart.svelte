@@ -11,7 +11,7 @@
 	import type { ChartStar } from '$lib/star-chart/figure';
 	import { figureAspect, fitFrame, project, type ChartFrame } from '$lib/star-chart/frame';
 	import { placeNames, type LabelBox, type Segment } from '$lib/star-chart/labels';
-	import { paintedFlux, type Pixels, type SkySource } from '$lib/star-chart/sky';
+	import { halved, paintedFlux, type ChartSky, type Pixels } from '$lib/star-chart/sky';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import { focusClick, focusHref } from '$lib/state/focus-link';
 	import type { FocusObject } from '$lib/state/focusable';
@@ -56,11 +56,10 @@
 	const BARE_MARGIN = 0.12;
 	const BARE_CLEAR_PX = 2.5;
 	const STAND_IN_RING_PX = 6;
-	/** A sharper canvas costs a larger read from the GPU for no gain. */
-	const MAX_PIXEL_RATIO = 2;
-	/** The stars are measured in a picture of this pixel ratio on every screen,
-	 *  so every screen names the same stars. */
-	const MEASURE_RATIO = 2;
+	/** Pixels of the painted sky per CSS pixel, on every screen. The stars are
+	 *  measured in this picture, so every screen names the same stars and reads
+	 *  the same tiles. A screen of ratio 1 shows it at half size. */
+	const PIXEL_RATIO = 2;
 	/** Radius of the disc that measures a star, in CSS pixels. */
 	const FLUX_RADIUS_PX = 1.5;
 	/** Under this painted light, a neighbour does not stand out of the sky. */
@@ -86,9 +85,11 @@
 	let width = $state(0);
 	let canvas = $state<HTMLCanvasElement | null>(null);
 	let painted = $state(false);
+	/** A paint ended with no sky. */
+	let skyless = $state(false);
 	let placed = $state.raw<{ frame: ChartFrame; labels: Label[] } | null>(null);
-	let deviceRatio = $state(globalThis.devicePixelRatio || 1);
 	let skyChanges = $state(0);
+	let deviceRatio = $state(globalThis.devicePixelRatio || 1);
 	/** The loaded chart, or the same with the neighbours of a later read. Not
 	 *  state: new neighbours change the names, not the frame. */
 	let named: Loaded | null = null;
@@ -141,13 +142,13 @@
 			onCanvas = kept = null;
 			placed = null;
 			painted = false;
+			skyless = false;
 			retry.clear('load');
 			retry.clear('names');
 		});
 	});
 
-	let sky = $derived<SkySource | null>(ctx?.chartSky ?? null);
-	$effect(() => sky?.onChange(() => skyChanges++));
+	const sky: ChartSky | null = ctx?.chartSky ?? null;
 
 	$effect(() => {
 		const query = matchMedia(`(resolution: ${deviceRatio}dppx)`);
@@ -166,6 +167,10 @@
 			? fitFrame(chart.points, { width, height, margin: labels ? undefined : BARE_MARGIN })
 			: null
 	);
+
+	$effect(() => {
+		if (frame) return sky?.watch(frame, () => skyChanges++);
+	});
 
 	let segments = $derived.by((): Segment[] => {
 		if (!frame || !chart) return [];
@@ -200,7 +205,7 @@
 	});
 
 	/** A figure with no lines shows its stars by a ring. So does one with no sky. */
-	let ringed = $derived(!!chart && (chart.lines.length === 0 || !painted));
+	let ringed = $derived(!!chart && (chart.lines.length === 0 || skyless));
 
 	interface Measured {
 		star: ChartStar;
@@ -250,8 +255,11 @@
 		at: ChartFrame;
 		of: Loaded;
 		target: HTMLCanvasElement;
-		source: SkySource | null;
-		pixelRatio: number;
+		source: ChartSky | null;
+		/** Aborted when the chart wants another picture, or none. */
+		signal: AbortSignal;
+		/** The screen has one pixel per CSS pixel. */
+		coarse: boolean;
 		named: boolean;
 		segments: Segment[];
 		points: (readonly [number, number])[];
@@ -264,19 +272,23 @@
 	async function draw(run: Run): Promise<void> {
 		latest = run;
 		const { at, of, target, source } = run;
-		const scaled = (pixelRatio: number): [number, number] => [
-			Math.round(at.width * pixelRatio),
-			Math.round(at.height * pixelRatio)
-		];
-		const pixels = (await source?.paint(at, ...scaled(run.pixelRatio))) ?? null;
-		if (latest !== run) return;
+		const pixels =
+			(await source?.paint(
+				at,
+				Math.round(at.width * PIXEL_RATIO),
+				Math.round(at.height * PIXEL_RATIO),
+				run.signal
+			)) ?? null;
+		if (latest !== run || run.signal.aborted) return;
 		const context = target.getContext('2d');
 		if (pixels && context) {
-			target.width = pixels.width;
-			target.height = pixels.height;
-			context.putImageData(new ImageData(pixels.data, pixels.width, pixels.height), 0, 0);
+			const shown = run.coarse ? halved(pixels) : pixels;
+			target.width = shown.width;
+			target.height = shown.height;
+			context.putImageData(new ImageData(shown.data, shown.width, shown.height), 0, 0);
 		}
 		painted = !!pixels && !!context;
+		skyless = !painted;
 		onCanvas = run;
 		kept = null;
 		ctx?.credits.setChart(creditKey, { sky: painted, credits: (named ?? of).credits });
@@ -284,21 +296,16 @@
 			placed = { frame: at, labels: [] };
 			return;
 		}
-		const measured =
-			pixels && run.pixelRatio !== MEASURE_RATIO
-				? ((await source?.paint(at, ...scaled(MEASURE_RATIO))) ?? null)
-				: pixels;
-		if (latest !== run) return;
-		if ((named ?? of).more) kept = measured;
-		await nameStars(run, measured);
+		if ((named ?? of).more) kept = pixels;
+		await nameStars(run, pixels);
 	}
 
 	/** The members first, the brightest first, then the neighbours that stand
 	 *  out as much. A newer run ends this one. */
-	async function nameStars(run: Run, measured: Pixels | null): Promise<void> {
+	async function nameStars(run: Run, pixels: Pixels | null): Promise<void> {
 		const { at, target } = run;
 		const of = named ?? run.of;
-		const members = measureStars(at, of.chart.stars, measured);
+		const members = measureStars(at, of.chart.stars, pixels);
 		const memberNames = await Promise.all(members.map(({ star }) => nameOf(of, star)));
 		if (latest !== run) return;
 		const family = getComputedStyle(target).fontFamily;
@@ -348,9 +355,9 @@
 		);
 		placed = { frame: at, labels: own };
 		// With no sky, no star is known to be bright.
-		if (!measured) return;
+		if (!pixels) return;
 		const floor = Math.max(median(members.map(({ flux }) => flux)), NEIGHBOUR_MIN_FLUX);
-		const around = measureStars(at, of.chart.neighbours, measured)
+		const around = measureStars(at, of.chart.neighbours, pixels)
 			.filter(({ flux }) => flux >= floor)
 			.slice(0, limit);
 		const aroundNames = await Promise.all(around.map(({ star }) => nameOf(of, star)));
@@ -395,12 +402,14 @@
 		const of = loaded;
 		const target = canvas;
 		if (!at || !of || !target) return;
+		const wanted = new AbortController();
 		const run: Run = {
 			at,
 			of,
 			target,
 			source: sky,
-			pixelRatio: Math.min(deviceRatio, MAX_PIXEL_RATIO),
+			signal: wanted.signal,
+			coarse: deviceRatio <= 1,
 			named: labels && Math.min(at.width, at.height) >= LABEL_MIN_PX,
 			segments,
 			points: starPoints,
@@ -420,6 +429,7 @@
 		return () => {
 			clearTimeout(timer);
 			cancelAnimationFrame(frameId);
+			wanted.abort();
 		};
 	});
 

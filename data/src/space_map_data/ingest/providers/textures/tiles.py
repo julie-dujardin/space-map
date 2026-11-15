@@ -13,7 +13,8 @@ footprint of a single tile a few levels down, and can resume after a stop.
 
 A colour pyramid can take its fine detail from sharper greyscale maps: see
 ``PyramidBuilder._sharpen``. It can also hold a mask in the alpha of its
-tiles: see ``PyramidBuilder``.
+tiles: see ``PyramidBuilder``. The star map is a pyramid of linear light: see
+``LightCoding``.
 
 Each pyramid also has a cap over each pole, in a projection that does not
 stretch there: see ``Cap``.
@@ -55,6 +56,7 @@ from .image_io import (
     read_pds_label,
     repair_thin_gaps,
 )
+from .skybox import ExrRaster
 
 log = logging.getLogger(__name__)
 
@@ -530,6 +532,18 @@ def _bicubic(
     return np.asarray(resized)
 
 
+def _bicubic_fields(
+    band: np.ndarray, size: tuple[int, int], box: tuple[float, float, float, float]
+) -> np.ndarray:
+    """``_bicubic`` for a band that can hold several float fields per sample."""
+    if band.ndim == 3 and band.dtype != np.uint8:
+        fields = [
+            _bicubic(band[..., field], size, box) for field in range(band.shape[2])
+        ]
+        return np.stack(fields, axis=-1)
+    return _bicubic(band, size, box)
+
+
 def _fill_pixels(values: np.ndarray, valid: np.ndarray) -> np.ndarray:
     """The pixels of blocks of one height. A pixel that holds the value of a
     neighbour in its row and of a neighbour in its column is one; a measured
@@ -877,7 +891,7 @@ class Layer:
 
     # (H, W) heights or brightness, or colour as (H, W, 3), planar (3, H, W),
     # or one grey band (H, W) with ``grey`` set.
-    pixels: np.ndarray | Mosaic | Region | ChunkedTiff
+    pixels: np.ndarray | Mosaic | Region | ChunkedTiff | ExrRaster
     placement: Placement
     planar: bool = False
     grey: bool = False
@@ -955,7 +969,7 @@ class Layer:
         pixels = self.pixels
         if isinstance(pixels, (Mosaic, Region)):
             return pixels.read(y0, y1, s0, s1)
-        if isinstance(pixels, ChunkedTiff):
+        if isinstance(pixels, (ChunkedTiff, ExrRaster)):
             return pixels[y0:y1, s0:s1]
         if self.planar:
             return np.moveaxis(np.asarray(pixels[:, y0:y1, s0:s1]), 0, -1)
@@ -1031,13 +1045,7 @@ class Layer:
             right - c0,
             min(float(band.shape[0]), bottom - y0 + above),
         )
-        size = (x1 - x0, out_h)
-        if band.ndim == 3 and band.dtype != np.uint8:
-            fields = [
-                _bicubic(band[..., field], size, box) for field in range(band.shape[2])
-            ]
-            return np.stack(fields, axis=-1)
-        return _bicubic(band, size, box)
+        return _bicubic_fields(band, (x1 - x0, out_h), box)
 
     def cap(self, cap: Cap, y0: int, y1: int, x0: int, x1: int) -> np.ndarray:
         """Read through patches of an equirectangular grid, each as wide as
@@ -1120,16 +1128,15 @@ class Layer:
         top, left = r0 // 2 - 2, c0 // 2 - 2
         bottom, right = -(-r1 // 2) + 2, -(-c1 // 2) + 2
         lat_edges = 90.0 - np.arange(top, bottom + 1) * (360.0 / rows)
-        half = Image.fromarray(self.window(width // 2, lat_edges, left, right))
-        doubled = half.resize(
-            (2 * half.width, 2 * half.height), Image.Resampling.BICUBIC
-        )
-        return np.asarray(doubled)[
+        half = self.window(width // 2, lat_edges, left, right)
+        size = (2 * half.shape[1], 2 * half.shape[0])
+        box = (0.0, 0.0, float(half.shape[1]), float(half.shape[0]))
+        return _bicubic_fields(half, size, box)[
             r0 - 2 * top : r1 - 2 * top, c0 - 2 * left : c1 - 2 * left
         ]
 
     def release(self) -> None:
-        if isinstance(self.pixels, Mosaic):
+        if isinstance(self.pixels, (Mosaic, ExrRaster)):
             self.pixels.release()
 
 
@@ -1368,6 +1375,15 @@ def open_colour_grid(
     if len(grid) == 1 and len(grid[0]) == 1:
         return open_colour_layer(grid[0][0], placement, dead_column)
     return Layer(Mosaic(grid, _colour_cell), placement, dead_column=dead_column)
+
+
+def _as_float32(raw: np.ndarray) -> np.ndarray:
+    return raw.astype(np.float32)
+
+
+def open_light_layer(path: Path, placement: Placement) -> Layer:
+    """An HDR map of linear light (EXR), three float fields per sample."""
+    return Layer(ExrRaster(path), placement, to_values=_as_float32)
 
 
 def soften(pixels: np.ndarray, sigma: float, around: bool = False) -> np.ndarray:
@@ -1855,6 +1871,27 @@ class HeightCoding:
         return (self.bias_km + self.step_km * code).astype(np.float32)
 
 
+@dataclass(frozen=True)
+class LightCoding:
+    """Linear light from 0 to 1 in a lossy RGB tile: for each channel,
+    ``light = (byte / 255) ** gamma``.
+
+    The builder keeps the light linear until a tile is written. A level is
+    then the true mean of the level above it, and a star keeps its total
+    light at every level.
+    """
+
+    gamma: float = config.SKY_TILE_GAMMA
+
+    def pack(self, light: np.ndarray) -> np.ndarray:
+        code = np.clip(light, 0.0, 1.0) ** (1.0 / self.gamma)
+        return np.rint(code * 255.0).astype(np.uint8)
+
+    def unpack(self, rgb: np.ndarray) -> np.ndarray:
+        """The light of a tile."""
+        return (rgb.astype(np.float32) / 255.0) ** self.gamma
+
+
 def detail_ratio(fine: np.ndarray, sigma: float) -> np.ndarray:
     """A brightness map over itself blurred by ``sigma`` pixels: what it shows
     that a map of that blur cannot. 1 where nothing was observed (NaN).
@@ -1987,7 +2024,7 @@ class PyramidBuilder:
         layers: Sequence[Layer],
         out_dir: Path,
         max_level: int,
-        coding: HeightCoding | None = None,
+        coding: HeightCoding | LightCoding | None = None,
         brightness: Sequence[Source] = (),
         sharpen_sigma: float | None = None,
         checkpoint: str = "",
@@ -2005,9 +2042,9 @@ class PyramidBuilder:
         )
         self.checkpoint = checkpoint
         self._save_kwargs = (
-            webp_kwargs(lossless=False)
-            if coding is None
-            else config.TILE_LOSSLESS_KWARGS
+            config.TILE_LOSSLESS_KWARGS
+            if isinstance(coding, HeightCoding)
+            else webp_kwargs(lossless=False)
         )
         if alpha is not None:
             # Without `exact` the encoder may change the RGB under a clear pixel.
@@ -2280,7 +2317,7 @@ class PyramidBuilder:
 
     def _filled(self, values: np.ndarray) -> np.ndarray:
         """Heights with their gaps at the fill height."""
-        if self.coding is not None and not np.isfinite(values).all():
+        if isinstance(self.coding, HeightCoding) and not np.isfinite(values).all():
             values = np.where(np.isfinite(values), values, self.coding.fill_km)
         return values
 

@@ -155,3 +155,7 @@ TILE_LOSSLESS_KWARGS = {"lossless": True, "method": 4, "quality": 75}
 # WebP alpha quality of a tile whose alpha holds a mask: 12 levels. A lake
 # shore at full precision takes several times the bytes of the colour.
 TILE_ALPHA_QUALITY = 50
+# Exponent of the curve that holds the star map's linear light in the bytes
+# of a tile: light = (byte / 255) ** gamma. Half the bytes are for light under
+# 1/16, where the Milky Way is.
+SKY_TILE_GAMMA = 4.0

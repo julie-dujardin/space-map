@@ -6,6 +6,7 @@ import type { ProbeZoneParams } from './position/probes/store';
 import { dataBase, setDataVersions } from './data-base';
 import { fetchWithTimeout } from './fetch-timeout';
 import { sha256 } from './sha256';
+import type { TilesBlock } from '$lib/scene/types';
 import { utcToTdb } from '$lib/time/jd';
 
 /**
@@ -310,6 +311,9 @@ export interface SkyboxMetadata {
 	license?: string;
 	attribution?: string;
 	description?: string;
+	/** The faces hold the light of the star map as `e·light / (1 + e·light)`,
+	 *  then sRGB. Absent in an export made before the star charts. */
+	exposure?: number;
 	/** The same sky without its bright stars, at the size the glow reads it past
 	 *  the solar system: `/v1/textures/{starless.id}/{tier}_{face}.webp`. Absent
 	 *  in an export made before it. */
@@ -318,6 +322,9 @@ export interface SkyboxMetadata {
 		tiers: string[];
 		tier_face_size: Record<string, number>;
 	};
+	/** The star map as a tile pyramid on the tile host, for the star charts
+	 *  (docs/export-format/tiles.md). Absent where it is not built. */
+	tiles?: TilesBlock & { light_gamma: number };
 }
 
 export interface Metadata {

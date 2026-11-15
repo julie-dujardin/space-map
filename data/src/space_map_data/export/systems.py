@@ -218,6 +218,8 @@ def tiles_block(meta: dict) -> dict:
     than the tiers. URLs, on the tile host:
     ``/v1/tiles/{tiles.id}/{z}/{x}/{y}.webp?v={tiles.version}``, with a
     ``{NN}/`` frame directory before ``{z}`` when ``frames`` is set.
+    ``light_gamma`` is set on the star map's pyramid, whose tiles hold linear
+    light: ``light = (byte / 255) ** light_gamma``.
     """
     block: dict = {
         "id": meta["id"],
@@ -230,7 +232,14 @@ def tiles_block(meta: dict) -> dict:
     if "displacement_scale_km" in meta:
         block["scale_km"] = meta["displacement_scale_km"]
         block["bias_km"] = meta["displacement_bias_km"]
-    for key in ("frames", "alpha", "license", "distribution", "attribution"):
+    for key in (
+        "frames",
+        "alpha",
+        "light_gamma",
+        "license",
+        "distribution",
+        "attribution",
+    ):
         if meta.get(key) is not None:
             block[key] = meta[key]
     if meta.get("artist_impression"):
@@ -559,11 +568,13 @@ class TextureLayers:
 
 def load_skybox_metadata(out_dir: Path) -> dict | None:
     """The cubemap-skybox metadata dict, or None if no bundle is ingested. The
-    starless bundle's metadata is under ``starless`` when it is ingested."""
+    starless bundle's metadata is under ``starless`` when it is ingested, and
+    the descriptor of the star map's tile pyramid under ``tiles`` when it is
+    built."""
     meta_file = mirror_path(out_dir / "textures" / _SKYBOX_DIR / "metadata.json")
     if not meta_file.exists():
         return None
-    meta = orjson.loads(meta_file.read_bytes())
+    meta = _with_tiles(out_dir, _SKYBOX_DIR, orjson.loads(meta_file.read_bytes()))
     starless_file = mirror_path(out_dir / "textures" / _STARLESS_DIR / "metadata.json")
     if starless_file.exists():
         meta["starless"] = orjson.loads(starless_file.read_bytes())
@@ -574,7 +585,9 @@ def skybox_block(meta: dict) -> dict:
     """Top-level ``skybox`` block for v1/metadata.json.
 
     URLs: ``/v1/textures/{skybox.id}/{tier}_{face}.webp``, and the same for
-    ``skybox.starless``.
+    ``skybox.starless``. ``exposure`` is the ``e`` of the faces' tonemap,
+    ``e·light / (1 + e·light)``. ``skybox.tiles`` is the star map as a tile
+    pyramid, in linear light: see ``tiles_block``.
     """
     block: dict = {
         "id": meta["id"],
@@ -584,6 +597,7 @@ def skybox_block(meta: dict) -> dict:
         "faces": list(meta["faces"]),
         "tiers": list(meta["tiers"]),
         "tier_face_size": dict(meta["tier_face_size"]),
+        "exposure": meta["exposure"],
         "source": meta["source"],
         "organisation": meta["organisation"],
     }
@@ -600,6 +614,8 @@ def skybox_block(meta: dict) -> dict:
             "tiers": list(starless["tiers"]),
             "tier_face_size": dict(starless["tier_face_size"]),
         }
+    if meta.get("tiles") is not None:
+        block["tiles"] = tiles_block(meta["tiles"])
     return block
 
 

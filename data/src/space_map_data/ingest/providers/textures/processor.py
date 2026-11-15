@@ -113,6 +113,10 @@ _TILED_SIBLINGS = {
     "cylindrical_glow": config.GLOW_SUFFIX,
 }
 
+# The cube type whose source also gets a pyramid, in linear light. The
+# starless cube does not: the glow reads it at 256 px a face.
+_SKY_TYPE = "cubemap_skybox"
+
 # The emissive sibling layers, by entry type. Only the renderer tells them
 # apart: night lights glow on the unlit side, a glow on both.
 _EMISSIVE_SIBLINGS = {
@@ -510,6 +514,8 @@ class TextureProcessor:
             return bundle
         if entry.get("tiles_alpha"):
             return None
+        if type_ == _SKY_TYPE:
+            return entry["body"]
         suffix = _TILED_SIBLINGS.get(type_)
         return None if suffix is None else f"{entry['body']}{suffix}"
 
@@ -521,6 +527,7 @@ class TextureProcessor:
         source_dir = entry["_source_dir"]
         alpha_path = alpha["_source_dir"] / alpha["tiles_alpha"] if alpha else None
         is_height = entry["type"] == "cylindrical_displacement"
+        light = tiles.LightCoding() if entry["type"] == _SKY_TYPE else None
         # One pyramid per frame; a single-frame map has one, unnamed.
         frames: dict[str, list[dict]]
         if entry["type"] == "cylindrical_monthly":
@@ -618,6 +625,8 @@ class TextureProcessor:
                 "alignment": entry_alignment(alpha),
                 "quality": config.TILE_ALPHA_QUALITY,
             }
+        if light is not None:
+            signature["light_gamma"] = light.gamma
         version = tiles.signature_version(signature)
         credit = {
             "id": pyramid_id,
@@ -698,7 +707,7 @@ class TextureProcessor:
         stats: tiles.PyramidStats | None = None
         cap_stats: tiles.PyramidStats | None = None
         parts: list[Path] = []
-        coding = None
+        coding: tiles.HeightCoding | tiles.LightCoding | None = light
         for frame, specs in frames.items():
             layers = []
             quanta = []
@@ -725,6 +734,8 @@ class TextureProcessor:
                     )
                     quanta.append(tiles.height_quantum_km(raster))
                     layers.append(tiles.height_layer(raster, placement))
+                elif light is not None:
+                    layers.append(tiles.open_light_layer(path, placement))
                 elif entry["type"] == "cylindrical_specular":
                     mask = np.asarray(open_specular_source(path))
                     layers.append(tiles.Layer(mask, placement))
@@ -819,10 +830,12 @@ class TextureProcessor:
         if alpha is not None:
             # The layer that the alpha of the tiles holds.
             metadata["alpha"] = "specular"
-        if coding is not None:
+        if isinstance(coding, tiles.HeightCoding):
             metadata["displacement_bias_km"] = coding.bias_km
             metadata["displacement_scale_km"] = coding.step_km * tiles.HEIGHT_LEVELS
             metadata["absolute_radius"] = bool(entry.get("absolute_radius", False))
+        if light is not None:
+            metadata["light_gamma"] = light.gamma
         meta_path.parent.mkdir(parents=True, exist_ok=True)
         meta_path.write_text(json.dumps(metadata, indent=2))
         # Last: until the descriptor names this build, the saves are all that

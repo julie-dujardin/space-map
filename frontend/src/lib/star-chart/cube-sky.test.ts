@@ -1,16 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { tapsPerSide, texelsPerPixel } from './cube-sky';
+import { MAX_TAPS, texelsPerPixel } from './cube-sky';
 import { fitFrame } from './frame';
+import { tapsPerSide } from './sky';
 
 describe('the taps of a pixel of the cube', () => {
 	it('reads each texel of a pixel that holds a few', () => {
-		expect(tapsPerSide(0.4)).toBe(1);
-		expect(tapsPerSide(2.2)).toBe(3);
-		expect(tapsPerSide(8)).toBe(8);
+		expect(tapsPerSide(0.4, MAX_TAPS)).toBe(1);
+		expect(tapsPerSide(2.2, MAX_TAPS)).toBe(3);
+		expect(tapsPerSide(8, MAX_TAPS)).toBe(8);
 	});
 
 	it('holds at its limit on a wide frame, where each tap reads a mip', () => {
-		expect(tapsPerSide(79)).toBe(tapsPerSide(8));
+		expect(tapsPerSide(79, MAX_TAPS)).toBe(tapsPerSide(8, MAX_TAPS));
 	});
 
 	it('counts more texels in a pixel of a wider frame, and fewer in a sharper picture', () => {

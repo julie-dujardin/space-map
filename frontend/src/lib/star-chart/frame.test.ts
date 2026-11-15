@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { normalize, type Vec3 } from '$lib/math/travel/vec3';
-import { centreScaleDeg, figureAspect, fitFrame, planeHalf, project } from './frame';
+import { centreScaleDeg, directionAt, figureAspect, fitFrame, planeHalf, project } from './frame';
 
 function icrs(raDeg: number, decDeg: number): Vec3 {
 	const ra = (raDeg * Math.PI) / 180;
@@ -78,5 +78,20 @@ describe('the frame of a chart', () => {
 		expect(figureAspect([icrs(60, 0), icrs(120, 5)], 0.8, 1.8)).toBe(1.8);
 		const square = figureAspect([icrs(80, 0), icrs(90, 10), icrs(80, 10), icrs(90, 0)], 0.8, 1.8);
 		expect(square).toBeCloseTo(1, 1);
+	});
+});
+
+describe('directionAt', () => {
+	it('is the reverse of project', () => {
+		const frame = fitFrame([icrs(80, 5), icrs(95, -10)], { width: 400, height: 300 });
+		for (const [fx, fy] of [
+			[0.5, 0.5],
+			[0, 0],
+			[0.9, 0.2]
+		]) {
+			const [x, y] = project(frame, directionAt(frame, fx, fy));
+			expect(x).toBeCloseTo(fx * 400, 9);
+			expect(y).toBeCloseTo(fy * 300, 9);
+		}
 	});
 });

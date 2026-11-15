@@ -95,4 +95,48 @@ describe('the shared picture store', () => {
 		releaseBitmap(held!.key);
 		expect(closed.count).toBe(1);
 	});
+
+	it('keeps the bytes of a raw picture, as another picture of the same file', async () => {
+		const options: (ImageBitmapOptions | undefined)[] = [];
+		vi.stubGlobal('fetch', async () => ({ ok: true, blob: async () => ({}) }));
+		vi.stubGlobal('createImageBitmap', async (_blob: unknown, asked?: ImageBitmapOptions) => {
+			options.push(asked);
+			return fakeBitmap(1024, { count: 0 });
+		});
+		const shown = await acquireBitmap('/sky.webp', null);
+		const raw = await acquireBitmap('/sky.webp', null, false, undefined, true);
+		expect(raw?.key).not.toBe(shown?.key);
+		expect(options).toEqual([{}, { colorSpaceConversion: 'none', premultiplyAlpha: 'none' }]);
+	});
+
+	it('ends the wait of a caller that aborts, and the fetch when no caller waits', async () => {
+		const closed = { count: 0 };
+		const signals: AbortSignal[] = [];
+		let land = (): void => {};
+		vi.stubGlobal('fetch', (_url: string, init: { signal: AbortSignal }) => {
+			signals.push(init.signal);
+			return new Promise((resolve) => {
+				land = () => resolve({ ok: true, blob: async () => ({}) });
+			});
+		});
+		vi.stubGlobal('createImageBitmap', async () => fakeBitmap(1024, closed));
+		const first = new AbortController();
+		const second = new AbortController();
+		const a = acquireBitmap('/sky.webp', null, false, first.signal);
+		const b = acquireBitmap('/sky.webp', null, false, second.signal);
+		first.abort();
+		await expect(a).rejects.toThrow();
+		// The other caller still waits for the one fetch.
+		expect(signals).toHaveLength(1);
+		expect(signals[0].aborted).toBe(false);
+		second.abort();
+		await expect(b).rejects.toThrow();
+		expect(signals[0].aborted).toBe(true);
+		// A picture that lands after the abort is closed, not kept.
+		land();
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		expect(closed.count).toBe(1);
+		await expect(acquireBitmap('/sky.webp', null, false, AbortSignal.abort())).rejects.toThrow();
+		expect(signals).toHaveLength(1);
+	});
 });

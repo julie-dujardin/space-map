@@ -15,18 +15,44 @@ export interface Pixels {
 export interface SkySource {
 	/**
 	 * The sky of `frame` as a picture of `width` by `height` pixels, which has
-	 * the aspect of the frame. Null when the source has no sky yet.
+	 * the aspect of the frame. Null when the source has no sky yet. `signal`
+	 * ends the work of a paint that the chart no longer wants.
 	 */
-	paint(frame: ChartFrame, width: number, height: number): Promise<Pixels | null>;
+	paint(
+		frame: ChartFrame,
+		width: number,
+		height: number,
+		signal?: AbortSignal
+	): Promise<Pixels | null>;
 	/** Hear when a new paint gives another picture. Returns the unsubscribe. */
 	onChange(listener: () => void): () => void;
 }
 
+/** The sky of the charts on a page. Each chart hears of its own picture only. */
+export interface ChartSky {
+	paint: SkySource['paint'];
+	/** Hear when a new paint of `frame` gives a better picture. Returns the unsubscribe. */
+	watch(frame: ChartFrame, listener: () => void): () => void;
+}
+
+/** Taps on each side of a pixel that holds `texels` of the source: one per
+ *  texel, up to `limit`. */
+export function tapsPerSide(texels: number, limit: number): number {
+	return Math.min(Math.max(Math.ceil(texels), 1), limit);
+}
+
+/** How much of a pixel's brightest tap it keeps over its mean. A mean alone
+ *  loses the stars of a small chart, since a star is a few pixels of the map. */
+export const PEAK_SHARE = 0.7;
+
+/** How far the faint sky is raised. The Milky Way stays under the stars. */
+const EXPOSURE = 5;
+
 /**
  * GLSL of a source that draws with a shader. `chartRay` gives the ICRS
  * direction of a point of the frame, from the uniforms of {@link rayUniforms}.
- * `chartTone` takes linear sky light to the display. Each source uses both, so
- * that all sources draw the same sky.
+ * `chartTone` takes the light of the star map, 0 to 1, to the display. Each
+ * source uses both, so that all sources draw the same sky.
  */
 export const CHART_GLSL = /* glsl */ `
 uniform vec3 uRight;
@@ -42,8 +68,9 @@ vec3 chartRay(vec2 uv) {
 	return d.x * uRight + d.y * uUp + d.z * uForward;
 }
 
-vec3 chartTone(vec3 linear) {
-	vec3 lifted = 1.0 - exp(-linear * ${(2.2).toFixed(1)});
+vec3 chartTone(vec3 light) {
+	vec3 held = light * ${EXPOSURE.toFixed(1)} / (1.0 + light * ${EXPOSURE.toFixed(1)});
+	vec3 lifted = 1.0 - exp(-held * 2.2);
 	return pow(lifted, vec3(1.0 / 2.2));
 }
 `;
@@ -61,6 +88,34 @@ export function rayUniforms(frame: ChartFrame): {
 		uForward: frame.forward,
 		uHalf: planeHalf(frame)
 	};
+}
+
+/** How much of the brightest of its four pixels a pixel of a half-size
+ *  picture keeps over their mean. */
+export const HALF_PEAK_SHARE = 0.5;
+
+/** A picture at half the size. A mean alone dims its stars. */
+export function halved(pixels: Pixels): Pixels {
+	const width = pixels.width >> 1;
+	const height = pixels.height >> 1;
+	const from = pixels.data;
+	const data = new Uint8ClampedArray(width * height * 4).fill(255);
+	const row = pixels.width * 4;
+	for (let y = 0; y < height; y++) {
+		for (let x = 0; x < width; x++) {
+			const at = y * 2 * row + x * 8;
+			const to = (y * width + x) * 4;
+			for (let c = 0; c < 3; c++) {
+				const a = from[at + c];
+				const b = from[at + 4 + c];
+				const d = from[at + row + c];
+				const e = from[at + row + 4 + c];
+				const mean = (a + b + d + e) / 4;
+				data[to + c] = mean + (Math.max(a, b, d, e) - mean) * HALF_PEAK_SHARE;
+			}
+		}
+	}
+	return { data, width, height };
 }
 
 function luma(pixels: Pixels, x: number, y: number): number {

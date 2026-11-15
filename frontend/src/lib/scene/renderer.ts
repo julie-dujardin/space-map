@@ -384,8 +384,8 @@ export class SceneRenderer {
 	/** The heading last handed to {@link Callbacks.onHeading}. */
 	private reportedHeading = 0;
 	private skyboxAdjuster!: SkyboxAdjuster;
-	/** The skybox as the sky of the star charts in the drawer. */
-	private chartSky!: CubeSkySource;
+	/** The skybox as the coarse sky of the star charts in the drawer. */
+	private cubeSky!: CubeSkySource;
 	private skyDebugMarkers!: SkyDebugMarkers;
 	private haloDebug!: HaloDebugOverlay;
 	private travelPath!: TravelPathOverlay;
@@ -610,8 +610,8 @@ export class SceneRenderer {
 		this.orbitPreview = new OrbitPreviewOverlay(this.scene);
 		this.orbitPreview.setLayer(SceneRenderer.MAP_LAYER);
 		this.skyboxAdjuster.set(0, 0, 0);
-		this.chartSky = new CubeSkySource(this.renderer, () => this.skyboxSource()?.texture ?? null);
-		ctx.chartSky = this.chartSky;
+		this.cubeSky = new CubeSkySource(this.renderer, () => this.skyboxSource()?.texture ?? null);
+		ctx.chartSky.setCoarse(this.cubeSky);
 		this.loadSky();
 
 		this.placer = new Placer(ctx, this.bodyObjects, this.positionDiagnostics, () =>
@@ -3386,7 +3386,7 @@ export class SceneRenderer {
 			this.renderer,
 			this.ctx,
 			() => this.disposed,
-			() => this.chartSky.changed()
+			() => this.cubeSky.changed()
 		);
 	}
 
@@ -3560,8 +3560,8 @@ export class SceneRenderer {
 
 	dispose(): void {
 		this.disposed = true;
-		this.ctx.chartSky = null;
-		this.chartSky.dispose();
+		this.ctx.chartSky.setCoarse(null);
+		this.cubeSky.dispose();
 		cancelAnimationFrame(this.rafId);
 		this.pointerInteraction.detach();
 		this.gpuPick.dispose();

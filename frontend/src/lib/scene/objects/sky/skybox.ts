@@ -135,11 +135,16 @@ function releaseTierBitmaps(id: string, tier: string, bitmaps: ImageBitmap[]): v
 	for (const b of bitmaps) b.close();
 }
 
-function makeCube(bitmaps: ImageBitmap[]): CubeTexture {
+/** The exposure of a skybox whose export does not state it. Shipped exports are such. */
+const SHIPPED_EXPOSURE = 4;
+
+function makeCube(bitmaps: ImageBitmap[], exposure?: number): CubeTexture {
 	const cube = new CubeTexture(bitmaps);
 	cube.colorSpace = SRGBColorSpace;
 	// The faces are freed after upload; the glow reads the cube's mips by this.
 	cube.userData.faceTexels = bitmaps[0]?.width ?? 0;
+	// A star chart takes the faces back to the light of the star map by this.
+	cube.userData.exposure = exposure;
 	cube.needsUpdate = true;
 	return cube;
 }
@@ -200,7 +205,7 @@ async function loadFromMeta(
 					releaseTierBitmaps(meta.id, lowTier, bitmaps);
 					return;
 				}
-				lowRef.cube = makeCube(bitmaps);
+				lowRef.cube = makeCube(bitmaps, meta.exposure ?? SHIPPED_EXPOSURE);
 				lowRef.bitmaps = bitmaps;
 				scene.background = lowRef.cube;
 				installed();
@@ -256,7 +261,7 @@ async function loadFromMeta(
 			releaseTierBitmaps(meta.id, lowTier, lowRef.bitmaps);
 		return;
 	}
-	const full = makeCube(fullBitmaps);
+	const full = makeCube(fullBitmaps, meta.exposure ?? SHIPPED_EXPOSURE);
 	renderer.initTexture(full);
 	fullInstalled = true;
 	const prevBackground = scene.background;

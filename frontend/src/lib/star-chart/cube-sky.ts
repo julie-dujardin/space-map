@@ -14,7 +14,14 @@ import {
 	type WebGLRenderer
 } from 'three';
 import { centreScaleDeg, type ChartFrame } from './frame';
-import { CHART_GLSL, rayUniforms, type Pixels, type SkySource } from './sky';
+import {
+	CHART_GLSL,
+	PEAK_SHARE,
+	rayUniforms,
+	tapsPerSide,
+	type Pixels,
+	type SkySource
+} from './sky';
 
 const VERTEX = /* glsl */ `
 varying vec2 vUv;
@@ -24,22 +31,12 @@ void main() {
 }
 `;
 
-/** Taps on each side of a pixel, at most. */
-const MAX_TAPS = 8;
-/** How much of a pixel's brightest tap it keeps over its mean. A mean alone
- *  loses the stars of a small chart, since a star is one texel. */
-const PEAK_SHARE = 0.7;
-
+/** Taps on each side of a pixel, at most. Past it each tap reads a mip that
+ *  holds its share of the pixel, so no texel falls between two taps. */
+export const MAX_TAPS = 8;
 /** Cube texels along one pixel of a picture `width` wide, at the centre of the frame. */
 export function texelsPerPixel(frame: ChartFrame, width: number, faceTexels: number): number {
 	return ((centreScaleDeg(frame) * frame.width) / width) * (faceTexels / 90);
-}
-
-/** Taps on each side of a pixel: one per texel, up to the limit. Past the
- *  limit each tap reads a mip that holds its share of the pixel, so no texel
- *  falls between two taps. */
-export function tapsPerSide(texels: number): number {
-	return Math.min(Math.max(Math.ceil(texels), 1), MAX_TAPS);
 }
 
 // The read starts at the bottom row of the target, so the top of the frame is
@@ -48,6 +45,8 @@ const FRAGMENT = /* glsl */ `
 uniform samplerCube uSky;
 uniform vec2 uPixel;
 uniform int uTaps;
+// The cube holds the light of the star map as e·light / (1 + e·light).
+uniform float uExposure;
 varying vec2 vUv;
 ${CHART_GLSL}
 vec3 cubeRay(vec2 uv) {
@@ -66,7 +65,9 @@ void main() {
 		for (int j = 0; j < ${MAX_TAPS}; j++) {
 			if (i >= uTaps || j >= uTaps) continue;
 			vec2 offset = (vec2(float(i), float(j)) + 0.5) / float(uTaps) - 0.5;
-			vec3 tap = textureGrad(uSky, cubeRay(vUv + offset * uPixel), stepX, stepY).rgb;
+			vec3 held = textureGrad(uSky, cubeRay(vUv + offset * uPixel), stepX, stepY).rgb;
+			// The map stops at 1, and the bytes of the cube are coarse near it.
+			vec3 tap = min(held / (uExposure * max(1.0 - held, 0.01)), 1.0);
 			mean += tap;
 			peak = max(peak, tap);
 		}
@@ -87,6 +88,7 @@ export class CubeSkySource implements SkySource {
 			uSky: { value: null },
 			uPixel: { value: [0, 0] },
 			uTaps: { value: 1 },
+			uExposure: { value: 1 },
 			uRight: { value: [0, 0, 0] },
 			uUp: { value: [0, 0, 0] },
 			uForward: { value: [0, 0, 0] },
@@ -100,8 +102,9 @@ export class CubeSkySource implements SkySource {
 	private target: WebGLRenderTarget | null = null;
 
 	/**
-	 * @param cube J2000 equatorial faces in the order of the skybox, with mips
-	 *   and `userData.faceTexels`. Null while the renderer holds none.
+	 * @param cube J2000 equatorial faces in the order of the skybox, with mips,
+	 *   `userData.faceTexels` and `userData.exposure`. Null while the renderer
+	 *   holds none.
 	 */
 	constructor(
 		private readonly renderer: WebGLRenderer,
@@ -122,8 +125,10 @@ export class CubeSkySource implements SkySource {
 		uniforms.uSky.value = cube;
 		uniforms.uPixel.value = [1 / width, 1 / height];
 		uniforms.uTaps.value = tapsPerSide(
-			texelsPerPixel(frame, width, cube.userData.faceTexels as number)
+			texelsPerPixel(frame, width, cube.userData.faceTexels as number),
+			MAX_TAPS
 		);
+		uniforms.uExposure.value = cube.userData.exposure as number;
 		Object.entries(rayUniforms(frame)).forEach(([name, value]) => {
 			uniforms[name].value = value;
 		});

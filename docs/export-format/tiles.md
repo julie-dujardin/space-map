@@ -2,7 +2,7 @@
 
 A tile pyramid holds one surface layer of a body at the full detail of its source. The renderer fetches only the tiles that its camera needs.
 
-Each surface layer of each body has a pyramid: the colour map (one pyramid for each month of a monthly map), the height map, the night-lights map and the specular mask. Cloud overlays and the star map do not have one. A specular mask can instead be the alpha of the colour tiles of its body: see *Alpha*.
+Each surface layer of each body has a pyramid: the colour map (one pyramid for each month of a monthly map), the height map, the night-lights map and the specular mask. Cloud overlays do not have one. The star map has one too, on the same grid: see *Star map*. A specular mask can instead be the alpha of the colour tiles of its body: see *Alpha*.
 
 Ingest builds the pyramids (`space-map-ingest --targets tiles`). They are not part of the export directory: a pyramid is thousands of files, and the host of the export has a file limit. They are written to `space-map-tiles/`, which has the same `v1/` layout as the export. The tile host (`infrastructure/tiles/`) serves that directory as it is, so a pyramid is public when its build ends.
 
@@ -46,6 +46,31 @@ v = (1 + r·sin λ) / 2      south cap
 
 At the pole, a pixel of a cap is 5% larger on the ground than a pixel of the map at the same level. Away from the pole it becomes smaller, by 15% at the middle of a side.
 
+## Star map
+
+The star map (`stars`, type `cubemap_skybox`) has a pyramid of the whole sky, from the same HDR file as its cube faces. The cube faces stay in the export: they are the backdrop of the 3D scene, and the fallback of a star chart when the tile host is not available. The pyramid holds the map at the pixel size of its source (64K: level 5, 182 px per degree at the equator), where a cube face has 45 px per degree.
+
+The grid and the caps are those of a body, with the celestial sphere in place of the body. The frame is ICRS (`frame` of the `skybox` block). The east longitude of the grid is minus the right ascension: `λ = −α`, and the latitude is the declination `δ`. The map thus shows the sky as seen from inside the sphere, with north up and east to the left: right ascension 12h is at the left and right edges, 0h is in the middle, and it increases to the left.
+
+For a unit vector `(x, y, z)` in ICRS axes, as fractions of the width and the height of a level from its top-left corner:
+
+```
+u = (0.5 − atan2(y, x) / 360°) mod 1
+v = acos(z) / 180°
+```
+
+On a cap, with `r` as in *Polar caps* and `α` the right ascension:
+
+```
+u = (1 + r·cos α) / 2
+v = (1 + r·sin α) / 2      north cap
+v = (1 − r·sin α) / 2      south cap
+```
+
+A cap shows the sky around its pole as seen from inside the sphere. Right ascension increases clockwise on the north cap and counter-clockwise on the south cap.
+
+The tiles hold linear light, not a picture for display: see *Tile content*. The source states the light of the sky from 0 to 1. It shows a bright star as a larger disc, not as a brighter pixel: the middle of the disc is 1 for each of them. The brightness of a star is thus the sum of its light, which the levels keep. The star map has no patches.
+
 ## Patches
 
 A landing site can have a mosaic that is much sharper than the map of its body. A patch holds such a mosaic: it continues the pyramid past `max_level`, but only over the ground that the mosaic covers.
@@ -77,6 +102,14 @@ A patch can also be on a polar cap. Its files are then in the polar stereographi
 
   In the tiles of the pyramid, blue is 0. Only the tiles of a patch use it. A pixel of a patch can be 100 times smaller than a pixel of the pyramid, and a full step between two such pixels would show as a staircase. A tile that is `n` levels below `max_level` of the pyramid states its heights to `1/2^n` of a step, and to 1/256 from 8 levels down. The step thus has the same ratio to the pixel at each level. A decoder that ignores blue gets the height rounded down to a full step.
 
+- **Light** (`cubemap_skybox`): lossy WebP, quality 80, RGB. Each channel holds linear light on a power curve:
+
+  ```
+  light = (byte / 255) ^ light_gamma
+  ```
+
+  `light_gamma` is 4, so half of the byte range is for light below 1/16, where the Milky Way is. The cube faces have another curve (a Reinhard tonemap, then sRGB), which is made for a dim backdrop and makes the bright stars almost equal. The builder resamples and averages the light before it applies the curve. A level is thus the true mean of the level above it, and the sum of the light of a star is the same at each level. A decoder must read the bytes unchanged and apply the curve itself: the tile is not sRGB. A renderer that filters the bytes before it applies the curve gets a star that is too faint.
+
 ## Sources of a pyramid
 
 By default a pyramid comes from the same file as the tiers of its bundle. A manifest entry with `tiles: only` replaces that entry for the pyramid, and the tiers do not change. It refines the bundle whose tiers come from the file that it names, which can be the best map of the body or an alternate one. If no bundle comes from that file, it refines the best map. Such an entry can combine files:
@@ -97,6 +130,8 @@ A renderer that draws the tiles as colour must ignore their alpha. A 2D canvas k
 ## Build
 
 The builder resamples the finest level from the sources one row of tiles at a time. It makes each level below from the level above.
+
+The star map is an EXR file of 12 GiB when decoded. The builder decodes it in bands of 64 lines and keeps 3.5 GiB of them: a row of cap tiles through a pole reads the lines from the pole to 46°, 3.3 GiB, and no band of that row is decoded twice. A build of the star map's pyramid holds about 10 GiB, so the ingest needs a memory cap of at least 12 GiB for it.
 
 A level wider than 524,288 px (level 9 and up) is too large to hold one row of. The builder makes it in blocks of 16 × 16 tiles. Each block gives its tiles for four levels, and one tile of the fifth level down. A row of these tiles then continues as a normal row. After each row of blocks the builder saves its progress. If the build stops, the next run continues from the last saved row, as long as the sources did not change.
 
@@ -141,6 +176,7 @@ Build metadata. It is in the metadata mirror, not in the tile tree.
 - `alpha` — the layer that the alpha of the tiles holds: `specular`. Absent when the tiles have no alpha.
 - `patches` — present when the pyramid has patches. Each has an `id`, a display `name`, its own credit fields (`source`, `organisation`, `license`, `attribution`), a `version`, its `max_level`, the tile ranges `x` and `y` at that level, its `map_levels`, its source `files` and its `levels`. `cap` is `north` or `south` for a patch on a cap, and is absent for a patch on the map. `full_width` is that of its finest file, as on a layer. `bounds` are the `west`, `east`, `south` and `north` edges of its files together, in degrees. For a file on a cap they are the edges of the ground along its border.
 - `displacement_bias_km`, `displacement_scale_km`, `absolute_radius` — height pyramids only. See *Tile content*.
+- `light_gamma` — the star map only: the exponent of the curve of its tiles. See *Tile content*.
 
 The export copies the fields that the renderer needs into a `tiles` block, inside the block of the layer (`texture`, `displacement`, `night`, `specular`) in `systems/{bary}.json`, in the object bundle and in `credits.json`:
 
@@ -186,7 +222,7 @@ A pyramid with patches has a `patches` array in the block. Each patch has `id`, 
 
 The tiles of a patch use the `version` of the patch in `?v=`, not that of the pyramid. A patch also changes tiles of the pyramid: the tiles of the map that are in its range at the last `map_levels` levels of the pyramid, with the range found as for the levels of the patch. Such a tile uses the versions of the patches that have it, in the order of the array, with a `.` between them. A patch on a cap changes the tiles of that cap in the same way.
 
-The `tiles` block has its own credit fields because a pyramid can come from a different source than the tiers. `scale_km` and `bias_km` are present for height pyramids only, `frames` for monthly maps only, and `alpha` for a colour pyramid whose tiles hold a mask in their alpha. `distribution` is present when the source has a restricted licence, with the same meaning as on a texture.
+The `tiles` block has its own credit fields because a pyramid can come from a different source than the tiers. The star map is not a layer of a body: its `tiles` block is in the `skybox` block of [`metadata.json`](metadata.md), with `light_gamma`. `scale_km` and `bias_km` are present for height pyramids only, `frames` for monthly maps only, and `alpha` for a colour pyramid whose tiles hold a mask in their alpha. `distribution` is present when the source has a restricted licence, with the same meaning as on a texture.
 
 ## Manifest fields
 

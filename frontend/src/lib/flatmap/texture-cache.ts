@@ -112,8 +112,54 @@ class Store<T> {
 
 const bitmaps = new Store<ImageBitmap>((bitmap) => bitmap.close());
 const rasters = new Store<RasterImage>(() => {});
+interface Decode {
+	work: Promise<ImageBitmap | null>;
+	/** Callers that wait for the picture. */
+	waiting: number;
+	stop: AbortController;
+}
+
 /** The decodes in progress. A dozen maps of one body fetch it one time. */
-const pending = new Map<string, Promise<ImageBitmap | null>>();
+const pending = new Map<string, Decode>();
+
+/** The picture of `decode`, or a rejection when `signal` aborts first. The
+ *  fetch stops when no caller waits for it. */
+function waitUnless(key: string, decode: Decode, signal: AbortSignal): Promise<ImageBitmap | null> {
+	return new Promise((resolve, reject) => {
+		let settled = false;
+		const leave = (): void => {
+			if (settled) return;
+			settled = true;
+			if (--decode.waiting === 0) {
+				decode.stop.abort();
+				if (pending.get(key) === decode) pending.delete(key);
+				// A decode that ends after the abort has no owner.
+				decode.work.then(
+					(bitmap) => bitmap?.close(),
+					() => {}
+				);
+			}
+			reject(signal.reason);
+		};
+		signal.addEventListener('abort', leave, { once: true });
+		const settle = (): void => {
+			settled = true;
+			signal.removeEventListener('abort', leave);
+		};
+		decode.work.then(
+			(bitmap) => {
+				if (settled) return;
+				settle();
+				resolve(bitmap);
+			},
+			(e: unknown) => {
+				if (settled) return;
+				settle();
+				reject(e);
+			}
+		);
+	});
+}
 
 /** The key a picture is filed under. The width is part of it. A map that
  *  resamples asks for a smaller picture than one that draws it directly. */
@@ -127,6 +173,9 @@ export function textureKey(url: string, decodeWidth: number | null): string {
  * `decodeWidth` makes the picture smaller as it is decoded. Use it for a map
  * that cannot sample more than that width. Null keeps the picture whole.
  * `opaque` drops the alpha of a WebP, for a tile whose alpha holds a mask.
+ * `signal` ends the wait of this caller, with a rejection.
+ * `raw` keeps the bytes of the file: no colour conversion, no premultiply.
+ * It is for a picture whose channels hold data.
  *
  * The caller holds one claim. It must call {@link releaseBitmap} with the same
  * key when it stops drawing the picture.
@@ -134,20 +183,32 @@ export function textureKey(url: string, decodeWidth: number | null): string {
 export async function acquireBitmap(
 	url: string,
 	decodeWidth: number | null,
-	opaque = false
+	opaque = false,
+	signal?: AbortSignal,
+	raw = false
 ): Promise<{ key: string; bitmap: ImageBitmap } | null> {
-	// An opaque decode is another picture of the same file.
-	const key = opaque ? `${textureKey(url, decodeWidth)}#opaque` : textureKey(url, decodeWidth);
+	signal?.throwIfAborted();
+	// An opaque or raw decode is another picture of the same file.
+	const key = `${textureKey(url, decodeWidth)}${opaque ? '#opaque' : ''}${raw ? '#raw' : ''}`;
 	const held = bitmaps.claim(key);
 	if (held) return { key, bitmap: held };
-	let work = pending.get(key);
-	if (!work) {
-		work = decode(url, decodeWidth, opaque);
-		pending.set(key, work);
-		const done = (): boolean => pending.delete(key);
-		work.then(done, done);
+	let decode = pending.get(key);
+	if (!decode) {
+		const stop = new AbortController();
+		const started = {
+			work: decodePicture(url, decodeWidth, opaque, raw, stop.signal),
+			waiting: 0,
+			stop
+		};
+		pending.set(key, started);
+		const done = (): void => {
+			if (pending.get(key) === started) pending.delete(key);
+		};
+		started.work.then(done, done);
+		decode = started;
 	}
-	const bitmap = await work;
+	decode.waiting++;
+	const bitmap = await (signal ? waitUnless(key, decode, signal) : decode.work);
 	if (!bitmap) return null;
 	const kept = bitmaps.put(key, bitmap, bitmapBytes(bitmap.width, bitmap.height));
 	return { key, bitmap: kept };
@@ -160,19 +221,28 @@ export async function acquireBitmap(
  * memory. Height follows width, so the picture keeps its shape. A browser that
  * does not accept the option gives the whole picture, which also draws.
  */
-async function decode(
+async function decodePicture(
 	url: string,
 	decodeWidth: number | null,
-	opaque: boolean
+	opaque: boolean,
+	raw: boolean,
+	signal: AbortSignal
 ): Promise<ImageBitmap | null> {
-	const response = await fetch(url);
+	const response = await fetch(url, { signal });
 	if (!response.ok) throw new Error(`HTTP ${response.status}`);
 	const blob = opaque ? await opaqueWebpBlob(response) : await response.blob();
-	if (!decodeWidth) return createImageBitmap(blob);
+	const kept: ImageBitmapOptions = raw
+		? { colorSpaceConversion: 'none', premultiplyAlpha: 'none' }
+		: {};
+	if (!decodeWidth) return createImageBitmap(blob, kept);
 	try {
-		return await createImageBitmap(blob, { resizeWidth: decodeWidth, resizeQuality: 'high' });
+		return await createImageBitmap(blob, {
+			...kept,
+			resizeWidth: decodeWidth,
+			resizeQuality: 'high'
+		});
 	} catch {
-		return createImageBitmap(blob);
+		return createImageBitmap(blob, kept);
 	}
 }
 
