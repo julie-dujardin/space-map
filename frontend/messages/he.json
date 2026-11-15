@@ -1621,8 +1621,6 @@
 	"star_interior_inputs_photometric": "ערכים פוטומטריים",
 	"star_interior_inputs_solar": "בהנחת מתכתיות שמשית",
 	"star_interior_inputs_uncertain": "ערכים לא ודאיים",
-	"star_interior_inputs_from": "טמפרטורה אפקטיבית: {teff}. בהירות: {luminosity}. מתכתיות: {feh}.",
-	"star_interior_inputs_solar_from": "טמפרטורה אפקטיבית: {teff}. בהירות: {luminosity}. מתכתיות: בהנחה שהיא שמשית.",
 	"star_interior_centre_temperature": "טמפרטורה במרכז",
 	"star_interior_centre_density": "צפיפות במרכז",
 	"star_interior_centre_hydrogen": "שבר המימן במרכז",

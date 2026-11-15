@@ -67,13 +67,9 @@ describe('the model row', () => {
 		expect(note({ tier: 3, fehSource: 'pastel-2020' })).toBe('uncertain inputs');
 	});
 
-	it('names the inputs of the fit on the value', () => {
-		expect(rowsOf(fitted({}))[0].tooltip).toBe(
-			'Effective temperature: Gaia DR3 GSP-Phot. Luminosity: Gaia DR3 FLAME. Metallicity: PASTEL (Soubiran et al. 2016).'
-		);
-		expect(rowsOf(fitted({ tier: 3, fehSource: 'assumed-solar' }))[0].tooltip).toBe(
-			'Effective temperature: Gaia DR3 GSP-Phot. Luminosity: Gaia DR3 FLAME. Metallicity: assumed solar.'
-		);
+	it('names no source of an input on the value: the footer lists them', () => {
+		expect(rowsOf(fitted({}))[0].tooltip).toBeUndefined();
+		expect(rowsOf(fitted({ tier: 3, fehSource: 'assumed-solar' }))[0].tooltip).toBeUndefined();
 	});
 });
 

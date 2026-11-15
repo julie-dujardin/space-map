@@ -1621,8 +1621,6 @@
 	"star_interior_inputs_photometric": "dane fotometryczne",
 	"star_interior_inputs_solar": "przyjęta metaliczność słoneczna",
 	"star_interior_inputs_uncertain": "dane niepewne",
-	"star_interior_inputs_from": "Temperatura efektywna: {teff}. Moc promieniowania: {luminosity}. Metaliczność: {feh}.",
-	"star_interior_inputs_solar_from": "Temperatura efektywna: {teff}. Moc promieniowania: {luminosity}. Metaliczność: przyjęta słoneczna.",
 	"star_interior_centre_temperature": "Temperatura w centrum",
 	"star_interior_centre_density": "Gęstość w centrum",
 	"star_interior_centre_hydrogen": "Udział wodoru w centrum",

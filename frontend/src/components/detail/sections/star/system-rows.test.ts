@@ -109,13 +109,13 @@ describe('the orbit of a node', () => {
 	const rows = (orbit: ReturnType<typeof pairOrbit>) =>
 		section(systemSections(point(), pointNode({ orbit }), null), 'orbit')!.rows;
 
-	it('shows each element with its source, by the work where it has one', () => {
+	it('shows each element, and names no source on it: the works are in the footer', () => {
 		const out = rows(pairOrbit());
 		expect(plain(entry(out, 'Orbital period')!.value)).toBe('41.0792 d');
-		expect(entry(out, 'Orbital period')?.tooltip).toBe('Source: Doyle et al. 2011');
-		expect(entry(out, 'Longitude of ascending node')?.tooltip).toBe(
-			'Source: Gaia DR3 orbit solution'
-		);
+		// The date of the epoch is all a tooltip says here.
+		const hinted = out.filter((r) => r.tooltip !== undefined).map((r) => r.label);
+		expect(hinted).toEqual(['Time of periastron']);
+		expect(out.map((r) => r.tooltip).join(' ')).not.toContain('Source');
 	});
 
 	it('says when the node can be either one', () => {
@@ -123,9 +123,7 @@ describe('the orbit of a node', () => {
 		expect(entry(ascending, 'Longitude of either node')).toBeUndefined();
 		const either = rows(pairOrbit({ nodeAscending: false }));
 		expect(entry(either, 'Longitude of ascending node')).toBeUndefined();
-		expect(entry(either, 'Longitude of either node')?.tooltip).toBe(
-			'Source: Gaia DR3 orbit solution'
-		);
+		expect(entry(either, 'Longitude of either node')).toBeDefined();
 	});
 
 	it('rounds a Julian day to under a second', () => {
@@ -158,7 +156,7 @@ describe('the orbit of a node', () => {
 
 	it('gives the angle of an axis that comes from one', () => {
 		const axis = entry(rows(pairOrbit({ semiMajorAxisArcsec: 17.57 })), 'Semi-major axis');
-		expect(axis?.tooltip).toBe('17.6″ · Source: Doyle et al. 2011');
+		expect(axis?.tooltip).toBe('17.6″');
 	});
 });
 
@@ -196,22 +194,12 @@ describe('a held star', () => {
 		expect(entry(position, 'Distance')?.note).toBe('from its star system');
 	});
 
-	it('shows its Metadata radius and that source, not the radius of its System row', () => {
+	it('shows its Metadata radius, not the radius of its System row', () => {
 		const archive = heldRecord({ solar: 2, source: 'nasa-exoplanet-archive' });
 		const [cards] = systemStats(archive, held, 0);
 		expect(cards[0].value).toBe('2.78M km');
 		const surface = section(systemSections(archive, held, null), 'surface')?.rows;
-		expect(plain(entry(surface, 'Diameter')!.tooltip!)).toBe(
-			'2× the Sun · Source: NASA Exoplanet Archive'
-		);
-	});
-
-	it("names no paper of its own for the radius of its point's paper", () => {
-		const borrowed = { ...held, star: heldValues({ radiusSource: null, dominant: true }) };
-		const surface = section(systemSections(record, borrowed, null), 'surface')?.rows;
-		const tooltip = entry(surface, 'Diameter')!.tooltip!;
-		expect(tooltip).not.toContain('Doyle');
-		expect(tooltip).toContain('Source: Published paper');
+		expect(plain(entry(surface, 'Diameter')!.tooltip!)).toBe('2× the Sun');
 	});
 
 	it('gives a catalogue radius as the page of a star gives it, with its error', () => {
@@ -227,7 +215,7 @@ describe('a held star', () => {
 		expect(cards.map((c) => c.label)).toEqual(['Mass', 'Distance', 'Spectral type']);
 	});
 
-	it("shows a held host's catalogue values with their sources", () => {
+	it("shows a held host's catalogue values", () => {
 		const archive = 'nasa-exoplanet-archive';
 		const star = heldValues({
 			logg: 4.5,
@@ -247,15 +235,14 @@ describe('a held star', () => {
 		]);
 		const age = entry(section(sections, 'classification')?.rows, 'Age')!;
 		expect(plain(age.value)).toBe('4.5 Ga');
-		expect(age.tooltip).toContain('Source: exoplanet.eu');
-		const metallicity = section(sections, 'atmosphere')!.rows[0];
-		expect(metallicity.tooltip).toContain('Source: NASA Exoplanet Archive');
+		expect(section(sections, 'atmosphere')!.rows).toHaveLength(1);
 		const gravity = entry(section(sections, 'surface')?.rows, 'Gravity')!;
 		expect(plain(gravity.value)).toBe('32 g');
-		expect(gravity.tooltip).toContain('Source: NASA Exoplanet Archive');
+		const tooltips = sections.flatMap((s) => s.rows.map((r) => r.tooltip ?? ''));
+		expect(tooltips.join(' ')).not.toContain('Source');
 	});
 
-	it('gives each value with its source', () => {
+	it('gives each value, and what it comes to, with no source on it', () => {
 		const sections = systemSections(record, held, null);
 		expect(sections.map((s) => s.key)).toEqual([
 			'classification',
@@ -264,14 +251,12 @@ describe('a held star', () => {
 			'position'
 		]);
 		const surface = section(sections, 'surface');
-		expect(entry(surface?.rows, 'Diameter')?.tooltip).toContain('Source: Doyle et al. 2011');
-		expect(surface?.temperature?.valueTooltip).toContain('Source: Doyle et al. 2011');
+		expect(plain(entry(surface?.rows, 'Diameter')!.tooltip!)).toBe("65% of the Sun's");
+		expect(surface?.temperature?.valueTooltip).toBeUndefined();
 		const interior = section(sections, 'interior')?.rows;
-		expect(entry(interior, 'Mass')?.tooltip).toContain('Source: Doyle et al. 2011');
+		expect(plain(entry(interior, 'Mass')!.tooltip!)).toMatch(/of the Sun's$/);
 		expect(entry(interior, 'density')).toBeDefined();
-		expect(section(sections, 'classification')?.rows[0].tooltip).toBe(
-			'Source: Open Exoplanet Catalogue'
-		);
+		expect(section(sections, 'classification')?.rows[0].tooltip).toBeUndefined();
 	});
 
 	it('names its pair and its orbit partner, with the orbit of the pair', () => {

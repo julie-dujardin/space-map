@@ -15,7 +15,6 @@ import {
 	type StarRadiusSource,
 	type TableRow
 } from '$lib/fetch/extrasolar/lookup';
-import { starSourceName } from '$lib/credits/star-sources';
 import { PC_AU } from '$lib/scene/starfield/tree';
 import {
 	flameFitHolds,
@@ -61,7 +60,7 @@ import { ROUGH_TIER } from '$lib/fetch/extrasolar/interior';
 import type { Stat } from '../kit/StatCard.svelte';
 import { chooseMetallicity, type MetallicityQuantity } from './metallicity';
 import type { EntityRef, InteriorBlock, Temperatures } from '$lib/fetch/objects/object-data';
-import type { SystemCitation, SystemNode } from '$lib/fetch/extrasolar/systems';
+import type { SystemNode } from '$lib/fetch/extrasolar/systems';
 import type { StarStructure } from '../../state/star-interior.svelte';
 
 /** Light years in one parsec. */
@@ -197,21 +196,6 @@ export function units() {
 	};
 }
 
-/** The parts of a tooltip that are there, joined; undefined for none. */
-export function hint(...parts: (string | null | undefined)[]): string | undefined {
-	return parts.filter(Boolean).join(' · ') || undefined;
-}
-
-/** Where a value is from: the work that its source cites, else the source. */
-export function sourceOf(
-	source: string | null,
-	references: readonly SystemCitation[] = []
-): string | undefined {
-	if (!source) return undefined;
-	const short = references.find((work) => work.source === source)?.short;
-	return `${m.source_prefix()} ${short ?? starSourceName(source)}`;
-}
-
 /** Rows whose value is there; a null value leaves its row out. */
 export function rows(entries: (StarRowEntry | null)[]): StarRowEntry[] {
 	return entries.filter((entry): entry is StarRowEntry => entry !== null);
@@ -284,14 +268,12 @@ const CATALOGUE_RADII = new Set<StarRadiusSource>([
 /**
  * The diameter row of a star's radius, the same on a star's page and a held
  * star's. A Gaia radius takes its bounds from the Point source row `fit`, a
- * catalogue's its `error`. The tooltip names the source, or the work of
- * `references` that gives it.
+ * catalogue's its `error`.
  */
 export function diameterRow(
 	radius: StarRadius | null,
 	fit: TableRow | null,
-	error: number | null,
-	references: readonly SystemCitation[] = []
+	error: number | null
 ): StarRowEntry | null {
 	if (!radius) return null;
 	const { solar, source } = radius;
@@ -306,7 +288,7 @@ export function diameterRow(
 	return {
 		label: source === 'gaia-dr3-gspphot' ? m.star_row_diameter_photometric() : m.diameter(),
 		value,
-		tooltip: hint(sizeComparison(solar * SOLAR_RADIUS_KM), sourceOf(source, references))
+		tooltip: sizeComparison(solar * SOLAR_RADIUS_KM)
 	};
 }
 

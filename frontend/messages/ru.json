@@ -1634,8 +1634,6 @@
 	"star_interior_inputs_photometric": "фотометрические данные",
 	"star_interior_inputs_solar": "металличность принята солнечной",
 	"star_interior_inputs_uncertain": "неточные данные",
-	"star_interior_inputs_from": "Эффективная температура: {teff}. Светимость: {luminosity}. Металличность: {feh}.",
-	"star_interior_inputs_solar_from": "Эффективная температура: {teff}. Светимость: {luminosity}. Металличность: принята солнечной.",
 	"star_interior_centre_temperature": "Температура в центре",
 	"star_interior_centre_density": "Плотность в центре",
 	"star_interior_centre_hydrogen": "Доля водорода в центре",

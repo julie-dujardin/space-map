@@ -1576,8 +1576,6 @@
 	"star_interior_inputs_photometric": "测光值",
 	"star_interior_inputs_solar": "假定太阳金属丰度",
 	"star_interior_inputs_uncertain": "不确定值",
-	"star_interior_inputs_from": "有效温度：{teff}。光度：{luminosity}。金属丰度：{feh}。",
-	"star_interior_inputs_solar_from": "有效温度：{teff}。光度：{luminosity}。金属丰度：假定为太阳值。",
 	"star_interior_centre_temperature": "中心温度",
 	"star_interior_centre_density": "中心密度",
 	"star_interior_centre_hydrogen": "中心氢质量分数",

@@ -1705,8 +1705,6 @@
 	"star_interior_inputs_photometric": "測光値",
 	"star_interior_inputs_solar": "太陽金属量を仮定",
 	"star_interior_inputs_uncertain": "不確かな値",
-	"star_interior_inputs_from": "有効温度：{teff}。光度：{luminosity}。金属量：{feh}。",
-	"star_interior_inputs_solar_from": "有効温度：{teff}。光度：{luminosity}。金属量：太陽と仮定。",
 	"star_interior_centre_temperature": "中心温度",
 	"star_interior_centre_density": "中心密度",
 	"star_interior_centre_hydrogen": "中心の水素質量比",

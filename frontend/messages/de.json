@@ -1573,8 +1573,6 @@
 	"star_interior_inputs_photometric": "photometrische Werte",
 	"star_interior_inputs_solar": "solare Metallizität angenommen",
 	"star_interior_inputs_uncertain": "unsichere Werte",
-	"star_interior_inputs_from": "Effektivtemperatur: {teff}. Leuchtkraft: {luminosity}. Metallizität: {feh}.",
-	"star_interior_inputs_solar_from": "Effektivtemperatur: {teff}. Leuchtkraft: {luminosity}. Metallizität: als solar angenommen.",
 	"star_interior_centre_temperature": "Zentraltemperatur",
 	"star_interior_centre_density": "Zentraldichte",
 	"star_interior_centre_hydrogen": "Wasserstoffanteil im Zentrum",

@@ -1,8 +1,7 @@
 /**
  * What the panel of a star system's node or held star shows, from its System
  * row. A node has no one-star values: its cards count what it holds, and its
- * rows are what is true of its point. A value with a source says where it is
- * from on its tooltip.
+ * rows are what is true of its point.
  */
 
 import * as m from '$lib/paraglide/messages.js';
@@ -13,7 +12,6 @@ import {
 	type StarRadius
 } from '$lib/fetch/extrasolar/lookup';
 import {
-	measuresPoint,
 	pairMembers,
 	type HeldStarValues,
 	type PairOrbit,
@@ -36,7 +34,6 @@ import {
 	distanceStat,
 	epochLabel,
 	gravityRow,
-	hint,
 	hostAgeRow,
 	hostMetallicityRow,
 	massStat,
@@ -45,7 +42,6 @@ import {
 	pointDistanceStat,
 	row,
 	rows,
-	sourceOf,
 	spectralType,
 	starSections,
 	units,
@@ -135,18 +131,16 @@ function orbitElements(orbit: PairOrbit): {
 	axis: StarRowEntry;
 	shape: StarRowEntry[];
 } {
-	const { references } = orbit;
 	const assumed = (name: string) => orbit.assumed.includes(name);
 	const computed = (name: string) => orbit.computed.includes(name);
 	const note = (name: string) =>
 		assumed(name) ? m.exoplanet_assumed() : computed(name) ? m.exoplanet_computed() : undefined;
 	const digits = (name: string, published = ELEMENT) =>
 		assumed(name) ? ASSUMED : computed(name) ? COMPUTED : published;
-	const angle = (label: string, name: string, value: number, source: string | null) => ({
+	const angle = (label: string, name: string, value: number) => ({
 		label,
 		value: degrees(value, digits(name)),
-		note: note(name),
-		tooltip: sourceOf(source, references)
+		note: note(name)
 	});
 	const epoch = formatJulianDay(Number(orbit.periastronTime.toFixed(JD_DECIMALS)));
 	const angular = orbit.semiMajorAxisArcsec;
@@ -154,8 +148,7 @@ function orbitElements(orbit: PairOrbit): {
 		period: {
 			label: m.orbital_period(),
 			value: formatPeriod(orbit.period, digits('period')),
-			note: note('period'),
-			tooltip: sourceOf(orbit.periodSource, references)
+			note: note('period')
 		},
 		axis: {
 			label: m.semi_major_axis(),
@@ -164,36 +157,26 @@ function orbitElements(orbit: PairOrbit): {
 				unit: formatUnit('astronomical_unit', true)
 			}),
 			note: note('semi_major_axis'),
-			tooltip: hint(
-				angular === null ? null : arcseconds(angular),
-				sourceOf(orbit.semiMajorAxisSource, references)
-			)
+			tooltip: angular === null ? undefined : arcseconds(angular)
 		},
 		shape: rows([
 			{
 				label: m.eccentricity(),
 				value: sigFigures(orbit.eccentricity, digits('eccentricity')),
-				note: note('eccentricity'),
-				tooltip: sourceOf(orbit.eccentricitySource, references)
+				note: note('eccentricity')
 			},
-			angle(m.inclination(), 'inclination', orbit.inclination, orbit.inclinationSource),
+			angle(m.inclination(), 'inclination', orbit.inclination),
 			angle(
 				orbit.nodeAscending ? m.exoplanet_row_node() : m.system_row_either_node(),
 				'node',
-				orbit.node,
-				orbit.nodeSource
+				orbit.node
 			),
-			angle(
-				m.exoplanet_row_omega(),
-				'arg_periastron',
-				orbit.argPeriastron,
-				orbit.argPeriastronSource
-			),
+			angle(m.exoplanet_row_omega(), 'arg_periastron', orbit.argPeriastron),
 			{
 				label: m.exoplanet_row_periastron_time(),
 				value: epoch.value,
 				note: note('epoch'),
-				tooltip: hint(epoch.tooltip, sourceOf(orbit.epochSource, references))
+				tooltip: epoch.tooltip
 			},
 			orbit.centre === 'primary' ? row(m.system_orbit_centre(), m.system_member_primary()) : null
 		])
@@ -268,47 +251,30 @@ function heldStarSections(
 	radius: StarRadius | null,
 	system: StarSystem | null
 ): StarSection[] {
-	const { references } = star;
 	const kg = star.mass === null ? null : star.mass * SOLAR_MASS_KG;
-	// A paper of the star's own names its radius; its point's paper does not.
-	const diameter = diameterRow(
-		radius,
-		null,
-		star.hostRadiusError,
-		measuresPoint(node, radius) ? [] : references
-	);
+	const diameter = diameterRow(radius, null, star.hostRadiusError);
 	const mass =
 		kg === null
 			? null
-			: {
-					label: m.star_stat_mass(),
-					value: formatMass(kg),
-					tooltip: hint(massComparison(kg), sourceOf(star.massSource, references))
-				};
-	// Each value names its source in its tooltip.
-	const sourced = (entry: StarRowEntry | null, source: string | null) =>
-		entry && { ...entry, tooltip: hint(entry.tooltip, sourceOf(source, references)) };
+			: { label: m.star_stat_mass(), value: formatMass(kg), tooltip: massComparison(kg) };
 	const type = row(m.star_stat_spectral_type(), spectralType(star.spectralType));
 	return [
 		{ key: 'orbit', title: m.orbit(), rows: pairRows(node, system) },
 		{
 			key: 'classification',
 			title: m.classification(),
-			rows: rows([
-				sourced(type, star.spectralTypeSource),
-				sourced(hostAgeRow(star.age), star.ageSource)
-			])
+			rows: rows([type, hostAgeRow(star.age)])
 		},
 		{
 			key: 'atmosphere',
 			title: m.atmosphere(),
-			rows: rows([sourced(hostMetallicityRow(star.metallicity), star.metallicitySource)])
+			rows: rows([hostMetallicityRow(star.metallicity)])
 		},
 		{
 			key: 'surface',
 			title: m.surface(),
-			rows: rows([diameter, sourced(gravityRow(star.logg), star.loggSource)]),
-			temperature: photosphere(star.teff, false, sourceOf(star.teffSource, references))
+			rows: rows([diameter, gravityRow(star.logg)]),
+			temperature: photosphere(star.teff)
 		},
 		{
 			key: 'interior',

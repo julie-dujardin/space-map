@@ -1597,8 +1597,6 @@
 	"star_interior_inputs_photometric": "dados fotométricos",
 	"star_interior_inputs_solar": "metalicidade solar assumida",
 	"star_interior_inputs_uncertain": "dados incertos",
-	"star_interior_inputs_from": "Temperatura efetiva: {teff}. Luminosidade: {luminosity}. Metalicidade: {feh}.",
-	"star_interior_inputs_solar_from": "Temperatura efetiva: {teff}. Luminosidade: {luminosity}. Metalicidade: assumida solar.",
 	"star_interior_centre_temperature": "Temperatura central",
 	"star_interior_centre_density": "Densidade central",
 	"star_interior_centre_hydrogen": "Fração de hidrogénio no centro",

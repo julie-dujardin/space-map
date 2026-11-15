@@ -1688,8 +1688,6 @@
 	"star_interior_inputs_photometric": "قيم ضوئية",
 	"star_interior_inputs_solar": "بافتراض معدنية شمسية",
 	"star_interior_inputs_uncertain": "قيم غير مؤكدة",
-	"star_interior_inputs_from": "درجة الحرارة الفعالة: {teff}. الضيائية: {luminosity}. المعدنية: {feh}.",
-	"star_interior_inputs_solar_from": "درجة الحرارة الفعالة: {teff}. الضيائية: {luminosity}. المعدنية: مفترضة شمسية.",
 	"star_interior_centre_temperature": "درجة الحرارة المركزية",
 	"star_interior_centre_density": "الكثافة المركزية",
 	"star_interior_centre_hydrogen": "نسبة الهيدروجين في المركز",

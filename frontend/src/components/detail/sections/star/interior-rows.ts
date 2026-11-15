@@ -13,7 +13,6 @@ import {
 	type StarInterior
 } from '$lib/fetch/extrasolar/interior';
 import type { InteriorBlock } from '$lib/fetch/objects/object-data';
-import { starSourceName } from '$lib/credits/star-sources';
 import { ltrIsolate } from '$lib/format/bidi';
 import { densityComparison } from '$lib/format/density';
 import { formatSpan, joinParts, percentParts, quantityParts } from '$lib/format/quantities';
@@ -28,7 +27,7 @@ const STAGE_NAME: Record<string, () => string> = {
 
 const DENSITY_UNIT = 'gram_per_cubic_centimetre';
 
-/** Where the interior comes from: the paper, or a fit and what it was fitted to. */
+/** Where the interior comes from: the paper, or a fit and how sure its inputs are. */
 export function modelRow(interior: StarInterior, block: InteriorBlock): StarRowEntry | null {
 	if (interior.tier === CURATED_TIER) {
 		const paper = block.sources?.[0];
@@ -37,8 +36,7 @@ export function modelRow(interior: StarInterior, block: InteriorBlock): StarRowE
 	return {
 		label: m.star_interior_model(),
 		value: m.star_interior_model_fit(),
-		note: fitNote(interior),
-		tooltip: fitInputs(interior)
+		note: fitNote(interior)
 	};
 }
 
@@ -49,17 +47,6 @@ function fitNote(interior: StarInterior): string {
 	if (interior.tier === 1) return m.star_interior_inputs_measured();
 	if (interior.tier === 2) return m.star_interior_inputs_photometric();
 	return m.star_interior_inputs_uncertain();
-}
-
-function fitInputs(interior: StarInterior): string | undefined {
-	const { teffSource, luminositySource, fehSource } = interior;
-	if (!teffSource || !luminositySource) return undefined;
-	const teff = starSourceName(teffSource);
-	const luminosity = starSourceName(luminositySource);
-	if (fehSource === ASSUMED_SOLAR || !fehSource) {
-		return m.star_interior_inputs_solar_from({ teff, luminosity });
-	}
-	return m.star_interior_inputs_from({ teff, luminosity, feh: starSourceName(fehSource) });
 }
 
 /** The range where there is one, as for the density and temperature. Ends

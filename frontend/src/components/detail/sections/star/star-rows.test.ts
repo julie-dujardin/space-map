@@ -548,20 +548,19 @@ describe("a star's diameter", () => {
 		host_radius_error: 0.046
 	};
 
-	it("shows the export's radius and its source, not a column the export passed over", () => {
+	it("shows the export's radius, not a column the export passed over", () => {
 		const radius = { solar: 1.657, source: 'nasa-exoplanet-archive' } as const;
 		const diameter = row(transitHost, radius)!;
 		expect(plain(diameter.value)).toBe('2,306,000 ± 64,000 km');
-		expect(plain(diameter.tooltip!)).toBe('1.66× the Sun · Source: NASA Exoplanet Archive');
+		// What the size comes to. The source is in the footer.
+		expect(plain(diameter.tooltip!)).toBe('1.66× the Sun');
 		expect(plain(card(transitHost, radius)!.value)).toBe('2.31M km');
 	});
 
 	it('shows a measurement at three figures', () => {
 		const diameter = row(transitHost, { solar: 1.5, source: 'literature' })!;
 		expect(plain(diameter.value)).toBe('2,090,000 km');
-		expect(diameter.tooltip).toContain('Source: Published paper');
-		const jmdc = row(transitHost, { solar: 1.5, source: 'jmdc' })!;
-		expect(jmdc.tooltip).toContain('Source: JMDC');
+		expect(plain(diameter.tooltip!)).toBe('1.5× the Sun');
 	});
 
 	it("gives a FLAME-spec radius the bounds of FLAME's second run", () => {
@@ -572,7 +571,6 @@ describe("a star's diameter", () => {
 		};
 		const diameter = row(spec, { solar: 0.95, source: 'gaia-dr3-flame-spec' })!;
 		expect(plain(diameter.value)).toBe('1,322,000 ± 70,000 km');
-		expect(diameter.tooltip).toContain('Source: Gaia DR3 FLAME (GSP-Spec)');
 	});
 
 	it('has no row and no card without a radius, whatever the columns hold', () => {
