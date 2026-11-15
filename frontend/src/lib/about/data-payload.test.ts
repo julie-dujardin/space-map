@@ -1,6 +1,7 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 
 import {
+	fetchAboutData,
 	listedSources,
 	mapFigures,
 	modelFigures,
@@ -268,5 +269,36 @@ describe('totals: datasets', () => {
 			craft: [{ kind: 'probe', models: [craft] }]
 		};
 		expect(totals({ ...empty, models }).datasets).toBe(1);
+	});
+});
+
+describe('fetchAboutData', () => {
+	const current = { objects: [{ id: 'star', count: 3 }], names: {} };
+	const serve = (...bodies: (object | number)[]) => {
+		const fetch = vi.fn<typeof globalThis.fetch>();
+		for (const body of bodies) {
+			fetch.mockResolvedValueOnce(
+				typeof body === 'number' ? new Response(null, { status: body }) : Response.json(body)
+			);
+		}
+		return fetch;
+	};
+
+	// In this order: the report is kept once it is read.
+	it('refuses a file of an older export, and a failed read, and keeps neither', async () => {
+		const fetch = serve({ worlds: [] }, { objects: [] }, 503);
+		await expect(fetchAboutData(fetch)).rejects.toThrow('older than the page');
+		await expect(fetchAboutData(fetch)).rejects.toThrow('older than the page');
+		await expect(fetchAboutData(fetch)).rejects.toThrow('503');
+		expect(fetch).toHaveBeenCalledTimes(3);
+	});
+
+	it('reads the report once for every reader', async () => {
+		const fetch = serve(current);
+		const first = fetchAboutData(fetch);
+		expect(fetchAboutData()).toBe(first);
+		expect(await first).toEqual(current);
+		expect(fetchAboutData(fetch)).toBe(first);
+		expect(fetch).toHaveBeenCalledTimes(1);
 	});
 });

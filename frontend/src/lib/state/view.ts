@@ -174,6 +174,10 @@ export interface MapViewState {
 	groupSlug: string | null;
 	/** The figure of the culture `groupSlug` names, when its page is open. */
 	figure: string | null;
+	/** Object whose page is open over the view. `id` and `featureId` then hold
+	 *  what the camera is on, deep-linked as `&focus=`. Null = the page of `id`,
+	 *  or a group's. */
+	pageId: string | null;
 	/** Active drawer tab; null = overview. Deep-linked as `&tab=`. */
 	tab: Exclude<DrawerTab, 'overview'> | null;
 	/** Pages loaded in a paginated list; null = first. Deep-linked as `&mp=` to
@@ -261,6 +265,7 @@ export const DEFAULT_VIEW: MapViewState = {
 	featureId: null,
 	groupSlug: null,
 	figure: null,
+	pageId: null,
 	tab: null,
 	memberPage: null,
 	quad: null,
@@ -277,3 +282,26 @@ export const DEFAULT_VIEW: MapViewState = {
 	pitch: 0,
 	bearing: 0
 };
+
+/** What the page of a view is about. */
+export type ViewPage =
+	| { kind: 'group'; slug: string; figure: string | null }
+	| { kind: 'feature'; bodyId: string; featureId: number }
+	| { kind: 'object'; id: string };
+
+/** The page a view names. A page open over the view comes before the
+ *  camera's own subject. */
+export function pageOf(view: MapViewState): ViewPage {
+	if (view.groupSlug !== null) return { kind: 'group', slug: view.groupSlug, figure: view.figure };
+	if (view.pageId !== null) return { kind: 'object', id: view.pageId };
+	if (view.featureId !== null) {
+		return { kind: 'feature', bodyId: view.id, featureId: view.featureId };
+	}
+	return { kind: 'object', id: view.id };
+}
+
+/** True for the page of a group, and for the page of an object open over the
+ *  view. `id` and `featureId` are then the camera's, not the page's. */
+export function isOverView(view: MapViewState): boolean {
+	return view.groupSlug !== null || view.pageId !== null;
+}

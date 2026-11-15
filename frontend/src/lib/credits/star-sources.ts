@@ -365,7 +365,8 @@ function addSurfaceCredits(row: TableRow, distance: StarDistance | null, cited: 
 	if (row.number('absolute_v') !== null) addReddening(row, cited.pages);
 }
 
-function paperCredits(papers: readonly ValueReference[]): StarCredit[] {
+/** The papers that a panel cites, as its sources list them. */
+export function paperCredits(papers: readonly ValueReference[]): StarCredit[] {
 	return papers.map((paper) => ({
 		key: paper.url,
 		label: paper.title,

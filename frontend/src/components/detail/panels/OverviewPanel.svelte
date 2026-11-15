@@ -42,6 +42,12 @@
 		starStats
 	} from '../sections/star/star-rows';
 	import { systemSections, systemStats } from '../sections/star/system-rows';
+	import {
+		HOME_GALAXY_TILES,
+		galaxySections,
+		galaxyStats,
+		galaxyWorks
+	} from '../sections/galaxy/galaxy-rows';
 	import PlanetSections from '../sections/planet/PlanetSections.svelte';
 	import {
 		planetAliases,
@@ -53,6 +59,7 @@
 	import SystemPlanets from '../members/SystemPlanets.svelte';
 	import {
 		citationCredits,
+		paperCredits,
 		planetCatalogueCredits,
 		planetCredits,
 		starCredits
@@ -61,8 +68,15 @@
 	import {
 		extrasolarAllowed,
 		fetchExtrasolarMetadata,
-		type ExtrasolarCredit
+		type ExtrasolarMetadata
 	} from '$lib/fetch/extrasolar/files';
+	import {
+		catalogueCounts,
+		galaxyRow,
+		isGalaxy,
+		type CatalogueCounts
+	} from '$lib/fetch/extrasolar/galaxies';
+	import { fetchAboutData } from '$lib/about/data-payload';
 	import { planetCatalogue, type PlanetSystem } from '$lib/fetch/extrasolar/planets';
 	import { systemNode } from '$lib/fetch/extrasolar/systems';
 	import {
@@ -157,11 +171,57 @@
 		return [systemRow, pair].filter((n) => !!n);
 	});
 
+	// A galaxy's home row is its Redshift row, null where the host may not show it.
+	let isGalaxyPage = $derived(!!star && isGalaxy(star));
+	let galaxy = $derived(star ? galaxyRow(star) : null);
+
 	// A star's system file lists its planets. The export metadata names the
-	// catalogues behind a planet, and behind the charts of the Planets page.
+	// catalogues behind a planet and behind the charts of the Planets page, and
+	// for a galaxy the one that holds the Sun.
 	let hostSystem = $state.raw<PlanetSystem | null>(null);
 	let planetCount = $derived(node ? nodePlanetCount(system, hostSystem, node.id) : 0);
-	let exportCredits = $state.raw<readonly ExtrasolarCredit[]>([]);
+	let exportMeta = $state.raw<ExtrasolarMetadata | null>(null);
+	let exportCredits = $derived(exportMeta?.credits ?? []);
+	// The catalogue's stars, systems and planets are those of the Sun's galaxy.
+	let isHomeGalaxy = $derived(isGalaxyPage && exportMeta?.home_galaxy === star?.id);
+	// Counted as /about/data counts them, from the same report.
+	let homeCounts = $state.raw<CatalogueCounts | null>(null);
+	$effect(() => {
+		homeCounts = null;
+		if (!isHomeGalaxy) return;
+		let current = true;
+		untrack(fetchAboutData).then(
+			(report) => {
+				if (current) homeCounts = catalogueCounts(report.objects);
+			},
+			(e: unknown) => console.warn('[galaxy] no counts of the catalogue:', e)
+		);
+		return () => {
+			current = false;
+		};
+	});
+	let starCards = $derived.by(() => {
+		if (!star) return [];
+		if (isGalaxyPage) return galaxyStats(galaxy, data?.global ?? null);
+		return systemRow ? systemStats(star, systemRow, planetCount) : starStats(star);
+	});
+	let starPanelSections = $derived.by(() => {
+		if (!star) return [];
+		if (isGalaxyPage) {
+			const groups = data?.localized?.part_of;
+			return galaxySections(galaxy, data?.global ?? null, homeCounts, groups);
+		}
+		return systemRow
+			? systemSections(star, systemRow, system)
+			: starSections(star, { structure: starStructure });
+	});
+	// Wikidata names a galaxy after every word for it: no row can hold them.
+	// Its groups are in the classification.
+	let discoveryText = $derived.by(() => {
+		const localized = data?.localized ?? null;
+		if (!localized || !isGalaxyPage) return localized;
+		return { ...localized, named_after: undefined, part_of: undefined };
+	});
 	$effect(() => {
 		const id = star?.id ?? null;
 		hostSystem = null;
@@ -179,16 +239,15 @@
 		};
 	});
 	$effect(() => {
-		const isPlanet = !!planet;
-		const isPlanetsPage = cat.planets;
-		exportCredits = [];
-		if (!isPlanet && !isPlanetsPage) return;
+		const wanted = [!!planet, cat.planets, isGalaxyPage].some(Boolean);
+		exportMeta = null;
+		if (!wanted) return;
 		let current = true;
 		untrack(fetchExtrasolarMetadata).then(
 			(meta) => {
-				if (current) exportCredits = meta?.credits ?? [];
+				if (current) exportMeta = meta;
 			},
-			(e: unknown) => console.warn('[planets] no export credits:', e)
+			(e: unknown) => console.warn('[extrasolar] no export metadata:', e)
 		);
 		return () => {
 			current = false;
@@ -297,7 +356,9 @@
 			);
 		}
 		out.push(...figureCredits);
-		if (star) {
+		if (star && isGalaxyPage) {
+			out.push(...paperCredits(galaxyWorks(galaxy, data?.global ?? null)));
+		} else if (star) {
 			const nodes = system ? [...system.nodes.values()] : citedNodes;
 			const measured = systemRow?.star
 				? radiusPaperPoint(system, systemRow, star.metadata.radius)
@@ -354,7 +415,7 @@
 			<FeatureStatCards {feature} detail={load.featureDetail} />
 		{:else if star}
 			<div class="flex flex-col gap-2">
-				{#each systemRow ? systemStats(star, systemRow, planetCount) : starStats(star) as stats, i (i)}
+				{#each starCards as stats, i (i)}
 					<StatCardRow {stats} />
 				{/each}
 			</div>
@@ -390,6 +451,7 @@
 				{star}
 				planet={planet?.planet ?? null}
 				{systemCategories}
+				galaxyTiles={isHomeGalaxy ? HOME_GALAXY_TILES : []}
 			/>
 		{/if}
 		<!-- When this system's moons were found; sits under its cross-refs, which
@@ -425,16 +487,8 @@
 				hostName={body?.data.name ?? undefined}
 			/>
 		{:else if star}
-			<StarSections
-				sections={systemRow
-					? systemSections(star, systemRow, system)
-					: starSections(star, { structure: starStructure })}
-			/>
-			<Discovery
-				global={data?.global ?? null}
-				localized={data?.localized ?? null}
-				shown={systemRefs}
-			/>
+			<StarSections sections={starPanelSections} />
+			<Discovery global={data?.global ?? null} localized={discoveryText} shown={systemRefs} />
 			<StarConstellations id={star.id} onCredits={(credits) => (figureCredits = credits)} />
 		{:else if planet}
 			<PlanetSections

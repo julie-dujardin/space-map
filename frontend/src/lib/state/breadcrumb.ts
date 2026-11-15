@@ -1,8 +1,9 @@
 /** One-level "parent" crumb for the drawer header. A page keeps its type on the
  *  way up: a place climbs to a place, a category or group to its parent category,
  *  and cross-ref tiles link the two. Spacecraft are kinds, not places: their
- *  position changes with time, and a crumb should not. Several roots have no
- *  crumb at all. */
+ *  position changes with time, and a crumb should not. The Solar System, a
+ *  star system and a lone star climb to the galaxy that holds the Sun, where
+ *  the export names one. Several roots have no crumb at all. */
 
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { localizeLink, type ObjectDetailData } from '$lib/fetch/objects/object-data';
@@ -11,6 +12,8 @@ import type { GlobalGroupData } from '$lib/fetch/groups/details';
 import { ObjectType } from '$lib/types/objects';
 import { dominantPlanetId } from '$lib/constants';
 import { extrasolarObjectId } from '$lib/fetch/extrasolar/ids';
+import { isGalaxy } from '$lib/fetch/extrasolar/galaxies';
+import { systemRoot } from '$lib/fetch/extrasolar/systems';
 import {
 	CATEGORY_SLUG_PREFIX,
 	CAT_ASTEROIDS,
@@ -82,6 +85,8 @@ export type CrumbTarget =
 			id: string;
 			name: string;
 			moveCamera?: boolean;
+			/** The page opens over the view: the camera stays where it is. */
+			keepView?: boolean;
 			tab?: Exclude<DrawerTab, 'overview'>;
 	  }
 	| { kind: 'group'; slug: string; name: string }
@@ -114,13 +119,31 @@ function categoryCrumb(slug: string): Crumb {
 	return { label, target: { kind: 'group', slug, name: label } };
 }
 
+/** The page of a galaxy, by its name in the reader's language. */
+export interface GalaxyPage {
+	id: number;
+	name: string;
+}
+
+/** The view is inside the galaxy, so its page opens with no camera move. */
+function galaxyCrumb(galaxy: GalaxyPage | null): Crumb | null {
+	if (!galaxy) return null;
+	const { id, name } = galaxy;
+	return {
+		label: name,
+		target: { kind: 'focus', id: extrasolarObjectId(id), name, keepView: true }
+	};
+}
+
+/** `homeGalaxy` is the galaxy that holds the Sun; null where the export names none. */
 export function parentCrumb(
 	focusable: Focusable,
 	ctx: ContextManager | undefined,
 	detail: ObjectDetailData | null,
 	groupGlobal: GlobalGroupData | null,
 	starSystem: { id: number; name: string } | null = null,
-	parentGroupName?: string
+	parentGroupName?: string,
+	homeGalaxy: GalaxyPage | null = null
 ): Crumb | null {
 	// A surface feature climbs to its host, on the Features tab: its neighbours,
 	// not the body's overview.
@@ -134,6 +157,7 @@ export function parentCrumb(
 			// The property collections hang off Structure & Activity, the way the
 			// ft- pages hang off Surface Features.
 			if (isPropertyCollection(slug)) return categoryCrumb(CAT_STRUCTURE_ACTIVITY);
+			if (slug === CAT_SOLAR_SYSTEM) return galaxyCrumb(homeGalaxy);
 			const parent = PARENT_CATEGORY[slug];
 			return parent ? categoryCrumb(parent) : null;
 		}
@@ -173,12 +197,20 @@ export function parentCrumb(
 		return null;
 	}
 
-	// A star or an inner node climbs to the root of its system, which is a root
-	// of the tree; a planet climbs to its star.
+	// A star or an inner node climbs to the root of its system. The root and a
+	// lone star climb to their galaxy, which is a root of the tree. A planet
+	// climbs to its star.
 	if (focusable.kind === 'star') {
-		if (!starSystem) return null;
-		const { id, name } = starSystem;
-		return { label: name, target: { kind: 'focus', id: extrasolarObjectId(id), name } };
+		const { record } = focusable;
+		if (isGalaxy(record)) return null;
+		if (starSystem) {
+			const { id, name } = starSystem;
+			return { label: name, target: { kind: 'focus', id: extrasolarObjectId(id), name } };
+		}
+		// The name of the root of a member is still on its way.
+		const root = systemRoot(record);
+		if (root !== null && root !== record.id) return null;
+		return galaxyCrumb(homeGalaxy);
 	}
 	if (focusable.kind === 'planet') {
 		const host = focusable.anchor.hostRecord;

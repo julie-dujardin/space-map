@@ -3,6 +3,7 @@ import { describe, it, expect, vi } from 'vitest';
 vi.mock('$lib/paraglide/runtime.js', () => ({ getLocale: () => 'en-US' }));
 
 import {
+	compactParts,
 	formatCompactCurrency,
 	formatCatalogueQuantity,
 	formatCurrency,
@@ -19,6 +20,17 @@ import {
 
 const plain = (value: string) =>
 	value.replace(/[\u2060\u2066-\u2069]/g, '').replace(/\u00a0/g, ' ');
+
+describe('compactParts', () => {
+	it('parts the figure from its magnitude word', () => {
+		expect(compactParts(1e11)).toEqual({ value: '100', unit: 'B', tight: true });
+		expect(compactParts(1.34e6)).toEqual({ value: '1.34', unit: 'M', tight: true });
+	});
+
+	it('leaves a number with no word as one figure', () => {
+		expect(compactParts(950)).toEqual({ value: '950', unit: '' });
+	});
+});
 
 describe('formatMeasuredQuantity', () => {
 	it('uses the normal quantity path without uncertainty', () => {

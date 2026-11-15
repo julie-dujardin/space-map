@@ -35,7 +35,7 @@ export const TOKENS = {
 /** Bits 6 and 57 of a Gaia DR3 `flags`, past the range of a double. */
 export const ORBIT_FLAGS = (1n << 57n) | (1n << 6n);
 
-function table(
+export function table(
 	slug: string,
 	number: number | null,
 	token: string,
@@ -55,7 +55,7 @@ function table(
 }
 
 /** Every pixel a leaf: the tile of a cell is its level-0 pixel. */
-function split(token: string): Uint8Array {
+export function split(token: string): Uint8Array {
 	return encode(KIND_SPLIT, token, 12, [
 		{ name: 'split', type: 'bits', values: new Array(12).fill(false) }
 	]);
@@ -79,7 +79,7 @@ interface MetaRow {
  *  entry: `object`, the `object_file` of deployed exports, or none. */
 export type ObjectColumn = 'object' | 'object_file' | 'none';
 
-function metadataTile(
+export function metadataTile(
 	token: string,
 	rows: MetaRow[],
 	objectColumn: ObjectColumn = 'object'

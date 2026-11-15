@@ -14,6 +14,10 @@ import {
 	type WebGLRenderer
 } from 'three';
 import { ObjectType } from '$lib/types/objects';
+import { galaxyRecord } from '$lib/fetch/extrasolar/__fixtures__/galaxy';
+import { pointSourceRecord } from '$lib/fetch/extrasolar/__fixtures__/record';
+import type { ExtrasolarRecord } from '$lib/fetch/extrasolar/lookup';
+import { makeStarBody } from '../focus/star-focus';
 import type { BodyObjects } from '../types';
 import type { ContextManager } from '../state/context-manager.svelte';
 import { VisibilityThresholdFades } from './threshold-fade';
@@ -117,6 +121,25 @@ function scene(objectType: ObjectType, starPoint = false) {
 		}
 	};
 }
+
+describe('the halo of an extrasolar object', () => {
+	/** A focused body with no mesh, as the starfield leaves an extrasolar object. */
+	function focused(record: ExtrasolarRecord) {
+		const made = scene(ObjectType.EXTRASOLAR);
+		made.bo.mesh = null;
+		made.bo.body.extrasolar = makeStarBody(record).extrasolar;
+		made.frame(5, 16);
+		return made.bo.label!;
+	}
+
+	it('shows on a star', () => {
+		expect(focused(pointSourceRecord([])).visible).toBe(true);
+	});
+
+	it('does not show on a galaxy, which the glow draws', () => {
+		expect(focused(galaxyRecord()).visible).toBe(false);
+	});
+});
 
 describe('close-range halos and labels', () => {
 	it.each([

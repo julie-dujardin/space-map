@@ -7,7 +7,7 @@
 	import { page } from '$app/state';
 	import { kmToScene } from '$lib/math/units';
 	import { navEndOf, parseUrl, urlTypeFromId } from '$lib/state/url';
-	import { UrlType } from '$lib/state/view';
+	import { UrlType, isOverView } from '$lib/state/view';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import type { MapCover } from '$lib/state/map-cover.svelte';
 	import { dateToJD, jdToDate } from '$lib/time/jd';
@@ -46,8 +46,9 @@
 		map: SpaceMap;
 		northRefId?: string | null;
 		onFocusChange?: (body: PositionedBody | undefined) => void;
-		/** How a navigation this component made ended: browser back and forward. */
-		onArrival?: (arrival: Arrival, id: string, name: string) => void;
+		/** How a navigation this component made ended: browser back and forward.
+		 *  `name` is the object's, where the entry holds it. */
+		onArrival?: (arrival: Arrival, id: string, name?: string) => void;
 		onUserPromotedChange?: (count: number) => void;
 		onFeatureSelect?: (
 			bodyId: string,
@@ -99,7 +100,7 @@
 				// a feature for its host has left the feature, though.
 				if (body.id === appState.view.id) {
 					if (appState.view.featureId === null) return;
-					if (appState.view.type === UrlType.Group) appState.setGroupFocus(body.id);
+					if (isOverView(appState.view)) appState.setPageFocus(body.id);
 					else
 						appState.setFocus({ type: urlTypeFromId(body.id), id: body.id, name: body.name ?? '' });
 					return;
@@ -118,10 +119,9 @@
 					appState.view.type === UrlType.Group &&
 					appState.view.groupSlug !== null &&
 					ctx.isMemberOfActiveGroup(body.id);
-				if (inActiveGroup) {
-					// Clicking within a group keeps the group view; the URL only records
-					// which member the camera moved to.
-					appState.setGroupFocus(body.id);
+				if (inActiveGroup || body.id === appState.view.pageId) {
+					// The page stays. The URL records what the camera moved to.
+					appState.setPageFocus(body.id);
 					return;
 				}
 				appState.setFocus({
@@ -171,10 +171,10 @@
 		}, 500);
 
 		const onPopState = () => {
-			const view = page.state.view ?? parseUrl();
-			if (!view) return;
+			const popped = page.state.view ?? parseUrl();
+			if (!popped) return;
 			const oldId = appState.view.id;
-			appState.syncFromPopState(view);
+			const view = appState.syncFromPopState(popped);
 			if (view.id === oldId) return;
 			// Back to the entry's own date, then to the object: `goTo` moves the
 			// clock again only when the object has no place at that date.
@@ -193,7 +193,8 @@
 						angles: { pitch: view.pitch, bearing: view.bearing }
 					})
 				})
-				.then((arrival) => onArrival?.(arrival, view.id, view.name))
+				// Under a page over the view the entry's name is the page's.
+				.then((arrival) => onArrival?.(arrival, view.id, isOverView(view) ? undefined : view.name))
 				.finally(() => {
 					isNavigatingBack = false;
 				});

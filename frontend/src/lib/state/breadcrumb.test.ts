@@ -6,7 +6,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { configureHost } from '$lib/host';
 import { PROPERTY_COLLECTION_SLUGS } from './category-config';
-import { parentCrumb } from './breadcrumb';
+import { parentCrumb, type GalaxyPage } from './breadcrumb';
 import {
 	CAT_ASTEROIDS,
 	CAT_COMETS,
@@ -30,6 +30,9 @@ import {
 import { ObjectType } from '$lib/types/objects';
 import type { Focusable } from './focusable';
 import { ALPHA_CEN } from '$lib/scene/exoplanets/__fixtures__/system';
+import { GALAXY, galaxyRecord } from '$lib/fetch/extrasolar/__fixtures__/galaxy';
+import type { ExtrasolarRecord } from '$lib/fetch/extrasolar/lookup';
+import { pointSourceRecord, resolvedSystemRecord } from '$lib/fetch/extrasolar/__fixtures__/record';
 
 const MOON = { data: { id: 'naif-301', name: 'Moon' } } as never;
 
@@ -146,7 +149,7 @@ describe('parentCrumb: planet families', () => {
 describe('parentCrumb: the category tree', () => {
 	const parentOf = (slug: string) => parentCrumb({ kind: 'group', slug }, undefined, null, null);
 
-	it('has no crumb for a root', () => {
+	it('has no crumb for a root, the Solar System too where the export names no galaxy', () => {
 		for (const slug of [
 			CAT_PLANETARY_SYSTEMS,
 			CAT_STAR_SYSTEMS,
@@ -247,22 +250,78 @@ describe('parentCrumb: the planets of the Solar System', () => {
 	});
 });
 
+/** The galaxy that the export names as the Sun's. */
+const MILKY_WAY: GalaxyPage = { id: GALAXY, name: 'Voie lactée' };
+
+function starFocusable(record: ExtrasolarRecord): Focusable {
+	return { kind: 'star', body: {} as never, record };
+}
+
+const galaxyCrumb = {
+	label: 'Voie lactée',
+	target: { kind: 'focus', id: `x-${GALAXY}`, name: 'Voie lactée', keepView: true }
+};
+
 describe('parentCrumb: the stars of a star system', () => {
-	const toliman = { kind: 'star', record: { id: 564339647 } } as never;
+	const ROOT = 597894079;
+	const member = pointSourceRecord([]);
+	member.metadata.system = ROOT;
+	const toliman = starFocusable(member);
 
 	it('climbs from a star to the root of its system', () => {
-		const crumb = parentCrumb(toliman, undefined, null, null, {
-			id: 597894079,
-			name: 'Alpha Centauri'
-		});
+		const root = { id: ROOT, name: 'Alpha Centauri' };
+		const crumb = parentCrumb(toliman, undefined, null, null, root, undefined, MILKY_WAY);
 		expect(crumb).toEqual({
 			label: 'Alpha Centauri',
 			target: { kind: 'focus', id: 'x-597894079', name: 'Alpha Centauri' }
 		});
 	});
 
-	it('has no crumb for a root or a lone star', () => {
-		expect(parentCrumb(toliman, undefined, null, null)).toBeNull();
+	it('has no crumb while the name of its root loads, not the galaxy for a moment', () => {
+		expect(parentCrumb(toliman, undefined, null, null, null, undefined, MILKY_WAY)).toBeNull();
+	});
+});
+
+describe('parentCrumb: the galaxy of the Sun', () => {
+	const climb = (focusable: Focusable, galaxy: GalaxyPage | null = MILKY_WAY) =>
+		parentCrumb(focusable, undefined, null, null, null, undefined, galaxy);
+	const loneStar = starFocusable(pointSourceRecord([]));
+	const systemRoot = starFocusable(resolvedSystemRecord(597894079, 564339647));
+	const solarSystem: Focusable = { kind: 'group', slug: CAT_SOLAR_SYSTEM };
+
+	it('is above the root of a star system, under its name in the language', () => {
+		expect(climb(systemRoot)).toEqual(galaxyCrumb);
+	});
+
+	it('is above a lone star', () => {
+		expect(climb(loneStar)).toEqual(galaxyCrumb);
+	});
+
+	it('is above the Solar System page', () => {
+		expect(climb(solarSystem)).toEqual(galaxyCrumb);
+	});
+
+	it('opens over the view, with no camera move', () => {
+		expect(climb(loneStar)?.target).toMatchObject({ kind: 'focus', keepView: true });
+		expect(climb(loneStar)?.target).not.toHaveProperty('moveCamera');
+	});
+
+	it('is a root itself', () => {
+		expect(climb(starFocusable(galaxyRecord()))).toBeNull();
+	});
+
+	it('is no crumb with no extrasolar export, or an export that names none', () => {
+		for (const focusable of [systemRoot, loneStar, solarSystem]) {
+			expect(climb(focusable, null)).toBeNull();
+		}
+	});
+
+	it('is above no other root, and no planet or body', () => {
+		for (const slug of [CAT_STARS, CAT_STAR_SYSTEMS, CAT_PLANETARY_SYSTEMS, CAT_SPACECRAFT]) {
+			expect(climb({ kind: 'group', slug }), slug).toBeNull();
+		}
+		const sun = { kind: 'body', body: { data: { id: 'naif-10', objectType: ObjectType.STAR } } };
+		expect(climb(sun as never)?.target).toMatchObject({ kind: 'group', slug: CAT_SOLAR_SYSTEM });
 	});
 });
 

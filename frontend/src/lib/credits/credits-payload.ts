@@ -95,7 +95,8 @@ export type ReferenceSection =
 	| 'spacecraft_references'
 	| 'traverse_references'
 	| 'orientation_references'
-	| 'star_references';
+	| 'star_references'
+	| 'galaxy_references';
 
 /**
  * The reference sections, declared once: array order is render order on
@@ -111,7 +112,8 @@ export const REFERENCE_SECTIONS = [
 	{ key: 'radiation_references', label: m.attribution_section_radiation },
 	{ key: 'spacecraft_references', label: m.attribution_section_spacecraft },
 	{ key: 'traverse_references', label: m.attribution_section_traverses },
-	{ key: 'star_references', label: m.attribution_stars }
+	{ key: 'star_references', label: m.attribution_stars },
+	{ key: 'galaxy_references', label: m.attribution_galaxies }
 ] as const satisfies readonly { key: ReferenceSection; label: () => string }[];
 
 export interface Credits extends Partial<Record<ReferenceSection, Reference[]>> {

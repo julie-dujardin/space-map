@@ -167,8 +167,8 @@ describe('endpoint search', () => {
 			limit: 5,
 			locales: ['en'],
 			filter:
-				'kind != "group" AND kind != "planet" AND ' +
-				'(object.type NOT IN ["star", "pulsar", "white_dwarf", "brown_dwarf", "binary_star", "multiple_star"] OR object.id = "naif-10")'
+				'kind != "group" AND object.type != "galaxy" AND kind != "planet" AND ' +
+				'(object.type NOT IN ["star", "pulsar", "white_dwarf", "brown_dwarf", "binary_star", "multiple_star", "galaxy"] OR object.id = "naif-10")'
 		});
 		expect(hits.map((h) => h.id)).toEqual(['naif-10']);
 	});
@@ -184,10 +184,11 @@ describe('endpoint search', () => {
 
 		const hits = await searchEndpoints('Centauri', 'en', 5);
 
+		// A galaxy is no end of a trip, where the host serves it too.
 		expect(search).toHaveBeenLastCalledWith('Centauri', {
 			limit: 5,
 			locales: ['en'],
-			filter: 'kind != "group"'
+			filter: 'kind != "group" AND object.type != "galaxy"'
 		});
 		expect(hits.map((h) => [h.kind, h.id])).toEqual([
 			['object', 'naif-10'],

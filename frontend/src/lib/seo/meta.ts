@@ -70,6 +70,7 @@ import { extrasolarObjectId, planetObjectId } from '$lib/fetch/extrasolar/ids';
 import type { SkyCultureFile } from '$lib/fetch/extrasolar/skycultures';
 import { SKY_CULTURE_SLUG_PREFIX } from '$lib/fetch/groups/registry';
 import { ExtrasolarLookup } from '$lib/fetch/extrasolar/lookup';
+import { isGalaxy } from '$lib/fetch/extrasolar/galaxies';
 import { PlanetCatalogue } from '$lib/fetch/extrasolar/planets';
 
 /** Localized shapes share this description source (object + group bundles).
@@ -908,6 +909,10 @@ function starDescription(name: string): string {
 	return m.seo_star_description({ name });
 }
 
+function galaxyDescription(name: string): string {
+	return m.seo_galaxy_description({ name });
+}
+
 /** Where an alias goes: the live page, with the query of the request. */
 function aliasPage(href: string, url: URL): ExtrasolarPage {
 	const to = new URL(href);
@@ -932,7 +937,7 @@ export async function loadStarSeo(idText: string, url: URL): Promise<ExtrasolarP
 	const meta = await entryMeta(
 		metadata.object ? fileId : null,
 		metadata.name ?? '',
-		starDescription,
+		isGalaxy(found.record) ? galaxyDescription : starDescription,
 		url
 	);
 	return {

@@ -137,6 +137,8 @@ export interface ExtrasolarMetadata {
 	trees: Record<string, ExtrasolarTree>;
 	credits: ExtrasolarCredit[];
 	families?: ExtrasolarFamily[];
+	/** The ID of the galaxy that holds the Sun. Absent when the export has none. */
+	home_galaxy?: number;
 	/** Absent when the export has no planets. */
 	planets?: ExtrasolarPlanets;
 	/** Absent when the export has no matched sky cultures. */

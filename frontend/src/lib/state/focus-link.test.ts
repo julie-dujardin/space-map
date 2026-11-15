@@ -32,6 +32,7 @@ const view: MapViewState = {
 	featureId: null,
 	groupSlug: null,
 	figure: null,
+	pageId: null,
 	tab: null,
 	memberPage: null,
 	quad: null,

@@ -41,6 +41,8 @@
 		planet: Planet | null;
 		/** The system categories of `star`: star, planetary, or both. */
 		systemCategories: string[];
+		/** The category pages of what a galaxy holds, for a galaxy's page. */
+		galaxyTiles?: string[];
 	}
 
 	let {
@@ -53,7 +55,8 @@
 		planetarySystem,
 		star,
 		planet,
-		systemCategories
+		systemCategories,
+		galaxyTiles = []
 	}: Props = $props();
 
 	const ctx = getContext<ContextManager>('ctx');
@@ -174,6 +177,12 @@
 		<BodyCategoryTile slug={CAT_SOLAR_SYSTEM} class={sunLinks.length ? '' : 'col-span-2'} />
 		{#each sunLinks as link (link.slug)}
 			<FamilyTile {link} />
+		{/each}
+	</div>
+{:else if galaxyTiles.length}
+	<div class="grid grid-cols-2 gap-2">
+		{#each galaxyTiles as slug (slug)}
+			<BodyCategoryTile {slug} />
 		{/each}
 	</div>
 {:else if systemCategories.length || familyTiles.length}

@@ -531,12 +531,23 @@ export function isViewable(entry: PanoramaEntry): boolean {
 	return textureAllowed(entry.distribution);
 }
 
-/** A paper cited for a value of a star's record. */
+/** A paper cited for a value of a star's or a galaxy's record. */
 export interface ValueReference {
 	/** Authors and year. */
 	short: string;
 	title: string;
 	url: string;
+}
+
+/** A value of a galaxy that no table holds. `lower` alone is a lower limit.
+ *  Both bounds and no `value` are a range. */
+export interface GalaxyFact {
+	value?: number;
+	lower?: number;
+	upper?: number;
+	/** The export works the value out from the values of `references`. */
+	estimate?: true;
+	references: ValueReference[];
 }
 
 export interface GlobalObjectData extends BodyMassFields {
@@ -606,9 +617,13 @@ export interface GlobalObjectData extends BodyMassFields {
 	ring_features?: Record<string, RingFeature>;
 	/** The tables and papers the catalogue was read off — credited under the tab. */
 	ring_sources?: Array<{ title: string; url: string; organisation: string }>;
-	/** Stars: the papers cited for values of the record, by column group
-	 *  (`distance`). Such a value has the source `literature`. */
+	/** Stars and galaxies: the papers cited for values of the record, by
+	 *  column group (`distance`). Such a value has the source `literature`, or
+	 *  `galaxy-literature` on a galaxy. */
 	references?: Partial<Record<string, ValueReference[]>>;
+	/** Galaxies: the values that no table holds, by name
+	 *  (`docs/export-format/objects.md`). */
+	facts?: Partial<Record<string, GalaxyFact>>;
 	/** System-wide figures for the Rings tab's stat cards. Not to be confused
 	 *  with the *localized* `ring_system`, which is the "Rings of X" article. */
 	ring_stats?: RingStats;

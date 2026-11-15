@@ -11,6 +11,7 @@ import type { InteriorBlock } from '$lib/fetch/objects/object-data';
 import type { ColumnSpec } from '$lib/fetch/extrasolar/__fixtures__/writer';
 import type { StarRadius } from '$lib/fetch/extrasolar/lookup';
 import { STAR } from '$lib/fetch/extrasolar/__fixtures__/synthetic';
+import { galaxyRecord } from '$lib/fetch/extrasolar/__fixtures__/galaxy';
 import { ltrIsolate } from '$lib/format/bidi';
 import {
 	meanDensityRow,
@@ -944,6 +945,16 @@ describe('the class of a star', () => {
 		expect(starClassLabel('pulsar')).toBe('Pulsar');
 		expect(starClassLabel('white dwarf')).toBe('White dwarf');
 		expect(starClassLabel('brown dwarf')).toBe('Brown dwarf');
+	});
+
+	it('names a galaxy, whose record a star panel also reads', () => {
+		expect(starClassLabel('galaxy')).toBe('Galaxy');
+	});
+});
+
+describe('the identifiers of a galaxy', () => {
+	it('leave out the key that keeps its ID, and the Wikidata item of the links', () => {
+		expect(starIdentifiers(galaxyRecord())).toEqual([]);
 	});
 });
 

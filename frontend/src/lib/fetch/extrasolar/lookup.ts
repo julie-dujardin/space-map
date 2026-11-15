@@ -403,6 +403,8 @@ export function homeRow(record: ExtrasolarRecord): TableRow | null {
 
 export const POINT_SOURCE_SLUG = 'point-source';
 export const SYSTEM_SLUG = 'system';
+/** The home table of a galaxy. */
+export const REDSHIFT_SLUG = 'redshift';
 
 /** The ID of the primary point of a star system node. A point that holds
  *  several stars is its own primary. Null for an ID that is not a node. */

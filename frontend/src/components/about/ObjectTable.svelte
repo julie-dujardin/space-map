@@ -54,6 +54,7 @@
 	};
 
 	const NAMES: Record<string, () => string> = {
+		galaxy: m.about_data_kind_galaxies,
 		star: () => ucfirst(m.search_cat_star()),
 		star_system: m.about_data_kind_star_systems,
 		barycenter: () => ucfirst(m.search_cat_barycenter())

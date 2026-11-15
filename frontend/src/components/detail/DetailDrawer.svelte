@@ -40,7 +40,8 @@
 		focusableFallbackName,
 		focusableKey,
 		type FocusFeature,
-		type FocusObject
+		type FocusObject,
+		viewPageKey
 	} from '$lib/state/focusable';
 	import DrawerTitle from './frame/DrawerTitle.svelte';
 	import TravelButton from './travel/TravelButton.svelte';
@@ -48,7 +49,8 @@
 	import OrbitZoneButton from './travel/OrbitZoneButton.svelte';
 	import { isLaunchSiteSlug } from '$lib/travel/launch-pad';
 	import { orbitZoneTarget } from '$lib/travel/orbit-zone-target';
-	import { parentCrumb, type Crumb } from '$lib/state/breadcrumb';
+	import { parentCrumb, type Crumb, type GalaxyPage } from '$lib/state/breadcrumb';
+	import { fetchHomeGalaxy } from '$lib/state/home-galaxy';
 	import { figureKey } from '$lib/fetch/groups/registry';
 	import ImageViewer from '../image-viewer/ImageViewer.svelte';
 	import ImagesPanel from './frame/ImagesPanel.svelte';
@@ -68,6 +70,7 @@
 	import { PlanetarySystemState } from './charts/planetary-system.svelte';
 	import { StarSystemLoad } from './state/star-system.svelte';
 	import { StarInteriorLoad } from './state/star-interior.svelte';
+	import { isGalaxy } from '$lib/fetch/extrasolar/galaxies';
 	import { MembersState } from './state/members-state.svelte';
 	import { buildLineup, geometryFromMember } from './charts/lineup';
 	import { starClassLabel } from './sections/star/star-rows';
@@ -210,6 +213,15 @@
 		() => data?.global?.references
 	);
 
+	// Null till it loads, and where the export names none.
+	let homeGalaxy = $state.raw<GalaxyPage | null>(null);
+	$effect(() => {
+		untrack(fetchHomeGalaxy).then(
+			(galaxy) => (homeGalaxy = galaxy),
+			(e: unknown) => console.warn('[galaxy] no home galaxy:', e)
+		);
+	});
+
 	let crumb = $derived(
 		parentCrumb(
 			focusable,
@@ -217,9 +229,19 @@
 			data,
 			groupDetail?.global ?? null,
 			starSystem.root,
-			groupDetail?.localized?.parent_group_name
+			groupDetail?.localized?.parent_group_name,
+			homeGalaxy
 		)
 	);
+
+	// A star shows its class where Wikidata gives it no type. A galaxy always
+	// shows its class: Wikidata's types of one also call it a celestial body.
+	let heroBadges = $derived.by(() => {
+		if (planet) return planetBadges(planet.planet);
+		if (!star) return undefined;
+		const typed = !isGalaxy(star) && !!data?.localized?.instance_of?.length;
+		return typed ? undefined : [starClassLabel(star.metadata.class)];
+	});
 
 	// A star system with no name has the name that its System rows compose.
 	let fallbackName = $derived(
@@ -460,13 +482,7 @@
 
 	// URL's focus target, so a tile switching body and tab doesn't get its tab
 	// wiped by the scrub below during the gap before the new focusable arrives.
-	let viewFocusKey = $derived(
-		appState.view.groupSlug
-			? `group-${appState.view.figure ? figureKey(appState.view.groupSlug, appState.view.figure) : appState.view.groupSlug}`
-			: appState.view.featureId != null
-				? `feature-${appState.view.featureId}`
-				: appState.view.id
-	);
+	let viewFocusKey = $derived(viewPageKey(appState.view));
 	// Scrub a deep-link tab pointing at absent content (e.g. ?tab=members on a
 	// moonless body). The !loading guard avoids wiping a valid link mid-fetch,
 	// while showMembersTab is still false.
@@ -504,11 +520,7 @@
 		{lineup}
 		{planetarySystem}
 		{traverse}
-		badges={star && !data?.localized?.instance_of?.length
-			? [starClassLabel(star.metadata.class)]
-			: planet
-				? planetBadges(planet.planet)
-				: undefined}
+		badges={heroBadges}
 	/>
 {/snippet}
 

@@ -4,7 +4,18 @@ import { TableRow, type ExtrasolarRecord, type StarRadius } from '$lib/fetch/ext
 import type { ExtrasolarTable } from '$lib/fetch/extrasolar/files';
 import { encode } from '$lib/fetch/extrasolar/__fixtures__/writer';
 import { pointSourceRecord, tableRow } from '$lib/fetch/extrasolar/__fixtures__/record';
-import { makeStarBody } from './star-focus';
+import { galaxyRecord } from '$lib/fetch/extrasolar/__fixtures__/galaxy';
+import { sphericalToCartesian } from '$lib/math/spherical';
+import { galacticNorthVector } from '$lib/scene/camera/north-reference';
+import { FRAME_ELEVATION_DEG } from '$lib/scene/exoplanets/view';
+import { CAMERA_MAX_DISTANCE } from '$lib/scene/setup/three-boot';
+import { PC_SCENE } from '$lib/scene/starfield/tree';
+import {
+	GALAXY_VIEW_DISTANCE,
+	STAR_VIEW_DISTANCE,
+	extrasolarView,
+	makeStarBody
+} from './star-focus';
 
 /** A star whose Metadata row has `radius`, with Point source columns `extra`. */
 function record(
@@ -124,5 +135,40 @@ describe('a focused stellar photosphere', () => {
 		expect(body.data.radiusKm).toBeNaN();
 		expect(body.extrasolar?.radiusKm).toBeNull();
 		expect(body.extrasolar?.scene).not.toBeNull();
+	});
+});
+
+describe('the body of a galaxy', () => {
+	const body = makeStarBody(galaxyRecord());
+
+	it('has the place of its point, and no point, light or sphere', () => {
+		const { scene, tree, absMag, radiusKm, teff, colour } = body.extrasolar!;
+		expect(Math.hypot(...scene!) / PC_SCENE).toBeCloseTo(8277, 3);
+		expect(tree).toBeNull();
+		expect([absMag, radiusKm, teff, colour]).toEqual([null, null, null, null]);
+		expect(body.data.id).toBe(`x-${galaxyRecord().id}`);
+		expect(body.data.hasLocalized).toBe(true);
+	});
+
+	it('is framed from above the Galactic plane, on the side of the Sun', () => {
+		const view = extrasolarView(body);
+		expect(view.distance).toBe(GALAXY_VIEW_DISTANCE);
+		const camera = sphericalToCartesian([0, 0, 0], view.latitude!, view.longitude!, 1);
+		const pole = galacticNorthVector();
+		const height = camera[0] * pole.x + camera[1] * pole.y + camera[2] * pole.z;
+		expect(Math.abs(height)).toBeCloseTo(Math.sin((FRAME_ELEVATION_DEG * Math.PI) / 180), 9);
+		const scene = body.extrasolar!.scene!;
+		const toSun = -(camera[0] * scene[0] + camera[1] * scene[1] + camera[2] * scene[2]);
+		expect(toSun).toBeGreaterThan(0);
+	});
+
+	it('is framed with its whole disc inside the camera range', () => {
+		// The disc reaches 26 kpc from the centre.
+		expect(GALAXY_VIEW_DISTANCE).toBeGreaterThan(2.6e4 * PC_SCENE);
+		expect(GALAXY_VIEW_DISTANCE).toBeLessThan(CAMERA_MAX_DISTANCE);
+	});
+
+	it('leaves a star with a distance and no side', () => {
+		expect(extrasolarView(makeStarBody(record(null)))).toEqual({ distance: STAR_VIEW_DISTANCE });
 	});
 });

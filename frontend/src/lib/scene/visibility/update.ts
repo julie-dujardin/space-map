@@ -4,6 +4,7 @@ import type { PerspectiveCamera, PointsMaterial, ShaderMaterial, WebGLRenderer }
 import type { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { ObjectType, isExoplanet, isExtrasolar, isMajorBody } from '$lib/types/objects';
 import { sceneToKm } from '$lib/math/units';
+import { isGalaxy } from '$lib/fetch/extrasolar/galaxies';
 import { host } from '$lib/host';
 import { setLabelAnnotation } from '../label/annotations';
 import {
@@ -397,7 +398,8 @@ export function updateBodyVisibility(
 				: (centreShare ?? ctx.visibility.systemShares.get(body.data.id) ?? 1 - insideShare);
 			const visible = ctx.visibility.starShareOf(body.data.id, isHeldStar) > 0 && zoneShare > 0;
 			group.visible = visible;
-			showLabel = visible;
+			// The glow draws a galaxy: a halo would mark it as a point.
+			showLabel = visible && !(body.extrasolar && isGalaxy(body.extrasolar.record));
 		} else if (
 			bo.mesh === null &&
 			!isMajorBody(body.data.objectType) &&

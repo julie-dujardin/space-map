@@ -3,6 +3,7 @@
  * Mirror of `data/src/space_map_data/export/about_data.py`.
  */
 
+import { dataBase } from '$lib/fetch/data-base';
 import { LITERATURE, STAR_SYSTEMS } from '$lib/fetch/extrasolar/lookup';
 
 export type MapLayer = 'surface' | 'clouds' | 'night' | 'specular' | 'topography';
@@ -402,4 +403,26 @@ export function totals(data: AboutData): DataTotals {
 	sum.models += data.models.lightcurve?.models ?? 0;
 	sum.size_bytes += data.models.lightcurve?.size_bytes ?? 0;
 	return sum;
+}
+
+let report: Promise<AboutData> | undefined;
+
+async function readAboutData(fetch: typeof globalThis.fetch): Promise<AboutData> {
+	const res = await fetch(`${dataBase()}/v1/about-data.json`);
+	if (!res.ok) throw new Error(`Failed to load about-data.json: ${res.status}`);
+	const data = (await res.json()) as AboutData;
+	// A host or a cache can hold a file from an older export, which has no
+	// objects or no names.
+	if (!data.objects || !data.names) throw new Error('about-data.json is older than the page');
+	return data;
+}
+
+/** The report, read once. A read that fails is tried again on the next call.
+ *  A route load passes its own `fetch`. */
+export function fetchAboutData(fetch = globalThis.fetch): Promise<AboutData> {
+	report ??= readAboutData(fetch).catch((e: unknown) => {
+		report = undefined;
+		throw e;
+	});
+	return report;
 }

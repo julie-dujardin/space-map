@@ -1,5 +1,12 @@
 import { pushState as sveltePushState, replaceState as svelteReplaceState } from '$app/navigation';
-import { DEFAULT_VIEW, UrlType, type DrawerTab, type MapViewState, type NavPlace } from './view';
+import {
+	DEFAULT_VIEW,
+	UrlType,
+	isOverView,
+	type DrawerTab,
+	type MapViewState,
+	type NavPlace
+} from './view';
 import {
 	applyClose,
 	applyFeature,
@@ -13,6 +20,7 @@ import {
 	parseUrl,
 	serializeUrl,
 	urlTypeFromId,
+	type FocusOpen,
 	type GroupOpen,
 	type NavEnd
 } from './url';
@@ -152,14 +160,7 @@ export class AppState {
 		}, DATE_THROTTLE_MS);
 	}
 
-	setFocus(focus: {
-		type: string;
-		id: string;
-		name: string;
-		tab?: Exclude<DrawerTab, 'overview'>;
-		quad?: string;
-		featureType?: string;
-	}) {
+	setFocus(focus: FocusOpen) {
 		this.view = applyFocus(this.view, focus);
 		this.pushNow();
 	}
@@ -180,11 +181,14 @@ export class AppState {
 		this.pushNow();
 	}
 
-	/** Move the camera's subject to another member of the open group. The page
-	 *  stays the group's, so this is a camera move, not a navigation. */
-	setGroupFocus(id: string) {
+	/** Move the camera's subject under the open page: to a member of its group,
+	 *  or to the page's own object. The page stays, so this is a camera move,
+	 *  not a navigation. */
+	setPageFocus(id: string) {
 		if (id === this.view.id && this.view.featureId === null) return;
-		this.view = { ...this.view, id, featureId: null };
+		// On its own object the page is no longer over the view.
+		const pageId = id === this.view.pageId ? null : this.view.pageId;
+		this.view = { ...this.view, id, featureId: null, pageId };
 		this.replaceNow();
 	}
 
@@ -192,6 +196,13 @@ export class AppState {
 	closeDetail(anchorId: string) {
 		this.view = applyClose(this.view, anchorId);
 		this.pushNow();
+	}
+
+	/** Drop a page over the view whose object did not load. The entry parks on
+	 *  the camera's subject: a push would leave the broken entry behind it. */
+	dropPage() {
+		this.view = applyClose(this.view, this.view.id);
+		this.replaceNow();
 	}
 
 	/** Open the trip planner, or move one of its ends. Either end may be null —
@@ -245,9 +256,9 @@ export class AppState {
 	}
 
 	/** Drop a feature the body's nomenclature lacks: the body's view, or the
-	 *  group's with the camera on the body. A correction, so no history entry. */
+	 *  page's with the camera on the body. A correction, so no history entry. */
 	clearFeature(bodyName: string) {
-		if (this.view.type === UrlType.Group) {
+		if (isOverView(this.view)) {
 			this.view = { ...this.view, featureId: null };
 			this.replaceNow();
 			return;
@@ -361,9 +372,12 @@ export class AppState {
 		else this.replaceNow();
 	}
 
-	/** Called by the popstate handler with the view from history.state (or a re-parse). */
-	syncFromPopState(view: MapViewState) {
+	/** Take the view of a history entry, or of a re-parse, and return it whole.
+	 *  An entry that an older build saved lacks the fields added since. */
+	syncFromPopState(popped: MapViewState): MapViewState {
+		const view = { ...DEFAULT_VIEW, ...popped };
 		this.view = view;
+		return view;
 	}
 }
 

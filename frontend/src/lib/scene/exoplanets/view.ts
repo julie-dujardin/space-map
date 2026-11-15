@@ -68,6 +68,17 @@ export function frameDirection(
 	];
 }
 
+/** The view of `host` from above the plane of `normal`, `distance` away. */
+export function planeView(
+	host: Readonly<Vec3>,
+	normal: Readonly<Vec3>,
+	distance: number
+): SystemView {
+	const d = frameDirection(host, normal, FRAME_ELEVATION_DEG);
+	const { latitude, longitude } = cartesianToSpherical([d[0], d[1], d[2]], [0, 0, 0]);
+	return { distance, latitude, longitude };
+}
+
 /** The view of a link to a system whose outer orbit is `outerAU`, the target
  *  in the system (its host or one of its planets). */
 export function systemView(
@@ -75,8 +86,5 @@ export function systemView(
 	normal: Readonly<Vec3>,
 	outerAU: number
 ): SystemView {
-	const distance = FRAME_OUTER_ORBITS * outerAU * AU_SCALE;
-	const d = frameDirection(host, normal, FRAME_ELEVATION_DEG);
-	const { latitude, longitude } = cartesianToSpherical([d[0], d[1], d[2]], [0, 0, 0]);
-	return { distance, latitude, longitude };
+	return planeView(host, normal, FRAME_OUTER_ORBITS * outerAU * AU_SCALE);
 }

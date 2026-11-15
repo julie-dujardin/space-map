@@ -15,7 +15,7 @@
 	} from '$lib/types/objects';
 	import { featureStandoff } from '$lib/scene/objects/surface/nomenclature';
 	import { minCameraDistance } from '$lib/scene/visibility/camera-limits';
-	import { DEFAULT_VIEW, UrlType } from '$lib/state/view';
+	import { DEFAULT_VIEW, UrlType, isOverView, pageOf } from '$lib/state/view';
 	import { UNPLACED_TOAST } from '$lib/state/notices';
 	import {
 		DEFAULT_FRAMING_LAT,
@@ -28,7 +28,12 @@
 	import { MapCover } from '$lib/state/map-cover.svelte';
 	import { getSettings } from '$lib/state/settings.svelte';
 	import { fetchBodyNomenclature, type NomenclatureFeature } from '$lib/fetch/nomenclature/fetch';
-	import type { Focusable, FocusFeature, FocusObject } from '$lib/state/focusable';
+	import {
+		viewPageKey,
+		type Focusable,
+		type FocusFeature,
+		type FocusObject
+	} from '$lib/state/focusable';
 	import type { LabelledPath, PathStep } from '$lib/travel/labelled-path';
 	import { craftPositionAt } from '$lib/math/travel/path-sample';
 	import { legLabel } from './detail/travel/leg-labels';
@@ -121,7 +126,7 @@
 	import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 	import { watchDataVersion } from '$lib/fetch/version-check';
 	import { fetchGroupDetail } from '$lib/fetch/groups/details';
-	import { figureKey, MISSION_SLUG_PREFIX } from '$lib/fetch/groups/registry';
+	import { MISSION_SLUG_PREFIX } from '$lib/fetch/groups/registry';
 	import { isModelBearing } from '$lib/scene/objects/body/model';
 	import { pageSkyOf, urlTypeFromId } from '$lib/state/url';
 	import { getLocale } from '$lib/paraglide/runtime.js';
@@ -135,7 +140,7 @@
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import { jdToDate } from '$lib/time/jd';
 	import { isExtrasolarObjectId, isStarObjectId } from '$lib/fetch/extrasolar/ids';
-	import { STAR_VIEW_DISTANCE } from '$lib/scene/focus/star-focus';
+	import { extrasolarView } from '$lib/scene/focus/star-focus';
 
 	const searchEnabled = isSearchEnabled();
 	/** A link to a search opens on the search, with no panel for the body behind it. */
@@ -197,10 +202,12 @@
 		if (arrival.outcome === 'superseded') return;
 		// A bare `/e/<id>` link carries no name; the view has the export's once
 		// the page has read it, and the catalogue and the localized bundle do.
+		// Under a page over the view, the view's name is the page's.
+		const viewed = !isOverView(appState.view) && appState.view.id === id;
 		const known =
 			(name && name !== id ? name : undefined) ??
 			arrival.body?.data.name ??
-			(appState.view.id === id && appState.view.name ? appState.view.name : undefined);
+			(viewed && appState.view.name ? appState.view.name : undefined);
 		const label = known ?? (await exportedName(id, arrival.outcome === 'failed')) ?? id;
 		// Persistent: they fire during the load, whose main-thread churn would eat
 		// a timed toast before it paints. The next one replaces it.
@@ -263,7 +270,7 @@
 		latitude?: number;
 		longitude?: number;
 	} {
-		return ctx.exoplanets.view(body.data.id) ?? { distance: STAR_VIEW_DISTANCE };
+		return ctx.exoplanets.view(body.data.id) ?? extrasolarView(body);
 	}
 
 	function frameStarSystem(body: PositionedBody): void {
@@ -274,7 +281,7 @@
 	// Default camera distance: dive close to model/cuboid bodies, hold back for
 	// bare markers. Sync (isModelBearing, no fetch) so the camera moves at once.
 	function framingDistanceFor(type: string, body: PositionedBody): number {
-		if (type === UrlType.Extrasolar) return STAR_VIEW_DISTANCE;
+		if (type === UrlType.Extrasolar) return extrasolarView(body).distance;
 		if (type === UrlType.Probe || type === UrlType.EarthSatellite) {
 			return isModelBearing(body) ? minCameraDistance(body) * 5 : 0.005;
 		}
@@ -286,19 +293,21 @@
 		void (async () => {
 			const type = urlTypeFromId(id);
 			const craft = type === UrlType.Probe || type === UrlType.EarthSatellite;
+			// `moveCamera: false` re-anchors the focus with no fly (comet fragments).
+			// A star with its halo in view is in sight already: the view turns to it.
+			const turns = opts?.moveCamera === false || (isStarObjectId(id) && map.haloOnScreen(id));
 			const arrival = await map.goTo(id, {
-				// `moveCamera: false` re-anchors the focus with no fly (comet fragments).
-				// A star with its halo in view is in sight already: the view turns to it.
-				camera:
-					opts?.moveCamera === false || (isStarObjectId(id) && map.haloOnScreen(id))
-						? 'pan'
-						: 'fly',
+				// A page over the view leaves the camera on its object.
+				camera: opts?.keepView ? 'none' : turns ? 'pan' : 'fly',
 				// A star with planets, or a planet, frames its planetary system.
 				view: (body) =>
-					ctx.exoplanets.view(body.data.id) ?? {
-						distance: framingDistanceFor(type, body),
-						...(craft ? { latitude: DEFAULT_FRAMING_LAT, longitude: DEFAULT_FRAMING_LON } : {})
-					},
+					ctx.exoplanets.view(body.data.id) ??
+					(type === UrlType.Extrasolar
+						? extrasolarView(body)
+						: {
+								distance: framingDistanceFor(type, body),
+								...(craft ? { latitude: DEFAULT_FRAMING_LAT, longitude: DEFAULT_FRAMING_LON } : {})
+							}),
 				// An extrasolar object lands on its live object, an alias too, under
 				// the name of its record.
 				commit: (body) =>
@@ -307,7 +316,8 @@
 						id: body.extrasolar ? body.data.id : id,
 						name: body.extrasolar ? (body.data.name ?? '') : name,
 						tab: opts?.tab,
-						featureType: opts?.featureType
+						featureType: opts?.featureType,
+						keepView: opts?.keepView
 					})
 			});
 			void reportArrival(arrival, id, name);
@@ -379,6 +389,46 @@
 	// keeps tracking that body. Drives what belongs to the body on screen, not
 	// to the drawer: compass-north choices and the panorama traces.
 	let cameraFocus = $state.raw<PositionedBody | undefined>();
+	// The object of a page open over the view. The camera is on another object,
+	// so no focus change brings it.
+	const pageId = $derived(appState.view.pageId);
+	/** Counts the loads that ended: the scene's bodies are not reactive. */
+	let pageLoads = $state(0);
+	// Read with the view, not after it: a body in the scene keeps the drawer mounted.
+	const pageBody = $derived.by(() => {
+		void pageLoads;
+		return pageId === null ? undefined : ctx.getBody(pageId);
+	});
+	$effect(() => {
+		const id = pageId;
+		// The scene adds no object before its opening view.
+		if (id === null || !cameraPlaced) return;
+		return untrack(() => {
+			if (pageBody) return;
+			let cancelled = false;
+			let error: unknown;
+			void ctx
+				.ensureBody(id, jdToDate(clock.jd))
+				.catch((e: unknown) => {
+					error = e;
+				})
+				.then(() => {
+					if (cancelled) return;
+					pageLoads++;
+					if (ctx.getBody(id)) return;
+					// Reported as a navigation to it. The camera's object keeps the entry.
+					const outcome = error === undefined ? 'missing' : 'failed';
+					console.warn(`[map] the page of ${id} did not open: ${outcome}`, error);
+					void reportArrival({ outcome, error, flightMs: 0 }, id);
+					appState.dropPage();
+				});
+			return () => {
+				cancelled = true;
+			};
+		});
+	});
+	/** The body of the panel's object. A page over the view has its own. */
+	const panelBody = $derived(pageId === null ? selectedBody : pageBody);
 	/** `cameraFocus` is a landed probe: the camera orbits the body it stands on. */
 	const cameraLanded = $derived(
 		!!cameraFocus && !!map.cameraBody && map.cameraBody.data.id !== cameraFocus.data.id
@@ -474,19 +524,19 @@
 	// the panel beside it is about the journey, not the body.
 	const focusable = $derived.by((): Focusable | null => {
 		if (isNav) return null;
-		if (appState.view.type === UrlType.Group && appState.view.groupSlug) {
-			return { kind: 'group', slug: appState.view.groupSlug, figure: appState.view.figure };
-		}
-		if (!selectedBody?.data.id) return null;
+		const page = pageOf(appState.view);
+		if (page.kind === 'group') return page;
+		const body = panelBody;
+		if (!body?.data.id) return null;
 		// The view's own feature only: a camera that left it may report the host first.
-		if (activeFeature?.featureId === appState.view.featureId) {
-			return { kind: 'feature', body: selectedBody, feature: activeFeature };
+		if (page.kind === 'feature' && activeFeature?.featureId === page.featureId) {
+			return { kind: 'feature', body, feature: activeFeature };
 		}
-		const star = selectedBody.extrasolar;
-		if (star) return { kind: 'star', body: selectedBody, record: star.record };
-		const planet = selectedBody.exoplanet;
-		if (planet) return { kind: 'planet', body: selectedBody, anchor: planet };
-		return { kind: 'body', body: selectedBody };
+		const star = body.extrasolar;
+		if (star) return { kind: 'star', body, record: star.record };
+		const planet = body.exoplanet;
+		if (planet) return { kind: 'planet', body, anchor: planet };
+		return { kind: 'body', body };
 	});
 
 	/** The drawer's feature, where it has one, as the camera finds it on its host. */
@@ -508,7 +558,7 @@
 		void appState.view.zoom;
 		void appState.view.latitude;
 		void appState.view.longitude;
-		const body = selectedBody;
+		const body = panelBody;
 		if (!body) return undefined;
 		const feature = drawerFeature;
 		const range = map.groundRange(feature ?? body.data.id);
@@ -554,15 +604,11 @@
 	});
 	/** What the panel will be about, for chrome that has to guess before the
 	 *  focusable exists. */
-	const pendingKind = $derived<'body' | 'feature' | 'group' | 'star'>(
-		appState.view.groupSlug
-			? 'group'
-			: appState.view.featureId !== null
-				? 'feature'
-				: isStarObjectId(appState.view.id)
-					? 'star'
-					: 'body'
-	);
+	const pendingKind = $derived.by((): 'body' | 'feature' | 'group' | 'star' => {
+		const page = pageOf(appState.view);
+		if (page.kind !== 'object') return page.kind;
+		return isStarObjectId(page.id) ? 'star' : 'body';
+	});
 
 	// The drawer chunk loads the first time anything is focused — or the first
 	// time the URL says something will be, so the fetch overlaps the scene boot
@@ -586,9 +632,7 @@
 	 *  `view` is replaced twice a second. */
 	const panelSubject = $derived.by(() => {
 		if (!panelPromised && !focusable) return null;
-		const { groupSlug, figure, featureId, id } = appState.view;
-		if (groupSlug) return figure ? figureKey(groupSlug, figure) : groupSlug;
-		return featureId !== null ? `${id}/f/${featureId}` : id;
+		return viewPageKey(appState.view);
 	});
 
 	// The payload the drawer will read and the name of its subject, asked for
@@ -599,20 +643,20 @@
 		const key = panelSubject;
 		if (key === null) return;
 		untrack(() => {
-			const { groupSlug: slug, figure, featureId, id: bodyId } = appState.view;
+			const page = pageOf(appState.view);
 			let subject: PageSubject;
-			if (slug && figure) {
-				subject = { kind: 'figure', slug, figure };
-			} else if (slug) {
-				void prefetchGroupDetail(slug);
-				subject = { kind: 'group', slug };
-			} else if (featureId !== null) {
-				void prefetchFeatureDetail(bodyId, featureId);
-				subject = { kind: 'feature', bodyId, featureId };
+			if (page.kind === 'group' && page.figure) {
+				subject = { kind: 'figure', slug: page.slug, figure: page.figure };
+			} else if (page.kind === 'group') {
+				void prefetchGroupDetail(page.slug);
+				subject = { kind: 'group', slug: page.slug };
+			} else if (page.kind === 'feature') {
+				void prefetchFeatureDetail(page.bodyId, page.featureId);
+				subject = page;
 			} else {
 				// A star's records are the page's own lookup, already on their way.
-				if (!isExtrasolarObjectId(bodyId)) void prefetchObjectDetail(bodyId);
-				subject = { kind: 'body', id: bodyId, localized: ctx.getBody(bodyId)?.data.hasLocalized };
+				if (!isExtrasolarObjectId(page.id)) void prefetchObjectDetail(page.id);
+				subject = { kind: 'body', id: page.id, localized: ctx.getBody(page.id)?.data.hasLocalized };
 			}
 			// The view takes the export's name as soon as it is read, and the title
 			// and the URL with it.
@@ -630,6 +674,11 @@
 	 *  strip is one slot, and a trip being planned owns it. */
 	let focusedProbeId = $derived(
 		!isNav && selectedBody?.data.id.startsWith('probe-') ? selectedBody.data.id : null
+	);
+	/** What the strip calls the craft. Under a page over the view, the view's
+	 *  name is the page's. */
+	const focusedProbeName = $derived(
+		isOverView(appState.view) ? selectedBody?.data.name : appState.view.name
 	);
 
 	// Latched like the drawer, so that a re-run cannot start a second load.
@@ -1105,13 +1154,13 @@
 				if (!(await homeShown) || arrival.clockMoved)
 					map.snapToBodyFacing(initialId, SUN_ID, DEFAULT_VIEW_ELEVATION_DEG, DEFAULT_VIEW.zoom);
 			} else if (isExtrasolarObjectId(initialId) && !appState.view.framed) {
-				// A planetary system from above its plane. A star without planets
-				// from the Sun's side: behind it, the sky it is seen against from home.
-				const system = ctx.exoplanets.view(initialId);
-				if (system) {
-					map.snapToBody(initialId, system.latitude, system.longitude, system.distance);
+				// A planetary system or a galaxy from above its plane. A star without
+				// planets from the Sun's side: behind it, the sky it is seen against from home.
+				const framing = starSystemView(placed);
+				if (framing.latitude !== undefined && framing.longitude !== undefined) {
+					map.snapToBody(initialId, framing.latitude, framing.longitude, framing.distance);
 				} else {
-					map.snapToBodyFrom(initialId, SUN_ID, STAR_VIEW_DISTANCE);
+					map.snapToBodyFrom(initialId, SUN_ID, framing.distance);
 				}
 			} else if (!appState.view.framed) {
 				// No URL camera: frame by the target's size/model, same as search. The
@@ -1150,7 +1199,10 @@
 	/** Put the live object of an alias in the view, in place of the alias. */
 	async function followAlias(id: string): Promise<void> {
 		const live = await extrasolarAlias(id);
-		if (live) appState.replaceFocus(live.id, live.name);
+		if (!live) return;
+		// Under a page over the view the alias is the camera's, not the page's.
+		if (isOverView(appState.view)) appState.setPageFocus(live.id);
+		else appState.replaceFocus(live.id, live.name);
 	}
 
 	// A primitive: `view` is replaced twice a second, and the filter is asked
@@ -1469,7 +1521,7 @@
 				<div inert={bgInert} class="contents">
 					<ProbeTimeline
 						objectId={focusedProbeId}
-						name={appState.view.name || focusedProbeId}
+						name={focusedProbeName || focusedProbeId}
 						localized={selectedBody?.data.hasLocalized}
 						{clock}
 					/>
@@ -1503,44 +1555,45 @@
 					onClose={() => closeDetail()}
 					framed={groundFramed}
 					onMaximize={() => {
-						if (!selectedBody) return;
+						const body = panelBody;
+						if (!body) return;
 						// On the ground the camera flies down over it: a move to it would
 						// only turn the view where it already looks over its host.
 						if (drawerFeature) {
 							map.frameFeature(drawerFeature);
 							return;
 						}
-						if (map.frameLanded(selectedBody.data.id, framingZoom(selectedBody)) !== null) return;
-						if (isDiscless(selectedBody.data)) frameStarSystem(selectedBody);
-						else map.focusOnBody(selectedBody.data.id, framingZoom(selectedBody));
+						if (map.frameLanded(body.data.id, framingZoom(body)) !== null) return;
+						if (isDiscless(body.data)) frameStarSystem(body);
+						else map.focusOnBody(body.data.id, framingZoom(body));
 					}}
 					onMinimize={() => {
-						if (!selectedBody) return;
+						const body = panelBody;
+						if (!body) return;
 						// Back out over the feature until its host is framed whole.
 						if (drawerFeature) {
-							const host = selectedBody;
-							const height = framingZoom(host) - kmToScene(effectiveRadiusKm(host.data));
+							const height = framingZoom(body) - kmToScene(effectiveRadiusKm(body.data));
 							map.frameFeature(
 								drawerFeature,
-								Math.max(height, featureFraming(drawerFeature, host) * 5)
+								Math.max(height, featureFraming(drawerFeature, body) * 5)
 							);
 							return;
 						}
-						if (isExtrasolarObjectId(selectedBody.data.id)) {
-							frameStarSystem(selectedBody);
+						if (isExtrasolarObjectId(body.data.id)) {
+							frameStarSystem(body);
 							return;
 						}
 						// Planets and dwarf planets nominally orbit their planetary
 						// barycenter, but are treated as sun-orbiters here so the minimize
 						// framing is the whole solar system, not just the subsystem.
-						const { parentId, objectType } = selectedBody.data;
+						const { parentId, objectType } = body.data;
 						const isSunOrbiter =
 							parentId === 'naif-0' ||
 							parentId === 'naif-10' ||
 							objectType === ObjectType.PLANET ||
 							objectType === ObjectType.DWARF_PLANET;
 						const distance = isSunOrbiter ? SUN_VIEW_ZOOM : 0.005;
-						map.focusOnBody(selectedBody.data.id, distance);
+						map.focusOnBody(body.data.id, distance);
 					}}
 					onSheetResize={(h) => (drawerHeightDvh = h)}
 				/>

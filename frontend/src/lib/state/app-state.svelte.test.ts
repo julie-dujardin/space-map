@@ -29,7 +29,7 @@ vi.mock('$app/state', () => ({ page: { params: {}, url: new URL('http://x/') } }
 import { AppState, DATE_THROTTLE_MS } from './app-state.svelte';
 import { navEndOf } from './url';
 import { DEFAULT_TRIP } from '$lib/travel/trip';
-import type { MapViewState } from './view';
+import { isOverView, pageOf, type MapViewState } from './view';
 
 const initialView: MapViewState = {
 	type: 'b',
@@ -45,6 +45,7 @@ const initialView: MapViewState = {
 	featureId: null,
 	groupSlug: null,
 	figure: null,
+	pageId: null,
 	tab: null,
 	memberPage: null,
 	quad: null,
@@ -194,6 +195,92 @@ describe('AppState.setFocus', () => {
 	});
 });
 
+describe('an object page open over the view', () => {
+	const camera = '2026-01-15T12:00:00.000Z,45.00000,0.00000,42.43';
+	const open = () => {
+		const s = new AppState({ ...initialView, type: 'x', id: 'x-20593262', name: 'Vega' });
+		s.setFocus({ type: 'x', id: 'x-74489380', name: 'Milky Way', keepView: true });
+		return s;
+	};
+
+	it('pushes a link with the camera and the object it is on', () => {
+		const s = open();
+		expect(s.view).toMatchObject({ id: 'x-20593262', pageId: 'x-74489380' });
+		expect(pushStateSpy.mock.lastCall?.[0]).toBe(
+			`/x/74489380/Milky%20Way?at=${camera}&focus=x-20593262`
+		);
+		s.setCamera({ latitude: 1, longitude: 2, zoom: 3 });
+		expect(replaceStateSpy.mock.lastCall?.[0]).toBe(
+			'/x/74489380/Milky%20Way?at=2026-01-15T12:00:00.000Z,1.00000,2.00000,3&focus=x-20593262'
+		);
+	});
+
+	it('drops the focus, in the same entry, once the camera is on its object', () => {
+		const s = open();
+		pushStateSpy.mockClear();
+		s.setPageFocus('x-74489380');
+		expect(s.view).toMatchObject({ type: 'x', id: 'x-74489380', pageId: null, name: 'Milky Way' });
+		expect(replaceStateSpy.mock.lastCall?.[0]).toBe(`/x/74489380/Milky%20Way?at=${camera}`);
+		expect(pushStateSpy).not.toHaveBeenCalled();
+	});
+
+	it('stays up while the camera leaves a feature for its host', () => {
+		const s = new AppState({ ...initialView, type: 'f', id: 'naif-499', featureId: 2757 });
+		s.setFocus({ type: 'x', id: 'x-74489380', name: 'Milky Way', keepView: true });
+		s.setPageFocus('naif-499');
+		expect(s.view).toMatchObject({ id: 'naif-499', featureId: null, pageId: 'x-74489380' });
+		expect(replaceStateSpy.mock.lastCall?.[0]).toContain('&focus=naif-499');
+	});
+
+	it('stays up when the feature the camera is on is not one of its body', () => {
+		const s = new AppState({ ...initialView, type: 'f', id: 'naif-499', featureId: 2757 });
+		s.setFocus({ type: 'x', id: 'x-74489380', name: 'Milky Way', keepView: true });
+		s.clearFeature('Mars');
+		expect(s.view).toMatchObject({ type: 'x', pageId: 'x-74489380', featureId: null });
+		expect(s.view.name).toBe('Milky Way');
+	});
+
+	it('closes onto the object the camera is on', () => {
+		const s = open();
+		s.closeDetail('x-20593262');
+		expect(pushStateSpy.mock.lastCall?.[0]).toBe(`/x/20593262?at=${camera}`);
+	});
+
+	it('gives a group opened from it the camera and the same focus', () => {
+		const s = open();
+		s.setGroup('cat-stars', 'Stars');
+		expect(s.view.pageId).toBeNull();
+		expect(pushStateSpy.mock.lastCall?.[0]).toBe(
+			`/g/cat-stars/Stars?at=${camera}&focus=x-20593262`
+		);
+	});
+
+	it('comes back whole from a history entry', () => {
+		const s = open();
+		const entry = pushStateSpy.mock.lastCall?.[1] as { view: MapViewState };
+		s.setFocus({ type: 'b', id: 'naif-499', name: 'Mars' });
+		s.syncFromPopState(entry.view);
+		expect(s.view).toMatchObject({ id: 'x-20593262', pageId: 'x-74489380', name: 'Milky Way' });
+	});
+
+	it('gives the entry to the camera object when its own object does not load', () => {
+		const s = open();
+		pushStateSpy.mockClear();
+		s.dropPage();
+		expect(s.view).toMatchObject({ type: 'x', id: 'x-20593262', pageId: null, name: '' });
+		// Replaced: back must not land on the page that cannot open.
+		expect(pushStateSpy).not.toHaveBeenCalled();
+		expect(replaceStateSpy.mock.lastCall?.[0]).toBe(`/x/20593262?at=${camera}`);
+	});
+
+	it('leaves the camera on its feature when it is dropped', () => {
+		const s = new AppState({ ...initialView, type: 'f', id: 'naif-499', featureId: 2757 });
+		s.setFocus({ type: 'x', id: 'x-74489380', name: 'Milky Way', keepView: true });
+		s.dropPage();
+		expect(s.view).toMatchObject({ type: 'f', id: 'naif-499', featureId: 2757, pageId: null });
+	});
+});
+
 describe('AppState.setImage', () => {
 	it('null → 0 pushes (open is a history boundary)', () => {
 		const s = new AppState({ ...initialView, imageIndex: null });
@@ -307,14 +394,14 @@ describe('AppState on a group with a feature in view', () => {
 
 	it('moving to another member leaves the feature', () => {
 		const s = new AppState(onFeature);
-		s.setGroupFocus('naif-401');
+		s.setPageFocus('naif-401');
 		expect(s.view.id).toBe('naif-401');
 		expect(s.view.featureId).toBeNull();
 	});
 
 	it('moving to the feature host leaves the feature too', () => {
 		const s = new AppState(onFeature);
-		s.setGroupFocus('naif-499');
+		s.setPageFocus('naif-499');
 		expect(s.view.featureId).toBeNull();
 		expect(replaceStateSpy).toHaveBeenCalledOnce();
 	});
@@ -394,6 +481,20 @@ describe('AppState.syncFromPopState', () => {
 		expect(s.view.imageIndex).toBe(2);
 		expect(pushStateSpy).not.toHaveBeenCalled();
 		expect(replaceStateSpy).not.toHaveBeenCalled();
+	});
+
+	it('reads an entry of a build with no `pageId` as a plain page', () => {
+		const s = new AppState({ ...initialView });
+		const saved: Partial<MapViewState> = { ...initialView, id: 'x-20593262', name: 'Vega' };
+		delete saved.pageId;
+		const view = s.syncFromPopState(saved as MapViewState);
+		expect(view.pageId).toBeNull();
+		expect(s.view.pageId).toBeNull();
+		expect(pageOf(s.view)).toEqual({ kind: 'object', id: 'x-20593262' });
+		expect(isOverView(s.view)).toBe(false);
+		// What the entry holds stays.
+		expect(s.view).toMatchObject({ id: 'x-20593262', name: 'Vega', latitude: 45 });
+		expect(s.view.date).toEqual(initialView.date);
 	});
 });
 

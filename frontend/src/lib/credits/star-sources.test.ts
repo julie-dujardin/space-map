@@ -42,7 +42,8 @@ import {
 	starInteriorCredits,
 	starSourceName
 } from './star-sources';
-import { referenceCount } from './star-sources';
+import { paperCredits, referenceCount, referenceRows } from './star-sources';
+import { REFERENCE_SECTIONS } from './credits-payload';
 
 describe('star sources', () => {
 	it('names the sources the tables name', () => {
@@ -607,6 +608,45 @@ describe('referenceCount', () => {
 			credit('ESA', 'https://example.org/catalogue', 'ESA 1997')
 		];
 		expect(referenceCount(credits, stars)).toBe(3);
+	});
+});
+
+describe('the references of the galaxies', () => {
+	const row = (url: string) => ({ title: url, url, contribution: 'x' });
+	const credits = {
+		systems: [],
+		ephemeris_archives: [],
+		star_references: [row('https://doi.org/a')],
+		galaxy_references: [row('https://doi.org/a'), row('https://doi.org/g')]
+	};
+
+	it('are a section of /credits after the stars, under its own title', () => {
+		const keys = REFERENCE_SECTIONS.map((section) => section.key);
+		expect(keys.slice(-2)).toEqual(['star_references', 'galaxy_references']);
+		expect(REFERENCE_SECTIONS.at(-1)?.label()).toBe('Galaxies');
+	});
+
+	it('list their own rows, without the papers of the star catalogues', () => {
+		const starPapers = [row('https://doi.org/s')];
+		expect(referenceRows(credits, 'galaxy_references', starPapers)).toEqual(
+			credits.galaxy_references
+		);
+		expect(referenceRows({ systems: [], ephemeris_archives: [] }, 'galaxy_references', [])).toEqual(
+			[]
+		);
+	});
+
+	it('count once with the same work of another section', () => {
+		expect(referenceCount(credits, [])).toBe(2);
+	});
+});
+
+describe('the papers of a panel', () => {
+	it('are listed by title, with the authors and year as the note', () => {
+		const paper = { short: 'Cautun et al. 2020', title: 'A title', url: 'https://doi.org/c' };
+		expect(paperCredits([paper])).toEqual([
+			{ key: 'https://doi.org/c', label: 'A title', url: 'https://doi.org/c', note: paper.short }
+		]);
 	});
 });
 

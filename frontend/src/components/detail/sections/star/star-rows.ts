@@ -111,13 +111,14 @@ const JOINED_IDS: [column: string, label: () => string, simbad: string | null][]
 	['atnf_name', m.star_xid_atnf, 'PSR ']
 ];
 
-/** Cross-ids not shown. A SIMBAD oid, a NASA Exoplanet Archive row and the
- *  claim that keeps the ID of a system or a held star are internal keys; a
- *  literature key and the other planet catalogues' keys repeat another id or
- *  the name of the star. */
+/** Cross-ids not shown. A SIMBAD oid, a NASA Exoplanet Archive row, the key of
+ *  a galaxy and the claim that keeps the ID of a system or a held star are
+ *  internal keys; a literature key and the other planet catalogues' keys
+ *  repeat another id or the name of the star. */
 const HIDDEN_CATALOGUES = new Set([
 	'simbad/oid',
 	'literature/star',
+	'galaxy/key',
 	'nasa-exoplanet-archive/pscomppars',
 	'exoplanet-eu/catalog',
 	'open-exoplanet-catalogue/systems',
@@ -176,7 +177,8 @@ const CLASS_LABELS: Record<string, () => string> = {
 	'white dwarf': m.star_class_white_dwarf,
 	'brown dwarf': m.exoplanet_class_brown_dwarf,
 	'binary star': m.star_class_binary_star,
-	'multiple star': m.star_class_multiple_star
+	'multiple star': m.star_class_multiple_star,
+	galaxy: m.galaxy_class
 };
 
 /** The class a Metadata row names, in words. */

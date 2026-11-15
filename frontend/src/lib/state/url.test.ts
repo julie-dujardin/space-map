@@ -21,6 +21,8 @@ vi.mock('$app/state', () => ({
 
 import { page } from '$app/state';
 import {
+	applyClose,
+	applyFeature,
 	applyFocus,
 	applyGroup,
 	pageSkyOf,
@@ -34,7 +36,9 @@ import {
 } from './url';
 import { CHART_PICTURE } from '$lib/fetch/objects/galleries';
 import { DEFAULT_TRIP } from '$lib/travel/trip';
-import type { MapViewState } from './view';
+import { figureKey } from '$lib/fetch/groups/registry';
+import { viewPageKey } from './focusable';
+import { isOverView, pageOf, type MapViewState } from './view';
 
 const baseView: MapViewState = {
 	type: 'b',
@@ -50,6 +54,7 @@ const baseView: MapViewState = {
 	featureId: null,
 	groupSlug: null,
 	figure: null,
+	pageId: null,
 	tab: null,
 	memberPage: null,
 	quad: null,
@@ -301,6 +306,157 @@ describe('serializeUrl', () => {
 	});
 });
 
+describe('an object page open over the view', () => {
+	const vega = { ...baseView, id: 'x-20593262', name: 'Vega', north: 'galactic', pitch: 20 };
+	const galaxy = { type: 'x', id: 'x-74489380', name: 'Milky Way', keepView: true };
+	const over = applyFocus(vega, galaxy);
+	const overUrl =
+		'/x/74489380/Milky%20Way?at=2026-01-15T12:00:00.000Z,45.00000,0.00000,42.43' +
+		'&north=galactic&angle=20.0,0.0&focus=x-20593262';
+
+	function open(url: string, params: Record<string, string> = { type: 'x', id: '74489380' }) {
+		page.params = params;
+		page.route = { id: '/[type]/[id]/[[name]]' } as typeof page.route;
+		page.url = new URL(url, 'http://x/') as typeof page.url;
+		return parseUrl()!;
+	}
+
+	it('keeps the camera on its object, and names that object as the focus', () => {
+		expect(over).toMatchObject({
+			type: 'x',
+			id: 'x-20593262',
+			pageId: 'x-74489380',
+			name: 'Milky Way',
+			latitude: 45,
+			zoom: 42.43
+		});
+		expect(over).not.toHaveProperty('keepView');
+		expect(serializeUrl(over)).toBe(overUrl);
+	});
+
+	it('reads its link back to the same view', () => {
+		const view = open(overUrl);
+		expect(view).toMatchObject({
+			type: 'x',
+			id: 'x-20593262',
+			pageId: 'x-74489380',
+			framed: true,
+			north: 'galactic',
+			pitch: 20
+		});
+		expect(serializeUrl({ ...view, name: 'Milky Way' })).toBe(overUrl);
+	});
+
+	it('is the page of the object itself with no focus, or with its own id as the focus', () => {
+		for (const query of ['', '?focus=x-74489380', '?focus=pha', '?focus=naif-499-at-1,2']) {
+			const view = open(`/x/74489380${query}`);
+			expect(view).toMatchObject({ id: 'x-74489380', pageId: null });
+			expect(view.framed).toBeUndefined();
+			expect(serializeUrl(view)).not.toContain('focus=');
+		}
+	});
+
+	it('opens over a body of the solar system, or a feature on one', () => {
+		expect(open('/x/74489380?focus=naif-10')).toMatchObject({
+			id: 'naif-10',
+			pageId: 'x-74489380',
+			featureId: null
+		});
+		const onFeature = open('/x/74489380?at=now,1,2,3&focus=naif-499-f-2757');
+		expect(onFeature).toMatchObject({ id: 'naif-499', pageId: 'x-74489380', featureId: 2757 });
+		expect(serializeUrl(onFeature)).toContain('/x/74489380?at=now,1.00000,2.00000,3&focus=');
+		expect(serializeUrl(onFeature)).toContain('&focus=naif-499-f-2757');
+	});
+
+	it('reads a focus on a planet page too', () => {
+		page.params = { id: '16782998', n: '1' };
+		page.route = { id: '/x/[id]/b/[n]/[[name]]' } as typeof page.route;
+		page.url = new URL('http://x/x/16782998/b/1?focus=naif-10') as typeof page.url;
+		const view = parseUrl()!;
+		expect(view).toMatchObject({ id: 'naif-10', pageId: 'x-16782998-b-1' });
+		expect(serializeUrl(view)).toContain('/x/16782998/b/1?');
+	});
+
+	it('keeps a feature the camera is on, as a group does', () => {
+		const onFeature = { ...baseView, type: 'f', id: 'naif-499', featureId: 2757 };
+		const view = applyFocus(onFeature, galaxy);
+		expect(view).toMatchObject({ type: 'x', id: 'naif-499', featureId: 2757 });
+		expect(serializeUrl(view)).toContain('&focus=naif-499-f-2757');
+		// Its close parks on the feature, as a group's does.
+		expect(applyClose(view, 'naif-499')).toMatchObject({
+			type: 'f',
+			featureId: 2757,
+			pageId: null
+		});
+	});
+
+	it('is the plain page when the camera is on its object already', () => {
+		const onGalaxy = { ...baseView, type: 'x', id: 'x-74489380' };
+		const view = applyFocus(onGalaxy, galaxy);
+		expect(view).toMatchObject({ id: 'x-74489380', pageId: null });
+		expect(serializeUrl(view)).not.toContain('focus=');
+	});
+
+	it('ends with the next object, feature, trip or close, and the camera stays in the link', () => {
+		const earth = { type: 'b', id: 'naif-399', name: 'Earth' };
+		expect(applyFocus(over, earth)).toMatchObject({ id: 'naif-399', pageId: null });
+		const feature = { bodyId: 'naif-301', featureId: 1, featureName: 'Tycho' };
+		expect(applyFeature(over, feature).pageId).toBeNull();
+		expect(applyNav(over, 'naif-399', 'naif-499').pageId).toBeNull();
+		const closed = applyClose(over, 'x-20593262');
+		expect(closed).toMatchObject({ id: 'x-20593262', pageId: null, name: '' });
+		expect(serializeUrl(closed)).toBe(
+			'/x/20593262?at=2026-01-15T12:00:00.000Z,45.00000,0.00000,42.43&north=galactic&angle=20.0,0.0'
+		);
+	});
+
+	it('gives a group opened from it the link that the same tile gives on the object in view', () => {
+		const fromPage = applyGroup(over, 'cat-stars', 'Stars');
+		expect(fromPage).toMatchObject({ id: 'x-20593262', pageId: null, groupSlug: 'cat-stars' });
+		expect(serializeUrl(fromPage)).toBe(serializeUrl(applyGroup(vega, 'cat-stars', 'Stars')));
+		expect(serializeUrl(fromPage)).toContain('&focus=x-20593262');
+	});
+
+	it('opens another page over the same view', () => {
+		const sirius = { type: 'x', id: 'x-55692301', name: 'Sirius', keepView: true };
+		expect(applyFocus(over, sirius)).toMatchObject({ id: 'x-20593262', pageId: 'x-55692301' });
+	});
+});
+
+describe('pageOf', () => {
+	it('puts a group, then an object over the view, before the subject of the camera', () => {
+		const onFeature = { ...baseView, id: 'naif-499', featureId: 2757 };
+		expect(pageOf(baseView)).toEqual({ kind: 'object', id: 'naif-10' });
+		expect(pageOf(onFeature)).toEqual({ kind: 'feature', bodyId: 'naif-499', featureId: 2757 });
+		expect(pageOf({ ...onFeature, pageId: 'x-74489380' })).toEqual({
+			kind: 'object',
+			id: 'x-74489380'
+		});
+		expect(pageOf({ ...onFeature, type: 'g', groupSlug: 'ft-chasma' })).toEqual({
+			kind: 'group',
+			slug: 'ft-chasma',
+			figure: null
+		});
+	});
+
+	it('keys the page as its focusable is keyed', () => {
+		const onFeature = { ...baseView, id: 'naif-499', featureId: 2757 };
+		expect(viewPageKey(baseView)).toBe('naif-10');
+		expect(viewPageKey(onFeature)).toBe('feature-2757');
+		expect(viewPageKey({ ...onFeature, pageId: 'x-74489380' })).toBe('x-74489380');
+		expect(viewPageKey({ ...baseView, type: 'g', groupSlug: 'cat-stars' })).toBe('group-cat-stars');
+		expect(viewPageKey({ ...baseView, type: 'g', groupSlug: 'culture-maya', figure: '003' })).toBe(
+			`group-${figureKey('culture-maya', '003')}`
+		);
+	});
+
+	it('tells a page over the view from the page of the object in view', () => {
+		expect(isOverView(baseView)).toBe(false);
+		expect(isOverView({ ...baseView, pageId: 'x-74489380' })).toBe(true);
+		expect(isOverView({ ...baseView, type: 'g', groupSlug: 'cat-stars' })).toBe(true);
+	});
+});
+
 describe('applyGroup', () => {
 	it('names the Sun as focus on a sky page, where it is also the anchor', () => {
 		const sun = { ...baseView, id: 'naif-10' };
@@ -416,6 +572,13 @@ describe('parseUrl on a group', () => {
 		expect(view.id).toBe('naif-499');
 		expect(view.featureId).toBe(2757);
 		expect(view.framed).toBe(true);
+	});
+
+	it('lands on a focus= star, as the link of a group opened from a star names one', () => {
+		open('http://x/g/cat-moons/Moons?at=now,10,20,0.5&focus=x-20593262');
+		const view = parseUrl()!;
+		expect(view).toMatchObject({ groupSlug: 'cat-moons', id: 'x-20593262', pageId: null });
+		expect(serializeUrl(view)).toContain('&focus=x-20593262');
 	});
 
 	it('ignores a focus= that is a bare point', () => {

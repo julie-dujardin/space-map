@@ -14,7 +14,7 @@ import { localName } from '$lib/format/name';
 import type { NomenclatureFeature } from '$lib/fetch/nomenclature/fetch';
 import type { PlanetAnchor, PositionedBody } from '$lib/types/objects';
 import type { ExtrasolarRecord } from '$lib/fetch/extrasolar/lookup';
-import type { DrawerTab } from './view';
+import { pageOf, type DrawerTab, type MapViewState } from './view';
 import * as m from '$lib/paraglide/messages.js';
 
 export type Focusable =
@@ -40,6 +40,9 @@ export type FocusObject = (
 	name: string,
 	opts?: {
 		moveCamera?: boolean;
+		/** Open the page over the view: the camera and the object it is on
+		 *  stay. For an object that holds what is in view, such as its galaxy. */
+		keepView?: boolean;
 		tab?: Exclude<DrawerTab, 'overview'>;
 		/** Narrow the Surface tab to one feature type on arrival. */
 		featureType?: string;
@@ -56,6 +59,16 @@ export function focusableKey(f: Focusable): string {
 	if (f.kind === 'feature') return `feature-${f.feature.featureId}`;
 	if (f.kind === 'group') return `group-${f.figure ? figureKey(f.slug, f.figure) : f.slug}`;
 	return f.body.data.id;
+}
+
+/** `focusableKey` of the page a view names, known before its focusable is. */
+export function viewPageKey(view: MapViewState): string {
+	const page = pageOf(view);
+	if (page.kind === 'feature') return `feature-${page.featureId}`;
+	if (page.kind === 'group') {
+		return `group-${page.figure ? figureKey(page.slug, page.figure) : page.slug}`;
+	}
+	return page.id;
 }
 
 /** Header fallback while the detail bundle is loading. A body with no name

@@ -232,6 +232,11 @@ export function formatLowerBound(text: string): string {
 	return `> ${text}`;
 }
 
+/** The same space for a lower limit that the quantity can equal. */
+export function formatAtLeast(text: string): string {
+	return `≥ ${text}`;
+}
+
 /**
  * An angle. The sign binds to the digits, and the figure is the caller's: a
  * published measurement keeps its own digits where a stat cell rounds.
@@ -260,6 +265,26 @@ export function formatCompactNumber(n: number): string {
 		notation: 'compact',
 		maximumSignificantDigits: 3
 	}).format(n);
+}
+
+/** A compact number as its figure and its magnitude word, "100" and "B". A
+ *  span then says the word once, and the word sets the direction of the span. */
+export function compactParts(n: number): Parts {
+	if (!Number.isFinite(n)) return { value: String(n), unit: '' };
+	const parts = new Intl.NumberFormat(getLocale(), {
+		notation: 'compact',
+		maximumSignificantDigits: 3
+	}).formatToParts(n);
+	const text = (from: number, to?: number) =>
+		parts
+			.slice(from, to)
+			.map((part) => part.value)
+			.join('');
+	const word = parts.findIndex((part) => part.type === 'compact');
+	// A number with no word, or a word that is not last, stays one figure.
+	if (word !== parts.length - 1) return { value: text(0), unit: '' };
+	const spaced = parts[word - 1]?.type === 'literal';
+	return { value: text(0, spaced ? word - 1 : word), unit: parts[word].value, tight: !spaced };
 }
 
 /** An exported quantity as a figure and its label, for spans and stat tiles. */

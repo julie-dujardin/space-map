@@ -37,6 +37,9 @@ import {
 	syntheticExport
 } from '$lib/fetch/extrasolar/__fixtures__/synthetic';
 
+import { GALAXY, galaxyExport } from '$lib/fetch/extrasolar/__fixtures__/galaxy';
+import * as m from '$lib/paraglide/messages.js';
+
 const ORIGIN = 'https://spacemap.test';
 /** A request for the page: the name in it is not the export's. */
 const request = (path: string) => new URL(`${ORIGIN}${path}/Planet%20Nine%20Found`);
@@ -503,6 +506,59 @@ describe('loadStarSeo', () => {
 		await expect(loadStarSeo(String(STAR), request(`/x/${STAR}`))).rejects.toThrow();
 		stubStars({ stale: 'metadata/0/0.bin.gz' });
 		await expect(loadStarSeo(String(STAR), request(`/x/${STAR}`))).rejects.toThrow('token');
+	});
+});
+
+describe('loadStarSeo on a galaxy', () => {
+	const XS = 'https://xs.test';
+	const entry = (localized: object): Record<string, () => Response> => ({
+		'/v1/metadata.json': () => Response.json(METADATA),
+		'/v1/objects/__global__/0.json.gz': () =>
+			gz({ [`x-${GALAXY}`]: { id: `x-${GALAXY}`, type: 'galaxy', name: 'Milky Way' } }),
+		'/v1/objects/en/0.json.gz': () => gz({ [`x-${GALAXY}`]: localized })
+	});
+
+	/** The galaxy export at XS, and its object entry at DATA. */
+	function stubGalaxy(localized: object) {
+		const { meta, payloads } = galaxyExport();
+		const files = entry(localized);
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (input: string) => {
+				const url = new URL(input);
+				if (url.origin === DATA)
+					return files[url.pathname]?.() ?? new Response('', { status: 404 });
+				const path = url.pathname.replace(/^\/v1\/x\//, '');
+				if (path === 'metadata.json') return Response.json(meta);
+				const payload = payloads[path];
+				return payload ? new Response(gzipSync(payload)) : new Response('', { status: 404 });
+			})
+		);
+	}
+
+	beforeEach(() => configureHost({ dataUrl: DATA, tilesUrl: XS, textures: 'site-only' }));
+
+	it('takes the name and the Wikidata description of its entry, as a star does', async () => {
+		stubGalaxy({ name: 'Voie lactée', description: 'galaxie contenant le Système solaire' });
+		const page = await loadStarSeo(String(GALAXY), request(`/x/${GALAXY}`));
+		expect(page).toEqual({
+			kind: 'page',
+			seo: {
+				title: 'Voie lactée - Space Map',
+				description: 'Galaxie contenant le Système solaire',
+				canonical: `${ORIGIN}/x/${GALAXY}/Voie%20lact%C3%A9e`,
+				ogType: 'article'
+			}
+		});
+	});
+
+	it('writes the description of a galaxy, not of a star, where Wikidata has none', async () => {
+		stubGalaxy({});
+		const page = await loadStarSeo(String(GALAXY), request(`/x/${GALAXY}`));
+		const seo = page?.kind === 'page' ? page.seo : null;
+		expect(seo?.title).toBe('Milky Way - Space Map');
+		expect(seo?.description).toBe(m.seo_galaxy_description({ name: 'Milky Way' }));
+		expect(seo?.description).not.toBe(m.seo_star_description({ name: 'Milky Way' }));
 	});
 });
 

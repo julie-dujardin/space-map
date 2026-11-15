@@ -49,6 +49,7 @@ import {
 	placeNodes
 } from '$lib/scene/exoplanets/pair-orbits';
 import { makeStarBody } from '$lib/scene/focus/star-focus';
+import { isGalaxy } from '$lib/fetch/extrasolar/galaxies';
 import { starMass, starRadiusKm, type StarMass } from '$lib/scene/starfield/record';
 import type {
 	BodyData,
@@ -207,7 +208,8 @@ function muOf(mass: StarMass | null): number | null {
 }
 
 function starEnd(body: PositionedBody, star: StarAnchor): ExtrasolarEnd | null {
-	if (!star.scene) return null;
+	// A galaxy is no object to fly to: its place is a point inside it.
+	if (!star.scene || isGalaxy(star.record)) return null;
 	return {
 		body: body.data,
 		systemId: systemOf(body.data.id),

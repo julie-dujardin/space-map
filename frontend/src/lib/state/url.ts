@@ -72,15 +72,24 @@ function parseImageIndex(raw: string | null): ShelfPicture | null {
 	return Number.isInteger(n) && n >= 0 ? n : null;
 }
 
-/** A group's `&focus=`: a body of the solar system, maybe a feature on it.
+/** A page's `&focus=`: the object the camera is on, maybe a feature on it.
  *  Null for the anchor alone, which the path already frames. */
-function parseGroupFocus(
+function parsePageFocus(
 	raw: string | null,
 	anchorId: string
 ): { bodyId: string; featureId: number | null } | null {
 	const end = raw === null ? null : parseNavEnd(raw);
-	if (!end || end.place || !isBodyId(end.bodyId)) return null;
+	if (!end || end.place) return null;
 	return end.bodyId === anchorId && end.featureId === null ? null : end;
+}
+
+/** The camera of an object page: on the object, or on what `&focus=` names
+ *  with the page open over it. */
+function objectPageCamera(id: string): Pick<MapViewState, 'id' | 'featureId' | 'pageId'> {
+	const focus = parsePageFocus(page.url.searchParams.get('focus'), id);
+	return focus
+		? { id: focus.bodyId, featureId: focus.featureId, pageId: id }
+		: { id, featureId: null, pageId: null };
 }
 
 /** Earth-system zoom — mirrors MapPage's minimize-from-sat distance. */
@@ -207,7 +216,7 @@ export function parseUrl(): MapViewState | null {
 		return applySharedParams({
 			...DEFAULT_VIEW,
 			type: UrlType.Extrasolar,
-			id,
+			...objectPageCamera(id),
 			tab: parseTab(page.url.searchParams.get('tab'))
 		});
 	}
@@ -232,7 +241,7 @@ export function parseUrl(): MapViewState | null {
 		// `focus` names what the camera is on instead of the anchor: a member, or
 		// a feature in the trip ends' grammar. The anchor zoom only fits the
 		// anchor, so a bare link frames it by its size, the way its own page would.
-		const focus = parseGroupFocus(page.url.searchParams.get('focus'), anchor.id);
+		const focus = parsePageFocus(page.url.searchParams.get('focus'), anchor.id);
 		const defaults: MapViewState = {
 			...DEFAULT_VIEW,
 			type: UrlType.Group,
@@ -284,10 +293,9 @@ export function parseUrl(): MapViewState | null {
 	const defaults = {
 		...DEFAULT_VIEW,
 		type,
-		id,
+		...objectPageCamera(id),
 		imageIndex,
 		gallery: page.url.searchParams.get('gal'),
-		featureId: null,
 		tab: parseTab(page.url.searchParams.get('tab')),
 		memberPage: parseMemberPage(page.url.searchParams.get('mp')),
 		quad: page.url.searchParams.get('quad'),
@@ -353,6 +361,10 @@ const CLEAR_TAB_SCOPE = {
 	ring: null
 } as const;
 
+/** A page open over the camera's subject: a group, a figure of it, or an
+ *  object. */
+const CLEAR_PAGE_SCOPE = { groupSlug: null, figure: null, pageId: null } as const;
+
 /** The trip on screen, whole: both ends, the place each stands on, and the
  *  terms it is flown on. Leaving the planner leaves no half of one behind. */
 const CLEAR_NAV_SCOPE = {
@@ -365,29 +377,35 @@ const CLEAR_NAV_SCOPE = {
 	trip: DEFAULT_TRIP
 } as const;
 
+/** What a focus opens: an object's page, and how. */
+export interface FocusOpen {
+	type: string;
+	id: string;
+	name: string;
+	tab?: Exclude<DrawerTab, 'overview'>;
+	/** Preselect a quadrangle on the Surface tab (feature → host body link). */
+	quad?: string;
+	/** Preselect a feature type on the Surface tab (ft- page → host body). */
+	featureType?: string;
+	/** The page opens over the view. The camera's subject stays, as under a group. */
+	keepView?: boolean;
+}
+
 /** Next view when focusing a body. Mirrors AppState.setFocus's merge so link
  *  hrefs and the committed state stay in lockstep. */
-export function applyFocus(
-	current: MapViewState,
-	focus: {
-		type: string;
-		id: string;
-		name: string;
-		tab?: Exclude<DrawerTab, 'overview'>;
-		/** Preselect a quadrangle on the Surface tab (feature → host body link). */
-		quad?: string;
-		/** Preselect a feature type on the Surface tab (ft- page → host body). */
-		featureType?: string;
-	}
-): MapViewState {
+export function applyFocus(current: MapViewState, focus: FocusOpen): MapViewState {
+	const { keepView, ...subject } = focus;
+	// A camera on the object itself has nothing to stay on.
+	const over = keepView === true && (current.id !== focus.id || current.featureId !== null);
 	return {
 		...current,
 		...CLEAR_TAB_SCOPE,
 		...CLEAR_NAV_SCOPE,
-		...focus,
-		featureId: null,
-		groupSlug: null,
-		figure: null,
+		...CLEAR_PAGE_SCOPE,
+		...subject,
+		id: over ? current.id : focus.id,
+		pageId: over ? focus.id : null,
+		featureId: over ? current.featureId : null,
 		// Land on a requested tab (e.g. a moon→planet link opening the Moons tab);
 		// overview otherwise. Falls back to overview client-side if the tab is absent.
 		tab: focus.tab ?? null,
@@ -456,6 +474,7 @@ export function applyNav(
 		...current,
 		...CLEAR_TAB_SCOPE,
 		type: UrlType.Nav,
+		...CLEAR_PAGE_SCOPE,
 		id: destination?.id ?? departure?.id ?? current.id,
 		name: '',
 		trip: terms ? { ...current.trip, ...terms } : current.trip,
@@ -468,8 +487,6 @@ export function applyNav(
 		navFromPlace: departure?.place ?? null,
 		navToPlace: destination?.place ?? null,
 		featureId: null,
-		groupSlug: null,
-		figure: null,
 		tab: null
 	};
 }
@@ -555,6 +572,7 @@ export function applyGroup(
 		zoom: anchor?.zoom ?? current.zoom,
 		groupSlug: slug,
 		figure,
+		pageId: null,
 		name,
 		// A camera left on a feature stays on it.
 		featureId: anchor ? null : current.featureId,
@@ -571,10 +589,9 @@ export function applyClose(current: MapViewState, anchorId: string): MapViewStat
 		...current,
 		...CLEAR_TAB_SCOPE,
 		...CLEAR_NAV_SCOPE,
+		...CLEAR_PAGE_SCOPE,
 		type: featureId === null ? urlTypeFromId(anchorId) : UrlType.Feature,
 		id: anchorId,
-		groupSlug: null,
-		figure: null,
 		featureId,
 		name: '',
 		tab: null
@@ -590,21 +607,20 @@ export function applyFeature(
 		...current,
 		...CLEAR_TAB_SCOPE,
 		...CLEAR_NAV_SCOPE,
+		// A page left open over the view would win over the feature.
+		...CLEAR_PAGE_SCOPE,
 		type: UrlType.Feature,
 		id: focus.bodyId,
 		name: focus.featureName,
 		featureId: focus.featureId,
-		// Opening a feature from a collection page (ft-*) leaves that page —
-		// a lingering slug would keep the group route winning over the feature.
-		groupSlug: null,
-		figure: null,
 		tab: null
 	};
 }
 
 /** Produce the route path for the current MapViewState — `/<type>/<id>/<name>`
- *  for bodies and groups (groups carry a slug in the id slot, and `&focus=`
- *  what the camera is on when it is not the anchor: a member, or a feature),
+ *  for bodies and groups (groups carry a slug in the id slot). A page open
+ *  over the view writes what the camera is on as `&focus=`: a group when that
+ *  is not its anchor, an object when that is not the object itself.
  *  `/g/culture-<key>/f/<figure>/<name>` for figures,
  *  `/x/<host>/b/<n>/<name>` for planets, or
  *  `/<type>/<id>/f/<featureId>/<name>` for features — plus the shared
@@ -680,5 +696,7 @@ export function serializeUrl(state: MapViewState): string {
 		return `${path}?at=${at}${north}${img}${tab}${gal}`;
 	}
 
-	return `${bodyHref(state.id, state.name)}?at=${at}${north}${img}${tab}${gal}${surface}${ring}${mp}`;
+	const focus = state.pageId === null ? '' : `&focus=${formatNavEnd(state.id, state.featureId)}`;
+	const path = bodyHref(state.pageId ?? state.id, state.name);
+	return `${path}?at=${at}${north}${focus}${img}${tab}${gal}${surface}${ring}${mp}`;
 }

@@ -30,7 +30,8 @@
 						type: urlTypeFromId(t.id),
 						id: t.id,
 						name: t.name,
-						tab: t.tab
+						tab: t.tab,
+						keepView: t.keepView
 					})
 				: t.kind === 'group'
 					? applyGroup(appState.view, t.slug, t.name)
@@ -50,7 +51,7 @@
 		if (t.kind === 'focus') {
 			if (!focusObject) return; // no in-session nav available — let the href win
 			e.preventDefault();
-			focusObject(t.id, t.name, { moveCamera: t.moveCamera, tab: t.tab });
+			focusObject(t.id, t.name, { moveCamera: t.moveCamera, keepView: t.keepView, tab: t.tab });
 		} else if (t.kind === 'group') {
 			e.preventDefault();
 			appState.setGroup(t.slug, t.name);

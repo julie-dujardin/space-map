@@ -40,6 +40,7 @@ import {
 } from '$lib/scene/exoplanets/__fixtures__/system';
 import { sceneToEcliptic } from '$lib/scene/extensions/camera';
 import { makeStarBody } from '$lib/scene/focus/star-focus';
+import { galaxyRecord } from '$lib/fetch/extrasolar/__fixtures__/galaxy';
 import { PC_AU } from '$lib/scene/starfield/tree';
 import type { PositionedBody } from '$lib/types/objects';
 import {
@@ -226,6 +227,12 @@ describe('a star end', () => {
 			{ name: 'dec', type: 'float64', values: [-16] }
 		]);
 		expect(extrasolarEndOf(makeStarBody(far))).toBeNull();
+	});
+
+	it('is no galaxy: its place is a point inside it, not an object to fly to', () => {
+		const galaxy = makeStarBody(galaxyRecord());
+		expect(galaxy.extrasolar?.scene).not.toBeNull();
+		expect(extrasolarEndOf(galaxy)).toBeNull();
 	});
 
 	it('is met, passed or orbited at will between two systems', () => {
