@@ -736,7 +736,11 @@ export class SpaceMap {
 		canvas.addEventListener('touchmove', this.onTouchMove, { passive: true });
 		// On the container, so it runs before the orbit controls' own listener on
 		// the canvas and can keep the event from ever reaching them.
-		container.addEventListener('wheel', this.onWheelCapture, { capture: true, passive: true });
+		container.addEventListener('wheel', this.onWheelCapture, { capture: true, passive: false });
+		// Safari's pinch, wherever on the map it starts: the canvas refuses it
+		// by touch-action, but a finger on a control or a notice does not.
+		container.addEventListener('gesturestart', this.onPageZoom, { passive: false });
+		container.addEventListener('gesturechange', this.onPageZoom, { passive: false });
 		canvas.addEventListener('webglcontextlost', this.onContextLost, false);
 		canvas.addEventListener('webglcontextrestored', this.onContextRestored, false);
 		document.addEventListener('visibilitychange', this.onVisibility);
@@ -822,6 +826,8 @@ export class SpaceMap {
 		canvas.removeEventListener('keydown', this.onKeyDown);
 		canvas.removeEventListener('touchmove', this.onTouchMove);
 		container.removeEventListener('wheel', this.onWheelCapture, { capture: true });
+		container.removeEventListener('gesturestart', this.onPageZoom);
+		container.removeEventListener('gesturechange', this.onPageZoom);
 		this.cooperative?.dispose();
 		this.cooperative = null;
 		canvas.removeEventListener('webglcontextlost', this.onContextLost);
@@ -1369,7 +1375,20 @@ export class SpaceMap {
 		// With zoom off the wheel is the page's anyway; a hint to hold ctrl would
 		// promise a zoom that never comes.
 		if (!this.scrollZoom.isEnabled()) return;
-		if (this.cooperative && !this.cooperative.allowsWheel(e)) e.stopPropagation();
+		if (this.cooperative && !this.cooperative.allowsWheel(e)) {
+			e.stopPropagation();
+			return;
+		}
+		// A trackpad pinch is a wheel with ctrl held. The orbit controls skip the
+		// wheel mid-drag and while the camera is held, and a control over the map
+		// has no wheel of its own, so unclaimed here it would zoom the page.
+		if (e.ctrlKey) e.preventDefault();
+	};
+
+	/** A page zoomed from the map cannot be zoomed back from it: every pinch
+	 *  on the canvas is the camera's. */
+	private readonly onPageZoom = (e: Event): void => {
+		e.preventDefault();
 	};
 
 	/** One finger is the page's; the orbit controls already ignore it, so this
