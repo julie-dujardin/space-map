@@ -44,6 +44,7 @@
 	import { bodyTraverses, crewName } from '$lib/panorama/traverses';
 	import { gyroAvailability } from '$lib/panorama/gyro';
 	import { PanoramaView, type ArrowKey, type ScreenAnchor } from '$lib/panorama/view';
+	import { lockPageZoom } from '$lib/page-zoom';
 	import PanoramaMinimap from './PanoramaMinimap.svelte';
 	import TraverseCards from './TraverseCards.svelte';
 	import MapCredits from './MapCredits.svelte';
@@ -99,6 +100,10 @@
 	const entries = $derived((detail?.global?.panoramas ?? []).filter(isViewable));
 	const bodyName = $derived(detail?.localized?.name ?? detail?.global?.name ?? bodyId);
 	const current = $derived(findPanorama(entries, at));
+	// The view takes every pinch on it, so a page zoomed by one elsewhere could
+	// not be zoomed back.
+	const viewing = $derived(!!current);
+	$effect(() => (viewing ? lockPageZoom() : undefined));
 	const radiusKm = $derived(meanRadiusKm(detail?.global ?? null) ?? 0);
 	/** A comet has no map to draw a traverse on. */
 	const hasMap = $derived(!!detail?.global?.map_texture_available);

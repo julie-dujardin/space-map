@@ -1,7 +1,11 @@
 /* The map's own DOM — a canvas under the label layer — as SpaceMap builds it. */
+/* A pinch is never the page's here, even one that starts on a control or a
+   notice over the canvas: the canvas takes every other one, so a page zoomed
+   from the map could not be zoomed back. */
 .sm-map {
 	user-select: none;
 	-webkit-user-select: none;
+	touch-action: pan-x pan-y;
 }
 
 /* No specificity: the container is the host's, and a size or a position it

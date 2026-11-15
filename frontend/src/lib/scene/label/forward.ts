@@ -22,8 +22,12 @@ export function attachCanvasForwarders(
 			const we = e as WheelEvent;
 			canvas.dispatchEvent(
 				new WheelEvent('wheel', {
+					deltaX: we.deltaX,
 					deltaY: we.deltaY,
 					deltaMode: we.deltaMode,
+					// The zoom holds the ground under the cursor.
+					clientX: we.clientX,
+					clientY: we.clientY,
 					// A trackpad pinch is a wheel with ctrl held: the controls scale it,
 					// and a cooperative map only zooms on it.
 					ctrlKey: we.ctrlKey,

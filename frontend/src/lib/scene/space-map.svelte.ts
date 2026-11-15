@@ -737,10 +737,14 @@ export class SpaceMap {
 		// On the container, so it runs before the orbit controls' own listener on
 		// the canvas and can keep the event from ever reaching them.
 		container.addEventListener('wheel', this.onWheelCapture, { capture: true, passive: false });
-		// Safari's pinch, wherever on the map it starts: the canvas refuses it
-		// by touch-action, but a finger on a control or a notice does not.
-		container.addEventListener('gesturestart', this.onPageZoom, { passive: false });
-		container.addEventListener('gesturechange', this.onPageZoom, { passive: false });
+		// The container's touch-action keeps a pinch on a control or a notice off
+		// the page, but Safari's touch pinch has to be cancelled as well. Not a
+		// Mac's trackpad pinch: it never reaches the map, and it can always zoom
+		// the page back out.
+		if (navigator.maxTouchPoints > 0) {
+			container.addEventListener('gesturestart', this.onPageZoom, { passive: false });
+			container.addEventListener('gesturechange', this.onPageZoom, { passive: false });
+		}
 		canvas.addEventListener('webglcontextlost', this.onContextLost, false);
 		canvas.addEventListener('webglcontextrestored', this.onContextRestored, false);
 		document.addEventListener('visibilitychange', this.onVisibility);
@@ -1369,8 +1373,9 @@ export class SpaceMap {
 		this.renderer?.setPinnedBodies(ids);
 	}
 
-	/** A wheel the page is to keep never reaches the orbit controls. It is not
-	 *  cancelled, so the page scrolls as it would over any other element. */
+	/** A wheel the page is to keep never reaches the orbit controls, and is not
+	 *  cancelled, so the page scrolls as it would over any other element. A
+	 *  pinch over the map is never the page's. */
 	private readonly onWheelCapture = (e: WheelEvent): void => {
 		// With zoom off the wheel is the page's anyway; a hint to hold ctrl would
 		// promise a zoom that never comes.
@@ -1385,8 +1390,8 @@ export class SpaceMap {
 		if (e.ctrlKey) e.preventDefault();
 	};
 
-	/** A page zoomed from the map cannot be zoomed back from it: every pinch
-	 *  on the canvas is the camera's. */
+	/** A page zoomed from the map could not be zoomed back from it: every
+	 *  pinch on the canvas is the camera's. */
 	private readonly onPageZoom = (e: Event): void => {
 		e.preventDefault();
 	};
