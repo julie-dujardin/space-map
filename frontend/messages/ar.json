@@ -350,10 +350,10 @@
 	"group_launch_activity": "الجدول الزمني للإطلاق",
 	"group_top_constellations": "أبرز الكوكبات",
 	"group_top_sources": "أكبر المصادر",
+	"group_top_debris_sources": "أكبر مصادر الحطام",
 	"group_earth_orbit_map": "خريطة مدارات الأرض",
 	"group_top_launch_sites": "أبرز مواقع الإطلاق",
 	"satellites_label": "أقمار صناعية",
-	"objects_label": "أجسام",
 	"legend_per_year": "سنويًا",
 	"legend_per_n_years": [
 		{

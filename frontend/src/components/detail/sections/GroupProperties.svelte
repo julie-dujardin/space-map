@@ -398,15 +398,19 @@
 
 <PagedBarList
 	entries={constellations}
-	title={debrisSources ? m.group_top_sources() : m.group_top_constellations()}
-	unit={debrisSources ? m.objects_label() : m.satellites_label()}
+	title={global?.slug === CAT_SPACECRAFT
+		? m.group_top_debris_sources()
+		: debrisSources
+			? m.group_top_sources()
+			: m.group_top_constellations()}
+	unit={debrisSources ? undefined : m.satellites_label()}
 >
 	{#snippet label(c)}
 		{@render groupOrWikipediaLabel(c)}
 	{/snippet}
 	{#snippet action()}
 		{#if global?.slug === CAT_SPACECRAFT}
-			<SeeAllLink slug={CAT_DEBRIS} heading={m.group_top_sources()} />
+			<SeeAllLink slug={CAT_DEBRIS} heading={m.group_top_debris_sources()} />
 		{/if}
 	{/snippet}
 </PagedBarList>
