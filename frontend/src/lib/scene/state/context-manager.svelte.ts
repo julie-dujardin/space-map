@@ -34,6 +34,7 @@ import {
 	type SmallBodyFlagName
 } from '$lib/fetch/groups/registry';
 import { LayerSet } from '$lib/scene/layers';
+import type { SkySource } from '$lib/star-chart/sky';
 import { EARTH_ID } from '$lib/constants';
 
 export type { SmallBodyFilter } from '$lib/fetch/groups/registry';
@@ -110,6 +111,10 @@ export class ContextManager {
 	/** Settles where bodies are. Set by the renderer, which owns the render
 	 *  objects a placement updates. */
 	placer: Placer | null = null;
+
+	/** Renderer-set: the sky that a star chart paints from. Null while the map
+	 *  has no renderer. */
+	chartSky = $state.raw<SkySource | null>(null);
 
 	/** Renderer-set: true when `id` is promoted to a mesh body. Keeps the
 	 *  zone-refresher from dropping the bucket entry a mesh still shares. */

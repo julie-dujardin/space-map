@@ -78,7 +78,7 @@
 				byBody.set(c.bodyId, [...(byBody.get(c.bodyId) ?? []), c]);
 
 		const rows: ImageryRow[] = [];
-		if (ctx.credits.skybox && ctx.credits.skyboxDrawn) {
+		if (ctx.credits.skybox && (ctx.credits.skyboxDrawn || ctx.credits.skyboxCharted)) {
 			rows.push({
 				key: 'skybox',
 				label: m.attribution_section_skybox(),

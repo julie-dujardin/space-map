@@ -169,7 +169,8 @@ async function loadFromMeta(
 	scene: Scene,
 	renderer: WebGLRenderer,
 	meta: SkyboxMetadata,
-	disposed: () => boolean
+	disposed: () => boolean,
+	installed: () => void
 ): Promise<void> {
 	const tier = pickTier(
 		meta,
@@ -202,6 +203,7 @@ async function loadFromMeta(
 				lowRef.cube = makeCube(bitmaps);
 				lowRef.bitmaps = bitmaps;
 				scene.background = lowRef.cube;
+				installed();
 				performance.mark('sm-skybox-low');
 				if (fullFailed) keepLow();
 			})
@@ -259,6 +261,7 @@ async function loadFromMeta(
 	fullInstalled = true;
 	const prevBackground = scene.background;
 	scene.background = full;
+	installed();
 	performance.mark('sm-skybox-high');
 	lowRef.cube?.dispose();
 	// A context-restore reload replaces an earlier full cube; free its GL slot.
@@ -281,7 +284,8 @@ export async function loadSkybox(
 	scene: Scene,
 	renderer: WebGLRenderer,
 	ctx?: ContextManager,
-	disposed: () => boolean = () => false
+	disposed: () => boolean = () => false,
+	installed: () => void = () => {}
 ): Promise<void> {
 	// Switched off before the map opened: the six faces are never fetched, so
 	// there is nothing to switch back on.
@@ -298,7 +302,7 @@ export async function loadSkybox(
 				attribution: meta.skybox.attribution,
 				description: meta.skybox.description
 			};
-		await loadFromMeta(scene, renderer, meta.skybox, disposed);
+		await loadFromMeta(scene, renderer, meta.skybox, disposed, installed);
 	} catch (err) {
 		console.warn('Failed to load skybox:', err);
 	}

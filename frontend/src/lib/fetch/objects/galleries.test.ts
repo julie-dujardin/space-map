@@ -6,7 +6,8 @@ import {
 	imageCount,
 	imageTitle,
 	MAIN_GALLERY,
-	RINGS_GALLERY
+	RINGS_GALLERY,
+	shelfCount
 } from './galleries';
 import type { ObjectImage } from './object-data';
 
@@ -186,5 +187,22 @@ describe('findGallery', () => {
 	it('returns nothing for an unknown key or none at all', () => {
 		expect(findGallery(galleries, 'moons')).toBeUndefined();
 		expect(findGallery(galleries, null)).toBeUndefined();
+	});
+});
+
+describe('the chart of a figure', () => {
+	const chart = { slug: 'culture-maya', figure: '003', load: () => Promise.reject() };
+
+	it('leads the main shelf, before the images', () => {
+		const [main] = buildGalleries({ images: [image('a.jpg')], star_chart: chart }, 'Turtle');
+		expect(main).toMatchObject({ key: MAIN_GALLERY, chart });
+		expect(main.images).toHaveLength(1);
+	});
+
+	it('makes a shelf on a page with no image, and counts as a picture', () => {
+		const galleries = buildGalleries({ star_chart: chart }, 'Turtle');
+		expect(galleries).toEqual([{ key: MAIN_GALLERY, title: 'Turtle', images: [], chart }]);
+		expect(imageCount(galleries)).toBe(1);
+		expect(shelfCount(galleries[0])).toBe(1);
 	});
 });

@@ -8,10 +8,16 @@
 	import { galleryHref, imageHref } from '$lib/state/focus-link';
 	import { isModifiedClick } from '$lib/modified-click';
 	import Section from '../sections/kit/Section.svelte';
+	import type { StarChartPicture } from '$lib/fetch/objects/galleries';
+	import StarChart from './StarChart.svelte';
 
 	interface Props {
 		title: string;
 		images: ObjectImage[];
+		/** The chart of a figure, before the images. */
+		chart?: StarChartPicture;
+		/** The pictures on the shelf. */
+		count: number;
 		/** Gallery key this rail scrolls through — what `&gal=` carries. */
 		gallery: string;
 		alt: string;
@@ -19,7 +25,7 @@
 		label: (image: ObjectImage) => string;
 	}
 
-	let { title, images, gallery, alt, label }: Props = $props();
+	let { title, images, chart, count, gallery, alt, label }: Props = $props();
 
 	const appState = getContext<AppState>('appState');
 
@@ -43,7 +49,7 @@
 
 <Section
 	{title}
-	titleMeta={formatNumber(images.length)}
+	titleMeta={formatNumber(count)}
 	titleHref={href}
 	activateHref={href}
 	onActivate={seeAll}
@@ -53,6 +59,16 @@
 		<!-- Scrolls sideways rather than wrapping: a rail is a peek at the shelf, and
 		     the row keeps every gallery's heading a fixed distance apart. -->
 		<div class="no-scrollbar flex snap-x snap-mandatory gap-2 overflow-x-auto">
+			{#if chart}
+				<!-- Too small for names: the lines alone. -->
+				<StarChart
+					picture={chart}
+					name={alt}
+					aspect={4 / 3}
+					labels={false}
+					class="h-28 shrink-0 snap-start rounded-md"
+				/>
+			{/if}
 			{#each shown as image, i (image.file)}
 				<a
 					href={imageHref(appState, i, gallery)}

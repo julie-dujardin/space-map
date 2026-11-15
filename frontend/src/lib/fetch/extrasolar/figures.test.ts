@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import * as details from '$lib/fetch/groups/details';
 import { fetchFigureDetail, fetchFigureName, figurePageName } from './figures';
+import { ExtrasolarStatusError } from './files';
 import * as skycultures from './skycultures';
 import type { LoadedSkyCulture, SkyCultureFile } from './skycultures';
 
@@ -133,5 +134,112 @@ describe('the page of a figure', () => {
 
 	it('goes by its id with no name and no segment', () => {
 		expect(figurePageName({ id: 'CON maya 1', names: [] } as never, 'en')).toBe('CON maya 1');
+	});
+});
+
+describe('the chart of a figure page', () => {
+	const placed = {
+		...file,
+		members: [
+			{ id: 1, position: [1, 0, 0] },
+			{ id: 2, position: [0, 2, 0] },
+			file.members[2],
+			{ ...file.members[3], position: [0, 0, 3] }
+		]
+	} as unknown as SkyCultureFile;
+	const places = { name: 'Gaia Data Release 3', organisation: 'ESA', source: 'https://g' };
+	const deepSky = { name: 'OpenNGC', organisation: 'o', source: 'https://d', deep_sky: true };
+	const international = { name: 'Stellarium sky cultures', organisation: 's', source: 'https://i' };
+
+	function loadPlaced(): void {
+		const culture = {
+			file: placed,
+			entry: { key: 'maya', group: 'x', labels: {}, credit },
+			credits: [credit, places, deepSky]
+		};
+		vi.spyOn(skycultures, 'fetchSkyCulture').mockResolvedValue(culture as never);
+		vi.spyOn(skycultures, 'fetchInternationalNames').mockResolvedValue({
+			file: {
+				members: [{ id: 9, position: [1, 1, 0] }],
+				figures: [],
+				names: [{ member: 0, names: [{ english: 'Nine' }] }]
+			} as never,
+			credit: international
+		});
+	}
+
+	it('is on the page of a figure with a place in the sky, and on no other', async () => {
+		load();
+		expect(
+			(await fetchFigureDetail('culture-maya', '003', 'en')).global?.star_chart
+		).toBeUndefined();
+		loadPlaced();
+		expect((await fetchFigureDetail('culture-maya', '003', 'en')).global?.star_chart).toMatchObject(
+			{ slug: 'culture-maya', figure: '003' }
+		);
+	});
+
+	it('names a star as the member list does, and no star that readers do not know', async () => {
+		loadPlaced();
+		const { global } = await fetchFigureDetail('culture-maya', '003', 'en');
+		const { chart, name } = await global!.star_chart!.load();
+		expect(chart.lines).toHaveLength(2);
+		expect(chart.standIns).toEqual([{ direction: [0, 0, 1], name: 'NGC 224' }]);
+		const listed = new Map(global!.notable_members!.map((member) => [member.id, member.name]));
+		expect(await Promise.all(chart.stars.map(name))).toEqual([null, listed.get('x-2')]);
+	});
+
+	it('takes the names of a constellation as the member list shows them', async () => {
+		loadPlaced();
+		vi.spyOn(details, 'fetchGroupDetail').mockResolvedValue({
+			global: { notable_members: [{ id: 'x-2', name: 'Betelgeuse' }] },
+			localized: { notable_member_names: { 'x-2': 'Bételgeuse' } }
+		} as never);
+		const { global } = await fetchFigureDetail('culture-maya', 'Ori', 'fr');
+		const { chart, name } = await global!.star_chart!.load();
+		expect(await Promise.all(chart.stars.map(name))).toEqual(['Bételgeuse', null]);
+	});
+
+	it('credits what it draws from: a deep-sky catalogue only with such a member', async () => {
+		loadPlaced();
+		const turtle = await fetchFigureDetail('culture-maya', '003', 'en');
+		expect((await turtle.global!.star_chart!.load()).credits).toEqual([
+			credit,
+			places,
+			deepSky,
+			international
+		]);
+		const hearth = await fetchFigureDetail('culture-maya', 'Ori', 'en');
+		expect((await hearth.global!.star_chart!.load()).credits).toEqual([
+			credit,
+			places,
+			international
+		]);
+	});
+
+	it('draws with no neighbours when their names do not load, and reads them again', async () => {
+		loadPlaced();
+		const names = vi.spyOn(skycultures, 'fetchInternationalNames');
+		names.mockRejectedValueOnce(new Error('offline'));
+		const { global } = await fetchFigureDetail('culture-maya', '003', 'en');
+		const first = await global!.star_chart!.load();
+		expect(first.chart.neighbours).toEqual([]);
+		expect(first.credits).not.toContain(international);
+		const fuller = await first.more!();
+		expect(fuller.more).toBeUndefined();
+		expect(fuller.chart.neighbours.map(({ id }) => id)).toEqual([9]);
+		expect(fuller.credits).toContain(international);
+		// The figure stays the same objects, so its frame stays.
+		expect(fuller.chart.points).toBe(first.chart.points);
+		expect(fuller.chart.lines).toBe(first.chart.lines);
+	});
+
+	it('does not read the names again when the host has no such file', async () => {
+		loadPlaced();
+		vi.spyOn(skycultures, 'fetchInternationalNames').mockRejectedValue(
+			new ExtrasolarStatusError('https://t/v1/x/names.json.gz', 404)
+		);
+		const { global } = await fetchFigureDetail('culture-maya', '003', 'en');
+		expect((await global!.star_chart!.load()).more).toBeUndefined();
 	});
 });

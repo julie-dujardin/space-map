@@ -782,6 +782,7 @@
 	"panorama_map_collapse": "タイムラインを隠す",
 	"image_view_on_commons": "Commons で表示",
 	"image_open_viewer": "原寸画像を開く",
+	"star_chart_label": "{name}の星図",
 	"image_previous": "前の画像",
 	"image_next": "次の画像",
 	"tab_overview": "概要",

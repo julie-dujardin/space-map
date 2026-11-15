@@ -7,6 +7,7 @@
  */
 
 import type { Snippet } from 'svelte';
+import type { LoadedChart } from '$lib/fetch/extrasolar/figures';
 import { imageLabel } from './images';
 import type { ImageGalleryData, ObjectImage } from './object-data';
 
@@ -24,11 +25,23 @@ export const FEATURES_GALLERY = 'features';
  *  its Exoplanets tab. */
 export const EXOPLANETS_GALLERY = 'exoplanets';
 
+/** The chart of a figure of a sky culture: a picture that the browser draws. */
+export interface StarChartPicture {
+	/** The group slug of the culture. */
+	slug: string;
+	/** The figure's segment in its URL. */
+	figure: string;
+	/** What the chart draws, from the files that the page holds. */
+	load: () => Promise<LoadedChart>;
+}
+
 export interface Gallery {
 	/** Stable URL token: a fixed name, or a member's Object.id. */
 	key: string;
 	title: string;
 	images: ObjectImage[];
+	/** Leads the shelf. The viewer's index counts `images` alone. */
+	chart?: StarChartPicture;
 	/** Object.id the whole shelf is about, linked under its title. */
 	subjectId?: string;
 	/** The shelf is the hero of its tab, so a link to the tab shows its first
@@ -63,10 +76,17 @@ export interface ShelfLink {
  *  filename — the ring selection can repeat one of the object's own. */
 export function imageCount(galleries: Gallery[]): number {
 	const files = new Set<string>();
+	let charts = 0;
 	for (const gallery of galleries) {
 		for (const image of gallery.images) files.add(image.file);
+		if (gallery.chart) charts++;
 	}
-	return files.size;
+	return files.size + charts;
+}
+
+/** How many pictures one shelf holds. */
+export function shelfCount(gallery: Gallery): number {
+	return gallery.images.length + (gallery.chart ? 1 : 0);
 }
 
 /** The bundle fields a gallery list is assembled from — object or group. */
@@ -75,6 +95,7 @@ export interface GallerySource {
 	ring_images?: ObjectImage[];
 	tab_galleries?: ImageGalleryData[];
 	galleries?: ImageGalleryData[];
+	star_chart?: StarChartPicture;
 }
 
 /**
@@ -120,8 +141,9 @@ export function buildGalleries(
 ): Gallery[] {
 	if (!source) return [];
 	const out: Gallery[] = [];
-	if (source.images?.length) {
-		out.push({ key: MAIN_GALLERY, title: displayName, images: source.images });
+	const chart = source.star_chart;
+	if (source.images?.length || chart) {
+		out.push({ key: MAIN_GALLERY, title: displayName, images: source.images ?? [], chart });
 	}
 	if (source.ring_images?.length) {
 		out.push({

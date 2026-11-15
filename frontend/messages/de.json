@@ -727,6 +727,7 @@
 	"panorama_map_collapse": "Zeitleiste ausblenden",
 	"image_view_on_commons": "Auf Commons ansehen",
 	"image_open_viewer": "Bild in voller Größe öffnen",
+	"star_chart_label": "Sternkarte: {name}",
 	"image_previous": "Vorheriges Bild",
 	"image_next": "Nächstes Bild",
 	"tab_overview": "Übersicht",

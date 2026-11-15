@@ -739,6 +739,7 @@
 	"panorama_map_collapse": "Ocultar a cronologia",
 	"image_view_on_commons": "Ver no Commons",
 	"image_open_viewer": "Abrir imagem em tamanho real",
+	"star_chart_label": "Carta celeste: {name}",
 	"image_previous": "Imagem anterior",
 	"image_next": "Imagem seguinte",
 	"tab_overview": "Resumo",

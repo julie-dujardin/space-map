@@ -18,6 +18,7 @@ import type {
 	ObjectImage
 } from '$lib/fetch/objects/object-data';
 import type { ExtrasolarCredit } from '$lib/fetch/extrasolar/files';
+import type { StarChartPicture } from '$lib/fetch/objects/galleries';
 import type { GroupCategory, GroupType, OrganizationRole, SatelliteCategory } from './registry';
 
 export type { NotableMemberEntry };
@@ -128,6 +129,8 @@ export interface GlobalGroupData {
 	home_figure?: { culture: string; figure: string; name: string | null };
 	/** Figure pages: the culture that draws the figure, built in the browser. */
 	figure_credit?: ExtrasolarCredit;
+	/** Figure pages: the figure has places in the sky, so a chart can draw it. */
+	star_chart?: StarChartPicture;
 	/** Star families only: the stars that only an estimate puts in the
 	 *  family, of `member_count`. */
 	estimated_star_count?: number;

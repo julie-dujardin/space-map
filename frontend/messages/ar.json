@@ -710,6 +710,7 @@
 	"panorama_map_collapse": "إخفاء الخط الزمني",
 	"image_view_on_commons": "عرض في كومنز",
 	"image_open_viewer": "فتح الصورة بالحجم الكامل",
+	"star_chart_label": "خريطة نجوم: {name}",
 	"image_previous": "الصورة السابقة",
 	"image_next": "الصورة التالية",
 	"tab_overview": "نظرة عامة",

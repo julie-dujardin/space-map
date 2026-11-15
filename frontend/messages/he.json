@@ -751,6 +751,7 @@
 	"panorama_map_collapse": "הסתרת ציר הזמן",
 	"image_view_on_commons": "צפה ב־Commons",
 	"image_open_viewer": "פתח תמונה בגודל מלא",
+	"star_chart_label": "מפת כוכבים: {name}",
 	"image_previous": "התמונה הקודמת",
 	"image_next": "התמונה הבאה",
 	"tab_overview": "סקירה",

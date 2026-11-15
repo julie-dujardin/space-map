@@ -10,8 +10,12 @@ import {
 	extrasolarPath,
 	fetchExtrasolarJson,
 	fetchExtrasolarMetadata,
+	isPaperCredit,
 	type ExtrasolarCredit
 } from './files';
+
+/** The dataset that holds the international star names. */
+const STELLARIUM = 'Stellarium';
 
 /** The catalogues behind a figure's line ends. */
 const POSITION_CATALOGUE = /^(Gaia Data Release|Hipparcos)/;
@@ -101,6 +105,9 @@ export interface ExtrasolarSkyCultures {
 	star_figures: string;
 	/** A star's shard is its ID modulo this. */
 	star_shards: number;
+	/** Path of the international star names: a culture file with no figures. */
+	international_names?: string;
+	international_names_distribution?: string;
 	cultures: SkyCultureEntry[];
 	credits: ExtrasolarCredit[];
 }
@@ -137,6 +144,18 @@ export function labelOf(figure: StarFigure, locale: string): string | null {
 		names.find(({ native }) => native)?.native ||
 		null
 	);
+}
+
+/** The name a star takes from the culture that draws it. */
+export function cultureStarName(names: readonly SkyCultureName[] | undefined): string | undefined {
+	const name = names?.[0];
+	return name?.english ?? name?.native ?? name?.pronounce;
+}
+
+/** The name of a member with no ID: a deep-sky object, or a star that no
+ *  catalogue of the tree holds. */
+export function unmatchedName(member: SkyCultureMember): string | undefined {
+	return member.designation ?? member.ref;
 }
 
 export function cultureName(culture: SkyCultureEntry, locale: string): string {
@@ -198,6 +217,49 @@ export async function fetchSkyCulture(key: string): Promise<LoadedSkyCulture | n
 	const path = extrasolarPath(table.file, { key: entry.key });
 	const file = await fetchExtrasolarJson<SkyCultureFile>(path, table.token);
 	const places = metadata.credits.filter((credit) => POSITION_CATALOGUE.test(credit.name));
-	const deepSky = drawsDeepSky(file) ? table.credits.filter((credit) => credit.deep_sky) : [];
+	// These go to the attribution bar. A paper is cited on /credits only.
+	const deepSky = drawsDeepSky(file)
+		? table.credits.filter((credit) => credit.deep_sky && !isPaperCredit(credit))
+		: [];
 	return { file, entry, credits: [entry.credit, ...places, ...deepSky] };
+}
+
+/** The credits of the deep-sky stand-ins, for /credits. None where the export
+ *  or the host has no sky culture. */
+export async function fetchDeepSkyCredits(): Promise<ExtrasolarCredit[]> {
+	const metadata = await fetchExtrasolarMetadata().catch((e: unknown) => {
+		console.warn('[credits] extrasolar metadata did not load:', e);
+		return null;
+	});
+	const table = metadata?.skycultures;
+	if (!table?.cultures.some(extrasolarAllowed)) return [];
+	return table.credits.filter((credit) => credit.deep_sky);
+}
+
+export interface InternationalNames {
+	file: SkyCultureFile;
+	credit: ExtrasolarCredit | undefined;
+}
+
+let internationalTable: ExtrasolarSkyCultures | null = null;
+let internationalPending: Promise<InternationalNames> | null = null;
+
+/** The international star names, once per export, or null where the export or
+ *  the host has none. A failure is not kept. */
+export async function fetchInternationalNames(): Promise<InternationalNames | null> {
+	const table = (await fetchExtrasolarMetadata())?.skycultures;
+	const path = table?.international_names;
+	if (!table || !path) return null;
+	if (!extrasolarAllowed({ distribution: table.international_names_distribution })) return null;
+	if (internationalPending && internationalTable === table) return internationalPending;
+	const pending = fetchExtrasolarJson<SkyCultureFile>(path, table.token).then((file) => ({
+		file,
+		credit: table.credits.find(({ organisation }) => organisation === STELLARIUM)
+	}));
+	internationalTable = table;
+	internationalPending = pending;
+	pending.catch(() => {
+		if (internationalPending === pending) internationalPending = null;
+	});
+	return pending;
 }

@@ -7,6 +7,7 @@
 	import SurfaceHero from '../sections/SurfaceHero.svelte';
 	import PanoramaMinimap from '../../panorama/PanoramaMinimap.svelte';
 	import GalleryHero from '../sections/GalleryHero.svelte';
+	import StarChart from '../frame/StarChart.svelte';
 	import BodyLineup from '../charts/BodyLineup.svelte';
 	import SolarSystemMap from '../charts/SolarSystemMap.svelte';
 	import PlanetarySystemMap from '../charts/PlanetarySystemMap.svelte';
@@ -62,6 +63,9 @@
 	const appState = getContext<AppState>('appState');
 
 	let data = $derived(load.data);
+	let starChart = $derived(load.groupDetail?.global?.star_chart);
+	/** Wide enough for names beside the stars, and no taller than the drawer is wide. */
+	const HERO_CHART = { minAspect: 1, maxAspect: 1.6, class: 'rounded-md' };
 	let ringImages = $derived(data?.global?.ring_images);
 	let groupHeaderBadges = $derived.by(() => {
 		const g = load.groupDetail?.global;
@@ -125,6 +129,13 @@
 	{/if}
 {/snippet}
 
+<!-- A figure of a sky culture is its stars: the chart goes before any picture of it. -->
+{#snippet starChartSnippet()}
+	{#if starChart}
+		<StarChart picture={starChart} name={data?.localized?.name ?? fallbackName} {...HERO_CHART} />
+	{/if}
+{/snippet}
+
 {#snippet objectHeaderHero()}
 	<ObjectHeader
 		global={data?.global ?? null}
@@ -139,7 +150,9 @@
 				? planetarySystemMapSnippet
 				: lineup.hero && !lineup.isMoonLineup
 					? lineupHeroSnippet
-					: undefined}
+					: starChart
+						? starChartSnippet
+						: undefined}
 		galleryHref={imageHref(appState, 0, MAIN_GALLERY)}
 		onShowGallery={() => appState.setImage(0, MAIN_GALLERY)}
 		listHref={tabHref(appState, 'images')}

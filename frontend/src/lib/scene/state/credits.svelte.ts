@@ -48,6 +48,13 @@ export interface SkyboxCredit {
 	description?: string;
 }
 
+/** What one star chart of the drawer draws from. */
+export interface ChartCredits {
+	/** It shows the skybox. */
+	sky: boolean;
+	credits: readonly ExtrasolarCredit[];
+}
+
 /** Attribution state for the credits bar, popover, and page. Each map pairs
  *  with a version counter bumped on first insertion so `$derived` consumers
  *  re-read; registration is idempotent, so revisiting a system doesn't rebump. */
@@ -63,8 +70,13 @@ export class CreditsStore {
 	skyboxDrawn = $state(true);
 	/** The catalogues behind the starfield, while its stars draw. */
 	stars = $state.raw<readonly ExtrasolarCredit[]>([]);
-	/** The culture and catalogues behind the constellation lines, while they draw. */
+	/** The culture and catalogues behind the constellation lines of the map and
+	 *  of the star charts in the drawer, while they draw. */
 	constellations = $state.raw<readonly ExtrasolarCredit[]>([]);
+	/** True while a star chart shows the skybox. */
+	skyboxCharted = $state(false);
+	private mapFigures: readonly ExtrasolarCredit[] = [];
+	private readonly charts = new Map<object, ChartCredits>();
 	/** True while model light is a visible share of the glow in view. */
 	galaxyModel = $state(false);
 	/** Each archive behind the loaded scene and where its bodies are: their
@@ -120,8 +132,29 @@ export class CreditsStore {
 		this.stars = credits;
 	}
 
+	/** The constellation layer calls this every frame, so a repeat must not notify. */
 	setConstellations(credits: readonly ExtrasolarCredit[]): void {
-		this.constellations = credits;
+		if (this.mapFigures === credits) return;
+		this.mapFigures = credits;
+		this.mergeFigures();
+	}
+
+	/** What the star chart `key` draws from; null when it draws no more. */
+	setChart(key: object, drawn: ChartCredits | null): void {
+		if (drawn) this.charts.set(key, drawn);
+		else if (!this.charts.delete(key)) return;
+		this.skyboxCharted = [...this.charts.values()].some(({ sky }) => sky);
+		this.mergeFigures();
+	}
+
+	private mergeFigures(): void {
+		const bySource = new Map(this.mapFigures.map((credit) => [credit.source, credit]));
+		for (const { credits } of this.charts.values()) {
+			for (const credit of credits)
+				if (!bySource.has(credit.source)) bySource.set(credit.source, credit);
+		}
+		// With no chart the list is the map's own, so a repeat stays a repeat.
+		this.constellations = this.charts.size ? [...bySource.values()] : this.mapFigures;
 	}
 
 	/** The starfield calls this every frame, so a repeat must not notify. */

@@ -1049,7 +1049,7 @@ The token of `systems` is the SHA-256 of the file's path, a zero byte and the SH
   - `packaged`: false for a culture that Stellarium leaves out of its standard package.
   - `credit`: the culture's own credit: its source at the pinned commit, its licence, and for Stellarium `authors`, the plain names of the people that the culture's description names as its makers, with no Markdown, addresses or links.
   - `figures`, `members`, `positioned` (members with a position), `stand_ins` (those that are stand-ins) and `unresolved` (members with no ID, sky points left out).
-  - `credits` of the section: Stellarium, Bucur's dataset, SIMBAD, which matched Bucur's identifiers, and the catalogues of the deep-sky stand-ins (Hunt & Reffert 2024, Baumgardt et al., HECATE, OpenNGC). `deep_sky: true` marks a credit that places these stand-ins (SIMBAD and those four); a culture with a figure that draws a stand-in credits these too.
+  - `credits` of the section: Stellarium, Bucur's dataset, SIMBAD, which matched Bucur's identifiers, and the catalogues of the deep-sky stand-ins (Hunt & Reffert 2024, Baumgardt & Hilker 2018, HECATE, OpenNGC). `deep_sky: true` marks a credit that places these stand-ins (SIMBAD and those four); a culture with a figure that draws a stand-in credits these too.
 
 ## `families.json`
 

@@ -4,8 +4,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { configureHost } from '$lib/host';
 import {
 	ExtrasolarStaleError,
+	ExtrasolarStatusError,
 	extrasolarAllowed,
 	extrasolarPath,
+	extrasolarPermanent,
 	extrasolarUrl,
 	fetchExtrasolarFile,
 	fetchExtrasolarJson,
@@ -103,5 +105,20 @@ describe('extrasolar files', () => {
 		await expect(fetchExtrasolarJson('planets/index.json.gz', 'ffffffffffffffff')).rejects.toThrow(
 			ExtrasolarStaleError
 		);
+	});
+
+	it('tells a failure that the next read meets too from one that can pass', async () => {
+		configureHost({ tilesUrl: '/data' });
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () => new Response('', { status: 404 }))
+		);
+		const missing = await fetchExtrasolarJson('a.json.gz', TOKEN).catch((e: unknown) => e);
+		expect(missing).toBeInstanceOf(ExtrasolarStatusError);
+		expect(extrasolarPermanent(missing)).toBe(true);
+		expect(extrasolarPermanent(new ExtrasolarStaleError('a', 'b', 'c'))).toBe(true);
+		for (const status of [408, 429, 500, 503])
+			expect(extrasolarPermanent(new ExtrasolarStatusError('a', status))).toBe(false);
+		expect(extrasolarPermanent(new TypeError('Failed to fetch'))).toBe(false);
 	});
 });

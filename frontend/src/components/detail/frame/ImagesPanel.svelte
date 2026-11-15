@@ -1,5 +1,10 @@
 <script lang="ts">
-	import { imageTitle, type Gallery, type ShelfLink } from '$lib/fetch/objects/galleries';
+	import {
+		imageTitle,
+		shelfCount,
+		type Gallery,
+		type ShelfLink
+	} from '$lib/fetch/objects/galleries';
 	import type { ObjectImage } from '$lib/fetch/objects/object-data';
 	import { getContext } from 'svelte';
 	import * as m from '$lib/paraglide/messages.js';
@@ -60,7 +65,7 @@
 </script>
 
 {#snippet grid(shelf: Gallery)}
-	<ImageGallery images={shelf.images} gallery={shelf.key} {alt} {label} />
+	<ImageGallery images={shelf.images} chart={shelf.chart} gallery={shelf.key} {alt} {label} />
 {/snippet}
 
 <div class="flex flex-col gap-4">
@@ -85,7 +90,7 @@
 		{#if headed && galleries.length > 1}
 			<Section
 				title={open.title}
-				titleMeta={formatNumber(open.images.length)}
+				titleMeta={formatNumber(shelfCount(open))}
 				activateHref={indexHref}
 				onActivate={toIndex}
 				activateLabel={m.gallery_all()}
@@ -100,6 +105,8 @@
 			<ImageRail
 				title={gallery.title}
 				images={gallery.images}
+				chart={gallery.chart}
+				count={shelfCount(gallery)}
 				gallery={gallery.key}
 				{alt}
 				{label}

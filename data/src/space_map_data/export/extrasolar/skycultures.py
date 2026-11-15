@@ -155,7 +155,8 @@ DEEP_SKY_CREDITS = (
     HUNT_REFFERT,
     {
         "name": "Fundamental parameters of Galactic globular clusters",
-        "organisation": "Baumgardt et al.",
+        # The year makes it a paper, which the site cites on /credits only.
+        "organisation": "Baumgardt & Hilker 2018",
         "source": "https://people.smp.uq.edu.au/HolgerBaumgardt/globular/",
         "citation": "Baumgardt & Hilker 2018, MNRAS 478, 1520; Baumgardt &"
         " Vasiliev 2021, MNRAS 505, 5957",

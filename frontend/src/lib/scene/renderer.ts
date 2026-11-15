@@ -128,6 +128,7 @@ import { makeCircleTexture } from './objects/pointcloud';
 import { SystemDataLoader } from './system-data/loader';
 import { loadSkybox, loadStarlessSky } from './objects/sky/skybox';
 import { SkyboxAdjuster } from './debug/skybox-adjust';
+import { CubeSkySource } from '$lib/star-chart/cube-sky';
 import { SkyDebugMarkers } from './debug/sky-markers';
 import { HaloDebugOverlay } from './debug/halo-overlay';
 import { collectDebugStats, type DebugStats } from './debug/stats';
@@ -383,6 +384,8 @@ export class SceneRenderer {
 	/** The heading last handed to {@link Callbacks.onHeading}. */
 	private reportedHeading = 0;
 	private skyboxAdjuster!: SkyboxAdjuster;
+	/** The skybox as the sky of the star charts in the drawer. */
+	private chartSky!: CubeSkySource;
 	private skyDebugMarkers!: SkyDebugMarkers;
 	private haloDebug!: HaloDebugOverlay;
 	private travelPath!: TravelPathOverlay;
@@ -607,7 +610,9 @@ export class SceneRenderer {
 		this.orbitPreview = new OrbitPreviewOverlay(this.scene);
 		this.orbitPreview.setLayer(SceneRenderer.MAP_LAYER);
 		this.skyboxAdjuster.set(0, 0, 0);
-		void loadSkybox(this.scene, this.renderer, ctx, () => this.disposed);
+		this.chartSky = new CubeSkySource(this.renderer, () => this.skyboxSource()?.texture ?? null);
+		ctx.chartSky = this.chartSky;
+		this.loadSky();
 
 		this.placer = new Placer(ctx, this.bodyObjects, this.positionDiagnostics, () =>
 			this.dateHeld()
@@ -3375,6 +3380,16 @@ export class SceneRenderer {
 		this.skyDebugMarkers.setVisible(visible);
 	}
 
+	private loadSky(): void {
+		void loadSkybox(
+			this.scene,
+			this.renderer,
+			this.ctx,
+			() => this.disposed,
+			() => this.chartSky.changed()
+		);
+	}
+
 	/** The skybox's cube for the glow past the join, drawn or kept aside. */
 	private skyboxSource(): SkyboxSource | null {
 		const sky = this.scene.background ?? this.stashedSky;
@@ -3501,7 +3516,7 @@ export class SceneRenderer {
 		// re-upload the old CubeTexture — refetch and rebuild it instead. With
 		// none installed yet, the load under way installs it in the new context.
 		if (this.scene.background || this.stashedSky) {
-			void loadSkybox(this.scene, this.renderer, this.ctx, () => this.disposed);
+			this.loadSky();
 		}
 		this.resume();
 	}
@@ -3545,6 +3560,8 @@ export class SceneRenderer {
 
 	dispose(): void {
 		this.disposed = true;
+		this.ctx.chartSky = null;
+		this.chartSky.dispose();
 		cancelAnimationFrame(this.rafId);
 		this.pointerInteraction.detach();
 		this.gpuPick.dispose();

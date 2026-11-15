@@ -7,6 +7,7 @@
 	import type { Credits } from '$lib/credits/credits-payload';
 	import type { ExtrasolarCredit } from '$lib/fetch/extrasolar/files';
 	import { fetchStarCatalogueCredits } from '$lib/credits/star-sources';
+	import { fetchDeepSkyCredits } from '$lib/fetch/extrasolar/skycultures';
 	import { fetchNestCredits } from '$lib/scene/dust/nest';
 	import { eachSourceOnce, fetchGlowCredits } from '$lib/scene/glow/credits';
 
@@ -16,9 +17,10 @@
 
 	let { data }: Props = $props();
 	const credits = streamed<Credits>(() => data.credits);
-	// The star catalogues, the dust and the glow credit themselves in their exports' metadata.
+	// The star catalogues, the sky cultures, the dust and the glow credit themselves in their exports' metadata.
 	const starCredits = Promise.all([
 		fetchStarCatalogueCredits(),
+		fetchDeepSkyCredits(),
 		fetchNestCredits(),
 		fetchGlowCredits()
 	]).then((lists) => eachSourceOnce(lists.flat()));

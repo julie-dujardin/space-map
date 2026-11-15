@@ -151,6 +151,25 @@ export class ExtrasolarStaleError extends Error {
 	}
 }
 
+/** A file that the host answered with an error status. */
+export class ExtrasolarStatusError extends Error {
+	constructor(
+		url: string,
+		readonly status: number
+	) {
+		super(`${url} returned ${status}`);
+		this.name = 'ExtrasolarStatusError';
+	}
+}
+
+/** A failure that the next read meets too: the host has no such file, or the
+ *  file is from another export. A timeout or a request turned away can pass. */
+export function extrasolarPermanent(e: unknown): boolean {
+	if (e instanceof ExtrasolarStaleError) return true;
+	if (!(e instanceof ExtrasolarStatusError)) return false;
+	return e.status >= 400 && e.status < 500 && e.status !== 408 && e.status !== 429;
+}
+
 /** Whether this host may fetch the files of a table or tree with this
  *  `distribution` (the same ladder as surface maps). */
 export function extrasolarAllowed(entry: { distribution?: string }): boolean {
@@ -238,7 +257,7 @@ export async function fetchExtrasolarFile(
 ): Promise<Container> {
 	const url = extrasolarUrl(path, token, options.prefix);
 	const res = await fetchWithTimeout(url, { signal: options.signal, priority: options.priority });
-	if (!res.ok) throw new Error(`${url} returned ${res.status}`);
+	if (!res.ok) throw new ExtrasolarStatusError(url, res.status);
 	// The server sends no Content-Encoding. The payload is decoded here, into its own buffer.
 	const container = new Container(await gunzip(res).arrayBuffer());
 	if (container.token !== token) {
@@ -259,7 +278,7 @@ export async function fetchExtrasolarJson<T extends { token: string }>(
 ): Promise<T> {
 	const url = extrasolarUrl(path, token, options.prefix);
 	const res = await fetchWithTimeout(url, { signal: options.signal, priority: options.priority });
-	if (!res.ok) throw new Error(`${url} returned ${res.status}`);
+	if (!res.ok) throw new ExtrasolarStatusError(url, res.status);
 	const value = await gunzipJson<T>(res);
 	if (value.token !== token) {
 		reportStale();

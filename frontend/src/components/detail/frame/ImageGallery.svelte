@@ -5,9 +5,13 @@
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import { imageHref } from '$lib/state/focus-link';
 	import { isModifiedClick } from '$lib/modified-click';
+	import type { StarChartPicture } from '$lib/fetch/objects/galleries';
+	import StarChart from './StarChart.svelte';
 
 	interface Props {
 		images: ObjectImage[];
+		/** The chart of a figure, before the images. */
+		chart?: StarChartPicture;
 		alt: string;
 		/** Gallery key the viewer indexes into — what `&gal=` carries. */
 		gallery: string;
@@ -15,7 +19,7 @@
 		label: (image: ObjectImage) => string;
 	}
 
-	let { images, alt, gallery, label }: Props = $props();
+	let { images, chart, alt, gallery, label }: Props = $props();
 
 	const appState = getContext<AppState>('appState');
 
@@ -27,6 +31,15 @@
 </script>
 
 <div class="gallery">
+	{#if chart}
+		<!-- A tile among the others holds no names: the lines alone. -->
+		<StarChart
+			picture={chart}
+			name={alt}
+			labels={false}
+			class="mb-2 break-inside-avoid rounded-md"
+		/>
+	{/if}
 	{#each images as image, i (image.file)}
 		<a
 			href={imageHref(appState, i, gallery)}

@@ -78,7 +78,11 @@ describe('the credits of a culture', () => {
 			...TABLE,
 			file: 'skycultures/{key}.json.gz',
 			token: 't',
-			credits: [{ ...catalogue('OpenNGC'), deep_sky: true }, catalogue('Stellarium sky cultures')]
+			credits: [
+				{ ...catalogue('OpenNGC'), deep_sky: true },
+				{ name: 'HECATE', organisation: 'Kovlakas et al. 2021', source: 'h', deep_sky: true },
+				catalogue('Stellarium sky cultures')
+			]
 		}
 	};
 	const names = async (members: object[], figures?: object[]) => {
@@ -90,7 +94,7 @@ describe('the credits of a culture', () => {
 		return (await fetchSkyCulture('chinese'))?.credits.map(({ name }) => name);
 	};
 
-	it('names a deep-sky catalogue only for a culture that draws such an object', async () => {
+	it('names a deep-sky catalogue only for a culture that draws such an object, and no paper', async () => {
 		expect(await names([{ id: 1, position: [1, 0, 0] }])).toEqual([
 			'chinese',
 			'Gaia Data Release 3'
