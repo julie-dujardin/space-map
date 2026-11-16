@@ -114,7 +114,12 @@ def build_one(naif_id: int, exclude: list[tuple[float, float]] | None = None) ->
             samples = _parse_chunks((cache_dir / r["file"]).read_text())
             written += write_runs(samples, f"refine_{r['start']}_{r['end']}")
     finally:
-        spiceypy.spkcls(handle)
+        # spkcls refuses a file with no segments, which would hide the
+        # RuntimeError below that callers handle per craft.
+        if written:
+            spiceypy.spkcls(handle)
+        else:
+            spiceypy.dafcls(handle)
 
     if written == 0:
         tmp_path.unlink(missing_ok=True)

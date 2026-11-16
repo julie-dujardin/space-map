@@ -523,6 +523,32 @@ class TestSampleRuns:
         assert _sample_runs(self._samples(0, 1, 2), [(-1.0, 3.0)]) == []
 
 
+class TestBuildOne:
+    """A craft whose samples are all excluded fails alone, leaving no file."""
+
+    def test_fully_excluded_raises_runtime_error(self, tmp_path, monkeypatch):
+        import orjson
+
+        from space_map_data.download.providers.spice.synth import spk
+
+        cache = tmp_path / "cache"
+        (cache / "-1").mkdir(parents=True)
+        (cache / "-1" / "coarse.csv").write_text(_TWO_CHUNK_CSV)
+        meta = {
+            "name": "Test craft",
+            "revised": "2025-01-01",
+            "coarse": {"file": "coarse.csv"},
+            "refined": [],
+        }
+        (cache / "-1" / "meta.json").write_bytes(orjson.dumps(meta))
+        monkeypatch.setattr(spk, "SYNTH_CACHE_ROOT", cache)
+        monkeypatch.setattr(spk, "SYNTH_KERNELS_DIR", tmp_path / "kernels")
+
+        with pytest.raises(RuntimeError, match="no usable segments"):
+            spk.build_one(-1, exclude=[(-1e12, 1e12)])
+        assert list((tmp_path / "kernels").iterdir()) == []
+
+
 class TestEarthOrbitExcludes:
     """Candidates SATCAT places in Earth orbit, which synthesis skips."""
 
