@@ -39,6 +39,7 @@ COLUMNS = (
     "lv_class",
     "apogee",
     "range",
+    "generic_name",
 )
 _FLOAT_FIELDS = (
     "length_m",
