@@ -182,6 +182,33 @@ def _collect_probes(missions_dir: Path, landed_missions_dir: Path) -> list[dict]
     return out
 
 
+def _assign(records: list[dict]) -> dict[tuple[str, int], ProbeIdRecord]:
+    """Pin every (mission, naif_id) to a stable probe_id via the on-disk cache."""
+    return assign_many(
+        [(r["mission"], r["naif_id"], r["inception_mjd"]) for r in records],
+        cospars={(r["mission"], r["naif_id"]): r.get("cospar_hint") for r in records},
+        names={(r["mission"], r["naif_id"]): r.get("name_hint") for r in records},
+    )
+
+
+def _collect_and_assign(
+    missions_dir: Path, landed_missions_dir: Path
+) -> tuple[list[dict], dict[tuple[str, int], ProbeIdRecord]]:
+    """The probe records and their probe_ids, one record per probe.
+
+    A synthesised kernel seen for the first time is attached to the probe that
+    owns its NAIF while it is assigned, after the records were bucketed, so it
+    would share that probe's id with the probe's own record. Collecting again
+    puts it in the probe's bucket.
+    """
+    records = _collect_probes(missions_dir, landed_missions_dir)
+    assignments = _assign(records)
+    if len({a.probe_id for a in assignments.values()}) < len(assignments):
+        records = _collect_probes(missions_dir, landed_missions_dir)
+        assignments = _assign(records)
+    return records, assignments
+
+
 def _events_only_records(
     spk_keys: set[tuple[str, int]],
 ) -> list[tuple[dict, ProbeIdRecord]]:
@@ -344,19 +371,12 @@ class ProbesIngestor:
                 self.missions_dir,
             )
             return
-        records = _collect_probes(self.missions_dir, self.landed_missions_dir)
+        records, assignments = _collect_and_assign(
+            self.missions_dir, self.landed_missions_dir
+        )
         if not records:
             logger.info("No probes found under %s", self.missions_dir)
             return
-
-        # Pin every (mission, naif_id) to a stable probe_id via the on-disk cache.
-        assignments = assign_many(
-            [(r["mission"], r["naif_id"], r["inception_mjd"]) for r in records],
-            cospars={
-                (r["mission"], r["naif_id"]): r.get("cospar_hint") for r in records
-            },
-            names={(r["mission"], r["naif_id"]): r.get("name_hint") for r in records},
-        )
 
         # Events-only probes (Apollo CSMs, Veneras, Magellan, Stardust, …)
         # have registry entries but no SPK kernels, so `_collect_probes`
