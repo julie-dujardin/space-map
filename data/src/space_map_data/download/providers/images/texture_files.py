@@ -41,6 +41,7 @@ from space_map_data.download.downloader import (
     DownloadError,
     user_agent_without_bot,
 )
+from space_map_data.download.providers.three_d.resumable import AS_STORED
 from space_map_data.utils.files import SYNC_BYTES, flush_to_disk
 from space_map_data.utils.paths import CACHE_DIR, SOURCES_TEXTURES_DIR
 
@@ -153,7 +154,9 @@ class TextureFilesDownloader(Downloader):
         self.out_dir = SOURCES_TEXTURES_DIR
         self.out_dir.mkdir(parents=True, exist_ok=True)
         # NASA's PDS file host answers 403 to a User-Agent that contains "bot".
-        self._headers = {"User-Agent": user_agent_without_bot(client)}
+        # NASA's asset host gzips a file for a client that accepts it, and then
+        # states no size.
+        self._headers = {**AS_STORED, "User-Agent": user_agent_without_bot(client)}
 
     def _targets(self) -> list[tuple[str, Path]]:
         # Keyed on the file: two maps of a body can share a detail layer, and

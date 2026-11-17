@@ -28,7 +28,11 @@ def _downloader(tmp_path, monkeypatch, *, etag: str = ETAG, body: bytes = BODY):
 
     def handler(request: httpx.Request) -> httpx.Response:
         requests.append(request)
-        headers = {"ETag": etag, "Content-Length": str(len(body))}
+        headers = {"ETag": etag}
+        # As NASA's asset host: a request open to compression gets a gzipped
+        # answer, which states no size.
+        if request.headers.get("Accept-Encoding") == "identity":
+            headers["Content-Length"] = str(len(body))
         if request.method == "HEAD":
             return httpx.Response(200, headers=headers)
         range_header = request.headers.get("Range")
@@ -98,6 +102,12 @@ class TestTextureFilesDownloader:
         downloader.download()
         agents = {r.headers["User-Agent"] for r in requests}
         assert agents == {"space-map/0.1 (ops@maps.test)"}
+
+    def test_requests_ask_for_the_file_uncompressed(self, tmp_path, monkeypatch):
+        """Byte ranges and the stated size are those of the file itself."""
+        downloader, requests = _downloader(tmp_path, monkeypatch)
+        downloader.download()
+        assert {r.headers["Accept-Encoding"] for r in requests} == {"identity"}
 
     def test_resumes_from_the_bytes_already_on_disk(self, tmp_path, monkeypatch):
         downloader, requests = _downloader(tmp_path, monkeypatch)
